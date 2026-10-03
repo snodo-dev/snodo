@@ -119,12 +119,29 @@ def _verified_commit_matches_merge_target(stored_commit: str, target_commit: str
     return stored_commit == target_commit or target_commit.startswith(stored_commit)
 
 
-def _matching_task_verifications(history: list, task_id: str, target_commit: str) -> list:
+def _quality_validator_ids(protocol: Optional[Protocol]) -> set[str]:
+    """Return IDs declared for quality-type validators in the active protocol."""
+    if protocol is None:
+        return {"quality"}
+    validator_ids = {
+        getattr(validator, "validator_id", "quality")
+        for validator in getattr(protocol, "validators", [])
+        if validator.validator_type == "quality"
+    }
+    return validator_ids or {"quality"}
+
+
+def _matching_task_verifications(
+    history: list, task_id: str, target_commit: str,
+    quality_validator_ids: Optional[set[str]] = None,
+) -> list:
     """Return quality-validator records for this task and merge target."""
     return [
         event for event in history
         if event.data.get("task_ref") == task_id
-        and event.data.get("validator_id") == "quality"
+        and event.data.get("validator_id") in (
+            {"quality"} if quality_validator_ids is None else quality_validator_ids
+        )
         and event.data.get("returncode") == 0
         and target_commit
         and _verified_commit_matches_merge_target(event.data.get("commit"), target_commit)
@@ -143,6 +160,7 @@ def _merge_on_success(
     protocol_metadata: Optional[dict] = None,
     branch_override: Optional[str] = None,
     change_request_content: Optional[tuple[str, str]] = None,
+    protocol: Optional[Protocol] = None,
 ) -> tuple:
     """Merge the completed task's branch into the base branch.
 
@@ -173,7 +191,9 @@ def _merge_on_success(
 
     if delivery in {"push_branch", "change_request", "local_merge"}:
         history = audit_log.get_history("verification_executed") if audit_log else []
-        matching = _matching_task_verifications(history, task.id, target_commit)
+        matching = _matching_task_verifications(
+            history, task.id, target_commit, _quality_validator_ids(protocol),
+        )
         passing = [e for e in matching if e.data.get("outcome") in {"pass", "no_tests"}]
         if not passing:
             commit_display = target_commit[:7] if target_commit else "unknown"
@@ -342,6 +362,7 @@ def _deliver_on_success(
         plan_name=plan_name, delivery=("local_merge" if plan_name else protocol.delivery_for(mode)),
         remote=getattr(protocol.execution, "delivery_remote", "origin"),
         protocol_metadata=protocol.metadata,
+        protocol=protocol,
     )
     from snodo.cli.commands.task_record import _record_task_completion
 
@@ -401,7 +422,9 @@ def _try_merge_unmerged_task(
         return None
 
     history = audit_log.get_history("verification_executed")
-    matching = _matching_task_verifications(history, task_id, target_commit)
+    matching = _matching_task_verifications(
+        history, task_id, target_commit, _quality_validator_ids(protocol),
+    )
     matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
     matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
     if not matching_passes and not matching_ungated:
@@ -473,6 +496,7 @@ def _deliver_plan_integration(
         delivery=delivery,
         remote=getattr(protocol.execution, "delivery_remote", "origin"),
         protocol_metadata=protocol.metadata,
+        protocol=protocol,
         branch_override=branch,
         change_request_content=(
             f"Deliver plan: {plan_name}"[:_CHANGE_REQUEST_TITLE_LIMIT],

@@ -1029,7 +1029,7 @@ def _print_plan_progress(planner, plan_name: str) -> None:
 def _verify_queue_merge_head(project_root, working_directory, task_ref, protocol, audit_log, branch):
     """Verify one exact plan/queue integration commit before queue delivery."""
     from git import Repo
-    from snodo.cli.commands.run_merge import _matching_task_verifications
+    from snodo.cli.commands.run_merge import _matching_task_verifications, _quality_validator_ids
     from snodo.validators.context import ValidatorContext
     from snodo.validators.quality import QualityValidator
 
@@ -1055,10 +1055,9 @@ def _verify_queue_merge_head(project_root, working_directory, task_ref, protocol
             )
         )
     history = audit_log.get_history("verification_executed") if audit_log else []
-    passing = [
-        event for event in _matching_task_verifications(history, task_ref, target_commit)
-        if event.data.get("outcome") in {"pass", "no_tests"}
-    ]
+    passing = [event for event in _matching_task_verifications(
+        history, task_ref, target_commit, _quality_validator_ids(protocol),
+    ) if event.data.get("outcome") in {"pass", "no_tests"}]
     if passing:
         return True
     reason = (

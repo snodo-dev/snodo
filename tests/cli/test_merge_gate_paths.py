@@ -105,6 +105,66 @@ def test_task_branch_merge_requires_exact_commit_verification(tmp_path, scope):
         assert "task.txt" in repo.git.ls_tree("-r", target)
 
 
+def test_custom_quality_validator_id_is_accepted_without_loosening_evidence(tmp_path):
+    from snodo.cli.commands.run_merge import _merge_on_success
+    from snodo.compiler.models import Validator
+    from snodo.core.interfaces import Task
+    from snodo.infrastructure.audit import AuditLog
+
+    project, base = _repository(tmp_path)
+    task = Task(id="task_custom_gate", spec="add a file")
+    from snodo.infrastructure.worktree import task_branch_name
+    branch = task_branch_name(task.id, task.spec)
+    _path, commit = _branch(project, base, branch, "task.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = SimpleNamespace(validators=[Validator(
+        validator_id="qa-gate", validator_type="quality",
+    )])
+
+    def record(task_ref, sha, outcome="pass", validator_id="qa-gate"):
+        audit.append_event("verification_executed", {
+            "op": "verification_executed", "task_ref": task_ref,
+            "validator_id": validator_id, "returncode": 0 if outcome == "pass" else 1,
+            "commit": sha, "outcome": outcome, "command": "true",
+        })
+
+    for task_ref, sha, outcome in (
+        ("other-task", commit, "pass"),
+        (task.id, "f" + commit[1:], "pass"),
+        (task.id, commit, "fail"),
+    ):
+        record(task_ref, sha, outcome)
+        assert _merge_on_success(
+            str(project), task, 0, None, audit, protocol=protocol,
+        )[0] != 0
+
+    record(task.id, commit)
+    assert _merge_on_success(
+        str(project), task, 0, None, audit, protocol=protocol,
+    )[0] == 0
+
+
+def test_default_quality_validator_id_remains_accepted(tmp_path):
+    from snodo.cli.commands.run_merge import _merge_on_success
+    from snodo.compiler.models import Validator
+    from snodo.core.interfaces import Task
+    from snodo.infrastructure.audit import AuditLog
+
+    project, base = _repository(tmp_path)
+    task = Task(id="task_default_gate", spec="add a file")
+    from snodo.infrastructure.worktree import task_branch_name
+    branch = task_branch_name(task.id, task.spec)
+    _path, commit = _branch(project, base, branch, "task.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = SimpleNamespace(validators=[Validator(
+        validator_id="quality", validator_type="quality",
+    )])
+    _verification(audit, task.id, commit)
+    assert _merge_on_success(
+        str(project), task, 0, None, audit, protocol=protocol,
+    )[0] == 0
+
+
 @pytest.mark.parametrize("delivery", ["local_merge", "push_branch", "change_request"])
 def test_plan_integration_delivery_requires_exact_commit_verification(tmp_path, delivery, monkeypatch):
     from git import Repo
@@ -116,7 +176,7 @@ def test_plan_integration_delivery_requires_exact_commit_verification(tmp_path, 
     integration, commit = _branch(project, base, branch, "combined.txt")
     audit = AuditLog(str(tmp_path / "audit.log"))
     from snodo.compiler.models import Validator
-    quality = Validator(validator_id="quality", validator_type="quality", tooling={"test_command": "false"})
+    quality = Validator(validator_id="qa-gate", validator_type="quality", tooling={"test_command": "false"})
     protocol = SimpleNamespace(
         delivery_for=lambda _mode: delivery,
         execution=SimpleNamespace(delivery_remote="origin"),
@@ -161,7 +221,7 @@ def test_queue_integration_merge_requires_verification_of_queue_head(tmp_path):
     branch = "queue/default/integration"
     _path, commit = _branch(project, base, branch, "queued.txt")
     audit = AuditLog(str(tmp_path / "audit.log"))
-    quality = Validator(validator_id="quality", validator_type="quality", tooling={"test_command": "false"})
+    quality = Validator(validator_id="qa-gate", validator_type="quality", tooling={"test_command": "false"})
     protocol = SimpleNamespace(validators=[quality])
 
     assert not _verify_queue_merge_head(project, project, "queue:default", protocol, audit, branch)
@@ -169,11 +229,15 @@ def test_queue_integration_merge_requires_verification_of_queue_head(tmp_path):
     with Repo(str(project)) as repo:
         assert repo.commit("main").hexsha == base
 
-    _verification(audit, "queue:default", commit)
+    audit.append_event("verification_executed", {
+        "op": "verification_executed", "task_ref": "queue:default",
+        "validator_id": "qa-gate", "returncode": 0, "commit": commit,
+        "outcome": "pass", "command": "true",
+    })
     assert _verify_queue_merge_head(project, project, "queue:default", protocol, audit, branch)
     task = Task(id="queue:default", spec="queue integration")
     merged = _merge_on_success(
-        project, task, 0, None, audit, branch_override=branch,
+        project, task, 0, None, audit, branch_override=branch, protocol=protocol,
     )
     assert merged[0] == 0
     with Repo(str(project)) as repo:
