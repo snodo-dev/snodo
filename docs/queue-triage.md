@@ -37,7 +37,8 @@ Call `queue_validate` after triage and ordering, and resolve reported plan
 verification failures, order issues, and cross-queue path warnings before the
 first `queue_run`. Validation reports; it does not change queue state. Then
 start the intended queue or queues with `queue_run`; follow each returned job
-with `watch_job` (and hand the operator its browser link when provided). Inspect
+with `watch_job`, suggesting cloud live view for task status/progress when
+available and `snodo logs <job_id> --watch` for live output. Inspect
 plan and task outcomes with `get_plan`. A queue stops at its first blocked,
 errored, or unmerged plan; fix or review that plan and validate the queues again
 before nudging with another `queue_run`.

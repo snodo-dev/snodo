@@ -405,7 +405,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         if "queue_run" in exposed:
             async_lines.append("`queue_run` is ASYNCHRONOUS and returns its job id immediately.\n\n")
         async_lines.append(
-            "After a job starts, call `watch_job(job_id)`. Hand the operator its browser link when returned; otherwise use `snodo logs <job_id> --watch`. The text snapshot is always available. The optional MCP Apps panel renders only in some hosts, so do not rely on it. Use `get_job_status` / `get_job_logs` only for a specific follow-up. The starter response only confirms queuing.\n"
+            "After a job starts, call `watch_job(job_id)`. Suggest its cloud live view when available for task status and progress, and always suggest `snodo logs <job_id> --watch` for live output. Do not hand operators the MCP server's `/watch/` capability URL. The text snapshot is always available. The optional MCP Apps panel renders only in some hosts, so do not rely on it. Use `get_job_status` / `get_job_logs` only for a specific follow-up. The starter response only confirms queuing.\n"
         )
         sections.append("".join(async_lines))
 
@@ -485,6 +485,7 @@ def build_fastmcp_server(
     auth_settings: Optional[AuthSettings] = None,
     verbose: bool = False,
     public_base_url: Optional[str] = None,
+    cloud_live_view_url: Optional[str] = None,
     watch_link_ttl: int = 24 * 60 * 60,
 ) -> FastMCP:
     """Build a FastMCP server that delegates to a ProtocolMCPServer.
@@ -520,7 +521,7 @@ def build_fastmcp_server(
     for tool_info in protocol_server.get_tools():
         fn = _make_tool_handler(protocol_server, tool_info)
         if tool_info["name"] == "watch_job":
-            fn = _with_browser_watch_link(fn, public_base_url, watch_issuer)
+            fn = _with_browser_watch_link(fn, protocol_server, cloud_live_view_url)
         tool_meta = (
             {"ui": {"resourceUri": WATCH_JOB_RESOURCE_URI}}
             if tool_info["name"] == "watch_job"
@@ -566,18 +567,33 @@ def build_fastmcp_server(
     return mcp
 
 
-def _with_browser_watch_link(handler, base_url, issuer):
-    """Append the bearer capability to watch_job's user-facing result only."""
+def _with_browser_watch_link(handler, protocol_server, cloud_live_view_url):
+    """Append operator-facing cloud and terminal follow-up suggestions."""
     import inspect
 
     async_handler = inspect.iscoroutinefunction(handler)
 
     def decorate(result, arguments):
-        if issuer is None or not base_url:
-            return f"{result}\n\nNo reachable browser URL is configured; follow with: snodo logs {arguments.get('job_id', '')} --watch"
         job_id = arguments.get("job_id", "")
-        token = issuer.issue(job_id)
-        return f"{result}\n\nLive browser view (expires in {issuer.ttl_seconds} seconds): {base_url.rstrip('/')}/watch/{token}"
+        lines = []
+        if cloud_live_view_url:
+            status = protocol_server.call_tool("get_job_status", {"job_id": job_id})
+            if isinstance(status, str):
+                try:
+                    status = json.loads(status)
+                except json.JSONDecodeError:
+                    status = {}
+            task_ref = status.get("task_ref") if isinstance(status, dict) else None
+            if task_ref:
+                from urllib.parse import quote
+                lines.append(
+                    f"Cloud live view: {cloud_live_view_url.rstrip('/')}/now?task_ref={quote(str(task_ref), safe='')} "
+                    "— shows task status and progress, but not a live output stream."
+                )
+        lines.append(
+            f"Live output: `snodo logs {job_id} --watch` — streams the job's output in a terminal."
+        )
+        return result + "\n\n" + "\n".join(lines)
 
     if async_handler:
         async def wrapped(**kwargs):

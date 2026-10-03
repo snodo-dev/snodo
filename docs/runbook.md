@@ -333,8 +333,8 @@ working tree.
 
 For an MCP run, the orchestrator validates and dispatches a task (or builds a
 plan/queue when the work needs that structure). Work starters return a job ID;
-follow it using the returned browser watch link over the configured HTTP/tunnel
-endpoint or `snodo logs <job_id> --watch`. `watch_job`'s MCP Apps panel is an
+use the configured cloud live view for task status/progress when a task_ref is
+available, and `snodo logs <job_id> --watch` for live output. `watch_job`'s MCP Apps panel is an
 optional host feature; clients without Apps support receive a text snapshot.
 
 ### Templates

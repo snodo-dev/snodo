@@ -176,11 +176,12 @@ stderr. See [CLI recon](decompose-and-recon.md#cli-recon).
 | `snodo agent rotate` | `<agent_id>` |
 | `snodo dashboard` | — |
 
-For a live job, the browser watch link (usually through the configured managed
-tunnel) streams status and recent output. The CLI alternative is
-`snodo logs <job_id> --watch`; `snodo job logs <job_id> --watch` is also
-available. `watch_job` is an optional MCP Apps enhancement and returns a
-plain-text snapshot to hosts that do not render Apps. Job notifications are
+For a live job, the cloud live view at the configured cloud liveness/app URL
+with `?task_ref=<task_ref>` shows task status and progress when cloud sync is
+configured and a task reference exists. Use `snodo logs <job_id> --watch` for
+the live output stream; `snodo job logs <job_id> --watch` is also available.
+`watch_job` is an optional MCP Apps enhancement and returns a plain-text
+snapshot to hosts that do not render Apps. Job notifications are
 configured in `~/.snodo/config.yml` and tested with `snodo config --notify-test`.
 The hidden `snodo notify test` command is deprecated in v0.18.0 and prints a
 migration notice; use `snodo config --notify-test` instead. `snodo readiness`

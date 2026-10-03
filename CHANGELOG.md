@@ -23,6 +23,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   each progress update once. (Fixes #704)
 - Document `uvx snodo` for trying the published package and `uv tool install
   snodo` for regular use in the first-run guidance. (Fixes #702)
+- `watch_job` and run-following hints now direct operators to the configured
+  cloud task live view for status/progress and `snodo logs <job_id> --watch`
+  for live output, rather than the MCP tunnel capability URL. (Fixes #703)
 - `snodo cloud status` now reports local unsent audit events and the local
   chain head for cursors belonging to the current project. (Fixes #700)
 - Cloud sync and liveness now ignore mock-coder events from interleaved sessions,

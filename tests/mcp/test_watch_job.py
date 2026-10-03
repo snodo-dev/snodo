@@ -12,7 +12,7 @@ from snodo.mcp.job_handlers import JobToolHandler
 from snodo.mcp.server import ProtocolMCPServer
 from snodo.mcp.tools import JOB_OBSERVATION_TOOLS, MODE_TOOL_MAP
 from snodo.mcp.transport import (
-    _safe_mcp_excerpt, _with_browser_watch_link, build_fastmcp_server,
+    _with_browser_watch_link, build_fastmcp_server,
 )
 from snodo.mcp.watch_job import (
     WATCH_JOB_HTML, WATCH_JOB_RESOURCE_URI, WatchJobASGI, WatchLinkIssuer,
@@ -128,18 +128,38 @@ def test_watch_link_issue_verification_expiry_and_job_scope():
     assert issuer.verify(token) is None
 
 
-def test_watch_result_has_link_or_one_line_cli_fallback():
+def test_watch_result_suggests_cloud_view_and_terminal_logs_without_mcp_link():
     def handler(**kwargs):
         return "Job j_one — running"
 
-    issuer = WatchLinkIssuer(secret=b"test-secret")
-    linked = _with_browser_watch_link(handler, "https://jobs.example", issuer)(job_id="j_one")
-    assert "https://jobs.example/watch/" in linked
-    token = linked.rsplit("/", 1)[1]
-    assert issuer.verify(token) == "j_one"
-    assert token not in _safe_mcp_excerpt({"result": linked})
-    fallback = _with_browser_watch_link(handler, None, None)(job_id="j_one")
-    assert "No reachable browser URL is configured; follow with: snodo logs j_one --watch" in fallback
+    class Protocol:
+        def call_tool(self, name, args):
+            assert name == "get_job_status"
+            assert args == {"job_id": "j_one"}
+            return {"task_ref": "3.1_lease-interface-9"}
+
+    linked = _with_browser_watch_link(handler, Protocol(), "https://cloud.example")(
+        job_id="j_one"
+    )
+    assert "https://cloud.example/now?task_ref=3.1_lease-interface-9" in linked
+    assert "shows task status and progress, but not a live output stream" in linked
+    assert "snodo logs j_one --watch" in linked
+    assert "/watch/" not in linked
+    assert "tunnel.snodo.dev" not in linked
+
+
+def test_watch_result_without_cloud_still_suggests_logs_and_omits_dashboard():
+    def handler(**kwargs):
+        return "Job j_one — running"
+
+    class Protocol:
+        def call_tool(self, *args):
+            raise AssertionError("job status is only needed for cloud view")
+
+    result = _with_browser_watch_link(handler, Protocol(), None)(job_id="j_one")
+    assert "snodo logs j_one --watch" in result
+    assert "/now?task_ref=" not in result
+    assert "/watch/" not in result
 
 
 def test_watch_browser_stream_returns_redacted_tool_data_and_ends_at_final_status():

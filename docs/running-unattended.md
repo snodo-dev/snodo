@@ -104,8 +104,10 @@ writable paths are bounded. For multi-wave work, use the plan workflow below:
 4. Call `run_plan` without `wait=true`. It starts a background job and returns
    `job_id` immediately. That response means the job was accepted, not that any
    task passed or that the intent is complete.
-5. Call `watch_job(job_id)` and hand the operator its browser link when one is
-   returned. Otherwise, use `snodo logs <job_id> --watch`. Inspect `get_plan`
+5. Call `watch_job(job_id)`. Suggest the cloud live view at the configured cloud
+   liveness/app URL with `?task_ref=<task_ref>` when cloud sync is configured
+   and a task reference exists; it shows status and progress, not live output.
+   Always suggest `snodo logs <job_id> --watch` for live output. Inspect `get_plan`
    for per-task status and validation detail; use `get_job_status` or
    `get_job_logs` for specific follow-up. Read the terminal result and task
    outcomes before choosing the next intent.

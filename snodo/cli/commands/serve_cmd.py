@@ -307,6 +307,8 @@ def _run_server(args, protocol) -> int:
         return 2
     extra_kwargs["public_base_url"] = public_base_url or None
     extra_kwargs["watch_link_ttl"] = watch_link_ttl
+    from snodo.cli.commands.serve_watch import cloud_live_view_url
+    extra_kwargs["cloud_live_view_url"] = cloud_live_view_url()
     mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
     tools = protocol_server.get_tools()
     mode_label = protocol_server._active_mode()

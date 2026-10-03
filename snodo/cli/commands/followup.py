@@ -63,6 +63,13 @@ def job_watch(job_id: str) -> str:
     return f"snodo logs {job_id} --watch"
 
 
+def job_live_view(task_ref: str, cloud_liveness_url: str) -> str:
+    """Cloud dashboard URL for a task's status and progress."""
+    from urllib.parse import quote
+
+    return f"{cloud_liveness_url.rstrip('/')}/now?task_ref={quote(str(task_ref), safe='')}"
+
+
 def job_followup(job_id: str, *, running: bool) -> str:
     """Suggested command for a job, matched to its state.
 

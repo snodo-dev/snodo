@@ -124,6 +124,9 @@ class TestSuggestedCommandsResolve:
         # Job: live surface tails its output; record is its status.
         assert followup.job_followup("j_1", running=True) == "snodo logs j_1 --watch"
         assert followup.job_followup("j_1", running=False) == "snodo job status j_1"
+        assert followup.job_live_view(
+            "3.1_lease-interface-9", "https://app.test/custom/"
+        ) == "https://app.test/custom/now?task_ref=3.1_lease-interface-9"
 
 
 # === snodo status ===

@@ -8,30 +8,20 @@ mean the work passed or completed.
 ## Watch a job live
 
 After any of those tools returns `job_id`, call `watch_job(job_id)`. Its text
-snapshot is available even when the host does not render MCP Apps. When the
-server has a reachable browser URL, hand the operator the returned watch link:
-it opens a read-only live page with job status, elapsed time, and the latest ten
-stdout lines, and stops at the final status. The operator can open it in any
-browser, including on a phone. The capability link is scoped to that job and
-expires after 24 hours by default (`SNODO_WATCH_LINK_TTL` configures the lifetime
-in seconds).
+snapshot is available even when the host does not render MCP Apps. When cloud
+sync is configured and the job has a `task_ref`, suggest the cloud live view at
+`<configured cloud liveness/app URL>/now?task_ref=<task_ref>`. It shows task
+status and progress, but not a live output stream. Always suggest
+`snodo logs <job_id> --watch` for the live output stream in a terminal. Do not
+hand the operator the MCP server's `/watch/` capability URL.
 
 The MCP Apps panel is an optional extra, rendered only by some hosts; other
 hosts, including Claude Desktop and relayed sessions, may return only the text
-snapshot. Do not depend on the panel. When there is no reachable browser URL
-(for example stdio or an ssh-proxied server), use `snodo logs <job_id> --watch`
-for live output.
+snapshot. Do not depend on the panel.
 
-To make a browser link reachable, run the MCP server with an HTTP transport:
-`snodo serve --transport streamable-http --tunnel` provisions and starts a
-managed tunnel, whose hostname is used for the watch link. The server defaults
-to stdio, which has no browser URL. For a self-managed public proxy, use
-`--transport streamable-http` (or `sse`) and set `SNODO_PUBLIC_BASE_URL` to the
-public origin forwarded to the server; configure the proxy to forward the
-server's HTTP port. `--port` selects that local port; if omitted, Snodo finds a
-free port. The managed tunnel supplies its hostname without
-`SNODO_PUBLIC_BASE_URL`. `SNODO_WATCH_LINK_TTL` sets the capability lifetime in
-seconds (24 hours by default).
+The cloud live-view host follows the configured cloud liveness/app URL; it is
+not the MCP server's host. Cloud live view requires cloud sync configuration
+and a task reference.
 
 The text result contains the current status and recent output for clients that
 do not render MCP Apps. The browser page uses only the same job status and

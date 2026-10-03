@@ -19,9 +19,9 @@ waves, or a queue for several plans. Each task goes through the same engine
 validation and execution loop. Plan validation is a structural preflight, not
 an extra human authorization gate, and a plan with no tasks anywhere is refused.
 
-MCP work starters return asynchronous job IDs. A browser watch link is the
-live-following path when an HTTP public base URL is configured (most commonly
-through a managed tunnel); `snodo logs <job_id> --watch` is the CLI path.
+MCP work starters return asynchronous job IDs. The configured cloud live view
+shows task status and progress when cloud sync and a task reference are
+available; `snodo logs <job_id> --watch` streams live output.
 `watch_job` returns a plain-text snapshot and can open an MCP Apps panel in
 hosts that render Apps; that panel is an optional extra, not a universal host
 feature. Job notifications are separate, opt-in user settings in

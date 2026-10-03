@@ -322,11 +322,11 @@ Each logical tool maps to one or more MCP operations:
 | `queue` | `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
 | `read` | `read_file`, `list_files` |
 
-For dispatched jobs, use the browser watch link returned by `watch_job` when
-the server has a reachable HTTP base URL (including a managed tunnel). The
-link is a short-lived, job-scoped read-only capability. The MCP Apps panel is
-optional and only some hosts render it; other clients receive a plain-text
-snapshot. From the CLI, `snodo logs <job_id> --watch` is the live output path.
+For dispatched jobs, suggest the cloud live view at the configured cloud
+liveness/app URL with `?task_ref=<task_ref>` when cloud sync is configured and
+the job has a task reference; it shows task status and progress. Always suggest
+`snodo logs <job_id> --watch` for live output. The MCP Apps panel is optional
+and only some hosts render it; other clients receive a plain-text snapshot.
 
 ### Reference modes
 
