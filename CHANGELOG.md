@@ -28,6 +28,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Fall back to a configured cloud API key when OAuth refresh fails, while keeping a usable OAuth login preferred. (Fixes #679)
 
 ### Documentation
+- Explain the successful mock quickstart's unmerged task-branch outcome, manual
+  merge command, and `delivery: local_merge` opt-in for verified producer work.
+  (Fixes #691)
 - Document browser-based cloud OAuth login, credential storage and precedence,
   lease authentication, and cloud connection commands. (Fixes #677)
 

@@ -282,6 +282,28 @@ With the fixture present, that command lets pytest import and run its test; a
 passing fixture test does not establish that a real coder can implement your
 requirements.
 
+On a successful mock run, the quality validator reports that the fixture test
+passed and Snodo resolves the task. The `team` template deliberately leaves
+producer work unmerged, so the run also prints `Task resolved but its work was
+NOT merged to the base branch.` The output names the task branch holding the
+work and gives the exact command to merge it manually (`git merge <branch>`);
+the base branch has not moved. This is the expected result, not a failed run.
+
+If you want Snodo to merge producer work automatically after verification,
+edit `.snodo/protocol.yml` and set `delivery: local_merge` on the `producer`
+mode. For example:
+
+```yaml
+modes:
+  - mode_id: "producer"
+    delivery: local_merge
+```
+
+Keep the existing producer mode fields when adding this setting. A local merge
+is attempted only when the task resolves and the verification gate has a
+passing quality-verification record for that task's branch commit; otherwise
+the work remains on its task branch.
+
 For provider-backed coding, configure a provider (for example,
 `snodo config add anthropic <key>` or `ANTHROPIC_API_KEY`) and run the same task
 description without `--mock`; the selected provider needs a credential in Snodo
