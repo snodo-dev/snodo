@@ -220,7 +220,7 @@ class QualityValidator(ValidatorBase):
         """
         try:
             from git import Repo
-            from git.exc import GitCommandError
+            from git.exc import GitCommandError, InvalidGitRepositoryError
 
             Repo(str(self.working_directory), search_parent_directories=True).git.diff_index(
                 "--quiet", "HEAD", "--"
@@ -228,6 +228,10 @@ class QualityValidator(ValidatorBase):
             return True
         except GitCommandError:
             return False
+        except InvalidGitRepositoryError:
+            # Outside a repository there is no commit whose evidence could be
+            # misattributed; preserve the validator's legacy non-git behavior.
+            return True
         except Exception as e:
             logger.debug("Failed to check tracked worktree state: %s", e)
             return False
