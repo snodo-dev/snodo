@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Mock-coder and `SNODO_BENCHMARK` runs keep audit events local and skip cloud
+  audit and liveness delivery; real runs continue to sync. (Fixes #669)
 - Plan and queue task branches now merge inside their integration branch's
   registered linked worktree, preserving the project root checkout. (Fixes #668)
 - Background job ids now accompany `plan_run` for every trigger and optional
