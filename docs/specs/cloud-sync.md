@@ -385,31 +385,31 @@ ingestion, but those extra fields are not part of the pinned Snodo contract.
 | `readiness_checked` | project_id, scope, display_name, protocol_id, score, total_checks, passed_checks, repository_findings_count, workstation_findings_count, findings |
 | `recon_started` | recon_id, query, paths, agent_count, agent_models, session_id, created_at |
 | `recon_completed` | recon_id, existing final status, succeeded_agents, failed_agents, duration, completed_at, answer summary (about 2,000 characters maximum), usage |
-| `dispatch` | task_ref, mode, token_id, artifacts_count, plan_name, plan_wave (when applicable), job_id (optional, v8) |
-| `work_already_present` | task_ref, base_ref, artifacts_count, files, job_id (optional, v8) |
-| `governance_check` | task_ref, mode, constraints_checked, job_id (optional, v8) |
-| `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision, usage, job_id (optional, v8) |
-| `task_classified` | task_ref, flow_type, wave_id, task_summary, plan_name, plan_wave (when applicable), job_id (optional, v8) |
+| `dispatch` | task_ref, mode, token_id, artifacts_count, plan_name, plan_wave (when applicable), job_id |
+| `work_already_present` | task_ref, base_ref, artifacts_count, files, job_id |
+| `governance_check` | task_ref, mode, constraints_checked, job_id |
+| `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision, usage, job_id |
+| `task_classified` | task_ref, flow_type, wave_id, task_summary, plan_name, plan_wave (when applicable), job_id |
 | `wave_created` | wave_id, feature_description |
-| `task_complete` | task_ref, artifacts, session_id, commit, change_size, usage, job_id (optional, v8) |
-| `task_merged` | task_ref, branch, merge_sha, spec, session_id, base_sha, commit_count, commits (up to 50), files_changed, insertions, deletions, plan_name, plan_wave (when applicable), job_id (optional, v8) |
-| `task_unmerged` | task_ref, branch, reason, session_id, plan_name, plan_wave (when applicable), job_id (optional, v8) |
-| `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type, usage, job_id (optional, v8) |
-| `disagreement_escalated` | task_ref, phase, policy, plan_name, plan_wave (when applicable), job_id (optional, v8) |
-| `transition` | from_mode, to_mode, task_ref, job_id (optional, v8) |
-| `token_consumed` | task_ref, session_id, job_id (optional, v8) |
-| `post_validation_route` | decision, task_ref, job_id (optional, v8) |
-| `post_validate_bypassed` | mode, reason, task_ref, job_id (optional, v8) |
+| `task_complete` | task_ref, artifacts, session_id, commit, change_size, usage, job_id |
+| `task_merged` | task_ref, branch, merge_sha, spec, session_id, base_sha, commit_count, commits (up to 50), files_changed, insertions, deletions, plan_name, plan_wave (when applicable), job_id |
+| `task_unmerged` | task_ref, branch, reason, session_id, plan_name, plan_wave (when applicable), job_id |
+| `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type, usage, job_id |
+| `disagreement_escalated` | task_ref, phase, policy, plan_name, plan_wave (when applicable), job_id |
+| `transition` | from_mode, to_mode, task_ref, job_id |
+| `token_consumed` | task_ref, session_id, job_id |
+| `post_validation_route` | decision, task_ref, job_id |
+| `post_validate_bypassed` | mode, reason, task_ref, job_id |
 | `session_started` | session_id, mode, project_root |
 | `session_task_changed` | old_task, new_task |
 | `session_decision_updated` | key, value |
 | `recovery_resolved` | depth, attempts_used |
 | `recovery_internal_error` | depth, error |
-| `execution_failed` | error, task_ref, job_id (optional, v8) |
+| `execution_failed` | error, task_ref, job_id |
 | `verification_executed` | command, commit, returncode, outcome, validator_id, working_directory, output_tail |
 | `coder_test_run` | command_type, exit_code, test_path, turn_index, job_id |
 | `test_modified` | mutations, task_id, job_id |
-| `unverified_merge_blocked` | task_ref, branch, target_commit, reason, session_id, job_id (optional, v8) |
+| `unverified_merge_blocked` | task_ref, branch, target_commit, reason, session_id, job_id |
 | `adjudication_carry_forward` | opaque object |
 | `coder_respawned` | opaque object |
 | `coder_timed_out` | opaque object |
@@ -455,6 +455,10 @@ ingestion, but those extra fields are not part of the pinned Snodo contract.
 | `validator_results` | opaque object |
 | `wf3_runtime_violation` | opaque object |
 | `worktree_isolation_failed` | opaque object |
+
+`job_id` is an optional v8 field on the listed task-level events. It is omitted
+for foreground tasks and when the only `SNODO_JOB_ID` names an enclosing
+plan-run job; legacy event shapes without it remain valid.
 
 The schema gate scans literal calls to `append_event()` and `_audit()` under
 `packages/` and `snodo/`; a newly emitted literal event type must be added to
