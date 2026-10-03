@@ -177,7 +177,7 @@ execution:
   # Completed, verified work is delivered as a pull request: snodo pushes the
   # task branch to origin and opens a change request through the code-host
   # plugin that claims the remote. The operator reviews and merges it.
-  delivery: change_request
+  delivery: local_merge #change_request
 
   # Set only when a repository needs a deterministic setup step after worktree
   # creation (protocol-authored shell commands are executed as written):
