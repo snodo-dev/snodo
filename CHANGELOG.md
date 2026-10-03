@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Propose orchestrator publish/subscribe coordination scoped by plan id, with
+  cloud transport and a local-file fallback; detailed design is deferred.
+  (Fixes #701)
 - Exercise every task, plan, queue and delivery merge boundary against temporary
   Git repositories, proving delivery is refused without verification of the exact
   head and allowed with passing evidence. (Fixes #693)
