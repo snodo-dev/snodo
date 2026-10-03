@@ -12,6 +12,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Changed
 - Mock-coder and `SNODO_BENCHMARK` runs keep audit events local and skip cloud
   audit and liveness delivery; real runs continue to sync. (Fixes #669)
+- Confirmed plan integration delivery retains the configured delivery mode,
+  remote, plan content, and unmerged exit code after linked-worktree delivery
+  changes; the reported regression tests pass without changing their assertions.
+  (Fixes #670)
 - Plan and queue task branches now merge inside their integration branch's
   registered linked worktree, preserving the project root checkout. (Fixes #668)
 - Background job ids now accompany `plan_run` for every trigger and optional
