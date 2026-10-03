@@ -18,3 +18,12 @@ def watch_link_settings(transport: str, tunnel_hostname: str | None) -> tuple[st
     if ttl <= 0:
         raise ValueError("SNODO_WATCH_LINK_TTL must be positive")
     return base_url, ttl
+
+
+def cloud_live_view_url() -> str | None:
+    """Return the configured cloud live-view host when sync is enabled."""
+    from snodo.config import ConfigManager, get_cloud_liveness_url
+    from snodo.infrastructure.cloud_credentials import cloud_sync_enabled
+
+    config = ConfigManager().load()
+    return get_cloud_liveness_url(config) if cloud_sync_enabled(config) else None
