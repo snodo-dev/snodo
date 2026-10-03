@@ -223,7 +223,6 @@ def worktree_remove_command(args) -> int:
     try:
         git, owned, owners = inspect_task_branches(project_root, task_id)
     except Exception:
-        heads = []
         owned, owners = [], []
     if len(owners) > 1:
         print(
