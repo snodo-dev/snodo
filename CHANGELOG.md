@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- `retry_job` now refuses queue-run and plan-run jobs with guidance to resume
+  the queue or fix and rerun the plan, without creating a task job. (Fixes #686)
 - Plan tasks reuse a legacy worktree only when the exact legacy branch is
   checked out there; unrelated same-id worktrees and branches remain untouched.
   (Fixes #685)

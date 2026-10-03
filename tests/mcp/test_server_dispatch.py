@@ -490,6 +490,21 @@ class TestHandleRetryJob:
         )
         with patch("snodo.jobs.JobManager") as MockJM:
             MockJM.return_value._job_dir.return_value = job_dir
-            with pytest.raises(MCPError, match="plan run, not a task"):
+            with pytest.raises(MCPError, match="plan run, not a task") as exc_info:
                 server._handle_retry_job({"job_id": "j-plan"})
             MockJM.return_value.submit.assert_not_called()
+        assert "Fix the task spec and re-run the plan with run_plan" in str(exc_info.value)
+
+    def test_queue_run_job_is_refused_and_can_be_resumed(self, server, tmp_path):
+        job_dir = tmp_path / "j-queue"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(json.dumps({
+            "queue_run": True, "queues": "default",
+            "description": "Run queue(s): default",
+        }))
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = job_dir
+            with pytest.raises(MCPError, match="queue run, not a task") as exc_info:
+                server._handle_retry_job({"job_id": "j-queue"})
+            MockJM.return_value.submit.assert_not_called()
+        assert "calling queue_run again" in str(exc_info.value)
