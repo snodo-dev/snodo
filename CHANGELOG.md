@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- `snodo cloud connect <api_key>` now clears any OAuth login and best-effort
+  revokes its refresh token, so API-key authentication takes effect immediately;
+  revocation failure does not block the switch. (Fixes #680)
 - Fall back to a configured cloud API key when OAuth refresh fails, while keeping a usable OAuth login preferred. (Fixes #679)
 
 ### Documentation

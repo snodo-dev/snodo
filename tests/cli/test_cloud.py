@@ -14,8 +14,9 @@ import pytest
 # ------------------------------------------------------------------#
 
 class TestCloudConnect:
-    def test_valid_key_stored_and_sync_enabled(self, tmp_path):
+    def test_valid_key_stored_and_sync_enabled(self, tmp_path, monkeypatch):
         """snodo cloud connect stores key and enables sync."""
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
         from snodo.cli.commands.cloud_cmd import cloud_connect_command
 
         with patch("snodo.config.ConfigManager") as MockCM:
@@ -28,8 +29,9 @@ class TestCloudConnect:
                 (("cloud", "sync_enabled"), True),
             ]
 
-    def test_valid_staging_key(self):
+    def test_valid_staging_key(self, tmp_path, monkeypatch):
         """Staging key prefix is accepted."""
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
         from snodo.cli.commands.cloud_cmd import cloud_connect_command
 
         with patch("snodo.config.ConfigManager") as MockCM:
@@ -53,6 +55,65 @@ class TestCloudConnect:
         from snodo.cli.commands.cloud_cmd import cloud_connect_command
         result = cloud_connect_command("")
         assert result == 1
+
+    @pytest.mark.parametrize("revocation_fails", [False, True])
+    def test_connect_replaces_oauth_and_attempts_best_effort_revocation(
+        self, monkeypatch, tmp_path, capsys, revocation_fails,
+    ):
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        from snodo.infrastructure.cloud_oauth_store import (
+            CloudOAuthState, load_oauth_state, save_oauth_state,
+        )
+        save_oauth_state(CloudOAuthState("client-id", "access-secret", "refresh-secret"))
+        attempts = []
+
+        class Client:
+            def __init__(self, _config):
+                pass
+
+            def discover(self):
+                return type("Metadata", (), {"revocation_endpoint": "https://cloud.example/revoke"})()
+
+            def revoke(self, client_id, token):
+                attempts.append((client_id, token))
+                if revocation_fails:
+                    raise RuntimeError("revocation failed")
+
+        monkeypatch.setattr("snodo.infrastructure.cloud_oauth_client.CloudOAuthClient", Client)
+        with patch("snodo.config.ConfigManager") as manager:
+            manager.return_value.load.return_value = {}
+            from snodo.cli.commands.cloud_cmd import cloud_connect_command
+            assert cloud_connect_command("sndo_live_valid") == 0
+            assert manager.return_value.set_value.call_args_list[0].args == (
+                ("cloud", "api_key"), "sndo_live_valid",
+            )
+        assert load_oauth_state().access_token is None
+        assert attempts == [("client-id", "refresh-secret")]
+        output = capsys.readouterr().out
+        assert "API key authentication is now in use" in output
+        assert "access-secret" not in output and "refresh-secret" not in output
+        if revocation_fails:
+            assert "Cloud token revocation failed; local sign-out is complete." in output
+
+        with patch("snodo.config.ConfigManager") as manager, patch(
+            "snodo.infrastructure.cloud_sync.CloudSyncState",
+        ) as sync_state:
+            manager.return_value.load.return_value = {
+                "cloud": {"api_key": "sndo_live_valid", "sync_enabled": True},
+            }
+            sync_state.return_value.get_summary.return_value = {}
+            from snodo.cli.commands.cloud_cmd import cloud_status_command
+            assert cloud_status_command() == 0
+        assert "Authentication: API key" in capsys.readouterr().out
+
+    def test_connect_without_oauth_keeps_existing_behavior(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        from snodo.infrastructure.cloud_oauth_store import load_oauth_state
+        with patch("snodo.config.ConfigManager") as manager:
+            from snodo.cli.commands.cloud_cmd import cloud_connect_command
+            assert cloud_connect_command("sndo_live_valid") == 0
+        assert load_oauth_state().access_token is None
+        assert "API key authentication is now in use" not in capsys.readouterr().out
 
 
 class TestCloudDisconnect:

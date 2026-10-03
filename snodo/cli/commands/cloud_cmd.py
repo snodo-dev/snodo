@@ -115,7 +115,7 @@ def cloud_schema_command(json_output: bool = True) -> int:
 
 
 def cloud_connect_command(api_key: str) -> int:
-    """Store the snodo cloud API key and enable audit sync."""
+    """Store the API key, replacing any active OAuth login, and enable sync."""
     if not _validate_key_format(api_key):
         print(
             "Error: Invalid API key format. Expected prefix 'sndo_staging_' or 'sndo_live_'.",
@@ -124,13 +124,22 @@ def cloud_connect_command(api_key: str) -> int:
         return 1
 
     from snodo.config import ConfigManager
+    from snodo.infrastructure.cloud_oauth_store import load_oauth_state
 
+    oauth = load_oauth_state()
+    replacing_oauth = bool(oauth.access_token or oauth.refresh_token)
     mgr = ConfigManager()
     mgr.set_value(("cloud", "api_key"), api_key)
     mgr.set_value(("cloud", "sync_enabled"), True)
 
+    if replacing_oauth:
+        # Reuse logout's best-effort revocation and unconditional local cleanup.
+        cloud_logout_command()
+
     print("✓ Connected to snodo cloud.")
     print("  Audit sync enabled.")
+    if replacing_oauth:
+        print("  API key authentication is now in use.")
     return 0
 
 
@@ -176,7 +185,7 @@ def cloud_login_command(*, no_browser: bool = False) -> int:
         message = f"✓ Signed in to snodo cloud{f' as {account}' if account else ''}; audit sync enabled."
         print(message)
         if cloud.get("api_key"):
-            print("OAuth now takes priority. Run `snodo cloud connect <api_key>` to switch back.")
+            print("OAuth is now in use. Run `snodo cloud connect <api_key>` to switch back to API-key authentication.")
         return 0
     except CloudOAuthLoopbackError as err:
         text = str(err).lower()

@@ -232,12 +232,13 @@ Usable OAuth credentials take precedence over a configured API key. If an OAuth
 credential cannot be refreshed during sync, Snodo warns that `snodo cloud login`
 is needed and uses the configured API key instead. Without an API key, sync
 continues to require a working OAuth login. Run
-`snodo cloud connect <api_key>` to store or replace the API key; it does not
-remove the OAuth login or change precedence. To use that key, run
-`snodo cloud logout` to clear OAuth tokens. Logout attempts best-effort
-refresh-token revocation when the authorization server advertises a
-revocation endpoint. `snodo cloud disconnect` clears both credentials and
-disables sync. Access tokens are refreshed when near expiry; when refresh cannot
+`snodo cloud connect <api_key>` to store or replace the API key and switch to
+API-key authentication. If an OAuth login exists, connect clears it and
+best-effort revokes its refresh token when the authorization server advertises
+a revocation endpoint; failed or unavailable revocation does not block the
+switch. `snodo cloud logout` performs the same best-effort OAuth sign-out while
+retaining the configured API key. `snodo cloud disconnect` clears both
+credentials and disables sync. Access tokens are refreshed when near expiry; when refresh cannot
 provide a usable credential, cloud requests cannot proceed until sign-in is
 completed again unless an API key is configured for sync fallback. The URL
 overrides are optional and normally need not be configured.

@@ -59,10 +59,12 @@ Use `snodo cloud login` to sign in through a browser and enable cloud sync;
 `--no-browser` prints the authorization URL while still using a localhost
 callback for the authorization response. OAuth credentials are stored in
 `~/.snodo/cloud_oauth.json` (or `$SNODO_HOME/cloud_oauth.json`) and do not
-replace the configured API key. If both exist, OAuth takes priority; run
-`snodo cloud connect <api_key>` to store the key, then `snodo cloud logout` to
-clear OAuth tokens and use API-key authentication. Logout best-effort revokes
-a refresh token when the authorization server advertises a revocation endpoint.
+replace the configured API key. If both exist, OAuth takes priority. Run
+`snodo cloud connect <api_key>` to store the key and switch to API-key
+authentication; this clears any OAuth login and best-effort revokes its refresh
+token when the authorization server advertises a revocation endpoint. A failed
+or unavailable revocation does not prevent the switch. `snodo cloud logout`
+signs out of OAuth while retaining any configured API key.
 `snodo cloud disconnect` clears the configured API key and OAuth tokens, and
 disables sync. `snodo cloud status` reports the active authentication method,
 OAuth expiry and account details when known, without displaying credential
