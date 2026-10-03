@@ -15,6 +15,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   head and allowed with passing evidence. (Fixes #693)
 
 ### Fixed
+- `snodo cloud status` now reports local unsent audit events and the local
+  chain head for cursors belonging to the current project. (Fixes #700)
 - Cloud sync and liveness now ignore mock-coder events from interleaved sessions,
   while still suppressing runs with attributable mock usage. Completes #697.
   (Fixes #699)

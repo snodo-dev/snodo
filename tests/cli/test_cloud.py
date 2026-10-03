@@ -1766,8 +1766,74 @@ class TestCloudStatusPending:
         assert result == 0
         out = capsys.readouterr().out
         assert "sess_pending" in out
-        assert "pending=7" in out
+        assert "pending_last_attempt=7" in out
         assert "last_error: HTTP 500: internal error" in out
+
+    def test_status_reports_live_unsent_count_and_local_head(self, tmp_path, capsys, monkeypatch):
+        from snodo.cli.commands.cloud_status import local_unsent_counts
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.cloud_sync import CloudSyncState
+
+        root = tmp_path / "project"
+        audit_path = root / ".snodo" / "audit.log"
+        audit = AuditLog(str(audit_path), project_id="github.com/example/project")
+        audit.append_event("session_started", {"session_id": "sess_local"})
+        audit.append_event("run_completed", {"session_id": "sess_local"})
+        audit.append_event("project_event", {})
+        state = CloudSyncState(state_path=tmp_path / "cloud_sync.json")
+        state.advance_cursor("sess_local", 0)
+        state.advance_project_cursor("github.com/example/project", 0)
+        monkeypatch.setattr("snodo.paths.resolve_project_root", lambda: str(root))
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.CloudSyncState", lambda: state)
+
+        counts = local_unsent_counts({
+            "sess_local": {},
+            "project:github.com/example/project": {},
+            "sess_other_project": {},
+        })
+        assert counts["sess_local"] == (2, 2)
+        assert counts["project:github.com/example/project"] == (2, 2)
+        assert "sess_other_project" not in counts
+
+    def test_status_prints_live_counts_for_project_entries(self, capsys, monkeypatch):
+        from types import SimpleNamespace
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+
+        monkeypatch.setattr("snodo.cli.commands.cloud_status.local_unsent_counts", lambda _summary: {
+            "sess_local": (4, 22), "project:github.com/example/project": (2, 22),
+        })
+        monkeypatch.setattr("snodo.infrastructure.cloud_oauth_store.load_oauth_state", lambda: SimpleNamespace(
+            access_token="", refresh_token="", expires_at=None, has_refresh_token=lambda: False,
+        ))
+        with patch("snodo.config.ConfigManager") as manager, patch(
+            "snodo.infrastructure.cloud_sync.CloudSyncState"
+        ) as state:
+            manager.return_value.load.return_value = {"cloud": {}}
+            state.return_value.get_summary.return_value = {
+                "sess_local": {"last_synced_sequence": 18, "pending_count": 0},
+                "project:github.com/example/project": {"last_synced_sequence": 20, "pending_count": 0},
+            }
+            cloud_status_command()
+        out = capsys.readouterr().out
+        assert "pending_last_attempt=0" in out
+        assert "unsent=4 (local chain at 22)" in out
+        assert "unsent=2 (local chain at 22)" in out
+
+    def test_local_unsent_is_zero_at_cursor_and_hidden_outside_project(self, tmp_path, monkeypatch):
+        from snodo.cli.commands.cloud_status import local_unsent_counts
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.cloud_sync import CloudSyncState
+
+        root = tmp_path / "project"
+        audit = AuditLog(str(root / ".snodo" / "audit.log"), project_id="github.com/example/project")
+        audit.append_event("session_started", {"session_id": "sess_done"})
+        state = CloudSyncState(state_path=tmp_path / "cloud_sync.json")
+        state.advance_cursor("sess_done", 0)
+        monkeypatch.setattr("snodo.paths.resolve_project_root", lambda: str(root))
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.CloudSyncState", lambda: state)
+        assert local_unsent_counts({"sess_done": {}})["sess_done"] == (0, 0)
+        monkeypatch.setattr("snodo.paths.resolve_project_root", lambda: None)
+        assert local_unsent_counts({"sess_done": {}}) == {}
 
     def test_status_clears_error_after_success(self, tmp_path, capsys):
         """After a confirmed success the pending count is zero and the last

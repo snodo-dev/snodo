@@ -338,6 +338,8 @@ def cloud_status_command() -> int:
 
     state = CloudSyncState()
     summary = state.get_summary()
+    from snodo.cli.commands.cloud_status import local_unsent_counts
+    local_counts = local_unsent_counts(summary)
     if summary:
         print()
         print("Sync status per session and project:")
@@ -361,18 +363,21 @@ def cloud_status_command() -> int:
                 rng = info.get("refused_range")
                 range_str = f"seq {rng[0]}-{rng[1]}" if rng else "unknown range"
                 print(f"  {display_id}:  BLOCKED (refused: {reason}, {range_str})  last_seq={seq}  synced_at={ts}")
-                print(f"    pending={pending}  clear with `snodo cloud sync --all --force`;")
+                print(f"    pending_last_attempt={pending}  clear with `snodo cloud sync --all --force`;")
                 print("    fix the refused request or retry explicitly to resume.")
             elif info.get("refused"):
                 reason = info.get("refused_reason", "previous response")
                 status = info.get("refused_status_code", "unknown status")
                 print(
                     f"  {display_id}:  RECHECK (old non-terminal refusal HTTP {status}: {reason}); "
-                    f"sync will retry; pending={pending}"
+                    f"sync will retry; pending_last_attempt={pending}"
                 )
             else:
                 print(f"  {display_id}:  last_seq={seq}  synced_at={ts}")
-                print(f"    pending={pending}  last_attempt={last_attempt_ts}")
+                print(f"    pending_last_attempt={pending}  last_attempt={last_attempt_ts}")
+            if sid in local_counts:
+                unsent, local_head = local_counts[sid]
+                print(f"    unsent={unsent} (local chain at {local_head})")
             if last_error:
                 print(f"    last_error: {last_error}")
             liveness_at = info.get("last_liveness_push_at")
