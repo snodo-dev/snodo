@@ -9,7 +9,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+- Document browser-based cloud OAuth login, credential storage and precedence,
+  lease authentication, and cloud connection commands. (Fixes #677)
+
+### Added
+- Add `snodo cloud logout`, best-effort refresh-token revocation, and
+  credential-safe authentication details in `snodo cloud status`; disconnect
+  now clears OAuth login too. (Fixes #676)
+- Add `snodo cloud login` for browser-based OAuth sign-in and cloud sync setup. (Fixes #674)
+- Add a one-shot localhost callback listener for cloud OAuth sign-in. (Fixes #673)
+- Persist cloud OAuth credentials in a private, atomic user-level store with
+  safe logout and expiry helpers. (Fixes #672)
+- Add cloud OAuth discovery, public-client registration, PKCE authorization,
+  code exchange and refresh protocol helpers. (Fixes #671)
+
 ### Changed
+- Cloud sync uses the signed-in OAuth credential with refresh and lease retry, and identifies clients on lease and ingest requests. (Fixes #675)
 - Mock-coder and `SNODO_BENCHMARK` runs keep audit events local and skip cloud
   audit and liveness delivery; real runs continue to sync. (Fixes #669)
 - Confirmed plan integration delivery retains the configured delivery mode,

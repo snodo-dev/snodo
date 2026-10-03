@@ -86,6 +86,7 @@ DEFAULT_MODEL = "claude-sonnet-4-20250514"
 DEFAULT_CLOUD_API_URL = "https://api.snodo.dev"
 DEFAULT_TUNNEL_API_URL = "https://app.snodo.dev"
 DEFAULT_CLOUD_LIVENESS_URL = "https://app.snodo.dev"
+DEFAULT_CLOUD_OAUTH_METADATA_URL = "https://mcp-auth.snodo.dev/.well-known/oauth-authorization-server"
 
 
 def derive_liveness_url(api_url: str) -> str:
@@ -153,6 +154,11 @@ def get_cloud_ingest_url(config: dict) -> str:
     ``cloud_sync`` appends ``/i/{jti}`` to this value.
     """
     return _cloud_url(config, "api_url", DEFAULT_CLOUD_API_URL)
+
+
+def get_cloud_oauth_metadata_url(config: dict) -> str:
+    """Return the cloud OAuth authorization-server metadata URL."""
+    return _cloud_url(config, "oauth_metadata_url", DEFAULT_CLOUD_OAUTH_METADATA_URL)
 
 
 def get_cloud_tunnel_url(config: dict) -> str:

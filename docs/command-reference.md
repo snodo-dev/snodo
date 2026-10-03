@@ -34,6 +34,8 @@ walkthrough.
 | `snodo session prune` | `--days` |
 | `snodo models` | `--provider`/`-p`, `--flush`, `--stats`, `--provenance`, `--provenance-limit`, `--check`, `--benchmark`, `--benchmark-runs`, `--set-baseline`, `--compare`, `--benchmark-run`, `--model`, `--plan`, `--task`/`--task-id`, `--job`, `--json`, `--id`, `--id-contains`, `--max-output-cost`, `--min-output-cost`, `--max-input-cost`, `--min-context` |
 | `snodo cloud connect` | `<api_key>` |
+| `snodo cloud login` | `--no-browser` |
+| `snodo cloud logout` | — |
 | `snodo cloud disconnect` | — |
 | `snodo cloud status` | — |
 | `snodo cloud sync` | `--all`, `--session`, `--force`/`--retry` |
@@ -52,6 +54,19 @@ prints the generated cloud interface schema. `snodo config --notify-test` sends
 a test to every valid notification target.
 `snodo protocol schema --json` prints the generated, versioned JSON Schema for
 protocol authoring without reading the project's protocol file.
+
+Use `snodo cloud login` to sign in through a browser and enable cloud sync;
+`--no-browser` prints the authorization URL while still using a localhost
+callback for the authorization response. OAuth credentials are stored in
+`~/.snodo/cloud_oauth.json` (or `$SNODO_HOME/cloud_oauth.json`) and do not
+replace the configured API key. If both exist, OAuth takes priority; run
+`snodo cloud connect <api_key>` to store the key, then `snodo cloud logout` to
+clear OAuth tokens and use API-key authentication. Logout best-effort revokes
+a refresh token when the authorization server advertises a revocation endpoint.
+`snodo cloud disconnect` clears the configured API key and OAuth tokens, and
+disables sync. `snodo cloud status` reports the active authentication method,
+OAuth expiry and account details when known, without displaying credential
+values.
 
 `snodo install` (and `snodo serve --mcp-install`) detects Claude Desktop,
 Claude Code, Cursor, Gemini CLI and Codex-family clients and installs mode-pinned

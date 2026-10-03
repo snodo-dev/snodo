@@ -67,10 +67,13 @@ class TestCloudAdmission:
                 "sndo_live_key", "https://app.test", session_id="sess_route",
             ) is None
 
-        post.assert_called_once_with(
-            "https://app.test/m", headers={"Authorization": "Bearer sndo_live_key"},
-            timeout=10.0,
-        )
+        post.assert_called_once()
+        assert post.call_args.args[0] == "https://app.test/m"
+        headers = post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer sndo_live_key"
+        assert headers["User-Agent"].startswith("snodo/")
+        assert headers["X-Snodo-Device"]
+        assert post.call_args.kwargs["timeout"] == 10.0
         assert not CloudSyncState().is_refused("sess_route")
         assert "https://app.test/m -> HTTP 404: route not found" in capsys.readouterr().err
 

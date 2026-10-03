@@ -69,9 +69,151 @@ class TestCloudDisconnect:
                 (("cloud", "sync_enabled"), False),
             ]
 
+    def test_clears_oauth_state_too(self, monkeypatch):
+        from snodo.cli.commands.cloud_cmd import cloud_disconnect_command
+        cleared = []
+        monkeypatch.setattr("snodo.infrastructure.cloud_oauth_store.clear_oauth_state", lambda: cleared.append(True))
+        with patch("snodo.config.ConfigManager"):
+            assert cloud_disconnect_command() == 0
+        assert cleared == [True]
+
+
+class TestCloudLogout:
+    @pytest.mark.parametrize(("refresh", "failure"), [("refresh-secret", False), (None, False), ("refresh-secret", True)])
+    def test_clears_tokens_and_revokes_best_effort(self, monkeypatch, tmp_path, capsys, refresh, failure):
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, load_oauth_state, save_oauth_state
+        save_oauth_state(CloudOAuthState("client", "access-secret", refresh, 1234))
+        calls = []
+        class Client:
+            def __init__(self, _config): pass
+            def discover(self):
+                return type("Metadata", (), {"revocation_endpoint": "https://cloud.example/revoke"})()
+            def revoke(self, client_id, token):
+                calls.append((client_id, token))
+                if failure:
+                    raise RuntimeError("failure")
+        monkeypatch.setattr("snodo.infrastructure.cloud_oauth_client.CloudOAuthClient", Client)
+        with patch("snodo.config.ConfigManager") as manager:
+            manager.return_value.load.return_value = {}
+            from snodo.cli.commands.cloud_cmd import cloud_logout_command
+            assert cloud_logout_command() == 0
+        assert load_oauth_state().access_token is None
+        assert (len(calls) == 1) is bool(refresh)
+        output = capsys.readouterr().out
+        assert "access-secret" not in output and "refresh-secret" not in output
+        if refresh and failure:
+            assert "local sign-out is complete" in output
+
+
+class TestCloudOAuthLogin:
+    def _setup(self, monkeypatch, tmp_path, *, key="", result=("auth-code", "http://localhost:4312/callback")):
+        import sys
+        import types
+        from snodo.infrastructure.cloud_oauth_store import CloudOAuthState
+
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        calls = {"registered": 0, "saved": None, "opened": [], "exchange": []}
+        state = CloudOAuthState(client_id="existing-client" if (tmp_path / "reuse").exists() else None)
+        class Client:
+            def __init__(self, _config): pass
+            def discover(self): return object()
+            def register_client(self):
+                calls["registered"] += 1
+                return "new-client"
+            def authorization_url(self, client_id, redirect_uri, _verifier, _state):
+                calls["opened"].append((client_id, redirect_uri))
+                return "https://cloud.example/authorize?secret=never-print"
+            def exchange_code(self, client_id, code, redirect_uri, verifier):
+                calls["exchange"].append((client_id, code, redirect_uri, verifier))
+                return {"access_token": "not-a-jwt-secret", "refresh_token": "refresh-secret", "expires_in": 3600}
+        def receive(url, _state, **kwargs):
+            url = url("http://localhost:4312/callback") if callable(url) else url
+            if kwargs.get("open_browser") is not None:
+                assert kwargs["open_browser"](url) is False
+                print(url)
+            return result
+        client_module = types.ModuleType("stub_client")
+        loop_module = types.ModuleType("stub_loop")
+        store_module = types.ModuleType("stub_store")
+        client_module.CloudOAuthClient = Client
+        client_module.CloudOAuthError = RuntimeError
+        client_module.oauth_state = lambda: "state-value"
+        client_module.pkce_verifier = lambda: "pkce-secret"
+        loop_module.CloudOAuthLoopbackError = type("CloudOAuthLoopbackError", (RuntimeError,), {})
+        loop_module.receive_authorization_code = receive
+        store_module.CloudOAuthState = CloudOAuthState
+        store_module.load_oauth_state = lambda: state
+        store_module.save_oauth_state = lambda value: calls.update(saved=value)
+        monkeypatch.setitem(sys.modules, "snodo.infrastructure.cloud_oauth_client", client_module)
+        monkeypatch.setitem(sys.modules, "snodo.infrastructure.cloud_oauth_loopback", loop_module)
+        monkeypatch.setitem(sys.modules, "snodo.infrastructure.cloud_oauth_store", store_module)
+        from unittest.mock import MagicMock
+        config = {"cloud": {"api_key": key}}
+        mgr = MagicMock()
+        mgr.load.return_value = config
+        monkeypatch.setattr("snodo.config.ConfigManager", lambda: mgr)
+        return calls, mgr
+
+    def test_happy_path_enables_sync_without_writing_api_key(self, monkeypatch, tmp_path, capsys):
+        calls, mgr = self._setup(monkeypatch, tmp_path, key="")
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command() == 0
+        assert mgr.set_value.call_count == 1
+        assert mgr.set_value.call_args.args == (("cloud", "sync_enabled"), True)
+        assert calls["registered"] == 1
+        assert calls["saved"].access_token == "not-a-jwt-secret"
+        output = capsys.readouterr().out
+        assert "not-a-jwt-secret" not in output and "refresh-secret" not in output
+
+    def test_reuses_client_id(self, monkeypatch, tmp_path):
+        (tmp_path / "reuse").touch()
+        calls, _mgr = self._setup(monkeypatch, tmp_path)
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command() == 0
+        assert calls["registered"] == 0
+        assert calls["exchange"][0][0] == "existing-client"
+
+    def test_no_browser_prints_authorization_url(self, monkeypatch, tmp_path, capsys):
+        self._setup(monkeypatch, tmp_path)
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command(no_browser=True) == 0
+        assert "https://cloud.example/authorize" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(("message", "expected"), [
+        ("Timed out waiting for the OAuth callback.", "timed out"),
+        ("The authorization server returned an error.", "denied"),
+    ])
+    def test_callback_failures_are_actionable(self, monkeypatch, tmp_path, capsys, message, expected):
+        self._setup(monkeypatch, tmp_path)
+        import sys
+        loopback = sys.modules["snodo.infrastructure.cloud_oauth_loopback"]
+        loopback_error = loopback.CloudOAuthLoopbackError
+        loopback.receive_authorization_code = lambda *_args, **_kwargs: (_ for _ in ()).throw(loopback_error(message))
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command() == 1
+        output = capsys.readouterr().err.lower()
+        assert expected in output
+
 
 class TestCloudStatus:
-    def test_connected_shows_key_prefix(self, capsys):
+    def test_oauth_status_and_dual_credential_precedence_are_redacted(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, save_oauth_state
+        save_oauth_state(CloudOAuthState("client", "access-secret", "refresh-secret", 1_900_000_000))
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+        with patch("snodo.config.ConfigManager") as manager, patch("snodo.infrastructure.cloud_sync.CloudSyncState") as state:
+            manager.return_value.load.return_value = {"cloud": {"api_key": "api-key-secret", "sync_enabled": True}}
+            state.return_value.get_summary.return_value = {}
+            assert cloud_status_command() == 0
+        out = capsys.readouterr().out
+        assert "Authentication: OAuth login" in out
+        assert "OAuth login takes priority" in out
+        assert "Refresh token present: yes" in out
+        assert "expires" in out
+        assert all(secret not in out for secret in ("access-secret", "refresh-secret", "api-key-secret"))
+
+    def test_connected_reports_key_method_without_key(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_status_command
 
         with patch("snodo.config.ConfigManager") as MockCM:
@@ -91,7 +233,8 @@ class TestCloudStatus:
         assert result == 0
         out = capsys.readouterr().out
         assert "connected" in out
-        assert "sndo_live_abcdef..." in out  # first 16 chars + ...
+        assert "Authentication: API key" in out
+        assert "sndo_live_abcdef123456789000" not in out
 
     def test_disconnected_shows_not_connected(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_status_command

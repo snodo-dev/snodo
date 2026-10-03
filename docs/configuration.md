@@ -199,10 +199,11 @@ Older `llm.wave.max_tokens` and `llm.wave.temperature` keys are migrated to
 
 | Key | Default | Description |
 |---|---|---|
-| `cloud.api_key` | `""` | Credential for cloud admission, audit sync and liveness. |
+| `cloud.api_key` | `""` | Optional API-key credential for cloud admission, audit sync and liveness. OAuth login, when present, takes precedence. |
 | `cloud.api_url` | `https://api.snodo.dev` | Cloud API base for audit ingest. |
 | `cloud.tunnel_api_url` | `https://app.snodo.dev` | Cloud app base for tunnel provisioning; independent of `api_url`. |
-| `cloud.sync_enabled` | `false` | Enable cloud audit sync when an API key is configured. |
+| `cloud.oauth_metadata_url` | `https://mcp-auth.snodo.dev/.well-known/oauth-authorization-server` | HTTPS OAuth authorization-server metadata URL. |
+| `cloud.sync_enabled` | `false` | Enable cloud audit sync when an API key or OAuth login is available. |
 | `cloud.liveness_interval_seconds` | `60` | Liveness push cadence/throttle in seconds; non-positive or unreadable values use 60. |
 | `cloud.liveness_url` / `cloud.liveness_api_url` | Derived from `api_url` | Optional equivalent override for the liveness app base. A trailing `/v1` is removed. |
 | `cloud.lease_url` / `cloud.lease_api_url` | Derived from `api_url` | Optional equivalent override for the session-admission app base. |
@@ -216,10 +217,42 @@ cloud:
   liveness_interval_seconds: 60
 ```
 
-Cloud's API key is a literal string when set here; keep it private. The URL
-overrides are optional and normally need not be configured.
+Connect with either `snodo cloud connect <api_key>` or `snodo cloud login`. The
+API key is stored in `~/.snodo/config.yml` (or `$SNODO_HOME/config.yml`); a
+literal key in that file must be kept private. OAuth login uses the cloud's
+public-client authorization-code flow with PKCE and a temporary localhost
+callback. It stores the registered client ID, access token, refresh token,
+expiry and scope in `~/.snodo/cloud_oauth.json` (or `$SNODO_HOME/cloud_oauth.json`), outside
+the project directory. The OAuth state file and lock are owner-only (`0600`);
+the parent directory is created with owner-only (`0700`) permissions, and the
+state file is replaced atomically. Tokens are not encrypted by Snodo, so protect
+the user home directory.
 
-When `cloud.sync_enabled` is true and an API key is configured, each run with a
+OAuth credentials take precedence over a configured API key. Run
+`snodo cloud connect <api_key>` to store or replace the API key; it does not
+remove the OAuth login or change precedence. To use that key, run
+`snodo cloud logout` to clear OAuth tokens. Logout attempts best-effort
+refresh-token revocation when the authorization server advertises a
+revocation endpoint. `snodo cloud disconnect` clears both credentials and
+disables sync. Access tokens are refreshed when near expiry; when refresh cannot
+provide a usable credential, cloud requests cannot proceed until sign-in is
+completed again. The URL overrides are optional and normally need not be
+configured.
+
+OAuth discovery, registration, authorization, code exchange, refresh, and (when
+advertised) revocation use HTTPS endpoints provided by the authorization-server
+metadata at `cloud.oauth_metadata_url` (default
+`https://mcp-auth.snodo.dev/.well-known/oauth-authorization-server`). Cloud
+admission sends the selected access token or API key as bearer authorization to
+the configured lease mint endpoint (`{lease_url}/m`); subsequent audit and
+liveness requests use the returned short-lived lease token at their respective
+cloud endpoints. OAuth requests and lease requests include `User-Agent:
+snodo/<version>` and `X-Snodo-Device: <hostname>`. Access tokens, refresh
+tokens, authorization codes and PKCE verifiers are never printed, logged, or
+recorded in audit events.
+
+When `cloud.sync_enabled` is true and a usable API key or OAuth login is
+available, each run with a
 session attempts audit sync automatically at the end; the hook runs in the
 background and does not block run completion. Liveness heartbeats are sent only
 while a run is executing. `snodo cloud status` reports per-session pending

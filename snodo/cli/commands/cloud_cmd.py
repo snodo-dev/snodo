@@ -5,6 +5,7 @@ FILE: snodo/cli/commands/cloud_cmd.py
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import typer
@@ -33,10 +34,22 @@ def cloud_connect(
     return cloud_connect_command(api_key)
 
 
+@app.command(name="login")
+def cloud_login(no_browser: bool = typer.Option(False, "--no-browser", help="Print the sign-in URL without opening a browser")):
+    """Sign in to snodo cloud in a browser."""
+    return cloud_login_command(no_browser=no_browser)
+
+
 @app.command(name="disconnect")
 def cloud_disconnect():
     """Disconnect from snodo cloud and disable sync."""
     return cloud_disconnect_command()
+
+
+@app.command(name="logout")
+def cloud_logout():
+    """Sign out of snodo cloud and clear stored OAuth tokens."""
+    return cloud_logout_command()
 
 
 @app.command(name="status")
@@ -116,22 +129,128 @@ def cloud_connect_command(api_key: str) -> int:
     mgr.set_value(("cloud", "api_key"), api_key)
     mgr.set_value(("cloud", "sync_enabled"), True)
 
-    prefix = api_key[:16] + "..." if len(api_key) > 16 else api_key[:4] + "***"
     print("✓ Connected to snodo cloud.")
-    print(f"  API key:  {prefix}")
     print("  Audit sync enabled.")
     return 0
 
 
-def cloud_disconnect_command() -> int:
-    """Clear the snodo cloud API key and disable sync."""
+def cloud_login_command(*, no_browser: bool = False) -> int:
+    """Complete the public-client OAuth flow and enable cloud sync."""
     from snodo.config import ConfigManager
+    from snodo.infrastructure.cloud_oauth_client import CloudOAuthClient, CloudOAuthError, oauth_state, pkce_verifier
+    from snodo.infrastructure.cloud_oauth_loopback import CloudOAuthLoopbackError, receive_authorization_code
+    from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, load_oauth_state, save_oauth_state
+
+    try:
+        mgr = ConfigManager()
+        config = mgr.load()
+        cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
+        previous = load_oauth_state()
+        client = CloudOAuthClient(config)
+        client.discover()
+        client_id = previous.client_id or client.register_client()
+        verifier = pkce_verifier()
+        state = oauth_state()
+        def auth_url(redirect_uri: str) -> str:
+            return client.authorization_url(client_id, redirect_uri, verifier, state)
+
+        code, actual_redirect_uri = receive_authorization_code(
+            auth_url, state,
+            open_browser=(lambda _url: False) if no_browser else None,
+        )
+        tokens = client.exchange_code(client_id, code, actual_redirect_uri, verifier)
+        access_token = tokens.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise CloudOAuthError("OAuth token response did not include an access token")
+        expires_in = tokens.get("expires_in")
+        expires_at = time.time() + expires_in if isinstance(expires_in, (int, float)) and not isinstance(expires_in, bool) else None
+        save_oauth_state(CloudOAuthState(
+            client_id=client_id,
+            access_token=access_token,
+            refresh_token=tokens.get("refresh_token") if isinstance(tokens.get("refresh_token"), str) else None,
+            expires_at=expires_at,
+            scope=tokens.get("scope") if isinstance(tokens.get("scope"), str) else None,
+        ))
+        mgr.set_value(("cloud", "sync_enabled"), True)
+        account = _oauth_account_label(access_token)
+        message = f"✓ Signed in to snodo cloud{f' as {account}' if account else ''}; audit sync enabled."
+        print(message)
+        if cloud.get("api_key"):
+            print("OAuth now takes priority. Run `snodo cloud connect <api_key>` to switch back.")
+        return 0
+    except CloudOAuthLoopbackError as err:
+        text = str(err).lower()
+        if "timed out" in text:
+            print("Cloud sign-in timed out. Run `snodo cloud login` and complete the browser prompt.", file=sys.stderr)
+        elif "authorization server returned an error" in text:
+            print("Cloud sign-in was denied. Run `snodo cloud login` to try again.", file=sys.stderr)
+        else:
+            print("Cloud sign-in failed. Run `snodo cloud login` to try again.", file=sys.stderr)
+        return 1
+    except Exception as err:
+        # OAuth helpers deliberately expose only credential-free errors.
+        reason = str(err).lower()
+        if "network" in reason or "unreachable" in reason:
+            print("Cloud sign-in server is unreachable. Check your connection and try again.", file=sys.stderr)
+        else:
+            print("Cloud sign-in failed. Check your connection and try `snodo cloud login` again.", file=sys.stderr)
+        return 1
+
+
+def _oauth_account_label(access_token: str) -> str:
+    """Extract a non-secret account/org label from JWT claims without verification."""
+    try:
+        import jwt
+        claims = jwt.decode(access_token, options={"verify_signature": False, "verify_exp": False})
+        for key in ("organization_name", "org_name", "organization", "org", "email", "name"):
+            value = claims.get(key)
+            if isinstance(value, str) and value:
+                return value
+    except Exception:
+        return ""
+    return ""
+
+
+def cloud_disconnect_command() -> int:
+    """Clear cloud API key and OAuth login, and disable sync."""
+    from snodo.config import ConfigManager
+    from snodo.infrastructure.cloud_oauth_store import clear_oauth_state
 
     mgr = ConfigManager()
     mgr.set_value(("cloud", "api_key"), "")
     mgr.set_value(("cloud", "sync_enabled"), False)
+    clear_oauth_state()
 
     print("Disconnected from snodo cloud.")
+    return 0
+
+
+def cloud_logout_command() -> int:
+    """Best-effort revoke the refresh token, then always clear local OAuth tokens."""
+    from snodo.config import ConfigManager
+    from snodo.infrastructure.cloud_oauth_client import CloudOAuthClient
+    from snodo.infrastructure.cloud_oauth_store import clear_oauth_state, load_oauth_state
+
+    state = load_oauth_state()
+    revoked = False
+    revoke_attempted = False
+    if state.has_refresh_token() and state.client_id:
+        revoke_attempted = True
+        try:
+            config = ConfigManager().load()
+            client = CloudOAuthClient(config)
+            metadata = client.discover()
+            if metadata.revocation_endpoint:
+                client.revoke(state.client_id, state.refresh_token)
+                revoked = True
+        except Exception:
+            print("Cloud token revocation failed; local sign-out is complete.")
+            clear_oauth_state()
+            return 0
+    clear_oauth_state()
+    print("Signed out of snodo cloud.")
+    if revoke_attempted and not revoked:
+        print("Cloud token revocation was unavailable or failed; local sign-out is complete.")
     return 0
 
 
@@ -147,17 +266,25 @@ def cloud_status_command() -> int:
     api_key = cloud.get("api_key", "")
     sync_enabled = cloud.get("sync_enabled", False)
     api_url = get_cloud_ingest_url(config)
+    from snodo.infrastructure.cloud_oauth_store import load_oauth_state
+    oauth = load_oauth_state()
+    has_oauth = bool(oauth.access_token or oauth.refresh_token)
+    has_api_key = isinstance(api_key, str) and bool(api_key.strip())
+    auth_method = "OAuth login" if has_oauth else "API key" if has_api_key else "none"
 
-    if api_key:
-        prefix = api_key[:16] + "..." if len(api_key) > 16 else api_key[:4] + "***"
-        print("Snodo cloud: connected")
-        print(f"  API key:    {prefix}")
-        print(f"  API URL:    {api_url}")
-        print(f"  Sync:       {'enabled' if sync_enabled else 'disabled'}")
-    else:
-        print("Snodo cloud: not connected")
-        print("  Run: snodo cloud connect <api_key>")
-        return 0
+    print(f"Snodo cloud: {'connected' if auth_method != 'none' else 'not connected'}")
+    print(f"  Authentication: {auth_method}")
+    if has_oauth:
+        print(f"  Access token expires: {_format_ts(oauth.expires_at) if oauth.expires_at else 'unknown'}")
+        print(f"  Refresh token present: {'yes' if oauth.has_refresh_token() else 'no'}")
+        account = _oauth_account_label(oauth.access_token) if oauth.access_token else ""
+        print(f"  Account/organisation: {account or 'unknown'}")
+    if has_oauth and has_api_key:
+        print("  OAuth login takes priority over the API key.")
+    print(f"  API URL:    {api_url}")
+    print(f"  Sync:       {'enabled' if sync_enabled else 'disabled'}")
+    if auth_method == "none":
+        print("  Run: snodo cloud connect <api_key> or snodo cloud login")
 
     state = CloudSyncState()
     summary = state.get_summary()
