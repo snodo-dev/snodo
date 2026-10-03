@@ -1303,7 +1303,6 @@ def sync_if_enabled(
 
     from snodo.config import get_cloud_ingest_url, get_cloud_lease_url
 
-    cloud = config.get("cloud", {})
     from snodo.infrastructure.cloud_credentials import resolve_cloud_credential
     try:
         api_key, oauth = resolve_cloud_credential(config)
