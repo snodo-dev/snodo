@@ -767,7 +767,9 @@ def test_task_abandon_deletes_session_context_and_branch(tmp_path, monkeypatch, 
     mock_git = MagicMock()
     mock_head = MagicMock()
     mock_head.name = "task/t1"
-    mock_git.repo.heads = [mock_head]
+    unrelated_head = MagicMock()
+    unrelated_head.name = "task/t10/other"
+    mock_git.repo.heads = [mock_head, unrelated_head]
     monkeypatch.setattr("snodo.tools.git.GitMCP", lambda p: mock_git)
     monkeypatch.setattr("snodo.infrastructure.worktree.remove_worktree", lambda p, t: None)
 
@@ -776,8 +778,9 @@ def test_task_abandon_deletes_session_context_and_branch(tmp_path, monkeypatch, 
 
     res = task_abandon_command(SimpleNamespace(task_id="t1"))
     assert res == 0
-    assert "Task abandoned." in capsys.readouterr().out
+    assert "Task abandoned; removed branches: task/t1." in capsys.readouterr().out
     mock_git.repo.git.branch.assert_called_with("-D", "task/t1")
+    assert mock_git.repo.git.branch.call_count == 1
 
 
 def test_task_abandon_git_exception(tmp_path, monkeypatch, capsys):
@@ -793,6 +796,22 @@ def test_task_abandon_git_exception(tmp_path, monkeypatch, capsys):
     res = task_abandon_command(SimpleNamespace(task_id="t1"))
     assert res == 1
     assert "Error deleting branch: git failed" in capsys.readouterr().err
+
+
+def test_task_abandon_refuses_shared_plan_task_id(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+    mock_git = MagicMock()
+    alpha = MagicMock()
+    alpha.name = "task/alpha/shared/do-work"
+    beta = MagicMock()
+    beta.name = "task/beta/shared/do-work"
+    mock_git.repo.heads = [alpha, beta]
+    monkeypatch.setattr("snodo.tools.git.GitMCP", lambda p: mock_git)
+
+    assert task_abandon_command(SimpleNamespace(task_id="shared")) == 1
+    assert "ambiguous" in capsys.readouterr().err
+    mock_git.repo.git.branch.assert_not_called()
 
 
 # ============================================================================

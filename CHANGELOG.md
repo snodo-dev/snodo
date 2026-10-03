@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- `snodo worktree remove` and `snodo task abandon` now delete only exact
+  task-owned branches and refuse ambiguous ids shared by multiple plans.
+  (Fixes #687)
 - `retry_job` now refuses queue-run and plan-run jobs with guidance to resume
   the queue or fix and rerun the plan, without creating a task job. (Fixes #686)
 - Plan tasks reuse a legacy worktree only when the exact legacy branch is

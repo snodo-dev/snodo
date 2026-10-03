@@ -216,6 +216,29 @@ def worktree_remove_command(args) -> int:
 
     project_root = require_project_root()
 
+    # Branch-list keys preserve the plan component for scoped branches. Resolve
+    # only exact task owners; a bare task id shared by plans cannot identify a
+    # single retained worktree safely.
+    try:
+        from snodo.tools.git import GitMCP
+        heads = [head.name for head in GitMCP(project_root).repo.heads]
+    except Exception:
+        heads = []
+    owned = [name for name in heads if _branch_task_owner(name, task_id)]
+    owners = sorted({_branch_task_owner(name, task_id) for name in owned})
+    if len(owners) > 1:
+        print(
+            f"Task id {task_id} is ambiguous ({', '.join(sorted(owners))}); "
+            "specify the specific worktree or branch.", file=sys.stderr,
+        )
+        return 1
+    if len(owners) == 1 and owners[0] != task_id:
+        print(
+            f"Task id {task_id} is owned by {owners[0]}; specify the specific worktree or branch.",
+            file=sys.stderr,
+        )
+        return 1
+
     if not worktree_is_owned(project_root, task_id):
         print(f"Worktree {task_id} does not belong to this project.", file=sys.stderr)
         return 1
@@ -227,15 +250,31 @@ def worktree_remove_command(args) -> int:
     try:
         from snodo.tools.git import GitMCP
         git = GitMCP(project_root)
-        branch_prefix = f"task/{task_id}"
-        for head in list(git.repo.heads):
-            if head.name == branch_prefix or head.name.startswith(f"{branch_prefix}/"):
-                git.repo.git.branch("-D", head.name)
+        removed = []
+        for name in owned:
+            try:
+                git.repo.git.branch("-D", name)
+                removed.append(name)
+            except Exception:
+                _logger.debug("Could not remove branch %s", name, exc_info=True)
     except Exception as e:
         _logger.warning("Could not delete task branch for %s: %s", task_id, e)
+        removed = []
 
-    print(f"Removed worktree for {task_id}.")
+    print(f"Removed worktree for {task_id}; removed branches: {', '.join(removed) or 'none'}.")
     return 0
+
+
+def _branch_task_owner(branch: str, task_id: str) -> Optional[str]:
+    """Return exact task owner key for legacy or plan-scoped branch names."""
+    parts = branch.split("/")
+    if len(parts) < 2 or parts[0] != "task":
+        return None
+    if parts[1] == task_id:
+        return task_id
+    if len(parts) >= 4 and parts[2] == task_id:
+        return f"{parts[1]}/{task_id}"
+    return None
 
 
 def worktree_prune_command(args) -> int:

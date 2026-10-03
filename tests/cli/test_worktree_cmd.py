@@ -158,6 +158,31 @@ class TestWorktreeCommands:
         git = GitMCP(str(git_project))
         assert not any(h.name.startswith("task/task_x") for h in git.repo.heads)
 
+    def test_remove_preserves_other_task_with_same_id_in_another_plan(self, git_project, capsys):
+        from snodo.cli.commands.worktree_cmd import worktree_remove_command
+        from snodo.infrastructure.worktree import create_worktree
+        from snodo.tools.git import GitMCP
+
+        create_worktree(str(git_project), "shared", "first plan task", plan_name="alpha")
+        create_worktree(str(git_project), "shared", "second plan task", plan_name="beta")
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(git_project)):
+            assert worktree_remove_command(SimpleNamespace(task_id="shared")) == 1
+        assert "ambiguous" in capsys.readouterr().err
+        names = {head.name for head in GitMCP(str(git_project)).repo.heads}
+        assert "task/alpha/shared/first-plan-task" in names
+        assert "task/beta/shared/second-plan-task" in names
+
+    def test_remove_exact_task_does_not_delete_prefix_collision(self, git_project):
+        from snodo.cli.commands.worktree_cmd import worktree_remove_command
+        from snodo.tools.git import GitMCP
+
+        create_worktree(str(git_project), "task_x", "spec x")
+        subprocess.run(["git", "branch", "task/task_x_extra/other", "HEAD"], cwd=git_project, check=True)
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(git_project)):
+            assert worktree_remove_command(SimpleNamespace(task_id="task_x")) == 0
+        names = {head.name for head in GitMCP(str(git_project)).repo.heads}
+        assert "task/task_x_extra/other" in names
+
     def test_remove_unregisters_worktree_before_deleting_branch(
         self, git_project, monkeypatch
     ):
@@ -203,7 +228,7 @@ class TestWorktreeCommands:
             ) == 0
 
         assert not worktree_is_owned(str(git_project), "task_missing")
-        assert "Removed worktree for task_missing." in capsys.readouterr().out
+        assert "Removed worktree for task_missing; removed branches:" in capsys.readouterr().out
 
     def test_remove_succeeds_when_task_branch_is_already_gone(self, git_project):
         from snodo.cli.commands.worktree_cmd import worktree_remove_command
