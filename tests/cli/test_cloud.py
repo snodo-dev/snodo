@@ -150,7 +150,8 @@ class TestCloudOAuthLogin:
     ])
     def test_callback_failures_are_actionable(self, monkeypatch, tmp_path, capsys, message, expected):
         self._setup(monkeypatch, tmp_path)
-        import snodo.infrastructure.cloud_oauth_loopback as loopback
+        import sys
+        loopback = sys.modules["snodo.infrastructure.cloud_oauth_loopback"]
         loopback_error = loopback.CloudOAuthLoopbackError
         loopback.receive_authorization_code = lambda *_args, **_kwargs: (_ for _ in ()).throw(loopback_error(message))
         from snodo.cli.commands.cloud_cmd import cloud_login_command

@@ -34,6 +34,7 @@ walkthrough.
 | `snodo session prune` | `--days` |
 | `snodo models` | `--provider`/`-p`, `--flush`, `--stats`, `--provenance`, `--provenance-limit`, `--check`, `--benchmark`, `--benchmark-runs`, `--set-baseline`, `--compare`, `--benchmark-run`, `--model`, `--plan`, `--task`/`--task-id`, `--job`, `--json`, `--id`, `--id-contains`, `--max-output-cost`, `--min-output-cost`, `--max-input-cost`, `--min-context` |
 | `snodo cloud connect` | `<api_key>` |
+| `snodo cloud login` | `--no-browser` |
 | `snodo cloud disconnect` | — |
 | `snodo cloud status` | — |
 | `snodo cloud sync` | `--all`, `--session`, `--force`/`--retry` |
@@ -52,6 +53,11 @@ prints the generated cloud interface schema. `snodo config --notify-test` sends
 a test to every valid notification target.
 `snodo protocol schema --json` prints the generated, versioned JSON Schema for
 protocol authoring without reading the project's protocol file.
+
+Use `snodo cloud login` to sign in through a browser and enable cloud sync;
+`--no-browser` prints the authorization URL. OAuth login does not store an API
+key. If a key is configured, OAuth takes priority; run `snodo cloud connect
+<api_key>` to switch back.
 
 `snodo install` (and `snodo serve --mcp-install`) detects Claude Desktop,
 Claude Code, Cursor, Gemini CLI and Codex-family clients and installs mode-pinned
