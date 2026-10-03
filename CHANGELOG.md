@@ -15,6 +15,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   head and allowed with passing evidence. (Fixes #693)
 
 ### Fixed
+- Merge and plan-delivery verification now recognize the configured ID of any
+  quality-type validator, while still requiring task-scoped passing evidence for
+  the exact commit. Fixes a regression from #688. (Fixes #696)
 - Source-checkout version strings now include the reachable commit count and
   short commit id, distinguishing editable builds from released packages.
   (Fixes #694)
