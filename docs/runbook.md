@@ -255,7 +255,7 @@ snodo init --template team --test-command "PYTHONPATH=. pytest" --yes
 snodo run "add a hello() function that returns the string 'world', with a test" --mock
 ```
 
-This is the canonical first-run command sequence; the [README](../README.md) and
+This is the canonical first-run command sequence; the [README](https://github.com/snodo-dev/snodo#readme) and
 [docs home](index.md) link here. Git needs a committer identity before the
 commit: configure it with `git config --global user.name "Your Name"` and
 `git config --global user.email "you@example.com"`, or set repository-local
