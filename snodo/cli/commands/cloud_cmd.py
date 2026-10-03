@@ -244,7 +244,9 @@ def cloud_logout_command() -> int:
                 client.revoke(state.client_id, state.refresh_token)
                 revoked = True
         except Exception:
-            pass
+            print("Cloud token revocation failed; local sign-out is complete.")
+            clear_oauth_state()
+            return 0
     clear_oauth_state()
     print("Signed out of snodo cloud.")
     if revoke_attempted and not revoked:
