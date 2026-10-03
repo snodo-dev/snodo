@@ -14,6 +14,14 @@ bug.
 Sync is opt-in: nothing is transmitted unless `cloud.sync_enabled` is true and
 `cloud.api_key` is set. A run with sync disabled makes no network call.
 
+Runs using the mock coder and runs marked with `SNODO_BENCHMARK=1` are also
+excluded from outbound cloud delivery: neither audit ingest nor liveness is
+sent. Their full audit history is still written locally. The run-level mock
+decision uses recorded coder provenance (and the mock-mode signal for
+liveness); no audit events, status values, or fields are introduced. Mixed
+real/mock task runs are not filtered task-by-task: if recorded provenance marks
+the run as mock, audit sync is skipped for the whole run.
+
 ## The wire
 
 ```

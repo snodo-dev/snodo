@@ -25,6 +25,7 @@ from pydantic import (
 )
 
 from snodo.infrastructure.atomic_json import atomic_write_json
+from snodo.infrastructure.cloud_delivery import cloud_delivery_skip_reason
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
 from snodo.infrastructure.cloud_backoff import (
@@ -1274,6 +1275,11 @@ def sync_if_enabled(
     it. The CLI itself never blocks, and a slow cloud never hangs the process.
     """
     from threading import Thread
+
+    skip_reason = cloud_delivery_skip_reason(audit_log)
+    if skip_reason:
+        print(f"Cloud sync skipped for {skip_reason}.")
+        return
 
     if not _should_sync(config):
         return

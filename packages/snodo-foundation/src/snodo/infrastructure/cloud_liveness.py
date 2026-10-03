@@ -274,6 +274,9 @@ def _gate_config() -> Optional[dict]:
 
 def _sync_gate_open(config: Optional[dict] = None) -> bool:
     """``_should_sync`` behind a short-lived cache (Fixes #291)."""
+    import os
+    if os.environ.get("SNODO_BENCHMARK") == "1":
+        return False
     if config is not None:
         return _should_sync(config)
     now = time.monotonic()
@@ -1240,6 +1243,9 @@ def _on_audit_event(event: Any, audit_log: Any) -> None:
     """
     try:
         if not _ARMED:
+            return
+        from snodo.infrastructure.cloud_delivery import cloud_delivery_skip_reason
+        if cloud_delivery_skip_reason(audit_log):
             return
         event_type = getattr(event, "event_type", "")
         if event_type not in TRIGGER_EVENTS:
