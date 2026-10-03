@@ -15,6 +15,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   head and allowed with passing evidence. (Fixes #693)
 
 ### Fixed
+- Cloud sync and liveness now suppress only the current session's mock-coder
+  usage, so an earlier mock run cannot keep later real runs off the cloud.
+  Fixes a regression from #669. (Fixes #697)
 - Cloud audit sync now bounds repeated rate-limit retries, preserves the
   pending cursor for a later run, reports accepted and pending progress, and
   keeps admission lease ids out of operator-facing errors. (Fixes #695)

@@ -1268,7 +1268,7 @@ def sync_if_enabled(
     """
     from threading import Thread
 
-    skip_reason = cloud_delivery_skip_reason(audit_log)
+    skip_reason = cloud_delivery_skip_reason(audit_log, session_id=session_id)
     if skip_reason:
         print(f"Cloud sync skipped for {skip_reason}.")
         return

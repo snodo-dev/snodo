@@ -1287,21 +1287,22 @@ def _on_audit_event(event: Any, audit_log: Any) -> None:
     try:
         if not _ARMED:
             return
-        from snodo.infrastructure.cloud_delivery import cloud_delivery_skip_reason
-        if cloud_delivery_skip_reason(audit_log):
-            return
+        event_data = getattr(event, "data", None)
+        event_data = event_data if isinstance(event_data, dict) else {}
         event_type = getattr(event, "event_type", "")
         if event_type not in TRIGGER_EVENTS:
             return
-        data = getattr(event, "data", None)
-        data = data if isinstance(data, dict) else {}
-        session_id = data.get("session_id")
+        session_id = event_data.get("session_id")
         project_root = _project_root_from_log(audit_log)
         if not project_root:
             return
         if not session_id:
             session_id = _active_session_id(project_root)
         if not session_id:
+            return
+        from snodo.infrastructure.cloud_delivery import cloud_delivery_skip_reason
+        # Scope the policy to this session, not the project's full history.
+        if cloud_delivery_skip_reason(audit_log, session_id=str(session_id)):
             return
         request_liveness_push(
             str(session_id), project_root,
