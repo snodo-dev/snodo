@@ -516,7 +516,7 @@ class TestCloudSyncDispatcher:
         assert result["synced"] == 5  # events 6-10
         assert result["failed"] is False
 
-    def test_sessionless_and_session_sync_share_project_high_water_cursor(self, tmp_path, monkeypatch):
+    def test_sessionless_sync_is_skipped_and_session_sync_sends_events(self, tmp_path, monkeypatch):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
 
         monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
@@ -535,15 +535,15 @@ class TestCloudSyncDispatcher:
             first = dispatcher.sync("", "/project", audit, "key", "https://api.test")
             second = dispatcher.sync("sess_existing", "/project", audit, "key", "https://api.test")
 
-        assert first["synced"] == 3
-        assert second["synced"] == 0
+        assert first["synced"] == 0
+        assert first["skipped"] is True
+        assert first["pending"] == 3
+        assert second["synced"] == 3
         assert sent == [1, 2, 3]
         state = CloudSyncState()
-        project_cursor = state.get_project_cursor("github.com/example/project")
-        assert project_cursor == 3
-        assert state.get_cursor("sess_existing") == 0
+        assert state.get_cursor("sess_existing") == 3
 
-    def test_session_sync_progress_prevents_later_sessionless_duplicate(self, tmp_path, monkeypatch):
+    def test_session_sync_then_sessionless_sync_never_posts_invalid_id(self, tmp_path, monkeypatch):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 
         monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
@@ -558,6 +558,7 @@ class TestCloudSyncDispatcher:
 
         assert sent["synced"] == 2
         assert sessionless["synced"] == 0
+        assert sessionless["skipped"] is True
         post.assert_called_once()
 
     def test_429_retries_with_retry_after(self):
@@ -1455,7 +1456,7 @@ class TestCloudStatusPending:
 # ------------------------------------------------------------------#
 
 class TestCloudSyncCommand:
-    def test_sync_all_with_zero_sessions_uses_project_cursor(self):
+    def test_sync_all_with_zero_sessions_skips_invalid_project_session_id(self):
         from snodo.cli.commands.cloud_cmd import cloud_sync_command
 
         audit = MagicMock(events=[MagicMock(project_id="github.com/example/project")])
@@ -1470,16 +1471,11 @@ class TestCloudSyncCommand:
                 "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
             }
             MockSM.return_value.list_sessions.return_value = []
-            MockDisp.return_value.sync.return_value = {
-                "synced": 2, "failed": False, "pending": 0,
-            }
+            MockDisp.return_value.sync.return_value = {"synced": 0, "failed": False, "pending": 0}
 
             assert cloud_sync_command(sync_all=True) == 0
 
-        call = MockDisp.return_value.sync.call_args
-        assert call.args[0] == "project:github.com/example/project"
-        assert call.args[1] == "/fake/proj"
-        assert call.args[2] is audit
+        MockDisp.return_value.sync.assert_not_called()
 
     def test_refusal_after_partial_delivery_is_not_reported_as_success(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_sync_command

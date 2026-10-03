@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- PR-review Actions now create unique CI-prefixed reviewer sessions so recon audit events sync under valid cloud session IDs. (Fixes #666)
 - Queue runs with push-branch or change-request delivery now deliver one persistent integration branch for all successful plans in the run. (Fixes #665)
 
 ### Fixed

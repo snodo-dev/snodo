@@ -76,10 +76,21 @@ def _load_recon_models() -> list[str]:
 def run_recon(question: str, repo: str, pr: int) -> list[dict[str, Any]]:
     """Run three configured agents through the audited recon lifecycle."""
     from snodo.recon import ReconManager, resolve_recon_agents
+    from snodo.infrastructure.session import SessionManager
 
     models = _load_recon_models()
     lanes = resolve_recon_agents(requested_n=3, recon_models=models)
     root = Path.cwd()
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT")
+    if run_id and run_attempt:
+        session_id = f"sess_ci_pr-review_{run_id}_{run_attempt}"
+        SessionManager().create_session("reviewer", str(root), session_id=session_id)
+        from snodo.infrastructure.state import read_state, write_state
+
+        state = read_state(str(root))
+        state.current_mode = "reviewer"
+        write_state(str(root), state)
     manager = ReconManager(str(root))
     recon_id = manager.submit(question, ["."], agents=lanes)
     deadline = time.monotonic() + RECON_TIMEOUT_SECONDS

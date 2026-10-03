@@ -351,11 +351,9 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
         else:
             print(f"  {sid}  — no new events")
 
-    # With no selected session, sync the project cursor. It carries events
-    # produced before any session existed; successful session sends also
-    # advance it to avoid duplicate delivery across the two cursor forms.
+    # Sessionless events only have a local project cursor; ``project:<id>`` is
+    # not a valid server session_id. Never send that synthetic key over wire.
     if not sessions_to_sync and not session_id:
-        from snodo.infrastructure.cloud_sync import CloudSyncState
         from snodo.infrastructure.audit import AuditLog, AuditError
 
         project_audit_path = str(Path(project_root) / ".snodo" / "audit.log")
@@ -365,25 +363,9 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
             print(f"  project (sessionless)  ✗ corrupt audit log: {err}")
             total_failed += 1
         else:
-            sessionless_id = CloudSyncState.project_cursor_id(
-                next((event.project_id for event in project_audit.events if event.project_id), str(Path(project_root).resolve()))
-            )
-            result = dispatcher.sync(
-                sessionless_id, project_root, project_audit, api_key, api_url,
-                force=force, lease_url=lease_url,
-            )
-            label = "project (sessionless)"
-            if result.get("refused"):
-                print(f"  {label}  BLOCKED (refused: {result.get('reason', 'refused by server')}); {result.get('pending', 0)} event(s) pending.")
-                total_failed += 1
-            elif result.get("synced", 0):
-                print(f"  {label}  ✓ {result['synced']} events synced")
-                total_synced += result["synced"]
-            elif result.get("failed"):
-                print(f"  {label}  ✗ sync failed: {result.get('reason', 'unknown error')}; {result.get('pending', 0)} event(s) pending.")
-                total_failed += 1
-            else:
-                print(f"  {label}  — no new events")
+            pending = len(project_audit.events)
+            if pending:
+                print(f"  project (sessionless)  — skipped {pending} event(s): cloud requires a session id")
 
     if total_synced > 0 or total_failed > 0:
         print()

@@ -88,6 +88,19 @@ class TestSessionIdFormat:
         session = mgr.create_session("producer", project_root)
         assert session.project_id == get_project_id(project_root)[0]
 
+    def test_caller_selected_session_id(self, mgr, project_root):
+        session = mgr.create_session(
+            "reviewer", project_root, session_id="sess_ci_pr-review_123_2"
+        )
+        assert session.session_id == "sess_ci_pr-review_123_2"
+        assert mgr.load_session(session.session_id).mode == "reviewer"
+
+    def test_normal_session_id_generation_is_unchanged(self, mgr, project_root):
+        session = mgr.create_session("reviewer", project_root)
+        assert session.session_id.startswith("sess_")
+        assert "_rev_" in session.session_id
+        assert len(session.session_id.rsplit("_", 1)[1]) == 6
+
     def test_two_clones_same_remote_get_same_project_id(self, tmp_path):
         """Two filesystem paths sharing the same remote produce the same project_id."""
         pid = "github.com/org/repo"

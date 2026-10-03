@@ -113,12 +113,14 @@ class SessionManager:
         self,
         mode: str,
         project_root: str,
+        session_id: Optional[str] = None,
     ) -> SessionState:
         """Create a new session.
 
         Args:
             mode: Protocol mode (producer, reviewer, planner)
             project_root: Absolute path to project root
+            session_id: Optional caller-selected identifier; must use the ``sess_`` prefix.
 
         Returns:
             Created SessionState
@@ -127,7 +129,13 @@ class SessionManager:
         date_str = datetime.now(UTC).strftime("%Y%m%d")
         prefix = _mode_prefix(mode)
         rand_hex = secrets.token_hex(3)
-        session_id = f"sess_{date_str}_{prefix}_{rand_hex}"
+        session_id = session_id or f"sess_{date_str}_{prefix}_{rand_hex}"
+        if not session_id.startswith("sess_") or not all(
+            char.isalnum() or char in "_-" for char in session_id
+        ):
+            raise ValueError("session_id must start with 'sess_' and contain only letters, digits, '_' or '-'")
+        if (self.sessions_dir / f"{session_id}.json").exists():
+            raise ValueError(f"Session already exists: {session_id}")
 
         pid, scope = get_project_id(project_root)
         # Creating a session is an act of establishing identity, not merely

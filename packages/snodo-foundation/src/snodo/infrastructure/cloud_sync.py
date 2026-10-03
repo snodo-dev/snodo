@@ -826,11 +826,13 @@ class CloudSyncDispatcher:
 
         state = CloudSyncState()
         project_id = _project_id_from_events(events)
-        # Empty-session syncs use a stable project key in the existing cursor
-        # file and on the existing ingest envelope. Session cursors and this
-        # shared project cursor represent the same hash-chained project log.
         if not session_id:
-            session_id = state.project_cursor_id(project_id or str(Path(project_root).resolve()))
+            # ``project:<id>`` remains a local cursor namespace only; the cloud
+            # ingest API requires a real session id and rejects that key.
+            return {
+                "synced": 0, "failed": False, "pending": len(events),
+                "skipped": True, "reason": "cloud sync requires a session id",
+            }
         cursor = max(
             state.get_cursor(session_id),
             state.get_project_cursor(project_id) if project_id else 0,

@@ -15,6 +15,10 @@ snodo cloud; leave it unset to keep the review local to the runner.
 Each key is used by a configured recon model provider and is kept in the
 runner's user config only. To rerun a review, use **Actions → PR review → Run
 workflow** and enter the pull request number.
+Each Action run creates a reviewer session named
+`sess_ci_pr-review_<GITHUB_RUN_ID>_<GITHUB_RUN_ATTEMPT>`. The run and attempt
+make each ephemeral audit chain unique, while the `ci_pr-review` prefix
+identifies automated reviews in cloud history and `snodo cloud status`.
 
 Fork pull requests are skipped so repository API keys are never exposed to
 untrusted code. Dependabot pull requests are skipped on automatic events to

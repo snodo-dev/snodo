@@ -21,17 +21,26 @@ def _summary(outcome="MINOR REWORK"):
     return {"outcome": outcome, "summary": "Three reviewers returned.", "rows": [{"kind": "Agreement", "finding": "Add the missing test.", "agents": {"alpha": "Agree", "beta": "Agree", "gamma": "No"}, "status": "Open"}], "rework": ["Add regression coverage."]}
 
 
-def test_run_recon_maps_manager_results(monkeypatch):
+def test_run_recon_maps_manager_results(monkeypatch, tmp_path):
     import snodo.recon
+    import snodo.infrastructure.session
+    from snodo.recon import _active_session_id
+
+    real_session_manager = snodo.infrastructure.session.SessionManager
+
+    def isolated_session_manager():
+        return real_session_manager(sessions_dir=tmp_path / "sessions")
 
     class FakeManager:
         def __init__(self, root):
             self.root = root
+            self.session_id = _active_session_id(root)
 
         def submit(self, question, paths, agents):
             assert question == "review"
             assert paths == ["."]
             assert agents == [["model-a"], ["model-b"], ["model-c"]]
+            assert self.session_id == "sess_ci_pr-review_12345_2"
             return "rec_test"
 
         def get_status(self, _recon_id):
@@ -42,7 +51,13 @@ def test_run_recon_maps_manager_results(monkeypatch):
 
     monkeypatch.setattr(review, "_load_recon_models", lambda: ["model-a", "model-b", "model-c"])
     monkeypatch.setattr(snodo.recon, "ReconManager", FakeManager)
+    monkeypatch.setattr(snodo.infrastructure.session, "SessionManager", isolated_session_manager)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_RUN_ID", "12345")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
     assert review.run_recon("review", "example/example", 1) == _results()
+    assert _active_session_id(str(tmp_path)) == "sess_ci_pr-review_12345_2"
+    assert (tmp_path / ".snodo" / "state.json").exists()
 
 
 def test_run_recon_keeps_failed_agent_error(monkeypatch):
