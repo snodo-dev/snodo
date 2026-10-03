@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Persist cloud OAuth credentials in a private, atomic user-level store with
+  safe logout and expiry helpers. (Fixes #672)
 - Add cloud OAuth discovery, public-client registration, PKCE authorization,
   code exchange and refresh protocol helpers. (Fixes #671)
 
