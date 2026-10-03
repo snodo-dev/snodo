@@ -220,7 +220,7 @@ class QualityValidator(ValidatorBase):
         """
         try:
             process = subprocess.Popen(
-                ["git", "status", "--porcelain", "--untracked-files=no"],
+                ["git", "status", "--porcelain", "--untracked-files=no"],  # noqa: S607 - git resolved from PATH by design; argv list, fully controlled flags
                 cwd=str(self.working_directory),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
