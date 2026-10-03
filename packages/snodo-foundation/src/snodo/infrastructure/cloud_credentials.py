@@ -36,3 +36,27 @@ def resolve_cloud_credential(config: dict, *, force_refresh: bool = False, http_
 def cloud_identity_headers() -> dict[str, str]:
     from snodo.version import __version__
     return {"User-Agent": f"snodo/{__version__}", "X-Snodo-Device": socket.gethostname()}
+
+
+def cloud_ingest_headers(lease_token: str) -> dict[str, str]:
+    """Build headers for an ingest request using its admission lease."""
+    return {
+        "Authorization": f"Bearer {lease_token}",
+        "Content-Type": "application/json",
+        **cloud_identity_headers(),
+    }
+
+
+def cloud_sync_enabled(config: dict | None = None) -> bool:
+    """Return whether cloud sync is enabled and has OAuth or API-key credentials."""
+    if config is None:
+        from snodo.config import ConfigManager
+        config = ConfigManager().load()
+    cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
+    if not cloud.get("sync_enabled"):
+        return False
+    state = load_oauth_state()
+    api_key = cloud.get("api_key", "")
+    return bool(state.access_token or state.refresh_token) or bool(
+        isinstance(api_key, str) and api_key.strip()
+    )

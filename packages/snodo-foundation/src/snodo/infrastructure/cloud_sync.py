@@ -1080,12 +1080,8 @@ class CloudSyncDispatcher:
             url, len(batch), first_seq, last_seq,
         )
 
-        headers = {
-            "Authorization": f"Bearer {lease.token}",
-            "Content-Type": "application/json",
-        }
-        from snodo.infrastructure.cloud_credentials import cloud_identity_headers
-        headers.update(cloud_identity_headers())
+        from snodo.infrastructure.cloud_credentials import cloud_ingest_headers
+        headers = cloud_ingest_headers(lease.token)
         lease_replaced = False
 
         attempt = 0
@@ -1175,15 +1171,8 @@ class CloudSyncDispatcher:
 
 def _should_sync(config: Optional[dict] = None) -> bool:
     """Return True when enabled with either an OAuth login or API key."""
-    if config is None:
-        from snodo.config import ConfigManager
-        config = ConfigManager().load()
-    cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
-    if not cloud.get("sync_enabled"):
-        return False
-    from snodo.infrastructure.cloud_oauth_store import load_oauth_state
-    state = load_oauth_state()
-    return bool(state.access_token or state.refresh_token) or bool(cloud.get("api_key", "").strip())
+    from snodo.infrastructure.cloud_credentials import cloud_sync_enabled
+    return cloud_sync_enabled(config)
 
 
 #: How long the flush waits for background syncs to finish before giving up.
