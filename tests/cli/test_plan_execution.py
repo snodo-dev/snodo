@@ -319,10 +319,17 @@ def test_plan_local_delivery_cleans_directory_identity_not_authored_name(plan_pr
     protocol.execution.delivery_remote = "origin"
     protocol.metadata = {}
     protocol.validators = []
+    from snodo.infrastructure.audit import AuditLog
+    audit_log = AuditLog(str(plan_project_env / ".snodo" / "audit.log"))
+    audit_log.append_event("verification_executed", {
+        "op": "verification_executed", "task_ref": "authored-name",
+        "validator_id": "quality", "returncode": 0,
+        "commit": base, "outcome": "pass", "command": "true",
+    })
 
     assert _deliver_plan_integration(
         str(plan_project_env), "plan/directory-plan/integration", "authored-name", "intent",
-        protocol, "producer", None, integration_path=actual_path,
+        protocol, "producer", audit_log, integration_path=actual_path,
     ) == 0
 
     with Repo(str(plan_project_env)) as repo:
@@ -470,7 +477,8 @@ def test_plan_integration_delivery_uses_real_git_and_delivery_gate(tmp_path, del
 
     audit = AuditLog(str(tmp_path / "audit.log"))
     audit.append_event("verification_executed", {
-        "op": "verification_executed", "task_ref": "demo", "commit": combined,
+        "op": "verification_executed", "task_ref": "demo",
+        "validator_id": "quality", "returncode": 0, "commit": combined,
         "outcome": "pass", "command": "true",
     })
     provider_calls = []
