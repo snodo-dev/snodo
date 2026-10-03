@@ -1171,13 +1171,24 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
         else:
             os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = previous_integration_branch
 
+        queue_integration_branch = os.environ.get("SNODO_QUEUE_INTEGRATION_BRANCH")
         if not failed and getattr(args, "wave", None) is None and integration_branch:
             statuses = planner.get_status(args.plan).get("tasks", {})
             all_complete = all(
                 (entry.get("status") if isinstance(entry, dict) else entry) == "completed"
                 for entry in statuses.values()
             )
-            if all_complete:
+            if all_complete and queue_integration_branch:
+                try:
+                    from snodo.infrastructure.worktree import _name_component, worktree_dir
+                    from snodo.tools.git import open_repo
+                    queue_path = worktree_dir(str(project_root)) / "queues" / _name_component(getattr(args, "queue", "default")) / "integration"
+                    with open_repo(str(queue_path)) as repo:
+                        repo.git.merge("--no-edit", integration_branch)
+                except Exception as exc:
+                    print(f"Queue integration merge failed for {args.plan}: {exc}", file=sys.stderr)
+                    failed = True
+            elif all_complete:
                 from snodo.cli.commands.run_merge import _deliver_plan_integration
                 from snodo.tools.git import open_repo
                 delivery_mode = protocol.delivery_for(active_mode)

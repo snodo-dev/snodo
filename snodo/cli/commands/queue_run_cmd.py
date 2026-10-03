@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -85,7 +86,8 @@ def _queue_run(
         try:
             with store.lock(queue_name):
                 return _run_queue(store, queue_name, project_root, _run_plan, RunArgs,
-                                  protocol, mock, skip_blocked, concurrency)
+                                  protocol, mock, skip_blocked, concurrency,
+                                  protocol_config=protocol_obj)
         except QueueError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
@@ -104,9 +106,43 @@ def _queue_run(
 
 
 def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mock,
-               non_blocking: bool, concurrency: int) -> int:
+               non_blocking: bool, concurrency: int, protocol_config=None) -> int:
     """Run one locked queue, retaining skipped plans in their original positions."""
     initial = store.list_queues().get(queue_name, [])
+    queue_branch = None
+    queue_meta = project_root / ".snodo" / "queue-integration" / f"{queue_name}.json"
+    from snodo.infrastructure.state import read_state
+    state = read_state(project_root)
+    policy = protocol_config or protocol
+    mode = state.current_mode or getattr(policy, "initial_mode", None)
+    delivery = policy.delivery_for(mode) if hasattr(policy, "delivery_for") else "local_merge"
+    if delivery in {"change_request", "push_branch"} and initial:
+        try:
+            from snodo.infrastructure.state import atomic_update_json
+            from snodo.infrastructure.worktree import _name_component, worktree_dir
+            from snodo.tools.git import open_repo, resolve_base_branch
+            state = json.loads(queue_meta.read_text()) if queue_meta.exists() else {}
+            queue_branch = state.get("branch")
+            if not queue_branch:
+                base_ref = resolve_base_branch(str(project_root))
+                with open_repo(str(project_root)) as repo:
+                    base_sha = repo.commit(base_ref).hexsha
+                    queue_branch = f"queue/{_name_component(queue_name)}/integration"
+                    queue_path = worktree_dir(str(project_root)) / "queues" / _name_component(queue_name) / "integration"
+                    queue_path.parent.mkdir(parents=True, exist_ok=True)
+                    if queue_branch not in repo.heads:
+                        repo.git.worktree("add", str(queue_path), "-b", queue_branch, base_ref)
+                    elif not queue_path.exists():
+                        repo.git.worktree("add", str(queue_path), queue_branch)
+                atomic_update_json(queue_meta.parent, queue_meta.name,
+                                   lambda data: data.update(branch=queue_branch, base_sha=base_sha), strict=True)
+            previous = os.environ.get("SNODO_QUEUE_INTEGRATION_BRANCH")
+            os.environ["SNODO_QUEUE_INTEGRATION_BRANCH"] = queue_branch
+        except Exception as exc:
+            print(f"Queue integration setup failed: {exc}", file=sys.stderr)
+            return 1
+    else:
+        previous = None
     pending = list(initial)
     failed = False
     while pending:
@@ -118,7 +154,8 @@ def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mo
             plan = pending.pop(0)
             if _plan_is_running(project_root, plan):
                 print(f"Queue '{queue_name}' stopped: plan '{plan}' is already running.")
-                return 1
+                failed = True
+                break
             code = run_plan(run_args(
                 plan=plan, protocol=protocol, mock=mock,
                 trigger="queue", queue=queue_name,
@@ -130,7 +167,7 @@ def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mo
             print(f"Queue '{queue_name}' stopped at plan '{plan}', task '{task}': {reason}")
             failed = True
             if not non_blocking:
-                return 1
+                break
             continue
 
         batch = pending[:concurrency]
@@ -139,7 +176,8 @@ def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mo
         if running:
             for plan in running:
                 print(f"Queue '{queue_name}' stopped: plan '{plan}' is already running.")
-            return 1
+            failed = True
+            break
         with ThreadPoolExecutor(max_workers=len(batch)) as pool:
             futures = {
                 pool.submit(run_plan, run_args(
@@ -157,7 +195,26 @@ def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mo
                 print(f"Queue '{queue_name}' plan '{plan}', task '{task}': {reason}")
                 failed = True
                 if not non_blocking:
-                    return 1
+                    break
+    if queue_branch and not failed and not store.list_queues().get(queue_name):
+        from snodo.cli.commands.run_merge import _deliver_plan_integration
+        from snodo.infrastructure.audit import get_audit_log
+        from snodo.project import get_project_id
+        project_id, _ = get_project_id(str(project_root))
+        result = _deliver_plan_integration(
+            str(project_root), queue_branch, queue_name,
+            "Plans: " + ", ".join(initial), policy, mode,
+            get_audit_log(project_id=project_id),
+        )
+        if result:
+            failed = True
+        else:
+            queue_meta.unlink(missing_ok=True)
+    if queue_branch:
+        if previous is None:
+            os.environ.pop("SNODO_QUEUE_INTEGRATION_BRANCH", None)
+        else:
+            os.environ["SNODO_QUEUE_INTEGRATION_BRANCH"] = previous
     return 1 if failed else 0
 
 

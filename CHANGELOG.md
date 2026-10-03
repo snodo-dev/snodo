@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Queue runs with push-branch or change-request delivery now deliver one persistent integration branch for all successful plans in the run. (Fixes #665)
+
 ### Fixed
 - Gate security support and package documentation against the release and workspace layout. (Fixes #664)
 ### Added
