@@ -294,6 +294,45 @@ def test_plan_delivery_failure_uses_unmerged_exit_code(plan_project_env):
             ) == 2
 
 
+def test_plan_local_delivery_cleans_directory_identity_not_authored_name(plan_project_env):
+    from git import Repo
+
+    from snodo.infrastructure.worktree import worktree_dir
+
+    root = Repo.init(plan_project_env)
+    root.config_writer().set_value("user", "name", "Test").release()
+    root.config_writer().set_value("user", "email", "test@example.com").release()
+    (plan_project_env / "base.txt").write_text("base\n")
+    root.index.add(["base.txt"])
+    base = root.index.commit("base").hexsha
+
+    actual_path = worktree_dir(str(plan_project_env)) / "directory-plan" / "integration"
+    actual_path.parent.mkdir(parents=True)
+    root.git.worktree("add", "-b", "plan/directory-plan/integration", str(actual_path), base)
+    unrelated_path = worktree_dir(str(plan_project_env)) / "authored-name" / "integration"
+    unrelated_path.parent.mkdir(parents=True)
+    root.git.worktree("add", "-b", "plan/authored-name/integration", str(unrelated_path), base)
+    root.close()
+
+    protocol = MagicMock()
+    protocol.delivery_for.return_value = "local_merge"
+    protocol.execution.delivery_remote = "origin"
+    protocol.metadata = {}
+    protocol.validators = []
+
+    assert _deliver_plan_integration(
+        str(plan_project_env), "plan/directory-plan/integration", "authored-name", "intent",
+        protocol, "producer", None, integration_path=actual_path,
+    ) == 0
+
+    with Repo(str(plan_project_env)) as repo:
+        assert "plan/directory-plan/integration" not in repo.heads
+        assert "plan/authored-name/integration" in repo.heads
+        registered = repo.git.worktree("list", "--porcelain")
+    assert str(actual_path) not in registered
+    assert str(unrelated_path) in registered
+
+
 @pytest.mark.parametrize("delivery", ["push_branch", "change_request"])
 def test_plan_delivery_verifies_integration_head_before_delivery(plan_project_env, delivery):
     """The exact combined plan commit is verified and its audit event gates delivery."""

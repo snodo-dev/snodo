@@ -1230,11 +1230,15 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                 except Exception:
                     already_delivered = False
                 if not already_delivered:
+                    from snodo.infrastructure.worktree import _name_component, worktree_dir
                     delivery_result = _deliver_plan_integration(
                         str(project_root), integration_branch,
                         str(plan_data.get("name", args.plan)),
                         str(plan_data.get("intent", "")),
                         protocol, active_mode, audit_log,
+                        integration_path=(
+                            worktree_dir(str(project_root)) / _name_component(args.plan) / "integration"
+                        ),
                     )
                     if delivery_result:
                         failed = True

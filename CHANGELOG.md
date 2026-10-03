@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Local plan delivery now removes the integration worktree created for the plan directory, even when `plan.yml` declares a different name. (Fixes #661)
 - Re-running a completed plan or queue skips push/change-request delivery when its integration branch already points to the delivered commit, while delivering later branch changes. (Fixes #661)
 - Verify plan integration heads before push-branch or change-request delivery, and refuse failed verification through the delivery gate. (Fixes #661)
 - Document plan integration-branch delivery after successful unfiltered runs: local merge cleans up the branch/worktree, push and change-request retain them, and failed, partial, or wave-filtered runs defer delivery. (Fixes #661)
