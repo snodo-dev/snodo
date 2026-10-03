@@ -70,6 +70,95 @@ class TestCloudDisconnect:
             ]
 
 
+class TestCloudOAuthLogin:
+    def _setup(self, monkeypatch, tmp_path, *, key="", result=("auth-code", "http://localhost:4312/callback")):
+        import sys
+        import types
+        from snodo.infrastructure.cloud_oauth_store import CloudOAuthState
+
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        calls = {"registered": 0, "saved": None, "opened": [], "exchange": []}
+        state = CloudOAuthState(client_id="existing-client" if (tmp_path / "reuse").exists() else None)
+        class Client:
+            def __init__(self, _config): pass
+            def discover(self): return object()
+            def register_client(self):
+                calls["registered"] += 1
+                return "new-client"
+            def authorization_url(self, client_id, redirect_uri, _verifier, _state):
+                calls["opened"].append((client_id, redirect_uri))
+                return "https://cloud.example/authorize?secret=never-print"
+            def exchange_code(self, client_id, code, redirect_uri, verifier):
+                calls["exchange"].append((client_id, code, redirect_uri, verifier))
+                return {"access_token": "not-a-jwt-secret", "refresh_token": "refresh-secret", "expires_in": 3600}
+        def receive(url, _state, **kwargs):
+            url = url("http://localhost:4312/callback") if callable(url) else url
+            if kwargs.get("open_browser") is not None:
+                assert kwargs["open_browser"](url) is False
+                print(url)
+            return result
+        client_module = types.ModuleType("stub_client")
+        loop_module = types.ModuleType("stub_loop")
+        store_module = types.ModuleType("stub_store")
+        client_module.CloudOAuthClient = Client
+        client_module.CloudOAuthError = RuntimeError
+        client_module.oauth_state = lambda: "state-value"
+        client_module.pkce_verifier = lambda: "pkce-secret"
+        loop_module.CloudOAuthLoopbackError = type("CloudOAuthLoopbackError", (RuntimeError,), {})
+        loop_module.receive_authorization_code = receive
+        store_module.CloudOAuthState = CloudOAuthState
+        store_module.load_oauth_state = lambda: state
+        store_module.save_oauth_state = lambda value: calls.update(saved=value)
+        monkeypatch.setitem(sys.modules, "snodo.infrastructure.cloud_oauth_client", client_module)
+        monkeypatch.setitem(sys.modules, "snodo.infrastructure.cloud_oauth_loopback", loop_module)
+        monkeypatch.setitem(sys.modules, "snodo.infrastructure.cloud_oauth_store", store_module)
+        from unittest.mock import MagicMock
+        config = {"cloud": {"api_key": key}}
+        mgr = MagicMock()
+        mgr.load.return_value = config
+        monkeypatch.setattr("snodo.config.ConfigManager", lambda: mgr)
+        return calls, mgr
+
+    def test_happy_path_enables_sync_without_writing_api_key(self, monkeypatch, tmp_path, capsys):
+        calls, mgr = self._setup(monkeypatch, tmp_path, key="")
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command() == 0
+        assert mgr.set_value.call_count == 1
+        assert mgr.set_value.call_args.args == (("cloud", "sync_enabled"), True)
+        assert calls["registered"] == 1
+        assert calls["saved"].access_token == "not-a-jwt-secret"
+        output = capsys.readouterr().out
+        assert "not-a-jwt-secret" not in output and "refresh-secret" not in output
+
+    def test_reuses_client_id(self, monkeypatch, tmp_path):
+        (tmp_path / "reuse").touch()
+        calls, _mgr = self._setup(monkeypatch, tmp_path)
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command() == 0
+        assert calls["registered"] == 0
+        assert calls["exchange"][0][0] == "existing-client"
+
+    def test_no_browser_prints_authorization_url(self, monkeypatch, tmp_path, capsys):
+        self._setup(monkeypatch, tmp_path)
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command(no_browser=True) == 0
+        assert "https://cloud.example/authorize" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(("message", "expected"), [
+        ("Timed out waiting for the OAuth callback.", "timed out"),
+        ("The authorization server returned an error.", "denied"),
+    ])
+    def test_callback_failures_are_actionable(self, monkeypatch, tmp_path, capsys, message, expected):
+        self._setup(monkeypatch, tmp_path)
+        import snodo.infrastructure.cloud_oauth_loopback as loopback
+        loopback_error = loopback.CloudOAuthLoopbackError
+        loopback.receive_authorization_code = lambda *_args, **_kwargs: (_ for _ in ()).throw(loopback_error(message))
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command() == 1
+        output = capsys.readouterr().err.lower()
+        assert expected in output
+
+
 class TestCloudStatus:
     def test_connected_shows_key_prefix(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_status_command

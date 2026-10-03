@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Add `snodo cloud login` for browser-based OAuth sign-in and cloud sync setup. (Fixes #674)
 - Add a one-shot localhost callback listener for cloud OAuth sign-in. (Fixes #673)
 - Persist cloud OAuth credentials in a private, atomic user-level store with
   safe logout and expiry helpers. (Fixes #672)

@@ -69,7 +69,7 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
 
 
 def receive_authorization_code(
-    authorization_url: str,
+    authorization_url: str | Callable[[str], str],
     state: str,
     *,
     timeout: float = 180.0,
@@ -86,14 +86,15 @@ def receive_authorization_code(
         raise ValueError("timeout must be positive")
     server = _CallbackServer(state)
     redirect_uri = f"http://localhost:{server.server_port}/callback"
+    url = authorization_url(redirect_uri) if callable(authorization_url) else authorization_url
     opener = open_browser or webbrowser.open
     try:
         try:
-            opened = opener(authorization_url)
+            opened = opener(url)
         except Exception:
             opened = False
         if not opened:
-            print_url(authorization_url)
+            print_url(url)
         server.timeout = 0.2
         # handle_request permits clean deadline checks without a worker thread.
         expires = time.monotonic() + timeout
