@@ -147,7 +147,9 @@ def cloud_login_command(*, no_browser: bool = False) -> int:
         client_id = previous.client_id or client.register_client()
         verifier = pkce_verifier()
         state = oauth_state()
-        auth_url = lambda redirect_uri: client.authorization_url(client_id, redirect_uri, verifier, state)
+        def auth_url(redirect_uri: str) -> str:
+            return client.authorization_url(client_id, redirect_uri, verifier, state)
+
         code, actual_redirect_uri = receive_authorization_code(
             auth_url, state,
             open_browser=(lambda _url: False) if no_browser else None,
@@ -201,7 +203,7 @@ def _oauth_account_label(access_token: str) -> str:
             if isinstance(value, str) and value:
                 return value
     except Exception:
-        pass
+        return ""
     return ""
 
 
