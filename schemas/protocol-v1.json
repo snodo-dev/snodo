@@ -173,6 +173,7 @@
                 "enum": [
                   "agy",
                   "anthropic",
+                  "claude-cli",
                   "codex-cli",
                   "gemini",
                   "litellm",
