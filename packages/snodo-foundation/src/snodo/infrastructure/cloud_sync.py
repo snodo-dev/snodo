@@ -1292,12 +1292,8 @@ def sync_if_enabled(
 
     from snodo.config import get_cloud_ingest_url, get_cloud_lease_url
 
-    from snodo.infrastructure.cloud_credentials import resolve_cloud_credential
-    try:
-        api_key, oauth = resolve_cloud_credential(config)
-    except Exception:
-        _logger.warning("Cloud OAuth credential refresh failed; run `snodo cloud login` again")
-        return
+    from snodo.infrastructure.cloud_credentials import safe_cloud_sync_credential
+    api_key, oauth = safe_cloud_sync_credential(config)
     if not api_key:
         print("Cloud authorization unavailable; run `snodo cloud login` again.", file=__import__("sys").stderr)
         return

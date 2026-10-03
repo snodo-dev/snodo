@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import socket
 import time
+import logging
 
 from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, load_oauth_state, save_oauth_state
+
+_logger = logging.getLogger(__name__)
 
 
 def resolve_cloud_credential(config: dict, *, force_refresh: bool = False, http_client=None) -> tuple[str | None, bool]:
@@ -60,3 +63,12 @@ def cloud_sync_enabled(config: dict | None = None) -> bool:
     return bool(state.access_token or state.refresh_token) or bool(
         isinstance(api_key, str) and api_key.strip()
     )
+
+
+def safe_cloud_sync_credential(config: dict) -> tuple[str | None, bool]:
+    """Resolve a sync credential, reporting refresh failures without secrets."""
+    try:
+        return resolve_cloud_credential(config)
+    except Exception:
+        _logger.warning("Cloud OAuth credential refresh failed; run `snodo cloud login` again")
+        return None, True
