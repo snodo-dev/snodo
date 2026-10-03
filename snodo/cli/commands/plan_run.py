@@ -1055,12 +1055,9 @@ def _verify_queue_merge_head(project_root, working_directory, task_ref, protocol
             )
         )
     history = audit_log.get_history("verification_executed") if audit_log else []
-    passing = [
-        event for event in _matching_task_verifications(
-            history, task_ref, target_commit, _quality_validator_ids(protocol),
-        )
-        if event.data.get("outcome") in {"pass", "no_tests"}
-    ]
+    passing = [event for event in _matching_task_verifications(
+        history, task_ref, target_commit, _quality_validator_ids(protocol),
+    ) if event.data.get("outcome") in {"pass", "no_tests"}]
     if passing:
         return True
     reason = (
