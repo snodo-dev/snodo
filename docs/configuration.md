@@ -9,7 +9,7 @@ four suggested outcomes are **MERGED**, **MINOR REWORK**, **MAJOR REWORK**, and
 decisions. The workflow updates its existing comment when rerun.
 
 Add these repository actions secrets under **Settings → Secrets and variables
-→ Actions**: `OPENAI_API_KEY`, `OLLAMA_CLOUD_API_KEY`, and `OCGO_API_KEY`. An
+→ Actions**: `OLLAMA_CLOUD_API_KEY`, `OCGO_API_KEY` (the first OpenCode Go account, provider `ocgo1`), and `OCGO2_API_KEY` (the second account, provider `ocgo2`). An
 optional fourth, `SNODO_CLOUD_API_KEY`, lets the run's recon audit events sync to
 snodo cloud; leave it unset to keep the review local to the runner.
 Each key is used by a configured recon model provider and is kept in the

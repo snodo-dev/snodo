@@ -2,17 +2,21 @@ llm:
   recon:
     models:
       - ollama-cloud/deepseek-v4-pro:0813
-      - openai/gpt-5.6-terra
-      - ocgo/qwen3.8-flash
+      - ocgo1/gpt-6-luna
+      - ocgo2/qwen3.8-flash
 providers:
-  openai:
-    api_key_env: "${OPENAI_API_KEY_ENV}"
   ollama-cloud:
     api_key_env: "${OLLAMA_CLOUD_API_KEY_ENV}"
     base_url: https://ollama.com/v1
     litellm_provider: openai
-  ocgo:
-    api_key_env: "${OCGO_API_KEY_ENV}"
+  ocgo1:
+    api_key_env: "${OCGO1_API_KEY_ENV}"
+    base_url: https://opencode.ai/zen/go/v1
+    litellm_provider: openai
+    extra_headers:
+      x-opencode-session: "{task_id}"
+  ocgo2:
+    api_key_env: "${OCGO2_API_KEY_ENV}"
     base_url: https://opencode.ai/zen/go/v1
     litellm_provider: openai
     extra_headers:

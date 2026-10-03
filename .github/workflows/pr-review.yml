@@ -65,9 +65,9 @@ jobs:
           fi
       - name: Configure snodo
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OLLAMA_CLOUD_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
           OCGO_API_KEY: ${{ secrets.OCGO_API_KEY }}
+          OCGO2_API_KEY: ${{ secrets.OCGO2_API_KEY }}
           SNODO_CLOUD_API_KEY: ${{ secrets.SNODO_CLOUD_API_KEY }}
         run: |
           install -d -m 700 "$HOME/.snodo"
@@ -77,9 +77,9 @@ jobs:
 
           template = Path(".github/pr-review/config.yml").read_text()
           for placeholder, variable in {
-              "${OPENAI_API_KEY_ENV}": "OPENAI_API_KEY",
               "${OLLAMA_CLOUD_API_KEY_ENV}": "OLLAMA_CLOUD_API_KEY",
-              "${OCGO_API_KEY_ENV}": "OCGO_API_KEY",
+              "${OCGO1_API_KEY_ENV}": "OCGO_API_KEY",
+              "${OCGO2_API_KEY_ENV}": "OCGO2_API_KEY",
           }.items():
               template = template.replace(placeholder, variable)
           # The cloud key is read as a literal, so it is rendered by value into
@@ -95,9 +95,9 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OLLAMA_CLOUD_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
           OCGO_API_KEY: ${{ secrets.OCGO_API_KEY }}
+          OCGO2_API_KEY: ${{ secrets.OCGO2_API_KEY }}
         run: |
           "$RUNNER_TEMP/pr-review-venv/bin/python" scripts/pr_review.py --pr "$PR_NUMBER" --repo "$REPOSITORY" --out "$RUNNER_TEMP/pr-review.md" --issue-body "$RUNNER_TEMP/fix-forward.md"
       - name: Create or update review comment
