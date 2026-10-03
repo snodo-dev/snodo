@@ -57,7 +57,6 @@ def _assert_blocked(audit, result):
 
 @pytest.mark.parametrize("scope", ["standalone", "plan_task"])
 def test_task_branch_merge_requires_exact_commit_verification(tmp_path, scope):
-    from git import Repo
     from snodo.cli.commands.run_merge import _merge_on_success
     from snodo.core.interfaces import Task
     from snodo.infrastructure.audit import AuditLog
