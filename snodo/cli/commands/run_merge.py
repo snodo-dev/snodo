@@ -119,6 +119,18 @@ def _verified_commit_matches_merge_target(stored_commit: str, target_commit: str
     return stored_commit == target_commit or target_commit.startswith(stored_commit)
 
 
+def _matching_task_verifications(history: list, task_id: str, target_commit: str) -> list:
+    """Return quality-validator records for this task and merge target."""
+    return [
+        event for event in history
+        if event.data.get("task_ref") == task_id
+        and event.data.get("validator_id") == "quality"
+        and event.data.get("returncode") == 0
+        and target_commit
+        and _verified_commit_matches_merge_target(event.data.get("commit"), target_commit)
+    ]
+
+
 def _merge_on_success(
     project_root: str,
     task: Any,
@@ -159,14 +171,9 @@ def _merge_on_success(
     except Exception as e:
         _logger.debug("Could not resolve commit for branch %s: %s", branch, e)
 
-    if delivery in {"push_branch", "change_request"} or (delivery == "local_merge" and audit_log):
+    if delivery in {"push_branch", "change_request", "local_merge"}:
         history = audit_log.get_history("verification_executed") if audit_log else []
-        matching = [
-            e for e in history
-            if target_commit and _verified_commit_matches_merge_target(
-                e.data.get("commit"), target_commit
-            )
-        ]
+        matching = _matching_task_verifications(history, task.id, target_commit)
         passing = [e for e in matching if e.data.get("outcome") in {"pass", "no_tests"}]
         if not passing:
             commit_display = target_commit[:7] if target_commit else "unknown"
@@ -362,11 +369,7 @@ def _try_merge_unmerged_task(
         return None
 
     history = audit_log.get_history("verification_executed")
-    matching = [
-        e for e in history
-        if target_commit
-        and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
-    ]
+    matching = _matching_task_verifications(history, task_id, target_commit)
     matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
     matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
     if not matching_passes and not matching_ungated:

@@ -1359,7 +1359,17 @@ class TestAutoMerge:
         subprocess_run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
         subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
 
-        result, preserve, merged_branch = _merge_on_success(str(repo), task, 0, None, None)
+        from git import Repo
+        from snodo.infrastructure.audit import AuditLog
+        with Repo(str(repo)) as git_repo:
+            target_commit = git_repo.commit(branch).hexsha
+        audit_log = AuditLog(str(repo / "audit.log"))
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed", "task_ref": task.id,
+            "validator_id": "quality", "returncode": 0,
+            "commit": target_commit, "outcome": "pass", "command": "pytest",
+        })
+        result, preserve, merged_branch = _merge_on_success(str(repo), task, 0, None, audit_log)
         assert result == 0
         assert preserve is False
         assert merged_branch == branch
@@ -1398,6 +1408,7 @@ class TestAutoMerge:
         audit_log = AuditLog(str(repo / "audit.log"))
         audit_log.append_event("verification_executed", {
             "op": "verification_executed", "task_ref": task.id,
+            "validator_id": "quality", "returncode": 0,
             "commit": target_commit, "outcome": "pass", "command": "pytest",
         })
 
@@ -1441,6 +1452,7 @@ class TestAutoMerge:
         audit = AuditLog(str(repo / "audit.log"))
         audit.append_event("verification_executed", {
             "op": "verification_executed", "task_ref": task.id,
+            "validator_id": "quality", "returncode": 0,
             "commit": commit, "outcome": "pass", "command": "pytest",
         })
 
@@ -1496,6 +1508,7 @@ class TestAutoMerge:
         audit = AuditLog(str(repo / "audit.log"))
         audit.append_event("verification_executed", {
             "op": "verification_executed", "task_ref": task.id,
+            "validator_id": "quality", "returncode": 0,
             "commit": commit, "outcome": "pass", "command": "pytest",
         })
 
@@ -1610,6 +1623,8 @@ class TestAutoMerge:
         audit_log.append_event("verification_executed", {
             "op": "verification_executed",
             "task_ref": task1.id,
+            "validator_id": "quality",
+            "returncode": 0,
             "commit": commit1,
             "outcome": "pass",
             "command": "pytest",
@@ -1628,6 +1643,8 @@ class TestAutoMerge:
         audit_log.append_event("verification_executed", {
             "op": "verification_executed",
             "task_ref": task2.id,
+            "validator_id": "quality",
+            "returncode": 0,
             "commit": commit2,
             "outcome": "pass",
             "command": "pytest",
@@ -1684,6 +1701,14 @@ class TestUnverifiedMergeBlocked:
 
         audit_log = AuditLog(str(repo / "audit.log"))
         task = Task(id="task_unverified", spec="unverified task")
+
+        # No audit log must fail closed; with a log, the existing refusal
+        # audit event remains part of the contract.
+        no_log_res, no_log_preserve, no_log_branch = _merge_on_success(
+            str(repo), task, 0, "sess_1", None
+        )
+        assert (no_log_res, no_log_preserve, no_log_branch) == (1, True, None)
+        assert not audit_log.get_history("unverified_merge_blocked")
 
         # No verification_executed event in audit_log -> _merge_on_success must block merge
         res, preserve, merged = _merge_on_success(str(repo), task, 0, "sess_1", audit_log)
@@ -1950,9 +1975,8 @@ class TestUnverifiedMergeBlocked:
         target_commit = subprocess_run(
             ["git", "rev-parse", branch], cwd=repo, capture_output=True, text=True, check=True
         ).stdout.strip()
-        # The passing verification is recorded under the recovery subtask's id,
-        # not the root task's id — the root's root_task_ref is None, so the old
-        # task-identity condition would never match it.
+        # The merge gate requires quality evidence explicitly scoped to the
+        # task being merged, even when recovery work produced the commit.
         audit_log.append_event("verification_executed", {
             "op": "verification_executed",
             "command": "pytest",
@@ -1960,7 +1984,7 @@ class TestUnverifiedMergeBlocked:
             "returncode": 0,
             "outcome": "pass",
             "validator_id": "quality",
-            "task_ref": "1.1_pass-content",
+            "task_ref": root_task.id,
         })
 
         res, preserve, merged = _merge_on_success(str(repo), root_task, 0, "sess_1", audit_log)
@@ -2009,7 +2033,9 @@ class TestUnverifiedMergeBlocked:
         run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
         audit_log = AuditLog(str(repo / "audit.log"))
         audit_log.append_event("verification_executed", {
-            "op": "verification_executed", "commit": target, "outcome": "pass", "command": "pytest",
+            "op": "verification_executed", "task_ref": task.id,
+            "validator_id": "quality", "returncode": 0,
+            "commit": target, "outcome": "pass", "command": "pytest",
         })
 
         assert _merge_on_success(str(repo), task, 0, "sess", audit_log)[0] == 0
@@ -2043,7 +2069,9 @@ class TestUnverifiedMergeBlocked:
         run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
         audit_log = AuditLog(str(repo / "audit.log"))
         audit_log.append_event("verification_executed", {
-            "op": "verification_executed", "commit": target, "outcome": "pass", "command": "pytest",
+            "op": "verification_executed", "task_ref": task.id,
+            "validator_id": "quality", "returncode": 0,
+            "commit": target, "outcome": "pass", "command": "pytest",
         })
         monkeypatch.setattr("snodo.cli.commands.run_merge._merge_delivery", lambda *_: {})
 
@@ -2084,15 +2112,16 @@ class TestUnverifiedMergeBlocked:
         subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
 
         audit_log = AuditLog(str(repo / "audit.log"))
-        # Same task identity, but the passing verification is for a different commit.
+        # A different task's passing verification at the exact same commit
+        # cannot authorize this merge.
         audit_log.append_event("verification_executed", {
             "op": "verification_executed",
             "command": "pytest",
-            "commit": "other_commit_sha_1234567890abcdef",
+            "commit": current_commit,
             "returncode": 0,
             "outcome": "pass",
             "validator_id": "quality",
-            "task_ref": task.id,
+            "task_ref": "some_other_task",
         })
 
         res, preserve, merged = _merge_on_success(str(repo), task, 0, "sess_1", audit_log)
@@ -2105,6 +2134,21 @@ class TestUnverifiedMergeBlocked:
         assert len(events) == 1
         assert events[0].data["task_ref"] == "task_same_identity"
         assert events[0].data["target_commit"] == current_commit
+
+        # Even task-scoped evidence is rejected unless it has the measured
+        # quality-validator record shape.
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed", "task_ref": task.id,
+            "commit": current_commit, "outcome": "pass", "command": "pytest",
+        })
+        assert _merge_on_success(str(repo), task, 0, "sess_1", audit_log)[0] == 1
+
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed", "task_ref": task.id,
+            "validator_id": "quality", "returncode": 0,
+            "commit": current_commit, "outcome": "pass", "command": "pytest",
+        })
+        assert _merge_on_success(str(repo), task, 0, "sess_1", audit_log)[0] == 0
 
 
 class TestForegroundTelemetryPersistence:
@@ -2330,6 +2374,9 @@ class TestUnmergedTaskHandling:
         audit_log = AuditLog(str(audit_path))
         audit_log.append_event("verification_executed", {
             "op": "verification_executed",
+            "task_ref": task_id,
+            "validator_id": "quality",
+            "returncode": 0,
             "commit": task_commit,
             "outcome": "pass",
             "command": "pytest",
@@ -2387,6 +2434,9 @@ class TestUnmergedTaskHandling:
         audit_log = AuditLog(str(audit_path))
         audit_log.append_event("verification_executed", {
             "op": "verification_executed",
+            "task_ref": task_id,
+            "validator_id": "quality",
+            "returncode": 0,
             "commit": task_commit,
             "outcome": "pass",
             "command": "pytest",
