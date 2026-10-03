@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Add the `claude-cli/<model>` in-place coder for Claude Code, with structured
+  output and usage capture. (Fixes #662)
+
 ### Changed
 - Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646, #647)
 
