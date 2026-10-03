@@ -177,7 +177,11 @@ class ProtocolMCPServer:
     def _version_status(self) -> Optional[dict]:
         """Return a stale-install diagnostic, if the installed code moved on."""
         installed = _installed_version()
-        if installed == self.serving_version:
+        # Editable/source checkouts append a PEP 440 local build label while
+        # distribution metadata continues to carry the plain release version.
+        if installed == self.serving_version or self.serving_version.startswith(
+            f"{installed}+"
+        ):
             return None
         with self._version_lock:
             if not self._stale_warning_emitted:
