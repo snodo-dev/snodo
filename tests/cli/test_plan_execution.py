@@ -273,6 +273,109 @@ def test_plan_delivery_failure_uses_unmerged_exit_code(plan_project_env):
             ) == 2
 
 
+@pytest.mark.parametrize("delivery", ["push_branch", "change_request"])
+def test_plan_delivery_verifies_integration_head_before_delivery(plan_project_env, delivery):
+    """The exact combined plan commit is verified and its audit event gates delivery."""
+    from git import Repo
+
+    from snodo.infrastructure.audit import AuditLog
+
+    plan_name = "verified_plan"
+    root_repo = Repo.init(plan_project_env)
+    root_repo.config_writer().set_value("user", "name", "Test").release()
+    root_repo.config_writer().set_value("user", "email", "test@example.com").release()
+    (plan_project_env / "base.txt").write_text("base\n")
+    root_repo.index.add(["base.txt"])
+    base_commit = root_repo.index.commit("base").hexsha
+    integration_path = plan_project_env / plan_name / "integration"
+    integration_path.parent.mkdir()
+    root_repo.git.worktree("add", "-b", "plan/verified/integration", str(integration_path), base_commit)
+    repo = Repo(integration_path)
+    (integration_path / "combined.txt").write_text("combined task output\n")
+    repo.index.add(["combined.txt"])
+    integration_commit = repo.index.commit("integration merge").hexsha
+    repo.close()
+    root_repo.close()
+    audit_log = AuditLog(str(plan_project_env / ".snodo" / "audit.log"))
+    protocol = MagicMock()
+    protocol.delivery_for.return_value = delivery
+    protocol.execution.delivery_remote = "upstream"
+    protocol.metadata = {}
+    protocol.validators = [SimpleNamespace(validator_type="quality", validator_id="quality", tooling={
+        "test_command": "true",
+    })]
+
+    def deliver(*args, **kwargs):
+        assert kwargs["delivery"] == delivery
+        matching = [
+            event for event in audit_log.get_history("verification_executed")
+            if event.data.get("commit") == integration_commit
+            and event.data.get("outcome") == "pass"
+        ]
+        assert matching
+        return 0, False, "integration"
+
+    with patch("snodo.infrastructure.worktree.worktree_dir", return_value=plan_project_env), \
+         patch("snodo.cli.commands.run_merge._merge_on_success", side_effect=deliver):
+        assert _deliver_plan_integration(
+            str(plan_project_env), "plan/verified/integration", plan_name, "combine tasks",
+            protocol, "producer", audit_log,
+        ) == 0
+
+
+def test_plan_delivery_failed_integration_verification_blocks_gate(plan_project_env):
+    """A failed test command on the integration head reaches the normal refusal path."""
+    from git import Repo
+
+    from snodo.infrastructure.audit import AuditLog
+
+    root_repo = Repo.init(plan_project_env)
+    root_repo.config_writer().set_value("user", "name", "Test").release()
+    root_repo.config_writer().set_value("user", "email", "test@example.com").release()
+    (plan_project_env / "base.txt").write_text("base\n")
+    root_repo.index.add(["base.txt"])
+    base_commit = root_repo.index.commit("base").hexsha
+    integration_path = plan_project_env / "failed_plan" / "integration"
+    integration_path.parent.mkdir()
+    root_repo.git.worktree("add", "-b", "plan/failed/integration", str(integration_path), base_commit)
+    repo = Repo(integration_path)
+    (integration_path / "combined.txt").write_text("combined task output\n")
+    repo.index.add(["combined.txt"])
+    integration_commit = repo.index.commit("integration merge").hexsha
+    repo.close()
+    root_repo.close()
+    audit_log = AuditLog(str(plan_project_env / ".snodo" / "audit.log"))
+    protocol = MagicMock()
+    protocol.delivery_for.return_value = "push_branch"
+    protocol.execution.delivery_remote = "upstream"
+    protocol.metadata = {}
+    protocol.validators = [SimpleNamespace(validator_type="quality", validator_id="quality", tooling={
+        "test_command": "false",
+    })]
+
+    def refuse(*args, **kwargs):
+        matching = [
+            event for event in audit_log.get_history("verification_executed")
+            if event.data.get("commit") == integration_commit
+        ]
+        assert matching and matching[-1].data["outcome"] != "pass"
+        audit_log.append_event("unverified_merge_blocked", {
+            "op": "unverified_merge_blocked", "task_ref": "failed_plan",
+            "branch": "plan/failed/integration", "target_commit": integration_commit,
+            "reason": "No passing verification event", "session_id": None,
+        })
+        return 1, True, None
+
+    with patch("snodo.infrastructure.worktree.worktree_dir", return_value=plan_project_env), \
+         patch("snodo.cli.commands.run_merge._merge_on_success", side_effect=refuse) as delivery_gate:
+        assert _deliver_plan_integration(
+            str(plan_project_env), "plan/failed/integration", "failed_plan", "combine tasks",
+            protocol, "producer", audit_log,
+        ) == 2
+    delivery_gate.assert_called_once()
+    assert audit_log.get_history("unverified_merge_blocked")
+
+
 def test_plan_invalid_wave_filter_fails(plan_project_env, capsys):
     """Passing a non-existent wave ID (--wave 99) fails with exit code 1."""
     planner = PlannerMCP(plan_project_env)
