@@ -21,6 +21,7 @@ from snodo.mcp.planner import PlannerMCP
 
 from snodo.cli.commands.plan_run import _run_fixture, _run_plan
 from snodo.cli.commands.run_merge import _deliver_plan_integration
+from snodo.cli.main import main
 
 
 def test_remote_branch_matches_only_when_remote_points_at_delivered_commit():
@@ -42,7 +43,6 @@ def test_remote_branch_matches_only_when_remote_points_at_delivered_commit():
     assert not _remote_branch_matches(repo, "origin", "plan/integration", "def456")
     repo.git.output = "def456\trefs/heads/plan/integration\n"
     assert not _remote_branch_matches(repo, "origin", "plan/integration", "abc123")
-from snodo.cli.main import main
 
 
 @pytest.fixture

@@ -1103,11 +1103,6 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                 # (for validation-only tests and embedded integrations).
                 _logger.info("Plan integration worktree unavailable: %s", e)
                 integration_branch = None
-        previous_integration_branch = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH")
-        if integration_branch:
-            os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = integration_branch
-        else:
-            os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
         from snodo.infrastructure.state import read_state
         state = read_state(project_root)
         active_mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
@@ -1182,6 +1177,11 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
             )
             return 1
 
+        previous_integration_branch = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH")
+        if integration_branch:
+            os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = integration_branch
+        else:
+            os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
         failed = _execute_waves(
             waves, planner, args, protocol, model,
             all_waves, interactive, effective_concurrency=effective_concurrency,
