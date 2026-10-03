@@ -15,6 +15,8 @@ import subprocess
 from urllib.parse import urlparse
 from typing import Dict, Optional, Type
 
+from snodo.paths import subprocess_env_without_job_context
+
 from snodo.providers.base import CodeHostProvider, ProviderError
 from snodo.providers.local import LocalProvider
 
@@ -70,6 +72,7 @@ def _get_git_remote(project_root: str) -> Optional[str]:
         result = subprocess.run(
             ["git", "remote", "get-url", "origin"],  # noqa: S607 - git resolved from PATH by design; argv list, no shell, fully controlled flags
             cwd=project_root,
+            env=subprocess_env_without_job_context(),
             capture_output=True,
             text=True,
             check=True,

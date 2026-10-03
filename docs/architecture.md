@@ -113,6 +113,17 @@ Validation itself is **one implementation with two callers**: `validators/runner
 is used both by the engine's validation nodes (`engine/nodes/validation.py`) and by
 the MCP server, so the two paths cannot drift apart.
 
+Child processes launched for validator commands (`validators/quality.py`), coder
+subprocesses (`coders/subprocess_adapter.py`), environment preparation
+(`infrastructure/environment.py` and `ShellMCP.run_command`), test commands
+(`tools/shell.py`), provider and worktree/patch-coverage git probes, notification
+identity lookup (`jobs/notifications.py`), and detached notification monitors
+(`jobs/__init__.py`) use `subprocess_env_without_job_context()` to remove inherited
+job-context variables.
+The job wrapper's own child (`jobs/wrapper.py`) and `spawn_background`
+(`jobs/__init__.py`) intentionally retain their environment because they establish
+the job context for the work they launch.
+
 Halt outcomes are canonical across both paths — `escalate`, `blocker`,
 `validator_error`, `internal_error` — with `halt_type == final_decision`. Only
 `escalate` is resolvable by a human decision; a `blocker` is resolved by changing
