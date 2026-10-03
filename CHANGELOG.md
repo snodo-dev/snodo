@@ -64,8 +64,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - PR review now opens or updates a fix-forward issue from non-MERGED findings.
   (Fixes #641)
 - Plan tasks now start from and merge into a durable per-plan integration
-  branch; its worktree remains available after completion for the follow-up
-  delivery step. (Fixes #631)
+  branch; completed unfiltered runs now deliver it according to the active mode,
+  while partial and filtered runs retain it for a later run. (Fixes #631, #661)
 - Task-branch merge, merged checks, cleanup, and recovery/change-size probes can
   use the task's integration starting ref while retaining the repository base
   as the default. (Fixes #629)

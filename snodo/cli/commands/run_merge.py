@@ -421,7 +421,7 @@ def _deliver_plan_integration(
             })
         else:
             validator = QualityValidator(quality, working_directory=str(integration_path))
-            verification = validator.evaluate(ValidatorContext(
+            validator.evaluate(ValidatorContext(
                 task=task, protocol=protocol, audit_log=audit_log,
                 working_directory=str(integration_path), task_id=plan_name,
             ))
