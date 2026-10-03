@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Exercise every task, plan, queue and delivery merge boundary against temporary
+  Git repositories, proving delivery is refused without verification of the exact
+  head and allowed with passing evidence. (Fixes #693)
+
 ### Fixed
 - Plan integration delivery now verifies the combined head in every delivery
   mode and refuses if its branch moves before the verified commit is merged or
