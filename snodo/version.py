@@ -18,7 +18,7 @@ def _source_build_label(package_dir: Path) -> str | None:
     """
     try:
         count = subprocess.run(
-            ["git", "rev-list", "--count", "HEAD"],
+            ["git", "rev-list", "--count", "HEAD"],  # noqa: S607 - git is the required repository tool
             cwd=package_dir,
             check=True,
             capture_output=True,
@@ -26,7 +26,7 @@ def _source_build_label(package_dir: Path) -> str | None:
             timeout=0.5,
         ).stdout.strip()
         sha = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607 - git is the required repository tool
             cwd=package_dir,
             check=True,
             capture_output=True,
