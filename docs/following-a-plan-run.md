@@ -101,7 +101,7 @@ the active mode's `execution.delivery` setting:
   locally.
 
 A failed, partial, stopped, or `--wave`-filtered run does not deliver the
-integration branch; it remains for the next run. If delivery itself fails, the
-run exits non-zero and keeps the branch/worktree for resolution. A successful
-push or change-request delivery also keeps them; successful local merge cleans
-them up.
+integration branch; it remains available for the next run to resume. If delivery
+itself fails, the run exits non-zero and keeps the branch and linked worktree for
+resolution. A successful push or change-request delivery also keeps both locally;
+only a successful local merge removes the integration branch and worktree.
