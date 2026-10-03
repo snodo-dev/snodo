@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- `snodo cloud status` now shows OAuth expiry in UTC with time remaining (or
+  notes that the next sync will refresh an expired token) and displays only the
+  access token's `org_id` claim when present. (Fixes #683)
 - Cloud liveness snapshots now prioritize recent active task and job rows and
   cap plan and nested detail lists client-side to preserve current work as
   project history grows. (Fixes #682)

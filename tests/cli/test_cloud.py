@@ -3,6 +3,7 @@
 FILE: tests/cli/test_cloud.py
 """
 
+import base64
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -275,6 +276,43 @@ class TestCloudOAuthLogin:
 
 
 class TestCloudStatus:
+    @pytest.mark.parametrize(
+        ("expires_at", "expected"),
+        [
+            (2_000, "1970-01-01 00:33:20 UTC (in 10m)"),
+            (1_000, "1970-01-01 00:16:40 UTC (expired; next sync will refresh it)"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("claims", "token"),
+        [
+            ({"org_id": "org-123", "sub": "private-user", "provider": "private-provider"}, None),
+            ({"sub": "private-user", "provider": "private-provider"}, None),
+            (None, "not-a-jwt-private-token"),
+        ],
+    )
+    def test_oauth_status_expiry_org_and_token_redaction(
+        self, monkeypatch, tmp_path, capsys, expires_at, expected, claims, token,
+    ):
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        monkeypatch.setattr("snodo.cli.commands.cloud_cmd.time.time", lambda: 1_400)
+        if claims is not None:
+            encoded = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+            token = f"header.{encoded}.signature"
+        from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, save_oauth_state
+        save_oauth_state(CloudOAuthState("client", token, "private-refresh-token", expires_at))
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+        with patch("snodo.config.ConfigManager") as manager, patch("snodo.infrastructure.cloud_sync.CloudSyncState") as state:
+            manager.return_value.load.return_value = {"cloud": {"sync_enabled": True}}
+            state.return_value.get_summary.return_value = {}
+            assert cloud_status_command() == 0
+        output = capsys.readouterr().out
+        assert expected in output
+        assert f"Account/organisation: {'org-123' if claims and 'org_id' in claims else 'unknown'}" in output
+        assert token not in output
+        assert "private-user" not in output and "private-provider" not in output
+        assert "private-refresh-token" not in output
+
     def test_oauth_status_and_dual_credential_precedence_are_redacted(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
         from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, save_oauth_state

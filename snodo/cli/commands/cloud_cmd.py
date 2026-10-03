@@ -3,9 +3,11 @@
 FILE: snodo/cli/commands/cloud_cmd.py
 """
 
+import base64
 import json
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
@@ -224,6 +226,41 @@ def _oauth_account_label(access_token: str) -> str:
     return ""
 
 
+def _oauth_org_id(access_token: str) -> str:
+    """Read only the displayable org_id claim from a JWT payload, without verification."""
+    try:
+        parts = access_token.split(".")
+        if len(parts) != 3:
+            return ""
+        payload = parts[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        value = claims.get("org_id") if isinstance(claims, dict) else None
+        return value if isinstance(value, str) and value else ""
+    except (ValueError, TypeError, UnicodeError):
+        return ""
+
+
+def _format_oauth_expiry(expires_at: float | None, *, now: float | None = None) -> str:
+    """Format OAuth expiry in UTC and report its remaining lifetime."""
+    if expires_at is None:
+        return "unknown"
+    try:
+        expiry = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+    except (ValueError, OSError, OverflowError):
+        return "unknown"
+    current = time.time() if now is None else now
+    remaining = expires_at - current
+    if remaining <= 0:
+        return f"{expiry:%Y-%m-%d %H:%M:%S UTC} (expired; next sync will refresh it)"
+    seconds = int(remaining)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    duration = " ".join(
+        f"{value}{unit}" for value, unit in ((hours, "h"), (minutes, "m"), (seconds, "s")) if value
+    ) or "less than 1s"
+    return f"{expiry:%Y-%m-%d %H:%M:%S UTC} (in {duration})"
+
+
 def cloud_disconnect_command() -> int:
     """Clear cloud API key and OAuth login, and disable sync."""
     from snodo.config import ConfigManager
@@ -288,10 +325,10 @@ def cloud_status_command() -> int:
     print(f"Snodo cloud: {'connected' if auth_method != 'none' else 'not connected'}")
     print(f"  Authentication: {auth_method}")
     if has_oauth:
-        print(f"  Access token expires: {_format_ts(oauth.expires_at) if oauth.expires_at else 'unknown'}")
+        print(f"  Access token expires: {_format_oauth_expiry(oauth.expires_at)}")
         print(f"  Refresh token present: {'yes' if oauth.has_refresh_token() else 'no'}")
-        account = _oauth_account_label(oauth.access_token) if oauth.access_token else ""
-        print(f"  Account/organisation: {account or 'unknown'}")
+        org_id = _oauth_org_id(oauth.access_token) if oauth.access_token else ""
+        print(f"  Account/organisation: {org_id or 'unknown'}")
     if has_oauth and has_api_key:
         print("  OAuth login takes priority over the API key.")
     print(f"  API URL:    {api_url}")
