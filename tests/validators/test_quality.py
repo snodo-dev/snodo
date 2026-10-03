@@ -419,7 +419,9 @@ class TestQualityValidatorEvaluate:
     def test_tests_pass(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
         mock_result = MagicMock(returncode=0, stdout="5 passed\n", stderr="")
-        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result):
+        with patch.object(qv, "_tracked_worktree_is_clean", return_value=True), patch(
+            "snodo.validators.quality.subprocess.run", return_value=mock_result
+        ):
             result = qv.evaluate()
             assert result.severity == "pass"
             assert result.validator_id == "quality"
@@ -462,7 +464,9 @@ class TestQualityValidatorEvaluate:
             return "before" if len(observed) == 1 else "after"
 
         (root / "test-artifact.tmp").write_text("generated")
-        with patch.object(qv, "_resolve_commit_hash", side_effect=commit_hash), patch(
+        with patch.object(qv, "_tracked_worktree_is_clean", return_value=True), patch.object(
+            qv, "_resolve_commit_hash", side_effect=commit_hash
+        ), patch(
             "snodo.validators.quality.subprocess.run",
             return_value=MagicMock(returncode=0, stdout="5 passed\n", stderr=""),
         ):
@@ -862,7 +866,18 @@ class TestLoopPhases:
                 if v.validator_type == "quality" and shell_mcp:
                     # Let quality validator run normally (echo tests pass)
                     from snodo.validators.quality import QualityValidator
-                    qv = QualityValidator(validator_spec=v)
+                    # Validate the isolated fixture, not the test runner's
+                    # checkout. The mock coder's edits are committed as task
+                    # output before the post-execution verification phase.
+                    subprocess.run(
+                        ["git", "add", "-A"], cwd=project_dir, check=True,
+                        capture_output=True,
+                    )
+                    subprocess.run(
+                        ["git", "commit", "-m", "mock task output"],
+                        cwd=project_dir, check=True, capture_output=True,
+                    )
+                    qv = QualityValidator(validator_spec=v, working_directory=project_dir)
                     results.append(qv.evaluate())
                 else:
                     results.append(ValidatorResult(
@@ -895,10 +910,10 @@ class TestLoopPhases:
         }
 
         result = compiled.invoke(initial_state)
-        # The mock coder leaves tracked task edits uncommitted, so verification
-        # must now block rather than claim a pass for HEAD.
-        assert result["stage"] == LoopStage.BLOCKED.value
-        assert result["is_blocked"] is True
+        # Post-execution validation commits the mock output before verifying,
+        # so this exercises the clean, stable verification path.
+        assert result["stage"] == LoopStage.COMPLETE.value
+        assert result["is_blocked"] is False
 
     def test_backward_compat_protocol_without_phases(self, project_dir):
         """Old-style protocol without evaluation_phase still works."""

@@ -219,19 +219,22 @@ class QualityValidator(ValidatorBase):
         deliberately ignores untracked test/build artifacts.
         """
         try:
-            from git import Repo
-            from git.exc import GitCommandError, InvalidGitRepositoryError
-
-            Repo(str(self.working_directory), search_parent_directories=True).git.diff_index(
-                "--quiet", "HEAD", "--"
+            result = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=no"],
+                cwd=str(self.working_directory),
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=subprocess_env_without_job_context(),
             )
-            return True
-        except GitCommandError:
+            if result.returncode == 0:
+                return not bool(result.stdout.strip())
+            # No repository (or no HEAD yet): there is no commit evidence to
+            # misattribute, so retain the validator's legacy non-git behavior.
+            if "not a git repository" in result.stderr.lower():
+                return True
+            logger.debug("Failed to check tracked worktree state: %s", result.stderr)
             return False
-        except InvalidGitRepositoryError:
-            # Outside a repository there is no commit whose evidence could be
-            # misattributed; preserve the validator's legacy non-git behavior.
-            return True
         except Exception as e:
             logger.debug("Failed to check tracked worktree state: %s", e)
             return False
