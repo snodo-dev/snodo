@@ -1126,11 +1126,8 @@ def _collect_runs(
         if job_dirs:
             row["task_ref"] = _job_task_ref(entry)
             if row["status"] == "running":
-                try:
-                    from snodo.infrastructure.job_progress import job_progress
-                    row.update(job_progress(entry))
-                except Exception:
-                    pass
+                from snodo.infrastructure.job_progress import job_progress
+                row.update(job_progress(entry))
         rows.append(row)
     return rows
 
