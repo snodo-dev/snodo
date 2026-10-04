@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Upload bounded task specs by content hash for interface-v9 cloud live views. (Fixes #707)
 - ADR 056 records option A: cloud live views may resolve full task specs from
   bounded, content-addressed uploads under interface v9+; history remains
   authoritative. (Fixes #706)
