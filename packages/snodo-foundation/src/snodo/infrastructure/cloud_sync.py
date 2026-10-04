@@ -864,31 +864,23 @@ class CloudSyncDispatcher:
         # The margin keeps normal batches below the server's object limit.
         payload_limit = _DEFAULT_PAYLOAD_LIMIT - _PAYLOAD_MARGIN
         queue = _partition_events(session_id, project_root, unsynced, payload_limit)
-        # Keep versioned-only data at batch boundaries so older leases accept
-        # the compatible prefix before the first event they must hold.
-        separated: list[list] = []
-        for candidate in queue:
-            segment: list = []
-            segment_version: int | None = None
-            for event in candidate:
+        oversized_sequences: list[int] = []
+        while queue:
+            batch = queue.pop(0)
+            from snodo.infrastructure.cloud_lease import get_current_lease
+            lease = get_current_lease(session_id=session_id)
+            interface_version = getattr(lease, "interface_version", None) or 5
+            for index, event in enumerate(batch):
                 required_version = (
                     8 if _requires_v8(event) else
                     7 if _requires_v7(event) else
                     6 if _requires_v6(event) else 5
                 )
-                if segment and required_version != segment_version:
-                    segment.append(event)
-                    separated.append(segment[:-1])
-                    segment = [event]
-                else:
-                    segment.append(event)
-                segment_version = required_version
-            if segment:
-                separated.append(segment)
-        queue = separated
-        oversized_sequences: list[int] = []
-        while queue:
-            batch = queue.pop(0)
+                if required_version > interface_version:
+                    if index:
+                        queue.insert(0, batch[index:])
+                        batch = batch[:index]
+                    break
             first_seq = batch[0].sequence
             max_seq = batch[-1].sequence
             outcome, reason, status_code = self._post_batch(

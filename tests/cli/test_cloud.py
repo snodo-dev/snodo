@@ -695,6 +695,33 @@ class TestCloudSyncDispatcher:
         assert mock_post.call_count == 2
         assert [len(call.args[2]) for call in mock_post.call_args_list] == [50, 25]
 
+    def test_v8_lease_batches_mixed_interface_events_at_wire_limit(self):
+        import time
+        from snodo.infrastructure.cloud_lease import CloudLease
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        events = self._make_events(75)
+        events[10].event_type = "recon_started"
+        events[20].event_type = "task_complete"
+        events[20].data["usage"] = []
+        events[30].event_type = "task_complete"
+        events[30].data["job_id"] = "job-1"
+        lease = CloudLease("jti", "token", time.time() + 3600, interface_version=8)
+        dispatcher = CloudSyncDispatcher()
+        with (
+            patch.object(CloudSyncState, "get_cursor", return_value=0),
+            patch.object(CloudSyncState, "advance_cursor"),
+            patch("snodo.infrastructure.cloud_lease.get_current_lease", return_value=lease),
+            patch.object(dispatcher, "_post_batch", return_value=("delivered", "HTTP 200", 200)) as post,
+        ):
+            result = dispatcher.sync(
+                "sess_v8_mixed", "/proj", MagicMock(events=events),
+                "key", "https://api.test",
+            )
+
+        assert result["synced"] == 75
+        assert [len(call.args[2]) for call in post.call_args_list] == [50, 25]
+
     def test_ready_events_under_50_share_one_batch_and_progress_prints_once(self, capsys):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
 

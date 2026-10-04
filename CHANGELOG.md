@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Cloud audit sync now fills batches to the event and payload limits when the
+  admission lease supports the events' interface versions. (Fixes #710)
 - Cloud liveness job entries now include a bounded, privacy-preserving summary
   of the latest recognizable execution activity while the job is running.
   (Fixes #713)
