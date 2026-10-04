@@ -19,6 +19,7 @@ from unittest.mock import patch
 import pytest
 
 from snodo.infrastructure import cloud_liveness
+from snodo.infrastructure.job_progress import job_progress
 
 _TEST_CONFIG = {
     "cloud": {
@@ -51,6 +52,61 @@ def test_live_run_identity_and_legacy_pid_behavior(monkeypatch):
     monkeypatch.setattr(cloud_liveness, "_pid_alive", lambda _pid: True)
     row.pop("_process_identity")
     assert cloud_liveness._run_is_stale(row, now) is False
+
+
+@pytest.mark.parametrize(("log", "expected"), [
+    ("Validator security finished\nValidator tests finished\n", "pre-execute validators: 2 finished"),
+    ("Coder dispatched\nCoder turn 1\n", "coder working"),
+    ("Running verification gate\n", "running the gate"),
+])
+def test_job_progress_summarizes_known_activity(tmp_path, log, expected):
+    job = tmp_path / "job"
+    job.mkdir()
+    (job / "stdout.log").write_text(log)
+    progress = job_progress(job)
+    assert progress["progress"] == expected
+    assert len(progress["progress"]) <= 200
+    assert "progress_at" in progress
+
+
+def test_job_progress_sanitizes_and_never_forwards_log_values(tmp_path):
+    job = tmp_path / "job"
+    job.mkdir()
+    (job / "stdout.log").write_text(
+        "\x1b[31mCoder dispatched\x1b[0m\n"
+        "API_KEY=sk-secret-looking-value /Users/private/person/file.py\n"
+    )
+    progress = job_progress(job)
+    assert progress["progress"] == "coder working"
+    assert "\x1b" not in progress["progress"]
+    assert "sk-secret" not in str(progress)
+    assert "/Users/private" not in str(progress)
+
+
+def test_job_progress_handles_unrecognized_and_unreadable_logs(tmp_path):
+    job = tmp_path / "job"
+    job.mkdir()
+    assert job_progress(job) == {}
+    (job / "stdout.log").write_text("some arbitrary file contents\n")
+    assert job_progress(job) == {}
+
+
+def test_finished_job_has_no_progress_and_running_snapshot_fields_remain(tmp_path):
+    jobs = tmp_path / "jobs"
+    running = jobs / "j_running"
+    finished = jobs / "j_finished"
+    _write(running / "state.json", {"status": "running", "started_at": 1787000000.0})
+    _write(running / "task.json", {"task_id": "t1"})
+    (running / "stdout.log").write_text("Coder dispatched\n")
+    _write(finished / "state.json", {"status": "completed", "started_at": 1787000000.0})
+    rows = cloud_liveness._collect_runs(jobs, job_dirs=True)
+    by_id = {row["id"]: row for row in rows}
+    assert by_id["j_finished"].get("progress") is None
+    live, _counts = cloud_liveness._unreported(rows, set(), set())
+    row = next(row for row in live if row["id"] == "j_running")
+    assert {key for key in row if not key.startswith("_")} >= {
+        "id", "status", "started_at", "task_ref", "progress", "progress_at"
+    }
 
 
 @pytest.fixture

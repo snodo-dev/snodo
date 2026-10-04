@@ -104,6 +104,8 @@ class LivenessJob(TypedDict):
     id: str
     status: LivenessStatus
     started_at: NotRequired[str | None]
+    progress: NotRequired[str]
+    progress_at: NotRequired[str]
 
 
 class LivenessRecon(TypedDict):
@@ -986,7 +988,7 @@ def _collect_plans(
                 tnode["completed_at"] = _as_iso(completed)
             if live:
                 tnode["jobs"] = _prioritize_liveness_rows([
-                    {k: j[k] for k in ("id", "status", "started_at") if k in j}
+                    {k: j[k] for k in ("id", "status", "started_at", "progress", "progress_at") if k in j}
                     for j in live
                 ])
                 nested_job_ids.update(j["id"] for j in live)
@@ -1080,7 +1082,7 @@ def _unreported(
             continue
         if row["id"] in live_claimed:
             continue
-        wire = {k: row[k] for k in ("id", "status", "started_at", "completed_at") if k in row}
+        wire = {k: row[k] for k in ("id", "status", "started_at", "completed_at", "progress", "progress_at") if k in row}
         if row.get("wave_id"):
             wire["wave_id"] = row["wave_id"]
         if row.get("task_ref"):
@@ -1125,6 +1127,12 @@ def _collect_runs(
             row["wave_id"] = str(state["wave_id"])
         if job_dirs:
             row["task_ref"] = _job_task_ref(entry)
+            if row["status"] == "running":
+                try:
+                    from snodo.infrastructure.job_progress import job_progress
+                    row.update(job_progress(entry))
+                except Exception:
+                    pass
         rows.append(row)
     return rows
 

@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Cloud liveness job entries now include a bounded, privacy-preserving summary
+  of the latest recognizable execution activity while the job is running.
+  (Fixes #713)
 - Cloud and dashboard liveness now verify recorded process start-time and host
   identity before trusting a PID, letting stale jobs with reused or foreign-host
   PIDs age out while preserving legacy records. (Fixes #712)
