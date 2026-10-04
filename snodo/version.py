@@ -8,6 +8,7 @@ version lives in this module rather than on the package object. Import it as
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import subprocess
+import tomllib
 
 
 def _source_build_label(package_dir: Path) -> str | None:
@@ -49,7 +50,17 @@ except PackageNotFoundError:
 def _version_for(base_version: str, package_dir: Path) -> str:
     """Resolve the displayed version for a package directory."""
     build_label = _source_build_label(package_dir)
-    return f"{base_version}+{build_label}" if build_label else base_version
+    if not build_label:
+        return base_version
+
+    try:
+        project = tomllib.loads((package_dir.parent / "pyproject.toml").read_text())
+        checkout_version = project["project"]["version"]
+        if not isinstance(checkout_version, str):
+            raise TypeError("project.version is not a string")
+    except (OSError, KeyError, TypeError, tomllib.TOMLDecodeError):
+        checkout_version = base_version
+    return f"{checkout_version}+{build_label}"
 
 
 __version__ = _version_for(_base_version, Path(__file__).resolve().parent)

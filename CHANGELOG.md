@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Read the release version from the checkout's `pyproject.toml` for source builds,
+  avoiding stale editable-install metadata. (Fixes #709)
 - Upload bounded task specs by content hash for interface-v9 cloud live views. (Fixes #707)
 - ADR 056 records option A: cloud live views may resolve full task specs from
   bounded, content-addressed uploads under interface v9+; history remains
