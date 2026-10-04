@@ -10,6 +10,7 @@ import pytest
 from snodo.infrastructure.cloud_oauth_loopback import (
     CloudOAuthLoopbackError,
     receive_authorization_code,
+    receive_pasted_authorization_code,
 )
 
 
@@ -117,3 +118,23 @@ def test_prints_authorization_url_when_browser_unavailable():
             print_url=printed.append,
         )
     assert printed == ["https://login.example/authorize?client=public"]
+
+
+@pytest.mark.parametrize("pasted", ["auth-code#expected", "auth-code"])
+def test_pasted_code_accepts_complete_or_bare_code(pasted):
+    printed = []
+    code, redirect = receive_pasted_authorization_code(
+        "https://login.example/authorize", "expected", print_url=printed.append,
+        prompt=lambda _message: pasted,
+    )
+    assert code == "auth-code"
+    assert redirect == "https://mcp-auth.snodo.dev/cli/code"
+    assert printed == ["https://login.example/authorize"]
+
+
+def test_pasted_code_rejects_wrong_state():
+    with pytest.raises(CloudOAuthLoopbackError, match="state did not match"):
+        receive_pasted_authorization_code(
+            "https://login.example/authorize", "expected", print_url=lambda _: None,
+            prompt=lambda _: "auth-code#wrong",
+        )

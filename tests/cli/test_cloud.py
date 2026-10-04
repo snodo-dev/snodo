@@ -203,11 +203,16 @@ class TestCloudOAuthLogin:
         loop_module = types.ModuleType("stub_loop")
         store_module = types.ModuleType("stub_store")
         client_module.CloudOAuthClient = Client
+        client_module.CLOUD_CODE_REDIRECT_URI = "https://mcp-auth.snodo.dev/cli/code"
         client_module.CloudOAuthError = RuntimeError
         client_module.oauth_state = lambda: "state-value"
         client_module.pkce_verifier = lambda: "pkce-secret"
         loop_module.CloudOAuthLoopbackError = type("CloudOAuthLoopbackError", (RuntimeError,), {})
         loop_module.receive_authorization_code = receive
+        def receive_pasted(url, _state):
+            print(url)
+            return result[0], "https://mcp-auth.snodo.dev/cli/code"
+        loop_module.receive_pasted_authorization_code = receive_pasted
         store_module.CloudOAuthState = CloudOAuthState
         store_module.load_oauth_state = lambda: state
         store_module.save_oauth_state = lambda value: calls.update(saved=value)
@@ -254,10 +259,31 @@ class TestCloudOAuthLogin:
         assert calls["exchange"][0][0] == "new-client"
 
     def test_no_browser_prints_authorization_url(self, monkeypatch, tmp_path, capsys):
-        self._setup(monkeypatch, tmp_path)
+        calls, _mgr = self._setup(monkeypatch, tmp_path)
         from snodo.cli.commands.cloud_cmd import cloud_login_command
         assert cloud_login_command(no_browser=True) == 0
         assert "https://cloud.example/authorize" in capsys.readouterr().out
+        assert calls["exchange"][0][2] == "https://mcp-auth.snodo.dev/cli/code"
+
+    def test_headless_login_reregisters_legacy_client_once(self, monkeypatch, tmp_path):
+        (tmp_path / "reuse").touch()
+        calls, _mgr = self._setup(monkeypatch, tmp_path)
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command(no_browser=True) == 0
+        assert calls["registered"] == 1
+        assert calls["exchange"][0][0] == "new-client"
+
+    def test_wrong_pasted_state_stores_nothing(self, monkeypatch, tmp_path, capsys):
+        calls, _mgr = self._setup(monkeypatch, tmp_path)
+        import sys
+        loopback = sys.modules["snodo.infrastructure.cloud_oauth_loopback"]
+        loopback.receive_pasted_authorization_code = lambda *_args: (_ for _ in ()).throw(
+            loopback.CloudOAuthLoopbackError("Pasted authorization code state did not match.")
+        )
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command(no_browser=True) == 1
+        assert calls["saved"] is None
+        assert "state did not match" in capsys.readouterr().err.lower()
 
     @pytest.mark.parametrize(("message", "expected"), [
         ("Timed out waiting for the OAuth callback.", "timed out"),

@@ -20,6 +20,8 @@ _REQUIRED_ENDPOINTS = (
     "registration_endpoint",
     "jwks_uri",
 )
+CLOUD_CODE_REDIRECT_URI = "https://mcp-auth.snodo.dev/cli/code"
+_REGISTERED_REDIRECT_URIS = ["http://localhost:*", CLOUD_CODE_REDIRECT_URI]
 
 
 class CloudOAuthError(RuntimeError):
@@ -100,14 +102,14 @@ class CloudOAuthClient:
         self.metadata = OAuthMetadata(issuer=issuer, revocation_endpoint=revocation_endpoint, **values)
         return self.metadata
 
-    def register_client(self, redirect_uri: str = "http://localhost:*") -> str:
+    def register_client(self, redirect_uri: str | None = None) -> str:
         metadata = self._require_metadata()
         payload = self._json_request(
             "POST",
             metadata.registration_endpoint,
             json={
                 "client_name": self.client_name,
-                "redirect_uris": [redirect_uri],
+                "redirect_uris": [redirect_uri] if redirect_uri else list(_REGISTERED_REDIRECT_URIS),
                 "token_endpoint_auth_method": "none",
                 "grant_types": ["authorization_code", "refresh_token"],
                 "response_types": ["code"],

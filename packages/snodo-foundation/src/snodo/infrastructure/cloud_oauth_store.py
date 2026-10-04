@@ -33,6 +33,7 @@ class CloudOAuthState:
     expires_at: float | None = None
     scope: str | None = None
     registered_client_name: str | None = None
+    supports_code_redirect: bool = False
 
     def __repr__(self) -> str:
         return (
@@ -96,7 +97,10 @@ def load_oauth_state() -> CloudOAuthState:
                 return CloudOAuthState()
             if expires_at is not None and (isinstance(expires_at, bool) or not isinstance(expires_at, (int, float))):
                 return CloudOAuthState()
-            return CloudOAuthState(client_id, access_token, refresh_token, expires_at, scope, registered_client_name)
+            supports_code_redirect = raw.get("supports_code_redirect", False)
+            if not isinstance(supports_code_redirect, bool):
+                return CloudOAuthState()
+            return CloudOAuthState(client_id, access_token, refresh_token, expires_at, scope, registered_client_name, supports_code_redirect)
         except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
             return CloudOAuthState()
 
@@ -113,6 +117,7 @@ def save_oauth_state(state: CloudOAuthState) -> None:
         "expires_at": state.expires_at,
         "scope": state.scope,
         "registered_client_name": state.registered_client_name,
+        "supports_code_redirect": state.supports_code_redirect,
     }
     with _locked(path):
         atomic_write_json(path, payload, trailing_newline=True)
@@ -138,11 +143,14 @@ def clear_oauth_state(*, keep_client_id: bool = True) -> None:
                 pass
         else:
             registered_client_name = None
+            supports_code_redirect = False
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
                 if isinstance(raw, dict) and isinstance(raw.get("registered_client_name"), str):
                     registered_client_name = raw["registered_client_name"]
+                if isinstance(raw, dict):
+                    supports_code_redirect = raw.get("supports_code_redirect", False) is True
             except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
                 pass
-            atomic_write_json(path, {"client_id": client_id, "access_token": None, "refresh_token": None, "expires_at": None, "scope": None, "registered_client_name": registered_client_name}, trailing_newline=True)
+            atomic_write_json(path, {"client_id": client_id, "access_token": None, "refresh_token": None, "expires_at": None, "scope": None, "registered_client_name": registered_client_name, "supports_code_redirect": supports_code_redirect}, trailing_newline=True)
             os.chmod(path, 0o600)

@@ -59,6 +59,7 @@ def test_register_pkce_authorize_exchange_and_refresh():
     assert '"client_name":"snodo CLI (host-a)"' in requests[-1].read().decode()
     body = requests[-1].read().decode()
     assert 'http://localhost:*' in body
+    assert 'https://mcp-auth.snodo.dev/cli/code' in body
     assert requests[-1].headers["User-Agent"] == "snodo/0.19.3"
     assert requests[-1].headers["X-Snodo-Device"] == "host-a"
     verifier = "a" * 43

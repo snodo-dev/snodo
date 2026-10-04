@@ -148,8 +148,8 @@ def cloud_connect_command(api_key: str) -> int:
 def cloud_login_command(*, no_browser: bool = False) -> int:
     """Complete the public-client OAuth flow and enable cloud sync."""
     from snodo.config import ConfigManager
-    from snodo.infrastructure.cloud_oauth_client import CloudOAuthClient, CloudOAuthError, oauth_state, pkce_verifier
-    from snodo.infrastructure.cloud_oauth_loopback import CloudOAuthLoopbackError, receive_authorization_code
+    from snodo.infrastructure.cloud_oauth_client import CLOUD_CODE_REDIRECT_URI, CloudOAuthClient, CloudOAuthError, oauth_state, pkce_verifier
+    from snodo.infrastructure.cloud_oauth_loopback import CloudOAuthLoopbackError, receive_authorization_code, receive_pasted_authorization_code
     from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, load_oauth_state, save_oauth_state
 
     try:
@@ -161,17 +161,20 @@ def cloud_login_command(*, no_browser: bool = False) -> int:
         client.discover()
         client_name = client.client_name
         client_id = previous.client_id
-        if client_id is None or previous.registered_client_name != client_name:
+        newly_registered = client_id is None or previous.registered_client_name != client_name or (no_browser and not previous.supports_code_redirect)
+        if newly_registered:
             client_id = client.register_client()
         verifier = pkce_verifier()
         state = oauth_state()
         def auth_url(redirect_uri: str) -> str:
             return client.authorization_url(client_id, redirect_uri, verifier, state)
 
-        code, actual_redirect_uri = receive_authorization_code(
-            auth_url, state,
-            open_browser=(lambda _url: False) if no_browser else None,
-        )
+        if no_browser:
+            code, actual_redirect_uri = receive_pasted_authorization_code(
+                auth_url(CLOUD_CODE_REDIRECT_URI), state,
+            )
+        else:
+            code, actual_redirect_uri = receive_authorization_code(auth_url, state)
         tokens = client.exchange_code(client_id, code, actual_redirect_uri, verifier)
         access_token = tokens.get("access_token")
         if not isinstance(access_token, str) or not access_token:
@@ -185,6 +188,7 @@ def cloud_login_command(*, no_browser: bool = False) -> int:
             expires_at=expires_at,
             scope=tokens.get("scope") if isinstance(tokens.get("scope"), str) else None,
             registered_client_name=client_name,
+            supports_code_redirect=previous.supports_code_redirect or newly_registered,
         ))
         mgr.set_value(("cloud", "sync_enabled"), True)
         account = _oauth_account_label(access_token)
@@ -199,6 +203,8 @@ def cloud_login_command(*, no_browser: bool = False) -> int:
             print("Cloud sign-in timed out. Run `snodo cloud login` and complete the browser prompt.", file=sys.stderr)
         elif "authorization server returned an error" in text:
             print("Cloud sign-in was denied. Run `snodo cloud login` to try again.", file=sys.stderr)
+        elif "state did not match" in text:
+            print("Cloud sign-in code state did not match. Copy the complete code#state value and try again.", file=sys.stderr)
         else:
             print("Cloud sign-in failed. Run `snodo cloud login` to try again.", file=sys.stderr)
         return 1
