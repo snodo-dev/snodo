@@ -104,8 +104,6 @@ class LivenessJob(TypedDict):
     id: str
     status: LivenessStatus
     started_at: NotRequired[str | None]
-    progress: NotRequired[str]
-    progress_at: NotRequired[str]
 
 
 class LivenessRecon(TypedDict):
