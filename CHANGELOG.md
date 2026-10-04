@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Investigate the release-suite `.snodo/` state leak with the #65 guard active
+  on a clean checkout. (Fixes #717)
+
 ## [0.20.1] — 2026-10-04
 
 - Blocking parallel queue runs now finish the active batch and stop before
