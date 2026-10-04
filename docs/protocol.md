@@ -410,6 +410,11 @@ over the default; when the default itself runs, the quality validator records
 audit outcome `no_tests` — it states that no tests were executed rather than
 claiming a pass (Fixes #215).
 
+A protocol with no quality-type validator runs as a plain agent loop and may
+merge without verification evidence; snodo prints an ungated notice and warns
+rather than blocking the merge. If a quality validator is declared, merge still
+requires passing or `no_tests` verification for the exact commit.
+
 ### Validator types
 
 | Type | Backend | What it does |

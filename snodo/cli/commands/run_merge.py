@@ -123,12 +123,11 @@ def _quality_validator_ids(protocol: Optional[Protocol]) -> set[str]:
     """Return IDs declared for quality-type validators in the active protocol."""
     if protocol is None:
         return {"quality"}
-    validator_ids = {
+    return {
         getattr(validator, "validator_id", "quality")
         for validator in getattr(protocol, "validators", [])
         if validator.validator_type == "quality"
     }
-    return validator_ids or {"quality"}
 
 
 def _matching_task_verifications(
@@ -190,38 +189,47 @@ def _merge_on_success(
         _logger.debug("Could not resolve commit for branch %s: %s", branch, e)
 
     if delivery in {"push_branch", "change_request", "local_merge"}:
-        history = audit_log.get_history("verification_executed") if audit_log else []
-        matching = _matching_task_verifications(
-            history, task.id, target_commit, _quality_validator_ids(protocol),
-        )
-        passing = [e for e in matching if e.data.get("outcome") in {"pass", "no_tests"}]
-        if not passing:
-            commit_display = target_commit[:7] if target_commit else "unknown"
-            reason = f"No passing verification_executed event recorded for task {task.id} at commit {commit_display}."
-            action = "merge" if delivery == "local_merge" else "delivery"
-            print(f"✗ Refused {action} for {branch}: {reason}", file=sys.stderr)
-            if audit_log:
-                audit_log.append_event("unverified_merge_blocked", {
-                    "op": "unverified_merge_blocked", "task_ref": task.id,
-                    "branch": branch, "target_commit": target_commit,
-                    "reason": reason, "session_id": session_id,
-                })
-            return 1, True, None
-        accepted = passing[-1]
-        commit_display = target_commit[:7] if target_commit else "unknown"
-        verb = "merge" if delivery == "local_merge" else "delivery"
-        if accepted.data.get("outcome") == "pass":
+        quality_validator_ids = _quality_validator_ids(protocol)
+        if not quality_validator_ids:
             print(
-                f"✓ Verified {verb} for {branch}: task {task.id} verified at commit "
-                f"{commit_display} ({accepted.data.get('command', '')}).",
+                f"✓ Merged {branch} ungated: task {task.id} at commit "
+                f"{target_commit[:7] if target_commit else 'unknown'} "
+                "(no quality validator declared).",
                 file=sys.stderr,
             )
         else:
-            print(
-                f"✓ Merged {branch} ungated: task {task.id} at commit {commit_display} "
-                "ran no tests (no test_command configured).",
-                file=sys.stderr,
+            history = audit_log.get_history("verification_executed") if audit_log else []
+            matching = _matching_task_verifications(
+                history, task.id, target_commit, quality_validator_ids,
             )
+            passing = [e for e in matching if e.data.get("outcome") in {"pass", "no_tests"}]
+            if not passing:
+                commit_display = target_commit[:7] if target_commit else "unknown"
+                reason = f"No passing verification_executed event recorded for task {task.id} at commit {commit_display}."
+                action = "merge" if delivery == "local_merge" else "delivery"
+                print(f"✗ Refused {action} for {branch}: {reason}", file=sys.stderr)
+                if audit_log:
+                    audit_log.append_event("unverified_merge_blocked", {
+                        "op": "unverified_merge_blocked", "task_ref": task.id,
+                        "branch": branch, "target_commit": target_commit,
+                        "reason": reason, "session_id": session_id,
+                    })
+                return 1, True, None
+            accepted = passing[-1]
+            commit_display = target_commit[:7] if target_commit else "unknown"
+            verb = "merge" if delivery == "local_merge" else "delivery"
+            if accepted.data.get("outcome") == "pass":
+                print(
+                    f"✓ Verified {verb} for {branch}: task {task.id} verified at commit "
+                    f"{commit_display} ({accepted.data.get('command', '')}).",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"✓ Merged {branch} ungated: task {task.id} at commit {commit_display} "
+                    "ran no tests (no test_command configured).",
+                    file=sys.stderr,
+                )
 
     if delivery in {"push_branch", "change_request"}:
         try:
@@ -419,17 +427,18 @@ def _try_merge_unmerged_task(
         if audit_log_path.exists():
             audit_log = AuditLog(str(audit_log_path))
 
-    if not audit_log:
+    if not audit_log and _quality_validator_ids(protocol):
         return None
 
-    history = audit_log.get_history("verification_executed")
-    matching = _matching_task_verifications(
-        history, task_id, target_commit, _quality_validator_ids(protocol),
-    )
-    matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
-    matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
-    if not matching_passes and not matching_ungated:
-        return None
+    if _quality_validator_ids(protocol):
+        history = audit_log.get_history("verification_executed")
+        matching = _matching_task_verifications(
+            history, task_id, target_commit, _quality_validator_ids(protocol),
+        )
+        matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
+        matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
+        if not matching_passes and not matching_ungated:
+            return None
 
     from snodo.cli.commands.task_record import _record_task_completion
 
@@ -468,7 +477,6 @@ def _deliver_plan_integration(
         # Task validators ran against each task commit. The integration branch
         # has its own (merge) commit and combined tree, so verify that exact
         # tree before asking the ordinary delivery gate to accept it.
-        from git import Repo
         from snodo.infrastructure.worktree import _name_component, worktree_dir
         from snodo.validators.context import ValidatorContext
         from snodo.validators.quality import QualityValidator
@@ -481,15 +489,7 @@ def _deliver_plan_integration(
              if validator.validator_type == "quality"),
             None,
         )
-        with Repo(project_root) as repo:
-            target_commit = repo.commit(branch).hexsha
-        if quality is None:
-            audit_log.append_event("verification_executed", {
-                "op": "verification_executed", "task_ref": plan_name,
-                "commit": target_commit, "outcome": "no_tests",
-                "command": "no test_command configured",
-            })
-        else:
+        if quality is not None:
             validator = QualityValidator(quality, working_directory=str(integration_path))
             validator.evaluate(ValidatorContext(
                 task=task, protocol=protocol, audit_log=audit_log,
