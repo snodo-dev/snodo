@@ -63,9 +63,10 @@ def test_version(snodo_cli):
     version_parts = result.stdout.strip().split()
     assert len(version_parts) == 2
     assert version_parts[0] == "snodo"
-    # version should be semver-ish
-    ver = version_parts[1]
-    assert all(c.isdigit() or c == "." for c in ver)
+    # version should be semver-ish; a git checkout adds a local build label
+    # such as "+b1990.g18615b3", which is not part of the release number
+    ver = version_parts[1].split("+", 1)[0]
+    assert ver and all(c.isdigit() or c == "." for c in ver)
 
 
 @pytest.mark.e2e
