@@ -490,8 +490,6 @@ def _deliver_plan_integration(
              if validator.validator_type == "quality"),
             None,
         )
-        with Repo(project_root) as repo:
-            target_commit = repo.commit(branch).hexsha
         if quality is not None:
             validator = QualityValidator(quality, working_directory=str(integration_path))
             validator.evaluate(ValidatorContext(
