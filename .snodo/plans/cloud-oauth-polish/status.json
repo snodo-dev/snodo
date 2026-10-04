@@ -1,0 +1,12 @@
+{
+  "integration": {
+    "branch": "plan/cloud-oauth-polish/integration",
+    "base_sha": "eb1d411453463b59348d81d466610ed95d44c991"
+  },
+  "tasks": {
+    "1.1_callback_page": "completed",
+    "1.2_api_key_fallback_on_refresh_failure": "completed",
+    "1.3_connect_switches_back_to_api_key": "completed",
+    "1.4_dcr_client_name_with_device": "completed"
+  }
+}

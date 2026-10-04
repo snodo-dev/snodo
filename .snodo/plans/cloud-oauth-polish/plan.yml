@@ -1,0 +1,10 @@
+intent: Signing in to snodo cloud with OAuth feels finished and is safe for machines that also have an API key. The browser page shown after sign-in looks like part of snodo, a dead OAuth login never silently stops sync when an API key is available, and switching back to an API key really switches.
+name: cloud-oauth-polish
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_callback_page
+  - 1.2_api_key_fallback_on_refresh_failure
+  - 1.3_connect_switches_back_to_api_key
+  - 1.4_dcr_client_name_with_device

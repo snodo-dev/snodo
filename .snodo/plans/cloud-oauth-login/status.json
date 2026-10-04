@@ -1,0 +1,20 @@
+{
+  "integration": {
+    "branch": "plan/cloud-oauth-login/integration",
+    "base_sha": "5ed14f3784d05a123b75232598d9a6b6d3145d5d"
+  },
+  "tasks": {
+    "1.1_oauth_discovery_and_registration": "completed",
+    "1.2_oauth_token_store": "completed",
+    "1.3_oauth_loopback_authorization": "completed",
+    "2.1_cloud_login_command": "completed",
+    "2.2_lease_exchange_with_oauth": {
+      "status": "completed",
+      "recorded_by": "snodo-public orchestrator (Claude)",
+      "recorded_at": "2026-10-03T06:48:08.662274+00:00",
+      "judged": false
+    },
+    "3.1_cloud_logout_and_status": "completed",
+    "3.2_cloud_oauth_docs": "completed"
+  }
+}

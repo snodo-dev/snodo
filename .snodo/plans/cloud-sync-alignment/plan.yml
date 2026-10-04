@@ -1,0 +1,8 @@
+intent: What the client sends to snodo cloud and what it shows about the cloud connection is complete, bounded and easy to read. Liveness snapshots never lose the rows that matter when a project has a long history, and `snodo cloud status` says when the sign-in expires in an unambiguous way and which account or organisation it belongs to.
+name: cloud-sync-alignment
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_liveness_snapshot_bounding
+  - 1.2_cloud_status_expiry_and_account

@@ -1,0 +1,13 @@
+intent: A stranger following the first-run quickstart in docs/runbook.md gets a working mock run from an empty directory, the instructions say only what the mock coder really does, the guidance that earlier versions carried (provider credentials, ignore rules and the protocol file, local endpoints without a key) is still there, and a test keeps the quickstart a single source. This is the fix-forward work tracked in issue #653 (review of PR #652).
+name: first-run-quickstart-hardening
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_quickstart_env_and_mock_wording
+  - 1.2_quickstart_single_source_test
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_restore_first_run_guidance

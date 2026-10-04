@@ -1,0 +1,10 @@
+intent: Every task snodo runs gets its own worktree and branch. A plan task never runs in another task's worktree, a queue run never shares an identity with every other queue run, and cleanup commands only touch the branches of the task they name.
+name: task-identity-isolation
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_job_task_identity
+  - 1.2_no_unverified_legacy_worktree_adoption
+  - 1.3_retry_job_refuses_queue_jobs
+  - 1.4_scoped_cleanup_commands

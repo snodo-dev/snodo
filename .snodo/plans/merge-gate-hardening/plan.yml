@@ -1,0 +1,16 @@
+intent: No branch is merged or delivered unless snodo itself ran the project's gates on exactly the commit being merged, for that task, and recorded it. Every merge path (task into plan integration, plan into queue integration, plan delivery in every mode, single tasks) applies the same check, and the docs tell a first-time user what a run ends with.
+name: merge-gate-hardening
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_merge_evidence_predicate
+  - 1.2_queue_integration_merge_gate
+  - 1.3_quality_verifies_committed_tree
+  - 1.4_quickstart_unmerged_outcome_docs
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_plan_delivery_verifies_and_merges_same_commit
+  - 2.2_merge_paths_refuse_without_gates_tests

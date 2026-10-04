@@ -1,0 +1,11 @@
+{
+  "integration": {
+    "branch": "plan/first-run-quickstart-hardening/integration",
+    "base_sha": "eae6bddeb6f8d583ec6a289e365e05139f26583a"
+  },
+  "tasks": {
+    "1.1_quickstart_env_and_mock_wording": "completed",
+    "1.2_quickstart_single_source_test": "completed",
+    "2.1_restore_first_run_guidance": "completed"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "integration": {
+    "branch": "plan/merge-gate-hardening/integration",
+    "base_sha": "462f76db41b9caab3cbfab43d6c3135c25447b92"
+  },
+  "tasks": {
+    "1.1_merge_evidence_predicate": "completed",
+    "1.2_queue_integration_merge_gate": "completed",
+    "1.3_quality_verifies_committed_tree": "completed",
+    "1.4_quickstart_unmerged_outcome_docs": "completed",
+    "2.1_plan_delivery_verifies_and_merges_same_commit": "completed",
+    "2.2_merge_paths_refuse_without_gates_tests": "completed"
+  }
+}

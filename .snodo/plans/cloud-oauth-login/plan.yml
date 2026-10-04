@@ -1,0 +1,21 @@
+intent: A person can run `snodo cloud login`, sign in through their browser, and have snodo sync to snodo cloud with an OAuth token instead of an API key. The API key path keeps working unchanged. The token is stored in the user's own config directory with owner-only permissions, refreshed when it expires, and removed by logout.
+name: cloud-oauth-login
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_oauth_discovery_and_registration
+  - 1.2_oauth_token_store
+  - 1.3_oauth_loopback_authorization
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_cloud_login_command
+  - 2.2_lease_exchange_with_oauth
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_cloud_logout_and_status
+  - 3.2_cloud_oauth_docs

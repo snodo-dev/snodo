@@ -1,0 +1,19 @@
+intent: A completed plan's integration branch is delivered reliably and exactly once in every delivery mode (local_merge, push_branch, change_request). The delivery is gated on real verification evidence for the branch being delivered, a rerun after delivery does nothing, cleanup acts on the right worktree, the end-to-end behaviour is covered by tests that do not mock the merge path, and the docs say what the runner now does. This is the fix-forward work tracked in issue #661 (review of PR #660).
+name: plan-delivery-hardening
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_integration_verification_evidence
+  - 1.2_plan_final_delivery_docs
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_idempotent_plan_redelivery
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_integration_cleanup_identity
+  - 3.2_plan_delivery_end_to_end_tests

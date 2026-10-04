@@ -1,0 +1,13 @@
+{
+  "integration": {
+    "branch": "plan/plan-delivery-hardening/integration",
+    "base_sha": "a96b014485952208ea4154fe1f811a3667d47a57"
+  },
+  "tasks": {
+    "1.1_integration_verification_evidence": "completed",
+    "1.2_plan_final_delivery_docs": "completed",
+    "2.1_idempotent_plan_redelivery": "completed",
+    "3.1_integration_cleanup_identity": "completed",
+    "3.2_plan_delivery_end_to_end_tests": "completed"
+  }
+}

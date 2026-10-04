@@ -1,0 +1,10 @@
+{
+  "integration": {
+    "branch": "plan/cloud-sync-alignment/integration",
+    "base_sha": "fd5c7ecda2a53522503ad6dbac1af5a7928de41e"
+  },
+  "tasks": {
+    "1.1_liveness_snapshot_bounding": "completed",
+    "1.2_cloud_status_expiry_and_account": "completed"
+  }
+}
