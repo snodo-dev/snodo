@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-10-04
+
 ### Added
 - Propose orchestrator publish/subscribe coordination scoped by plan id, with
   cloud transport and a local-file fallback; detailed design is deferred.
