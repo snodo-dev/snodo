@@ -56,8 +56,11 @@ a test to every valid notification target.
 protocol authoring without reading the project's protocol file.
 
 Use `snodo cloud login` to sign in through a browser and enable cloud sync;
-`--no-browser` prints the authorization URL while still using a localhost
-callback for the authorization response. OAuth credentials are stored in
+`snodo cloud login --no-browser` prints an authorization URL for a browser on
+another machine, then prompts for the code shown by the page. Paste either the
+code or its complete `code#state` value; the cloud redirect lets a headless
+machine finish sign-in without a browser callback reaching its localhost. The
+PKCE verifier remains on the machine. OAuth credentials are stored in
 `~/.snodo/cloud_oauth.json` (or `$SNODO_HOME/cloud_oauth.json`) and do not
 replace the configured API key. If both exist, OAuth takes priority. Run
 `snodo cloud connect <api_key>` to store the key and switch to API-key

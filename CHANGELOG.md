@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Support headless `snodo cloud login --no-browser` by pasting the cloud OAuth
+  code from another browser. (Fixes #711)
 - Read the release version from the checkout's `pyproject.toml` for source builds,
   avoiding stale editable-install metadata. (Fixes #709)
 - Plan integration merges now accept passing or `no_tests` quality verification

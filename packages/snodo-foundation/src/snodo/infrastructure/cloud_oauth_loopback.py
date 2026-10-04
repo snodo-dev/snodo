@@ -16,6 +16,24 @@ class CloudOAuthLoopbackError(RuntimeError):
     """Safe, credential-free failure during the local OAuth redirect."""
 
 
+def receive_pasted_authorization_code(
+    authorization_url: str,
+    state: str,
+    *,
+    print_url: Callable[[str], object] = print,
+    prompt: Callable[[str], str] = input,
+) -> tuple[str, str]:
+    """Print the cloud authorization URL and validate the code pasted by the user."""
+    print_url(authorization_url)
+    pasted = prompt("Paste the code shown in your browser: ").strip()
+    code, separator, returned_state = pasted.partition("#")
+    if not code:
+        raise CloudOAuthLoopbackError("No authorization code was pasted.")
+    if separator and returned_state != state:
+        raise CloudOAuthLoopbackError("Pasted authorization code state did not match.")
+    return code, "https://mcp-auth.snodo.dev/cli/code"
+
+
 class _CallbackServer(http.server.HTTPServer):
     address_family = socket.AF_INET
     allow_reuse_address = False
