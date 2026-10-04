@@ -58,6 +58,10 @@ def _queue_run(
     queue_config = protocol_obj.queue
     skip_blocked = queue_config.non_blocking if non_blocking is None else non_blocking
     concurrency = parallel_run if parallel_run is not None else queue_config.parallel_runs
+    if concurrency > 1 and not skip_blocked:
+        print("Note: --parallel-run requires --non-blocking; running one plan at a time.")
+        concurrency = 1
+
     store = QueueStore(project_root)
     try:
         queue_map = store.list_queues()
