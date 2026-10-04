@@ -88,3 +88,36 @@ def test_completion_binding_carries_key_without_environment_mutation(monkeypatch
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     assert "OLLAMA_API_KEY" not in os.environ
     assert "OPENAI_API_KEY" not in os.environ
+
+
+def test_local_provider_prefix_is_removed_when_litellm_id_has_its_own_prefix(monkeypatch):
+    """Use the local provider for credentials without forwarding it to LiteLLM."""
+    custom_providers = {
+        "google": ProviderConfig(
+            litellm_provider="gemini",
+            api_key="google-test-key",
+            base_url="https://google.example/v1",
+        )
+    }
+    monkeypatch.setattr(ConfigManager, "get_providers", lambda self: custom_providers)
+
+    model = "google/gemini/gemini-3.8-flash"
+    fn = build_completion_fn(model, MagicMock())
+
+    assert ConfigManager.resolve_litellm_model(model) == "gemini/gemini-3.8-flash"
+    assert fn.keywords["model"] == "gemini/gemini-3.8-flash"
+    assert fn.keywords["api_key"] == "google-test-key"
+    assert fn.keywords["api_base"] == "https://google.example/v1"
+
+
+def test_existing_litellm_model_forms_and_unknown_provider_are_unchanged(monkeypatch):
+    custom_providers = {
+        "google": ProviderConfig(litellm_provider="gemini"),
+        "openai": ProviderConfig(),
+        "ollama-cloud": ProviderConfig(),
+    }
+    monkeypatch.setattr(ConfigManager, "get_providers", lambda self: custom_providers)
+
+    assert ConfigManager.resolve_litellm_model("openai/gpt-5.6-terra") == "openai/gpt-5.6-terra"
+    assert ConfigManager.resolve_litellm_model("ollama-cloud/deepseek-v4-pro:0813") == "ollama-cloud/deepseek-v4-pro:0813"
+    assert ConfigManager.resolve_litellm_model("unconfigured/model-name") == "unconfigured/model-name"

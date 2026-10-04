@@ -373,8 +373,9 @@ class ConfigManager:
         """Return the model string formatted for litellm completion.
 
         If a provider specifies a litellm_provider (e.g. litellm_provider="openai"
-        for provider block "ollama"), formats model as "openai/<model_id>" so litellm
-        routes it properly to the OpenAI-compatible endpoint.
+        for provider block "ollama"), formats model for LiteLLM routing. A model
+        id that already carries that LiteLLM prefix is preserved, even when the
+        local provider namespace differs (e.g. ``google/gemini/...``).
         """
         provider_key = ConfigManager._provider_for_model(model)
         if not provider_key:
@@ -385,6 +386,8 @@ class ConfigManager:
                 raw_id = model[len(provider_key) + 1:]
             else:
                 raw_id = model
+            if raw_id.startswith(f"{pc.litellm_provider}/"):
+                return raw_id
             return f"{pc.litellm_provider}/{raw_id}"
         return model
 

@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Resolve configured provider prefixes separately from LiteLLM model ids, so
+  models such as `google/gemini/gemini-3.8-flash` use Google credentials and
+  reach LiteLLM as `gemini/gemini-3.8-flash`. (`Fixes #718`)
+
 ## [0.20.1] — 2026-10-04
 
 - Blocking parallel queue runs now finish the active batch and stop before

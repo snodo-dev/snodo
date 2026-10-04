@@ -148,7 +148,10 @@ def check_configured_models(
         except Exception as error:
             results.append((role, model, False, str(error)))
         else:
-            results.append((role, model, True, ""))
+            from snodo.config import ConfigManager
+            resolved = ConfigManager.resolve_litellm_model(model)
+            detail = f"LiteLLM model: {resolved}" if resolved != model else ""
+            results.append((role, model, True, detail))
 
     if not results:
         print("No models configured.")
@@ -157,7 +160,8 @@ def check_configured_models(
     print("Configured model check:")
     for role, model, healthy, reason in results:
         if healthy:
-            print(f"  OK       {model} ({role})")
+            suffix = f" — {reason}" if reason else ""
+            print(f"  OK       {model} ({role}){suffix}")
         elif healthy is None:
             print(f"  NOT CHECKABLE {model} ({role}): {reason}")
         else:
