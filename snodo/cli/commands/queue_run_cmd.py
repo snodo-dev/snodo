@@ -58,10 +58,6 @@ def _queue_run(
     queue_config = protocol_obj.queue
     skip_blocked = queue_config.non_blocking if non_blocking is None else non_blocking
     concurrency = parallel_run if parallel_run is not None else queue_config.parallel_runs
-    if concurrency > 1 and not skip_blocked:
-        print("Note: --parallel-run requires --non-blocking; running one plan at a time.")
-        concurrency = 1
-
     store = QueueStore(project_root)
     try:
         queue_map = store.list_queues()
@@ -187,15 +183,18 @@ def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mo
                 for plan in batch
             }
             outcomes = [(plan, future.result()) for future, plan in futures.items()]
+        stop_after_batch = False
         for plan, code in outcomes:
             if code == 0:
                 store.remove(plan)
             else:
                 task, reason = _failure_detail(project_root, plan)
-                print(f"Queue '{queue_name}' plan '{plan}', task '{task}': {reason}")
+                print(f"Queue '{queue_name}' stopped at plan '{plan}', task '{task}': {reason}")
                 failed = True
                 if not non_blocking:
-                    break
+                    stop_after_batch = True
+        if stop_after_batch:
+            break
     if queue_branch and not failed and not store.list_queues().get(queue_name):
         from snodo.cli.commands.run_merge import _deliver_plan_integration
         from snodo.infrastructure.audit import get_audit_log

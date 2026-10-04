@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Blocking parallel queue runs now finish the active batch and stop before
+  starting later plans when any plan fails. (Fixes #716)
 - Spec path validation now ignores slash-joined prose and strips unmatched
   parenthesis wrappers while continuing to check real and missing citations.
   (Fixes #715)

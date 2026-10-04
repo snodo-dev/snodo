@@ -4,6 +4,8 @@ import json
 import threading
 from types import SimpleNamespace
 
+import pytest
+
 from snodo.cli.commands.queue_run_cmd import _queue_run, _run_queue
 from snodo.infrastructure.queue_store import QueueStore
 
@@ -111,6 +113,33 @@ def test_non_blocking_parallel_runs_multiple_plans_at_once(tmp_path):
     ) == 0
     assert sorted(calls) == ["first", "second"]
     assert store.list_queues()["default"] == []
+
+
+@pytest.mark.parametrize("non_blocking", [False, True])
+def test_parallel_failure_stops_or_continues_after_current_batch(tmp_path, non_blocking):
+    store = QueueStore(tmp_path)
+    for plan in "abcd":
+        store.add(plan)
+    plan_dir = tmp_path / ".snodo" / "plans" / "a"
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text("waves:\n  - tasks:\n      - 1.1_build\n")
+    (plan_dir / "status.json").write_text(json.dumps({
+        "tasks": {"1.1_build": {"status": "errored", "reason": "failed"}},
+    }))
+    calls = []
+
+    def run(args):
+        calls.append(args.plan)
+        return int(args.plan == "a")
+
+    result = _run_queue(
+        store, "default", tmp_path, run, SimpleNamespace,
+        ".snodo/protocol.yml", False, non_blocking, 2,
+    )
+
+    assert result == 1
+    assert sorted(calls) == (["a", "b", "c", "d"] if non_blocking else ["a", "b"])
+    assert store.list_queues()["default"] == (["a"] if non_blocking else ["a", "c", "d"])
 
 
 def test_all_runs_queues_in_creation_order_and_reads_defaults(tmp_path, monkeypatch):
