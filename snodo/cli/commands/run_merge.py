@@ -147,6 +147,22 @@ def _matching_task_verifications(
     ]
 
 
+def _plan_task_ids(project_root: str, plan_name: str) -> set[str]:
+    """Return task IDs declared by a plan, for integration-head evidence lookup."""
+    try:
+        import yaml
+
+        path = Path(project_root) / ".snodo" / "plans" / plan_name / "plan.yml"
+        plan = yaml.safe_load(path.read_text()) or {}
+        return {
+            str(task_id)
+            for wave in plan.get("waves", [])
+            for task_id in wave.get("tasks", [])
+        }
+    except (OSError, ValueError, TypeError, AttributeError):
+        return set()
+
+
 def _merge_on_success(
     project_root: str,
     task: Any,
@@ -160,6 +176,7 @@ def _merge_on_success(
     branch_override: Optional[str] = None,
     change_request_content: Optional[tuple[str, str]] = None,
     protocol: Optional[Protocol] = None,
+    verification_task_ids: Optional[set[str]] = None,
 ) -> tuple:
     """Merge the completed task's branch into the base branch.
 
@@ -199,9 +216,21 @@ def _merge_on_success(
             )
         else:
             history = audit_log.get_history("verification_executed") if audit_log else []
-            matching = _matching_task_verifications(
-                history, task.id, target_commit, quality_validator_ids,
-            )
+            if verification_task_ids is not None:
+                matching = [
+                    event for event in history
+                    if event.data.get("task_ref") in verification_task_ids
+                    and event.data.get("validator_id") in quality_validator_ids
+                    and event.data.get("returncode") == 0
+                    and target_commit
+                    and _verified_commit_matches_merge_target(
+                        event.data.get("commit"), target_commit,
+                    )
+                ]
+            else:
+                matching = _matching_task_verifications(
+                    history, task.id, target_commit, quality_validator_ids,
+                )
             passing = [e for e in matching if e.data.get("outcome") in {"pass", "no_tests"}]
             if not passing:
                 commit_display = target_commit[:7] if target_commit else "unknown"
@@ -506,6 +535,7 @@ def _deliver_plan_integration(
         remote=getattr(protocol.execution, "delivery_remote", "origin"),
         protocol_metadata=protocol.metadata,
         protocol=protocol,
+        verification_task_ids=_plan_task_ids(project_root, plan_name) | {plan_name},
         branch_override=branch,
         change_request_content=(
             f"Deliver plan: {plan_name}"[:_CHANGE_REQUEST_TITLE_LIMIT],
