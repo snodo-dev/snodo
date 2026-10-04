@@ -1085,6 +1085,8 @@ def _unreported(
             wire["wave_id"] = row["wave_id"]
         if row.get("task_ref"):
             wire["task_ref"] = row["task_ref"]
+        if row.get("plan"):
+            wire["plan"] = row["plan"]
         live.append(wire)
     return live, dict(sorted(counts.items()))
 
@@ -1125,6 +1127,9 @@ def _collect_runs(
             row["wave_id"] = str(state["wave_id"])
         if job_dirs:
             row["task_ref"] = _job_task_ref(entry)
+            if row["status"] == "running":
+                from snodo.infrastructure.cloud_plan_progress import plan_job_progress
+                row.update(plan_job_progress(entry, runs_dir.parent / "plans"))
             if row["status"] == "running":
                 from snodo.infrastructure.job_progress import job_progress
                 row.update(job_progress(entry))

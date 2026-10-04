@@ -109,6 +109,50 @@ def test_finished_job_has_no_progress_and_running_snapshot_fields_remain(tmp_pat
     }
 
 
+def test_plan_job_liveness_names_running_plan_task(tmp_path):
+    jobs = tmp_path / ".snodo" / "jobs"
+    job = jobs / "j_plan"
+    _write(job / "state.json", {"status": "running", "started_at": 1787000000.0})
+    _write(job / "task.json", {"plan_name": "release"})
+    _write(tmp_path / ".snodo" / "plans" / "release" / "status.json", {
+        "tasks": {"1.1": "completed", "1.2": "in_progress", "1.3": "pending"},
+    })
+
+    rows = cloud_liveness._collect_runs(jobs, job_dirs=True)
+    live, _ = cloud_liveness._unreported(rows, set(), set())
+    assert next(row for row in live if row["id"] == "j_plan")["plan"] == "release"
+    assert next(row for row in live if row["id"] == "j_plan")["task_ref"] == "1.2"
+
+
+def test_plan_job_between_tasks_has_no_task_reference(tmp_path):
+    jobs = tmp_path / ".snodo" / "jobs"
+    job = jobs / "j_plan"
+    _write(job / "state.json", {"status": "running", "started_at": 1787000000.0})
+    _write(job / "task.json", {"plan_name": "release"})
+    _write(tmp_path / ".snodo" / "plans" / "release" / "status.json", {
+        "tasks": {"1.1": "completed", "1.2": "pending"},
+    })
+
+    rows = cloud_liveness._collect_runs(jobs, job_dirs=True)
+    live, _ = cloud_liveness._unreported(rows, set(), set())
+    row = next(row for row in live if row["id"] == "j_plan")
+    assert row["plan"] == "release"
+    assert "task_ref" not in row
+
+
+def test_single_dispatched_job_keeps_task_reference(tmp_path):
+    jobs = tmp_path / ".snodo" / "jobs"
+    job = jobs / "j_single"
+    _write(job / "state.json", {"status": "running", "started_at": 1787000000.0})
+    _write(job / "task.json", {"task_id": "t_single"})
+
+    rows = cloud_liveness._collect_runs(jobs, job_dirs=True)
+    live, _ = cloud_liveness._unreported(rows, set(), set())
+    row = next(row for row in live if row["id"] == "j_single")
+    assert row["task_ref"] == "t_single"
+    assert "plan" not in row
+
+
 @pytest.fixture
 def project(tmp_path):
     """A project tree with one session, one begun plan, and a running task."""
