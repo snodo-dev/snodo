@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Cloud and dashboard liveness now verify recorded process start-time and host
+  identity before trusting a PID, letting stale jobs with reused or foreign-host
+  PIDs age out while preserving legacy records. (Fixes #712)
 - Read the release version from the checkout's `pyproject.toml` for source builds,
   avoiding stale editable-install metadata. (Fixes #709)
 - Plan integration merges now accept passing or `no_tests` quality verification

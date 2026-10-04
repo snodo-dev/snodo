@@ -35,6 +35,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
+from snodo.infrastructure.process_identity import process_identity_matches
+
 _logger = logging.getLogger(__name__)
 
 #: Audit event types that mark a phase boundary an operator cares about.
@@ -279,6 +281,8 @@ class RunRow:
     coder_hint: str = ""
     linked_ref: str = ""
     state_readable: bool = True
+    process_started_at: Optional[float] = None
+    process_host: Optional[str] = None
 
     # -- derived views -------------------------------------------------
 
@@ -616,6 +620,8 @@ def collect_snapshot(project_root: str, now: Optional[float] = None) -> dict:
                 status=str(state.get("status") or "unknown"),
                 pid=state.get("pid") if isinstance(state.get("pid"), int) else None,
                 started_at=_iso_to_epoch(state.get("started_at") or state.get("created_at")),
+                process_started_at=state.get("process_started_at"),
+                process_host=state.get("process_host"),
                 markers=markers,
                 usage_records=count,
                 cost_total=cost,
@@ -674,6 +680,8 @@ def collect_snapshot(project_root: str, now: Optional[float] = None) -> dict:
             status=str(state.get("status") or "unknown"),
             pid=state.get("pid") if isinstance(state.get("pid"), int) else None,
             started_at=_iso_to_epoch(state.get("started_at") or state.get("created_at")),
+            process_started_at=state.get("process_started_at"),
+            process_host=state.get("process_host"),
             markers=markers,
             usage_records=count,
             cost_total=cost,
@@ -817,7 +825,13 @@ def is_stale(
         return False
     if row.status in _WAITING_STATUSES:
         return False
-    if row.alive() is True:
+    if row.process_started_at is not None:
+        identity_matches = process_identity_matches(
+            row.pid, row.process_started_at, row.process_host,
+        )
+        if identity_matches is True:
+            return False
+    elif row.alive() is True:
         return False
     idle = row.idle_seconds(now)
     if idle is not None and idle < _STALE_AFTER_SECONDS:

@@ -67,6 +67,7 @@ from snodo.infrastructure.cloud_backoff import (
     retry_after_seconds,
 )
 from snodo.infrastructure.paths import resolve_home
+from snodo.infrastructure.process_identity import process_identity_matches
 from snodo.project import scope_for_project_id
 
 _logger = logging.getLogger(__name__)
@@ -1116,6 +1117,7 @@ def _collect_runs(
             "started_at": _as_iso(state.get("started_at")),
             "_pid": state.get("pid") if isinstance(state.get("pid"), int) else None,
             "_last_activity": _mtime_or_none(entry / "state.json"),
+            "_process_identity": (state.get("process_started_at"), state.get("process_host")),
         }
         if not job_dirs and state.get("completed_at"):
             row["completed_at"] = _as_iso(state["completed_at"])
@@ -1147,9 +1149,15 @@ def _run_is_stale(row: dict, now: float) -> bool:
     status = row.get("status")
     if status in _SETTLED_RUN_STATUSES or status == _PENDING_TASK_STATUS:
         return False
+    activity = row.get("_last_activity")
+    started_at, host = row.get("_process_identity", (None, None))
+    if started_at is not None:
+        matches = process_identity_matches(row.get("_pid"), started_at, host)
+        if matches is True:
+            return False
+        return activity is None or now - activity >= _STALE_AFTER_SECONDS
     if _pid_alive(row.get("_pid")) is True:
         return False
-    activity = row.get("_last_activity")
     return activity is None or now - activity >= _STALE_AFTER_SECONDS
 
 

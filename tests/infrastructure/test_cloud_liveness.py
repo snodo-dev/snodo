@@ -34,6 +34,25 @@ def _write(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data))
 
 
+def test_stale_run_with_reused_pid_is_omitted(monkeypatch):
+    now = 10_000.0
+    monkeypatch.setattr(cloud_liveness, "process_identity_matches", lambda *args: False)
+    row = {"status": "running", "_pid": 123, "_process_identity": (100.0, "host"),
+           "_last_activity": now - 601}
+    assert cloud_liveness._run_is_stale(row, now) is True
+
+
+def test_live_run_identity_and_legacy_pid_behavior(monkeypatch):
+    now = 10_000.0
+    monkeypatch.setattr(cloud_liveness, "process_identity_matches", lambda *args: True)
+    row = {"status": "running", "_pid": 123, "_process_identity": (100.0, "host"),
+           "_last_activity": now - 601}
+    assert cloud_liveness._run_is_stale(row, now) is False
+    monkeypatch.setattr(cloud_liveness, "_pid_alive", lambda _pid: True)
+    row.pop("_process_identity")
+    assert cloud_liveness._run_is_stale(row, now) is False
+
+
 @pytest.fixture
 def project(tmp_path):
     """A project tree with one session, one begun plan, and a running task."""

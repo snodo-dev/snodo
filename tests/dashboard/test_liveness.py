@@ -490,6 +490,37 @@ def test_live_pid_beats_a_silent_state_file(project):
     assert is_stale(row, snap["now"]) is False
 
 
+def test_reused_pid_with_old_activity_is_stale(project, monkeypatch):
+    now = time.time()
+    monkeypatch.setattr(liveness, "process_identity_matches", lambda *args: False)
+    _write_job_state(project, "j_reused", {
+        "status": "running", "started_at": now - 3600, "pid": os.getpid(),
+        "process_started_at": now - 3600, "process_host": "old-host", "usage": [],
+    })
+    row = next(r for r in collect_snapshot(str(project), now=now)["runs"] if r.run_id == "j_reused")
+    assert is_stale(row, now) is True
+
+
+def test_recorded_process_identity_and_legacy_pid_are_live(project, monkeypatch):
+    now = time.time()
+    monkeypatch.setattr(liveness, "process_identity_matches", lambda *args: True)
+    _write_job_state(project, "j_live_identity", {
+        "status": "running", "started_at": now - 3600, "pid": os.getpid(),
+        "process_started_at": now - 3600, "process_host": "this-host", "usage": [],
+    })
+    identity_row = next(r for r in collect_snapshot(str(project), now=now)["runs"]
+                        if r.run_id == "j_live_identity")
+    assert is_stale(identity_row, now) is False
+
+    monkeypatch.setattr(liveness, "process_identity_matches", lambda *args: None)
+    _write_job_state(project, "j_legacy", {
+        "status": "running", "started_at": now - 3600, "pid": os.getpid(), "usage": [],
+    })
+    legacy_row = next(r for r in collect_snapshot(str(project), now=now)["runs"]
+                      if r.run_id == "j_legacy")
+    assert is_stale(legacy_row, now) is False
+
+
 def test_active_session_current_task_is_not_a_liveness_signal(project):
     """The session's current_task is set at run start and never cleared, so it
     must NOT rescue a stale record — that would reproduce the very bug where
