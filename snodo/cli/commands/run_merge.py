@@ -477,7 +477,6 @@ def _deliver_plan_integration(
         # Task validators ran against each task commit. The integration branch
         # has its own (merge) commit and combined tree, so verify that exact
         # tree before asking the ordinary delivery gate to accept it.
-        from git import Repo
         from snodo.infrastructure.worktree import _name_component, worktree_dir
         from snodo.validators.context import ValidatorContext
         from snodo.validators.quality import QualityValidator
