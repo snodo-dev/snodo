@@ -461,7 +461,7 @@ def _deliver(session_id: str, project_root: str) -> None:
                               "failures": 0, "blocked_until": 0.0},
             )["last_push"] = time.monotonic()
         live = _snapshot_is_live(snapshot)
-        success, server_delay, transient = _post_snapshot(snapshot)
+        success, server_delay, transient = _post_snapshot(snapshot, project_root=project_root)
         with _lock:
             st = _sessions[session_id]
             if success or not transient:
@@ -584,6 +584,7 @@ def _snapshot_is_live(snapshot: LivenessSnapshot) -> bool:
 
 def _post_snapshot(
     snapshot: LocalLivenessSnapshot, config: Optional[dict] = None,
+    project_root: Optional[str] = None,
 ) -> tuple[bool, float | None, bool]:
     """POST the snapshot to ``{liveness_url}/i/{jti}``. Drop on failure.
 
@@ -630,6 +631,12 @@ def _post_snapshot(
             and lease.interface_version >= 6
             else {key: value for key, value in snapshot.items() if key != "recons"}
         )
+        if (project_root and (getattr(lease, "interface_version", None) or 0) >= 9
+                and _sync_gate_open(config)):
+            from snodo.infrastructure.cloud_live_specs import prepare_snapshot
+            from snodo.infrastructure.cloud_live_specs import delivery_suppressed
+            if not delivery_suppressed(project_root, session_id):
+                wire_snapshot = prepare_snapshot(wire_snapshot, project_root, liveness_url, api_key)
         body = json.dumps(wire_snapshot).encode()
         url = f"{liveness_url.rstrip('/')}/i/{quote(lease.jti, safe='')}"
         try:
