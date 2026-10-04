@@ -539,6 +539,34 @@ def test_check_spec_paths_exist_flags_real_path_but_not_slash_prose(repo):
     assert "noindex/no-referrer" not in missing
 
 
+def test_spec_referenced_paths_strips_unmatched_parenthesis(repo):
+    path = repo / "scripts" / "enforce_file_length.py"
+    path.parent.mkdir()
+    path.write_text("# check\n")
+
+    assert check_spec_paths_exist(
+        str(repo), "See (scripts/enforce_file_length.py for the rule."
+    ) == []
+
+
+def test_spec_referenced_paths_does_not_flag_slash_joined_prose(repo):
+    assert check_spec_paths_exist(
+        str(repo), "Organize the plans/tasks/jobs into separate queues."
+    ) == []
+
+
+def test_spec_referenced_paths_still_flags_missing_nested_file(repo):
+    assert check_spec_paths_exist(
+        str(repo), "Follow docs/missing/file.md for requirements."
+    ) == ["docs/missing/file.md"]
+
+
+def test_backticked_extensionless_nested_path_is_still_checked(repo):
+    assert check_spec_paths_exist(
+        str(repo), "Update `snodo/cli/commands` as needed."
+    ) == ["snodo/cli/commands"]
+
+
 def test_check_spec_paths_exist_against_worktree(repo, tmp_path):
     """A file present in the project root but absent from the worktree is
     flagged when the worktree is checked — the untracked-file gap."""

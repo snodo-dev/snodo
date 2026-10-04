@@ -206,22 +206,27 @@ _SPEC_PATH_IGNORE = {
 _EXTENSION_RE = re.compile(r"\.[A-Za-z0-9]{1,12}$")
 
 
-def _is_path_like(token: str) -> bool:
+def _is_path_like(token: str, repository_root: Optional[Path] = None) -> bool:
     """Return True when *token* looks like a repository path, not prose.
 
     A slash-containing token is path-like when it ends in a file extension
     (``a/b/c.ext``), ends in a trailing slash (``a/b/c/``), or has at least
-    three slash-separated segments (``a/b/c``). Two-segment tokens without an
-    extension (``noindex/no-referrer``, ``and/or``) are prose, not paths.
+    three slash-separated segments whose first segment exists as a repository
+    directory. Two-segment tokens without an extension are prose, not paths.
     """
     if token.endswith("/"):
         return True
     if _EXTENSION_RE.search(token):
         return True
-    return token.count("/") >= 2
+    if token.count("/") < 2:
+        return False
+    first_segment = token.split("/", 1)[0]
+    return bool(repository_root and (repository_root / first_segment).is_dir())
 
 
-def _spec_referenced_paths(spec: str) -> List[str]:
+def _spec_referenced_paths(
+    spec: str, project_root: Optional[str] = None
+) -> List[str]:
     """Return repository paths a task spec names, best-effort.
 
     A spec that cites a path snodo cannot see is a spec whose authority is
@@ -230,19 +235,30 @@ def _spec_referenced_paths(spec: str) -> List[str]:
     just authored (issue #93). This extracts candidate paths from the spec text
     so the caller can check they exist in the worktree before dispatch.
 
-    A token is treated as a cited path only when it is path-like, not merely
-    slash-containing: it must end in a file extension (``a/b/c.ext``), end in
-    a trailing slash (``a/b/c/``), or have at least three slash-separated
-    segments (``a/b/c``). Slash-containing prose such as ``noindex/no-referrer``
-    or ``and/or`` is not a path and is not flagged — a guard that cries wolf
-    gets ignored, and this one guards against a failure that already cost a
-    whole task once (issue #99). The trade-off is deliberate: a two-segment
-    extensionless path written in prose (``src/parser``) is now missed, and a
-    path named without a path-like token was already missed. Paths in the
-    ignore set are never returned.
+    A token is treated as a cited path only when it ends in an extension, ends
+    in a trailing slash, is backticked, or has at least three segments with a
+    plausible repository root. Slash-containing prose such as
+    ``noindex/no-referrer`` or ``and/or`` is not flagged — a guard that cries
+    wolf gets ignored, and this one guards against a failure that already cost
+    a whole task once (issue #99). Unmatched parenthesis wrappers are discarded
+    while framework syntax remains intact. The deliberate trade-off remains:
+    two-segment extensionless paths in prose can be missed. Paths in the ignore
+    set are never returned.
     """
     found: List[str] = []
-    for token in re.findall(r"[A-Za-z0-9_@+()[\]./-]+", _spec_citation_text(spec)):
+    repository_root = Path(project_root) if project_root else Path.cwd()
+    citation_text = _spec_citation_text(spec)
+    backticked_paths = set(re.findall(r"`([^`]+)`", citation_text))
+    candidates = re.findall(r"[A-Za-z0-9_@+()[\]./-]+", citation_text)
+    plausible_roots = {
+        token.strip("()")
+        .rstrip(".,;:!?")
+        .split("/", 1)[0]
+        for token in candidates
+        if "/" in token
+        and (token.rstrip(".,;:!?").endswith("/") or _EXTENSION_RE.search(token.rstrip(".,;:!?")))
+    }
+    for token in candidates:
         # Citations commonly sit in prose punctuation. Keep framework syntax
         # such as ``(dashboard)``, ``[slug]`` and ``+page``, but discard an
         # unmatched opening wrapper and punctuation ending the sentence.
@@ -252,10 +268,18 @@ def _spec_referenced_paths(spec: str) -> List[str]:
             if inner.count("(") != inner.count(")"):
                 break
             token = inner
+        while token.startswith("(") and token.count("(") > token.count(")"):
+            token = token[1:]
+        while token.endswith(")") and token.count(")") > token.count("("):
+            token = token[:-1]
         token = token.strip("/")
         if not token or token.startswith(".") or "/" not in token:
             continue
-        if not _is_path_like(token):
+        if (
+            not _is_path_like(token, repository_root)
+            and token not in backticked_paths
+            and not (token.count("/") >= 2 and token.split("/", 1)[0] in plausible_roots)
+        ):
             continue
         # Ignore governance/authority paths the coder must not read, and any
         # path under them (prefix match), so a spec citing docs/decisions/0001
@@ -416,7 +440,7 @@ def check_spec_paths_exist(
         project_path = Path(project_root).resolve()
         roots = [Path(worktree) / root.resolve().relative_to(project_path) for root in roots]
     missing = []
-    for rel in _spec_referenced_paths(spec):
+    for rel in _spec_referenced_paths(spec, project_root):
         matches = [root / rel for root in roots if (root / rel).exists()]
         if len(matches) != 1:
             missing.append(rel)

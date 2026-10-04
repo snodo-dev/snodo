@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Spec path validation now ignores slash-joined prose and strips unmatched
+  parenthesis wrappers while continuing to check real and missing citations.
+  (Fixes #715)
 - Cloud liveness job entries now identify the active task and plan for plan and
   queue runs. (Fixes #714)
 - Cloud audit sync now fills batches to the event and payload limits when the
