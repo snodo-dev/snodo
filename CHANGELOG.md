@@ -18,6 +18,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   head and allowed with passing evidence. (Fixes #693)
 
 ### Fixed
+- Allow clean local merges and plan delivery without verification evidence when
+  the protocol declares no quality validator; declared quality validators still
+  require exact-commit evidence. (Fixes #705)
 - Cloud audit sync now fills batches up to the 50-event limit when events share
   an interface-version boundary, while retaining payload/hold rules and printing
   each progress update once. (Fixes #704)

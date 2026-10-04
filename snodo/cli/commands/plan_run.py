@@ -1042,11 +1042,12 @@ def _verify_queue_merge_head(project_root, working_directory, task_ref, protocol
     )
     task = Task(id=task_ref, spec=task_ref)
     if quality is None:
-        audit_log.append_event("verification_executed", {
-            "op": "verification_executed", "task_ref": task_ref,
-            "commit": target_commit, "outcome": "no_tests",
-            "command": "no test_command configured",
-        })
+        print(
+            f"✓ Merged {branch} ungated: task {task_ref} at commit "
+            f"{target_commit[:7]} (no quality validator declared).",
+            file=sys.stderr,
+        )
+        return True
     else:
         QualityValidator(quality, working_directory=str(working_directory)).evaluate(
             ValidatorContext(

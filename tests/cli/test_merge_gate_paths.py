@@ -165,6 +165,80 @@ def test_default_quality_validator_id_remains_accepted(tmp_path):
     )[0] == 0
 
 
+def test_protocol_without_quality_validator_merges_ungated(tmp_path, capsys):
+    from snodo.cli.commands.run_merge import _merge_on_success
+    from snodo.compiler.models import Validator
+    from snodo.core.interfaces import Task
+    from snodo.infrastructure.audit import AuditLog
+
+    project, _base = _repository(tmp_path)
+    task = Task(id="task_no_quality_gate", spec="add a file")
+    from snodo.infrastructure.worktree import task_branch_name
+    branch = task_branch_name(task.id, task.spec)
+    _branch(project, _base, branch, "task.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = SimpleNamespace(validators=[Validator(
+        validator_id="security", validator_type="security",
+    )])
+
+    assert _merge_on_success(
+        str(project), task, 0, None, audit, protocol=protocol,
+    )[0] == 0
+    notice = capsys.readouterr().err
+    assert "ungated" in notice
+    assert "no quality validator declared" in notice
+    assert not audit.get_history("unverified_merge_blocked")
+
+
+def test_declared_quality_validator_still_blocks_without_record(tmp_path):
+    from snodo.cli.commands.run_merge import _merge_on_success
+    from snodo.compiler.models import Validator
+    from snodo.core.interfaces import Task
+    from snodo.infrastructure.audit import AuditLog
+
+    project, base = _repository(tmp_path)
+    task = Task(id="task_declared_quality_gate", spec="add a file")
+    from snodo.infrastructure.worktree import task_branch_name
+    branch = task_branch_name(task.id, task.spec)
+    _branch(project, base, branch, "task.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = SimpleNamespace(validators=[Validator(
+        validator_id="qa-gate", validator_type="quality",
+    )])
+
+    assert _merge_on_success(
+        str(project), task, 0, None, audit, protocol=protocol,
+    )[0] != 0
+    assert audit.get_history("unverified_merge_blocked")
+
+
+def test_no_tests_record_still_merges_ungated(tmp_path, capsys):
+    from snodo.cli.commands.run_merge import _merge_on_success
+    from snodo.compiler.models import Validator
+    from snodo.core.interfaces import Task
+    from snodo.infrastructure.audit import AuditLog
+
+    project, base = _repository(tmp_path)
+    task = Task(id="task_no_tests_gate", spec="add a file")
+    from snodo.infrastructure.worktree import task_branch_name
+    branch = task_branch_name(task.id, task.spec)
+    _path, commit = _branch(project, base, branch, "task.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    audit.append_event("verification_executed", {
+        "op": "verification_executed", "task_ref": task.id,
+        "validator_id": "qa-gate", "returncode": 0, "commit": commit,
+        "outcome": "no_tests", "command": "no test_command configured",
+    })
+    protocol = SimpleNamespace(validators=[Validator(
+        validator_id="qa-gate", validator_type="quality",
+    )])
+
+    assert _merge_on_success(
+        str(project), task, 0, None, audit, protocol=protocol,
+    )[0] == 0
+    assert "ran no tests" in capsys.readouterr().err
+
+
 def test_fast_path_merge_uses_protocol_validator_and_delivery(tmp_path):
     from git import Repo
     from snodo.cli.commands.run_merge import _try_merge_unmerged_task
@@ -266,6 +340,34 @@ def test_plan_integration_delivery_requires_exact_commit_verification(tmp_path, 
     else:
         with Repo(str(tmp_path / "remote.git")) as remote:
             assert remote.commit(branch).hexsha == commit
+
+
+def test_plan_integration_without_quality_validator_delivers_ungated(tmp_path, capsys):
+    from git import Repo
+    from snodo.cli.commands.run_merge import _deliver_plan_integration
+    from snodo.compiler.models import Validator
+    from snodo.infrastructure.audit import AuditLog
+
+    project, _base = _repository(tmp_path)
+    branch = "plan/no-quality/integration"
+    integration, _commit = _branch(project, _base, branch, "combined.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = SimpleNamespace(
+        delivery_for=lambda _mode: "local_merge",
+        execution=SimpleNamespace(delivery_remote="origin"),
+        metadata={}, validators=[Validator(
+            validator_id="security", validator_type="security",
+        )],
+    )
+
+    assert _deliver_plan_integration(
+        str(project), branch, "no-quality", "intent", protocol, "producer", audit,
+        integration_path=integration,
+    ) == 0
+    assert "no quality validator declared" in capsys.readouterr().err
+    assert not audit.get_history("verification_executed")
+    with Repo(str(project)) as repo:
+        assert "combined.txt" in repo.git.ls_tree("-r", "HEAD")
 
 
 def test_queue_integration_merge_requires_verification_of_queue_head(tmp_path):
