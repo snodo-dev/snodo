@@ -1247,3 +1247,15 @@ class TestLastActivityClock:
         assert _iso(body["last_activity_at"]) > _iso(
             datetime.fromtimestamp(plan_stamp, timezone.utc).isoformat(),
         )
+
+
+def test_successful_push_clears_liveness_failure_count(tmp_path):
+    from snodo.infrastructure.cloud_sync import CloudSyncState
+
+    state = CloudSyncState(tmp_path / "cloud_sync.json")
+    state.record_liveness_push("sess_recovered", error="HTTP 503: maintenance")
+    state.record_liveness_push("sess_recovered", error="HTTP 503: maintenance")
+    state.record_liveness_push("sess_recovered")
+    info = state.get_summary()["sess_recovered"]
+    assert "liveness_failure_count" not in info
+    assert "last_liveness_error" not in info

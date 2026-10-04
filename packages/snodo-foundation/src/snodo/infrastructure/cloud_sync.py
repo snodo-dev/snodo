@@ -685,6 +685,7 @@ class CloudSyncState:
         sess["last_liveness_push_at"] = time.time()
         if error is None:
             sess.pop("last_liveness_error", None)
+            sess.pop("liveness_failure_count", None)
         else:
             sess["last_liveness_error"] = error
             sess["liveness_failure_count"] = sess.get("liveness_failure_count", 0) + 1
