@@ -59,3 +59,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [053](053-plans-run-from-queues.md) | Plans run from queues; a queue stops at its first unfinished plan | 2026-09-24 | `snodo queue` |
 | [054](054-cloud-sees-recons-queues-and-delivered-commits.md) | The cloud sees recons, the plan hierarchy and the commits a merge delivered | 2026-09-24 | `cloud_liveness.py` + `recon/` + `run_merge.py` (proposed) |
 | [055](055-orchestrator-pubsub-by-plan.md) | Orchestrator pub/sub coordination by plan | 2026-10-03 | Proposed client-side counterpart to cloud-hosted per-organisation streams |
+| [056](056-full-task-spec-by-hash.md) | Full task specs in the cloud live view by content hash | 2026-10-04 | `cloud_liveness.py` (proposed) |

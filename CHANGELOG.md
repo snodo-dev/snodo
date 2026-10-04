@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- ADR 056 records option A: cloud live views may resolve full task specs from
+  bounded, content-addressed uploads under interface v9+; history remains
+  authoritative. (Fixes #706)
+
 ## [0.20.0] — 2026-10-04
 
 ### Added
