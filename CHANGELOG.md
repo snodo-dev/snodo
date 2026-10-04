@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Plan integration merges now accept passing or `no_tests` quality verification
+  recorded for any task in that plan at the exact integration commit. (Fixes #708)
 - Upload bounded task specs by content hash for interface-v9 cloud live views. (Fixes #707)
 - ADR 056 records option A: cloud live views may resolve full task specs from
   bounded, content-addressed uploads under interface v9+; history remains

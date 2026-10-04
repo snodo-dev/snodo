@@ -370,6 +370,55 @@ def test_plan_integration_without_quality_validator_delivers_ungated(tmp_path, c
         assert "combined.txt" in repo.git.ls_tree("-r", "HEAD")
 
 
+@pytest.mark.parametrize(
+    ("record_task", "record_commit", "outcome", "should_merge"),
+    [
+        ("last-task", "head", "pass", True),
+        ("last-task", "base", "pass", False),
+        ("unrelated-task", "head", "pass", False),
+        ("last-task", "head", "no_tests", True),
+    ],
+)
+def test_plan_integration_uses_same_plan_task_evidence_for_exact_head(
+    tmp_path, monkeypatch, record_task, record_commit, outcome, should_merge,
+):
+    from git import Repo
+    from snodo.cli.commands.run_merge import _deliver_plan_integration
+    from snodo.compiler.models import Validator
+    from snodo.infrastructure.audit import AuditLog
+    from snodo.validators.quality import QualityValidator
+
+    project, base = _repository(tmp_path)
+    plan_name = "settings-api-keys"
+    branch = f"plan/{plan_name}/integration"
+    integration, head = _branch(project, base, branch, "combined.txt")
+    plan_file = project / ".snodo" / "plans" / plan_name / "plan.yml"
+    plan_file.parent.mkdir(parents=True)
+    plan_file.write_text("waves:\n  - id: wave-1\n    tasks:\n      - first-task\n      - last-task\n")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    audit.append_event("verification_executed", {
+        "op": "verification_executed", "task_ref": record_task,
+        "validator_id": "qa-gate", "returncode": 0,
+        "commit": {"head": head, "base": base}[record_commit],
+        "outcome": outcome, "command": "true",
+    })
+    monkeypatch.setattr(QualityValidator, "evaluate", lambda *_args, **_kwargs: None)
+    protocol = SimpleNamespace(
+        delivery_for=lambda _mode: "local_merge",
+        execution=SimpleNamespace(delivery_remote="origin"),
+        metadata={},
+        validators=[Validator(validator_id="qa-gate", validator_type="quality")],
+    )
+
+    result = _deliver_plan_integration(
+        str(project), branch, plan_name, "intent", protocol, "producer", audit,
+        integration_path=integration,
+    )
+    assert (result == 0) is should_merge
+    with Repo(str(project)) as repo:
+        assert ("combined.txt" in repo.git.ls_tree("-r", "HEAD")) is should_merge
+
+
 def test_queue_integration_merge_requires_verification_of_queue_head(tmp_path):
     from git import Repo
     from snodo.cli.commands.plan_run import _verify_queue_merge_head
