@@ -6,10 +6,28 @@ from types import SimpleNamespace
 import pytest
 
 from tests.conftest import (
+    _assert_suite_snodo_unchanged,
     _suite_repo_root,
     pytest_collection_modifyitems,
     pytest_configure,
 )
+
+
+def test_suite_snodo_guard_names_test_and_changed_path(tmp_path):
+    snodo = tmp_path / ".snodo"
+    snodo.mkdir()
+    (snodo / "state.json").write_text("{}")
+
+    with pytest.raises(pytest.fail.Exception, match=r"test_writer.*state\.json"):
+        _assert_suite_snodo_unchanged(tmp_path, {}, {"state.json": "changed"}, "test_writer")
+
+
+def test_suite_snodo_guard_allows_writes_outside_suite_repo(tmp_path):
+    project = tmp_path / "isolated-project"
+    (project / ".snodo").mkdir(parents=True)
+    (project / ".snodo" / "state.json").write_text("{}")
+
+    _assert_suite_snodo_unchanged(tmp_path, {}, {}, "test_isolated_writer")
 
 
 def test_pytest_configure_rootdir_mismatch_raises_usage_error():

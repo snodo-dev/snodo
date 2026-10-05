@@ -145,6 +145,39 @@ def _snodo_dir_state(repo_root) -> dict:
     return state
 
 
+def _assert_suite_snodo_unchanged(
+    repo_root: Path, before: dict | None, after: dict | None, nodeid: str
+) -> None:
+    """Attribute any suite-checkout ``.snodo/`` mutation to the test that made it."""
+    before = before or {}
+    after = after or {}
+    changed = sorted(
+        path
+        for path in before.keys() | after.keys()
+        if before.get(path) != after.get(path)
+    )
+    if changed:
+        pytest.fail(
+            "A test wrote under the suite repository's own .snodo/ directory: "
+            f"{nodeid} changed "
+            f"{', '.join(str(repo_root / '.snodo' / path) for path in changed)}. "
+            "Tests must use an isolated temporary project root (Fixes #717).",
+            pytrace=False,
+        )
+
+
+@pytest.fixture(autouse=True)
+def _guard_suite_snodo_per_test(request):
+    """Report suite-checkout ``.snodo/`` writes against the test that caused them."""
+    repo_root = _suite_repo_root()
+    if repo_root is None:
+        return
+    before = _snodo_dir_state(repo_root)
+    yield
+    after = _snodo_dir_state(repo_root)
+    _assert_suite_snodo_unchanged(repo_root, before, after, request.node.nodeid)
+
+
 def _plans_dir_state(repo_root: Path) -> dict | None:
     """Fingerprint the suite repository's plans, distinguishing absent from empty."""
     plans_dir = repo_root / ".snodo" / "plans"

@@ -12,8 +12,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Resolve configured provider prefixes separately from LiteLLM model ids, so
   models such as `google/gemini/gemini-3.8-flash` use Google credentials and
   reach LiteLLM as `gemini/gemini-3.8-flash`. (`Fixes #718`)
-- Investigate the release-suite `.snodo/` state leak with the #65 guard active
-  on a clean checkout. (Fixes #717)
+- Attribute `.snodo/` writes into the suite checkout to the individual test
+  that caused them, making project-state leaks diagnosable in CI. (Fixes #717)
 
 ## [0.20.1] — 2026-10-04
 
