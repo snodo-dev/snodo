@@ -149,8 +149,8 @@ def _task_identity(
                 branch = repo.active_branch.name
             if branch:
                 return candidate_path, branch
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Could not resolve branch for task worktree %s: %s", candidate_path, e)
     if not plan_name:
         return new_path, new_branch
 
