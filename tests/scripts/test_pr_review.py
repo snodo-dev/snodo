@@ -60,7 +60,7 @@ def test_run_recon_maps_manager_results(monkeypatch, tmp_path):
     assert (tmp_path / ".snodo" / "state.json").exists()
 
 
-def test_run_recon_keeps_failed_agent_error(monkeypatch):
+def test_run_recon_keeps_failed_agent_error(monkeypatch, tmp_path):
     import snodo.recon
 
     class FakeManager:
@@ -78,6 +78,9 @@ def test_run_recon_keeps_failed_agent_error(monkeypatch):
 
     monkeypatch.setattr(review, "_load_recon_models", lambda: ["model-a", "model-b", "model-c"])
     monkeypatch.setattr(snodo.recon, "ReconManager", FakeManager)
+    # run_recon uses the current directory as its project root. Keep its
+    # session/state writes in a temporary project rather than the suite checkout.
+    monkeypatch.chdir(tmp_path)
     assert review.run_recon("review", "example/example", 1) == [
         {"agent": "alpha", "result": "", "error": "provider failure"}
     ]
