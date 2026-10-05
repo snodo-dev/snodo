@@ -6,7 +6,6 @@ Provides isolated test environments for subprocess-based CLI testing.
 """
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
