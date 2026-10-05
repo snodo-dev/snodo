@@ -22,6 +22,8 @@ from snodo.cli.commands.plan_delivery import (
     _remote_branch_matches, deliver_healthy_plan_wave, verify_queue_merge_head,
 )
 
+_verify_queue_merge_head = verify_queue_merge_head
+
 _logger = logging.getLogger(__name__)
 
 
