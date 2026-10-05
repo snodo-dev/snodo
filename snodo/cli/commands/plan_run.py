@@ -18,7 +18,9 @@ from snodo.core.interfaces import Task
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 from snodo.cli.commands import followup
-from snodo.cli.commands.plan_delivery import _remote_branch_matches, deliver_healthy_plan_wave
+from snodo.cli.commands.plan_delivery import (
+    _remote_branch_matches, deliver_healthy_plan_wave, verify_queue_merge_head,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -1031,55 +1033,6 @@ def _print_plan_progress(planner, plan_name: str) -> None:
     done = sum(1 for s in tasks.values()
                if (s.get("status") if isinstance(s, dict) else s) == "completed")
     print(f"\nPlan progress: {done}/{len(tasks)} completed")
-
-
-def _verify_queue_merge_head(project_root, working_directory, task_ref, protocol, audit_log, branch):
-    """Verify one exact plan/queue integration commit before queue delivery."""
-    from git import Repo
-    from snodo.cli.commands.run_merge import _matching_task_verifications, _quality_validator_ids
-    from snodo.validators.context import ValidatorContext
-    from snodo.validators.quality import QualityValidator
-
-    with Repo(project_root) as repo:
-        target_commit = repo.commit(branch).hexsha
-    quality = next(
-        (validator for validator in getattr(protocol, "validators", [])
-         if validator.validator_type == "quality"),
-        None,
-    )
-    task = Task(id=task_ref, spec=task_ref)
-    if quality is None:
-        print(
-            f"✓ Merged {branch} ungated: task {task_ref} at commit "
-            f"{target_commit[:7]} (no quality validator declared).",
-            file=sys.stderr,
-        )
-        return True
-    else:
-        QualityValidator(quality, working_directory=str(working_directory)).evaluate(
-            ValidatorContext(
-                task=task, protocol=protocol, audit_log=audit_log,
-                working_directory=str(working_directory), task_id=task_ref,
-            )
-        )
-    history = audit_log.get_history("verification_executed") if audit_log else []
-    passing = [event for event in _matching_task_verifications(
-        history, task_ref, target_commit, _quality_validator_ids(protocol),
-    ) if event.data.get("outcome") in {"pass", "no_tests"}]
-    if passing:
-        return True
-    reason = (
-        f"No passing verification_executed event recorded for task {task_ref} "
-        f"at commit {target_commit[:7]}."
-    )
-    print(f"✗ Refused queue merge for {branch}: {reason}", file=sys.stderr)
-    if audit_log:
-        audit_log.append_event("unverified_merge_blocked", {
-            "op": "unverified_merge_blocked", "task_ref": task_ref,
-            "branch": branch, "target_commit": target_commit,
-            "reason": reason, "session_id": None,
-        })
-    return False
 
 
 def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
