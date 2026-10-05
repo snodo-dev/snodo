@@ -16,14 +16,14 @@ snodo-provider-gitlab = { workspace = true }
 
 [project]
 name = "snodo"
-version = "0.20.1"
+version = "0.20.2"
 dependencies = [
-    "snodo-core==0.20.1",
-    "snodo-tools==0.20.1",
-    "snodo-foundation==0.20.1",
-    "snodo-engine==0.20.1",
-    "snodo-mcp==0.20.1",
-    "snodo-provider-github==0.20.1",
+    "snodo-core==0.20.2",
+    "snodo-tools==0.20.2",
+    "snodo-foundation==0.20.2",
+    "snodo-engine==0.20.2",
+    "snodo-mcp==0.20.2",
+    "snodo-provider-github==0.20.2",
     "pydantic>=2.12.0",
     "pyyaml>=6.0",
     "typer>=0.9.0",
@@ -111,7 +111,7 @@ filterwarnings = [
 
 [dependency-groups]
 dev = [
-    "snodo-provider-gitlab==0.20.1",
+    "snodo-provider-gitlab==0.20.2",
     "datasets==5.0.1",  # 5.0.0 and earlier: PYSEC-2026-3716, path traversal in folder-based builders
     "genbadge[coverage]==1.1.3",
     "grimp==3.14",
