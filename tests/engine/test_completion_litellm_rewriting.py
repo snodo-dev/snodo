@@ -12,6 +12,8 @@ PROVES:
 import os
 from unittest.mock import MagicMock
 
+import pytest
+
 from snodo.config import ConfigManager, ProviderConfig, provider_env
 from snodo.validators.runner import build_completion_fn
 
@@ -121,3 +123,49 @@ def test_existing_litellm_model_forms_and_unknown_provider_are_unchanged(monkeyp
     assert ConfigManager.resolve_litellm_model("openai/gpt-5.6-terra") == "openai/gpt-5.6-terra"
     assert ConfigManager.resolve_litellm_model("ollama-cloud/deepseek-v4-pro:0813") == "ollama-cloud/deepseek-v4-pro:0813"
     assert ConfigManager.resolve_litellm_model("unconfigured/model-name") == "unconfigured/model-name"
+
+
+@pytest.mark.parametrize(
+    ("configured", "resolved"),
+    [
+        ("google/gemini/gemini-3.8-flash", "gemini/gemini-3.8-flash"),
+        ("google/gemini-3.8-flash", "gemini/gemini-3.8-flash"),
+        ("gemini/gemini-3.8-flash", "gemini/gemini-3.8-flash"),
+    ],
+)
+def test_google_gemini_model_forms_resolve_in_isolated_config_home(
+    tmp_path, monkeypatch, configured, resolved
+):
+    """Google routing works with defaults and a user block lacking routing metadata."""
+    config_home = tmp_path / "config-home"
+    config_home.mkdir()
+    monkeypatch.setenv("SNODO_HOME", str(config_home))
+
+    assert ConfigManager.resolve_litellm_model(configured) == resolved
+
+
+def test_google_user_provider_block_without_litellm_provider_resolves(
+    tmp_path, monkeypatch
+):
+    import yaml
+
+    config_home = tmp_path / "config-home"
+    config_home.mkdir()
+    (config_home / "config.yml").write_text(
+        yaml.safe_dump({"providers": {"google": {"api_key": "isolated-test-key"}}})
+    )
+    monkeypatch.setenv("SNODO_HOME", str(config_home))
+
+    assert ConfigManager.resolve_litellm_model(
+        "google/gemini/gemini-3.8-flash"
+    ) == "gemini/gemini-3.8-flash"
+
+
+def test_google_rewrite_preserves_other_provider_model_ids(tmp_path, monkeypatch):
+    config_home = tmp_path / "config-home"
+    config_home.mkdir()
+    monkeypatch.setenv("SNODO_HOME", str(config_home))
+
+    assert ConfigManager.resolve_litellm_model("openai/gpt-5.6-terra") == "openai/gpt-5.6-terra"
+    assert ConfigManager.resolve_litellm_model("ollama-cloud/deepseek-v4-pro:0813") == "ollama-cloud/deepseek-v4-pro:0813"
+    assert ConfigManager.resolve_litellm_model("ocgo/gemini-3.8-flash") == "ocgo/gemini-3.8-flash"

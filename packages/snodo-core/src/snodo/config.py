@@ -389,6 +389,13 @@ class ConfigManager:
             if raw_id.startswith(f"{pc.litellm_provider}/"):
                 return raw_id
             return f"{pc.litellm_provider}/{raw_id}"
+        # ``google`` is snodo's namespace for Google's Gemini API, whereas
+        # LiteLLM routes Gemini models using the ``gemini/`` provider prefix.
+        # Keep this mapping here (rather than relying on the provider block) so
+        # user-defined google blocks need not repeat routing metadata.
+        if provider_key == "google":
+            raw_id = model[len("google/"):] if model.startswith("google/") else model
+            return raw_id if raw_id.startswith("gemini/") else f"gemini/{raw_id}"
         return model
 
     @staticmethod
