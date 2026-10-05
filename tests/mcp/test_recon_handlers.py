@@ -112,12 +112,16 @@ class TestHandleRecon:
         with patch("snodo.config.ConfigManager") as MockCM, \
              patch("snodo.recon.ReconManager") as MockRM:
             MockCM.return_value.load.return_value = {
-                "llm": {"recon": {"models": ["m1", "m2"], "num_agents": 1}}
+                "llm": {"recon": {"models": ["m1", "m2"], "num_agents": 1,
+                                   "max_tool_turns": 31, "max_tokens": 3600}}
             }
             MockRM.return_value.submit.return_value = "recon-cfg"
             result = handler.handle_recon({"query": "q", "paths": ["./"]})
         submitted = MockRM.return_value.submit.call_args[0]
         assert submitted[2] == [["m1", "m2"]]
+        assert MockRM.return_value.submit.call_args.kwargs == {
+            "max_tool_turns": 31, "max_tokens": 3600,
+        }
         assert result["agents"] == ["m1"]
 
     def test_missing_models_reports_actual_agent_count_and_config_key(self):

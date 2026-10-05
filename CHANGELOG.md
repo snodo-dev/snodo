@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Configure recon completion-token and read-tool-turn budgets through `llm.recon`,
+  passing them from MCP and CLI submissions to each agent run. (Fixes #731)
 - Acceptance validation now requires independent execution evidence for command
   criteria and reports uncovered execution requirements as unverified. (Fixes #729)
 - Use the task worktree's recorded branch for plan-task merge verification,

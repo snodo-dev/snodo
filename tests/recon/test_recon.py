@@ -44,6 +44,27 @@ def test_call_agent_passes_each_model_key_without_environment_state(monkeypatch)
     assert "OPENAI_API_KEY" not in os.environ
 
 
+def test_call_agent_passes_configured_completion_budget(monkeypatch):
+    from snodo.config import ConfigManager
+
+    monkeypatch.setattr(ConfigManager, "resolve_litellm_model", staticmethod(lambda model: model))
+    monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
+    monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: None)
+    completion = MagicMock(
+        return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="answer", tool_calls=[]))])
+    )
+    with patch("litellm.completion", completion):
+        recon_module.call_agent(".", "model", "query", [], "agent", max_turns=17, max_tokens=2300)
+    assert completion.call_args.kwargs["max_tokens"] == 2300
+
+
+def test_recon_agent_default_turn_budget_matches_validator_default():
+    from snodo.infrastructure.config import ValidatorConfig, ReconConfig
+
+    assert ReconConfig().max_tool_turns == ValidatorConfig().max_tool_turns == 6
+
+
 @pytest.mark.parametrize(
     ("configured_model", "litellm_model"),
     [
@@ -171,6 +192,22 @@ class TestReconManagerSubmit:
         assert "created_at" in state
         assert state["pid"] == os.getpid()
 
+    def test_submit_forwards_budgets_to_agent_run(self, recon_mgr, monkeypatch):
+        budgets = {}
+
+        def run_impl(self, recon_id, query, paths, agents, max_tool_turns, max_tokens):
+            budgets.update(max_tool_turns=max_tool_turns, max_tokens=max_tokens)
+
+        monkeypatch.setattr(ReconManager, "_run_recon_impl", run_impl)
+        monkeypatch.setattr(
+            ReconManager, "_run_recon",
+            lambda self, recon_id, query, paths, agents, max_tool_turns=6, max_tokens=1500:
+                self._run_recon_impl(recon_id, query, paths, agents, max_tool_turns, max_tokens),
+        )
+        recon_id = recon_mgr.submit("q", ["./"], [["model"]], max_tool_turns=23, max_tokens=4200)
+        recon_mgr.shutdown()
+        assert budgets == {"max_tool_turns": 23, "max_tokens": 4200}
+
     def test_submit_appends_full_recon_started_event(self, recon_mgr):
         query = "Explain the entire system, including its edge cases."
         agents = [["model-a", "model-b"], ["model-c"]]
@@ -260,7 +297,7 @@ class TestReconManagerGetResults:
 def test_recon_started_and_completed_events_cover_terminal_outcomes(
     recon_mgr, monkeypatch, result, error, status, succeeded, failed,
 ):
-    def fake_chain(project_root, models, query, paths, agent_label, max_turns=10):
+    def fake_chain(project_root, models, query, paths, agent_label, max_turns=6, max_tokens=1500):
         return ReconResult(agent=agent_label, model=models[0], result=result, error=error)
 
     monkeypatch.setattr(recon_module, "call_agent_chain", fake_chain)
@@ -980,7 +1017,7 @@ class TestCallAgentChain:
 
         calls = []
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             calls.append(model)
             if model == "m1":
                 return self._fault("m1")
@@ -1002,7 +1039,7 @@ class TestCallAgentChain:
 
         calls = []
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             calls.append(model)
             return self._ok(model, result="first answer")
 
@@ -1018,7 +1055,7 @@ class TestCallAgentChain:
 
         calls = []
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             calls.append(model)
             return self._ok(model, result="i have no idea")
 
@@ -1031,7 +1068,7 @@ class TestCallAgentChain:
     def test_every_model_failing_reports_which_were_tried_and_why(self):
         from snodo.recon import call_agent_chain
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             return self._fault(model)
 
         with patch("snodo.recon.call_agent", fake_call):
@@ -1110,7 +1147,7 @@ class TestReconManagerFailover:
         mgr = ReconManager(project_with_snodo)
         calls = []
 
-        def fake_chain(project_root, models, query, paths, agent_label, max_turns=10):
+        def fake_chain(project_root, models, query, paths, agent_label, max_turns=6, max_tokens=1500):
             from snodo.recon import ReconResult
             calls.append(list(models))
             return ReconResult(agent=agent_label, model=models[-1], result="ok")
@@ -1131,7 +1168,7 @@ class TestReconManagerFailover:
         mgr = ReconManager(project_with_snodo)
         calls = []
 
-        def fake_chain(project_root, models, query, paths, agent_label, max_turns=10):
+        def fake_chain(project_root, models, query, paths, agent_label, max_turns=6, max_tokens=1500):
             from snodo.recon import ReconResult
             calls.append(list(models))
             return ReconResult(agent=agent_label, model=models[0], result="ok")

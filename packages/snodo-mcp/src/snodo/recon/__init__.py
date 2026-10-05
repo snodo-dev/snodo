@@ -370,7 +370,8 @@ def call_agent_chain(
     query: str,
     paths: list[str],
     agent_label: str,
-    max_turns: int = 10,
+    max_turns: int = 6,
+    max_tokens: int = 1500,
 ) -> ReconResult:
     """Ask *models* in order and return the first answer.
 
@@ -385,7 +386,7 @@ def call_agent_chain(
     usage: list[dict] = []
     for model in models:
         result = call_agent(
-            project_root, model, query, paths, agent_label, max_turns,
+            project_root, model, query, paths, agent_label, max_turns, max_tokens,
         )
         if not result.error and result.result.strip():
             result.attempts = attempts + [ReconAttempt(model=model)]
@@ -444,7 +445,8 @@ def call_agent(
     query: str,
     paths: list[str],
     agent_label: str,
-    max_turns: int = 10,
+    max_turns: int = 6,
+    max_tokens: int = 1500,
 ) -> ReconResult:
     """Run a single recon agent: LLM with read-only tools, returning raw text.
 
@@ -535,6 +537,7 @@ def call_agent(
         kwargs = {
             "model": model_param,
             "messages": messages,
+            "max_tokens": max_tokens,
         }
         if api_key:
             kwargs["api_key"] = api_key
@@ -722,10 +725,11 @@ class ReconManager:
             return json.load(f)
 
     def _run_recon(self, recon_id: str, query: str, paths: list[str],
-                   agents: list) -> None:
+                   agents: list, max_tool_turns: int = 6,
+                   max_tokens: int = 1500) -> None:
         """Background entry point — fans out agents, writes results, updates state."""
         try:
-            self._run_recon_impl(recon_id, query, paths, agents)
+            self._run_recon_impl(recon_id, query, paths, agents, max_tool_turns, max_tokens)
         except Exception as e:
             _logger.debug("Recon background task error for %s: %s", recon_id, e)
             try:
@@ -793,7 +797,8 @@ class ReconManager:
             _logger.debug("Could not start cloud sync after recon completion", exc_info=True)
 
     def _run_recon_impl(self, recon_id: str, query: str, paths: list[str],
-                        agents: list) -> None:
+                        agents: list, max_tool_turns: int = 6,
+                        max_tokens: int = 1500) -> None:
         recon_dir = self.recons_dir / recon_id
 
         lanes = normalize_recon_agents(agents)
@@ -809,6 +814,7 @@ class ReconManager:
                 future = executor.submit(
                     call_agent_chain,
                     self.project_root, models, query, paths, agent_label,
+                    max_tool_turns, max_tokens,
                 )
                 futures[future] = agent_label
 
@@ -835,7 +841,8 @@ class ReconManager:
         self._append_completion_event(state, results)
 
     def submit(self, query: str, paths: list[str],
-               agents: Optional[list] = None) -> str:
+               agents: Optional[list] = None, max_tool_turns: int = 6,
+               max_tokens: int = 1500) -> str:
         """Submit a recon query — returns immediately with a recon_id.
 
         Args:
@@ -884,6 +891,7 @@ class ReconManager:
         thread = Thread(
             target=self._run_recon,
             args=(recon_id, query, paths, lanes),
+            kwargs={"max_tool_turns": max_tool_turns, "max_tokens": max_tokens},
         )
         thread.start()
         _threads.append(thread)
