@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Guard every orchestrator-facing guidance surface against drift from the
+  canonical plan-first rule. (Fixes #726)
 - Update the README and MCP self-description to use the canonical plan-first
   rule, including the single-task exception. (Fixes #725)
 - Align the unattended automation and queues guides with the plan-first rule,
