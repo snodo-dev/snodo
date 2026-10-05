@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Make PR-review tests explicitly control GitHub Actions run variables so CI and
+  local runs exercise the same behavior and state remains in the isolated project.
+  (Fixes #717)
+
 ## [0.20.3] — 2026-10-05
 
 - Normalize Google Gemini model names to LiteLLM's `gemini/` routing form from

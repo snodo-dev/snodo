@@ -28,6 +28,13 @@ def _isolated_project_root(tmp_path_factory):
         os.chdir(previous)
 
 
+@pytest.fixture(autouse=True)
+def _controlled_github_actions_environment(monkeypatch):
+    """Make run_recon's CI-specific session naming deterministic per test."""
+    for name in ("GITHUB_ACTIONS", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def _results():
     return [
         {"agent": "alpha", "result": "Finding: missing test at src/a.py:12"},
@@ -72,6 +79,7 @@ def test_run_recon_maps_manager_results(monkeypatch, tmp_path):
     monkeypatch.setattr(snodo.recon, "ReconManager", FakeManager)
     monkeypatch.setattr(snodo.infrastructure.session, "SessionManager", isolated_session_manager)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_RUN_ID", "12345")
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
     assert review.run_recon("review", "example/example", 1) == _results()
