@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Preserve truncated forced-submit answer text and mark truncation; retry an
+  unusable final answer once, accept content-only answers, and fail with the run
+  trace rather than returning narration. (Fixes #736)
 - Raise default recon budgets to 40 read-tool turns and 16,000 output tokens,
   sharing these defaults across MCP, CLI, manager, and agent calls while keeping
   configured values authoritative. (Fixes #735)

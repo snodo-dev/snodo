@@ -865,19 +865,26 @@ class TestTerminalAnswer:
             "content": _ANSWER_ONLY_INSTRUCTION,
         }
 
-    def test_terminal_ask_with_empty_answer_falls_back_to_prior_prose(
+    def test_terminal_ask_retries_empty_answer(
         self, project_with_snodo,
     ):
-        """An agent that still produces nothing after being asked directly
-        keeps the existing empty-result error path (Fixes #299)."""
+        """Empty forced submit is retried once and accepts the retry answer."""
+        from types import SimpleNamespace
         from snodo.recon import call_agent
 
+        empty = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="", tool_calls=None), finish_reason="stop",
+        )])
+        answer = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="A useful partial answer.", tool_calls=None), finish_reason="stop",
+        )])
         responses = [
             _reading_response("The worker dispatches bounded jobs to validators.", "a.py"),
-            _prose_response(""),
+            empty,
+            answer,
         ]
 
-        with patch("litellm.completion", side_effect=responses):
+        with patch("litellm.completion", side_effect=responses) as completion:
             res = call_agent(
                 project_root=project_with_snodo,
                 model="test/model",
@@ -888,9 +895,22 @@ class TestTerminalAnswer:
             )
 
         assert res.error is None
-        assert "Partial answer" in res.result
-        assert "dispatches bounded jobs" in res.result
-        assert res.trace["ended"] == "partial_fallback"
+        assert res.result == "A useful partial answer."
+        assert completion.call_count == 3
+        assert "partial answer is still useful" in completion.call_args.kwargs["messages"][-1]["content"]
+
+    def test_retry_empty_fails_honestly_without_narration(self, project_with_snodo):
+        from snodo.recon import call_agent
+
+        responses = [
+            _reading_response("I'll systematically trace the code.", "a.py"),
+            _prose_response(""), _prose_response(""),
+        ]
+        with patch("litellm.completion", side_effect=responses):
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+        assert result.result == ""
+        assert "empty_final" in result.error
+        assert "systematically trace" not in result.result
 
     def test_final_submit_answer_tool_call_is_returned(self, project_with_snodo):
         from types import SimpleNamespace
@@ -912,14 +932,25 @@ class TestTerminalAnswer:
         from types import SimpleNamespace
         from snodo.recon import call_agent
 
+        tc = SimpleNamespace(id="answer", function=SimpleNamespace(
+            name="submit_answer", arguments=json.dumps({"answer": "Some incomplete answer"}),
+        ))
         response = SimpleNamespace(choices=[SimpleNamespace(
-            message=SimpleNamespace(content="Some incomplete answer", tool_calls=None), finish_reason="length",
+            message=SimpleNamespace(content="", tool_calls=[tc]), finish_reason="length",
         )])
         with patch("litellm.completion", side_effect=[_reading_response("Read context.", "a.py"), response]):
             result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
         assert "truncated" in result.result
         assert "finish_reason=length" in result.error
         assert result.trace["ended"] == "truncated:length"
+
+    def test_final_content_without_tool_call_is_accepted(self, project_with_snodo):
+        from snodo.recon import call_agent
+        with patch("litellm.completion", side_effect=[
+            _reading_response("Read context.", "a.py"), _prose_response("Content-only answer."),
+        ]):
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+        assert result.result == "Content-only answer."
 
     def test_natural_conclusion_returns_answer_not_accumulated_narration(
         self, project_with_snodo,

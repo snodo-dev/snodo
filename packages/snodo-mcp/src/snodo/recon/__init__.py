@@ -545,6 +545,46 @@ def call_agent(
             kwargs["extra_headers"] = extra_headers
         return litellm.completion(**kwargs)
 
+    def _forced_answer(response):
+        """Extract an answer from a forced-submit response, including providers
+        that ignore tool_choice and return plain content instead.
+        """
+        choice = response.choices[0]
+        msg = choice.message
+        finish = getattr(choice, "finish_reason", None)
+        answer = ""
+        for tc in getattr(msg, "tool_calls", None) or []:
+            if tc.function.name == "submit_answer":
+                trace["tools_called"].append("submit_answer")
+                try:
+                    value = json.loads(tc.function.arguments)
+                    answer = value.get("answer", "") if isinstance(value, dict) else ""
+                except (json.JSONDecodeError, TypeError, AttributeError):
+                    pass
+                if answer:
+                    trace["ended"] = "submitted_answer"
+                    break
+        if not str(answer or "").strip() and (msg.content or "").strip():
+            answer = msg.content
+        if finish in {"length", "max_tokens", "content_filter"}:
+            nonlocal truncated
+            truncated = True
+            trace["ended"] = f"truncated:{finish}"
+        return str(answer or ""), finish
+
+    def _retry_forced_answer(response):
+        answer, finish = _forced_answer(response)
+        if answer.strip():
+            return answer, finish
+        messages.append({"role": "user", "content": (
+            "Your previous final response did not contain a usable answer. "
+            "Please provide whatever partial answer you can; a partial answer is still useful."
+        )})
+        retry = _complete(with_read_tools=False, force_answer=True)
+        _record_response(retry)
+        retry_answer, retry_finish = _forced_answer(retry)
+        return retry_answer, retry_finish
+
     turns_used = 0
     stall_streak = 0
     raw_turn = 0
@@ -579,7 +619,7 @@ def call_agent(
         if getattr(msg, "tool_calls", None) and text.strip():
             earlier_prose.append(text.strip())
 
-        if not hasattr(msg, "tool_calls") or not msg.tool_calls:
+        if (not hasattr(msg, "tool_calls") or not msg.tool_calls) and not is_final_turn:
             if raw_turn == 0 and not text:
                 _logger.warning(
                     "Recon agent disengaged on turn 0 — model=%s, "
@@ -593,30 +633,13 @@ def call_agent(
             final_answer = text
             if text.strip():
                 earlier_prose.append(text.strip())
-            if not text.strip() and earlier_prose:
-                final_answer = "Partial answer (final response was unusable):\n\n" + "\n\n".join(earlier_prose)
-                trace["ended"] = "partial_fallback"
-            else:
-                trace["ended"] = "prose" if not truncated else f"truncated:{finish_reason}"
+            trace["ended"] = "prose" if not truncated else f"truncated:{finish_reason}"
             break
 
         if is_final_turn:
-            for tc in msg.tool_calls:
-                if tc.function.name == "submit_answer":
-                    trace["tools_called"].append("submit_answer")
-                    try:
-                        final_answer = json.loads(tc.function.arguments).get("answer", "")
-                    except (json.JSONDecodeError, TypeError, AttributeError):
-                        final_answer = ""
-                    trace["ended"] = "submitted_answer"
-                    break
-            if not final_answer.strip() and text.strip():
-                final_answer = text
-            if not final_answer.strip() and earlier_prose:
-                final_answer = "Partial answer (final response was unusable):\n\n" + "\n\n".join(earlier_prose)
-                trace["ended"] = "partial_fallback"
-            elif not trace["ended"] or trace["ended"] == "unknown":
-                trace["ended"] = "empty_final"
+            final_answer, finish_reason = _retry_forced_answer(response)
+            if not final_answer.strip():
+                trace["ended"] = f"empty_final:{finish_reason or 'no_answer'}"
             break
 
         # Execute read-only tool calls
@@ -691,22 +714,9 @@ def call_agent(
         finish_reason = getattr(choice, "finish_reason", None)
         if finish_reason in {"length", "max_tokens", "content_filter"}:
             truncated = True
-        for tc in getattr(msg, "tool_calls", None) or []:
-            if tc.function.name == "submit_answer":
-                trace["tools_called"].append("submit_answer")
-                try:
-                    final_answer = json.loads(tc.function.arguments).get("answer", "")
-                except (json.JSONDecodeError, TypeError, AttributeError):
-                    final_answer = ""
-                trace["ended"] = "submitted_answer"
-                break
-        if not final_answer.strip() and (msg.content or "").strip():
-            final_answer = msg.content
-        if not final_answer.strip() and earlier_prose:
-            final_answer = "Partial answer (final response was unusable):\n\n" + "\n\n".join(earlier_prose)
-            trace["ended"] = "partial_fallback"
-        elif not final_answer.strip():
-            trace["ended"] = "empty_final"
+        final_answer, finish_reason = _retry_forced_answer(response)
+        if not final_answer.strip():
+            trace["ended"] = f"empty_final:{finish_reason or 'no_answer'}"
         trace["turns_used"] = raw_turn + 1
 
     if truncated:
@@ -724,7 +734,7 @@ def call_agent(
         )
         return ReconResult(
             agent=agent_label, model=model,
-            result="Partial answer unavailable: final response was empty.", error="Agent returned empty result",
+            result="", error=f"Final answer unavailable; run ended with {trace['ended']}.",
             served_model=served_model,
             usage=[_usage_record("failed")],
             trace=trace,
