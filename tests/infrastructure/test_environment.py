@@ -129,35 +129,47 @@ class TestEnvironmentPrepExecution:
         assert res.command == "npm ci"
         assert executed == [("npm ci", str(temp_worktree))]
 
-    def test_shell_prepare_command_receives_environment_without_job_context(self, temp_worktree):
+    def test_shell_prepare_command_receives_environment_without_job_context(self, temp_worktree, monkeypatch):
         from snodo.paths import JOB_CONTEXT_ENV_VARS
 
-        with patch.dict("os.environ", {name: "job-value" for name in JOB_CONTEXT_ENV_VARS}):
-            with patch("subprocess.run") as run:
-                run.return_value.returncode = 0
-                run.return_value.stdout = ""
-                run.return_value.stderr = ""
-                prepare_environment(temp_worktree, explicit_command="true")
+        for name in JOB_CONTEXT_ENV_VARS:
+            monkeypatch.setenv(name, "job-value")
+        monkeypatch.setenv("PATH", "/test/bin")
+        monkeypatch.setenv("HOME", "/test/home")
+        with patch("subprocess.run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = ""
+            run.return_value.stderr = ""
+            prepare_environment(temp_worktree, explicit_command="true")
 
         child_env = run.call_args.kwargs["env"]
         assert not set(JOB_CONTEXT_ENV_VARS) & child_env.keys()
+        assert child_env["PATH"] == "/test/bin"
+        assert child_env["HOME"] == "/test/home"
 
-    def test_shell_mcp_prepare_command_receives_environment_without_job_context(self, temp_worktree):
+    def test_shell_mcp_prepare_command_receives_environment_without_job_context(self, temp_worktree, monkeypatch):
         import sys
 
         from snodo.paths import JOB_CONTEXT_ENV_VARS
         from snodo.tools.shell import ShellMCP
 
-        command = f'{sys.executable} -c "import os; print(\'|\'.join(k for k in {JOB_CONTEXT_ENV_VARS!r} if k in os.environ))"'
-        with patch.dict("os.environ", {name: "job-value" for name in JOB_CONTEXT_ENV_VARS}):
-            result = prepare_environment(
-                temp_worktree,
-                explicit_command=command,
-                shell_mcp=ShellMCP(str(temp_worktree)),
-            )
+        for name in JOB_CONTEXT_ENV_VARS:
+            monkeypatch.setenv(name, "job-value")
+        monkeypatch.setenv("PATH", "/test/bin")
+        monkeypatch.setenv("HOME", "/test/home")
+        command = (
+            f'{sys.executable} -c "import os; print(\'|\'.join('
+            f'k for k in {JOB_CONTEXT_ENV_VARS!r} if k in os.environ)); '
+            'print(os.environ[\'PATH\']); print(os.environ[\'HOME\'])"'
+        )
+        result = prepare_environment(
+            temp_worktree,
+            explicit_command=command,
+            shell_mcp=ShellMCP(str(temp_worktree)),
+        )
 
         assert result.status == "executed"
-        assert result.output.strip() == ""
+        assert result.output.splitlines() == ["", "/test/bin", "/test/home"]
 
     def test_failed_install_raises_environment_prep_error(self, temp_worktree):
         (temp_worktree / "package-lock.json").touch()

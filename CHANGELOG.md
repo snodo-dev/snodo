@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Ensure task preparation and ShellMCP child shells omit inherited Snodo
+  job-context variables while retaining ordinary environment settings. (Fixes #640)
 - Validator `git_show` now returns a revision's top-level tree listing when asked
   for the repository root, while preserving path-boundary checks. (Fixes #721)
 - Expand the configuration reference with provider preflight, cloud runtime

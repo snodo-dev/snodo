@@ -104,6 +104,7 @@ def main():
     wrapper_error = None
     try:
         cmd = [sys.executable, "-m", "snodo", *argv]
+        # Preserve the job context assembled above for the task CLI handoff.
         proc = subprocess.run(cmd, check=False)  # noqa: S603 - argv list (no shell); argv are single CLI elements from the job's task spec, never shell-interpreted
 
         exit_code = proc.returncode
