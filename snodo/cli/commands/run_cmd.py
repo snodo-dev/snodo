@@ -887,9 +887,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         if worktree_path_val:
             # The checked-out branch is the durable identity for this run. The
             # task spec may be replaced before a plan wave is rerun.
-            from snodo.tools.git import open_repo
-            with open_repo(worktree_path_val) as task_repo:
-                task_branch = task_repo.active_branch.name
+            from snodo.infrastructure.worktree import task_worktree_branch
+            task_branch = task_worktree_branch(worktree_path_val)
         task.branch = task_branch
         worktree_failure = None
     except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently

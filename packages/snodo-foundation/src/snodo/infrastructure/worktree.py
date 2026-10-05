@@ -108,6 +108,14 @@ def _branch_exists(project_root: str, branch: str) -> bool:
         return False
 
 
+def task_worktree_branch(path: str) -> str:
+    """Return the branch checked out by a task worktree."""
+    from snodo.tools.git import open_repo
+
+    with open_repo(path) as repo:
+        return repo.active_branch.name
+
+
 def _worktree_has_branch(project_root: str, path: Path, branch: str) -> bool:
     """Return whether Git records *path* checked out on *branch*."""
     try:
