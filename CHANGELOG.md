@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.3] — 2026-10-05
+
 - Normalize Google Gemini model names to LiteLLM's `gemini/` routing form from
   shared model resolution, including user-defined Google provider blocks.
   (Fixes #719)
