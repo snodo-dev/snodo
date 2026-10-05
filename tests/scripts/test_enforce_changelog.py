@@ -43,6 +43,32 @@ def test_issue_closing_commit_without_entry_fails_and_names_issue(tmp_path: Path
     assert "add a changelog entry" in failures[0]
 
 
+def test_modes_warn_at_gate_and_fail_at_release_for_missing_entry(
+    tmp_path: Path, capsys
+) -> None:
+    repo, base = _repo(tmp_path, "fix: close the broken path (Fixes #987)")
+
+    assert changelog_check.main(["--repo", str(repo), "--base", base, "--mode", "gate"]) == 0
+    gate_output = capsys.readouterr().out
+    assert "WARNING:" in gate_output
+    assert "commit " in gate_output
+    assert "issue #987" in gate_output
+
+    assert changelog_check.main(["--repo", str(repo), "--base", base, "--mode", "release"]) == 1
+    assert "FAIL:" in capsys.readouterr().out
+
+
+def test_present_entry_passes_both_modes(tmp_path: Path) -> None:
+    repo, base = _repo(
+        tmp_path,
+        "fix: close the broken path (Fixes #987)",
+        "# Changelog\n\n## [Unreleased]\n\n- Fix the broken path. (Fixes #987)\n",
+    )
+
+    assert changelog_check.main(["--repo", str(repo), "--base", base, "--mode", "gate"]) == 0
+    assert changelog_check.main(["--repo", str(repo), "--base", base, "--mode", "release"]) == 0
+
+
 def test_chore_commit_closing_nothing_passes(tmp_path: Path) -> None:
     repo, base = _repo(tmp_path, "chore: tidy the test fixture")
 

@@ -54,6 +54,10 @@ snodo run "implement hello world" --mock   # deterministic, no API calls
    no conflict (see `tests/golden/test_changelog_union_merge.py`). Keep your
    entry self-contained under one bullet; do not rewrite or reorder other
    agents' entries within a single change.
+    The task gate warns (with the commit and issue) when an issue-closing
+    commit is missing an entry, but still passes so completed work is not
+    blocked. `make release` enforces completeness and fails for missing or
+    misplaced entries on commits since the last tag.
 6. **If a change alters package structure, the execution path, or where an
    invariant is enforced, update `docs/architecture.md` in the same PR.** Keep it
    free of line numbers and of current findings — reference files and functions,

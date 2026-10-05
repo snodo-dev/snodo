@@ -130,6 +130,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Base commit for this branch range (default: CHANGELOG_BASE or origin/main).",
     )
     parser.add_argument("--changelog", default="CHANGELOG.md", help="Path to CHANGELOG.md.")
+    parser.add_argument(
+        "--mode",
+        choices=("gate", "release"),
+        default="gate",
+        help="Gate mode warns on missing entries; release mode fails (default: gate).",
+    )
     args = parser.parse_args(argv)
     repo_root = Path(args.repo).resolve()
     changelog_path = repo_root / args.changelog
@@ -140,9 +146,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Changelog check failed: {exc}")
         return 1
     for failure in failures:
-        print(f"FAIL: {failure}")
+        print(f"{'WARNING' if args.mode == 'gate' else 'FAIL'}: {failure}")
     if failures:
-        print(f"Changelog check failed: {len(failures)} undocumented issue-closing commit(s).")
+        if args.mode == "gate":
+            print(f"Changelog check warning: {len(failures)} changelog issue(s) need attention.")
+            return 0
+        print(f"Changelog check failed: {len(failures)} changelog issue(s).")
         return 1
     print(f"Changelog check OK: commits after {args.base} are documented.")
     return 0

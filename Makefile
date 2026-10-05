@@ -67,6 +67,12 @@ release:
 		git status --short; \
 		exit 1; \
 	fi
+	@BASE=$$(git describe --tags --abbrev=0 2>/dev/null) || { \
+		echo "No previous tag found; cannot determine the release changelog range."; exit 1; \
+	}; \
+	uv run python scripts/enforce_changelog.py --mode release --base "$$BASE" || { \
+		echo "Release changelog check failed. Aborting release."; exit 1; \
+	}
 	$(MAKE) $(RELEASE_GATE) || { \
 		echo "$(RELEASE_GATE) failed. Aborting release."; \
 		exit 1; \

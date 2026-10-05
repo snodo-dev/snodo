@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Make the task gate warn about missing changelog entries while `make release`
+  enforces complete entries for issue-closing commits since the last tag. (Fixes #727)
 - Guard every orchestrator-facing guidance surface against drift from the
   canonical plan-first rule. (Fixes #726)
 - Update the README and MCP self-description to use the canonical plan-first

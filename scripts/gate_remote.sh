@@ -52,7 +52,7 @@ gate_run() {
     && uv run python scripts/enforce_file_length.py \
     && uv run python scripts/enforce_docs_coverage.py \
     && uv run python scripts/enforce_vocabularies.py \
-    && uv run python scripts/enforce_changelog.py \
+    && uv run python scripts/enforce_changelog.py --mode gate \
     && uv run python scripts/enforce_release_package_docs.py \
     && uv run python scripts/enforce_cloud_schema.py \
     && uv run python scripts/enforce_audit_event_contract.py
