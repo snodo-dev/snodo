@@ -18,12 +18,9 @@ Design (ADR 028):
   coder can fix given the feedback, so a miss routes to recovery (warn) rather
   than a hard halt.  The validator is shipped with ``severity_cap: warn`` so a
   miss can never hard-block even if a protocol forgets the cap.
-- **"Unmet" is distinct from "uncheckable".** A criterion that cannot be
-  verified from the tree (device behaviour, human judgement, a decision only a
-  human can make) is reported as uncheckable and does NOT block good work.  The
-  judge is told to return ``pass`` for uncheckable criteria and to say so in
-  the justification; only criteria that are verifiable from the tree and
-  demonstrably unmet produce a warn.
+- **Unverified is not passed.** Tree-verifiable criteria are judged from the
+  artifacts. Execution criteria defer to independent execution evidence; if
+  none covers a criterion, it is reported as not verified and produces a warn.
 - **Not a second ``quality``.** It judges completeness against the spec, not
   correctness of the code.  It never runs commands; it reads the tree.
 """
@@ -167,8 +164,8 @@ class AcceptanceValidator(LLMValidator):
         delimits its acceptance section, only that section is passed; otherwise
         the full spec is passed as fallback. The judge is told to distinguish
         "unmet" (verifiable from the tree and demonstrably absent) from
-        "uncheckable" (device behaviour, human judgement — not verifiable from
-        the tree, and never a finding).
+        "uncheckable" (device behaviour or human judgement) from unmet criteria.
+        Execution criteria are adjudicated from independent execution evidence.
 
         The produced change rides in on the context, keyed on phase
         (Fixes #267): without it a judge spends every turn rediscovering which
@@ -181,6 +178,11 @@ class AcceptanceValidator(LLMValidator):
             if context.task and context.task.spec
             else ""
         )
+        execution_evidence = list(getattr(context, "execution_evidence", None) or [])
+        evidence_text = "\n".join(
+            f"- {r.validator_id}: {r.severity}; {r.justification}"
+            for r in execution_evidence
+        ) or "(none)"
 
         prompt_parts = [
             "You are an acceptance validator for a software development protocol.\n",
@@ -197,6 +199,9 @@ class AcceptanceValidator(LLMValidator):
             "\n",
             "## Produced Artifacts\n",
             f"{artifact_text}\n",
+            "\n## Independent Execution Evidence\n",
+            "Only independent validator results are evidence; coder claims are not.\n",
+            f"{evidence_text}\n",
             # The diff, when a git range exists.  The artifact-list fallback
             # is not rendered here: the Produced Artifacts section above is
             # this prompt's list already (Fixes #267).
@@ -243,17 +248,19 @@ class AcceptanceValidator(LLMValidator):
             "- MET: the produced artifacts satisfy it. Evidence exists in the tree.\n",
             "- UNMET: the criterion is verifiable from the tree and the produced "
             "artifacts demonstrably do not satisfy it. This is a finding.\n",
-            "- UNCHECKABLE: the criterion cannot be verified from static tree inspection "
-            "alone (command/suite execution such as running verification tools; "
-            "device behaviour; human judgement; performance under load). This is NEVER a finding — "
-            "return pass for it and say it is uncheckable. You do NOT have shell tools to "
-            "run commands. NEVER mark a command execution criterion as MET by inferring success "
-            "from static files — mark it UNCHECKABLE, return pass for it, and state that command "
-            "execution is uncheckable by read-only judges.\n",
+            "- UNCHECKABLE: device behaviour, human judgement, or performance under load. "
+            "Do not count these as MET or imply they passed; these alone are NEVER a finding.\n",
+            "- EXECUTION: tests, make gate, builds, and other command requirements rely "
+            "only on Independent Execution Evidence above. Cite the validator, verdict, "
+            "and justification relied on. Passing quality evidence can satisfy a covered "
+            "criterion; failing evidence means unmet. If no evidence covers it, plainly "
+            "say it was not verified and treat it as unmet. Never infer success from the "
+            "tree or coder claims.\n",
             "\n",
-            "A criterion that is verifiable from the tree and unmet is a WARN, "
-            "never a blocker.  If every criterion is met or uncheckable, return "
-            "pass.  If the task spec has no acceptance criteria, return pass "
+            "A tree-verifiable unmet criterion or execution criterion without passing "
+            "evidence is a WARN, never a blocker. Only criteria met in the tree or "
+            "covered by passing independent evidence count as met. If all criteria are "
+            "met, return pass. If the task spec has no acceptance criteria, return pass "
             "and say so.\n",
             "\n",
             "Use tools to read files if needed.  Then call submit_verdict with "
@@ -268,7 +275,7 @@ class AcceptanceValidator(LLMValidator):
                 "This validator has check_tool_access enabled. If an acceptance "
                 "criterion requires runtime or other verification that none of "
                 f"your declared tools ({', '.join(getattr(self.validator_spec, 'tools', []) or []) or '(none)'}) "
-                "can perform, do not call it UNCHECKABLE and pass it. Submit a "
+                "can perform and no independent execution evidence covers it, do not pass it. Submit a "
                 "blocker and include tool_access_missing with the exact criterion "
                 "and missing capability. The orchestrator must run recon and fold "
                 "its findings into a smaller or more detailed spec.\n",

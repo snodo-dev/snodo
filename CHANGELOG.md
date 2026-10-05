@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Acceptance validation now requires independent execution evidence for command
+  criteria and reports uncovered execution requirements as unverified. (Fixes #729)
 - Use the task worktree's recorded branch for plan-task merge verification,
   preserving the committed branch when a task spec is replaced and rerun. (Fixes #728)
 - Make the task gate warn about missing changelog entries while `make release`

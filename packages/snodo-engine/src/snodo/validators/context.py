@@ -72,6 +72,9 @@ class ValidatorContext:
     #: established, so tree-reading verdicts are not cached).
     verdict_tree_subject: Optional[str] = None
     verdict_tree_subject_ready: bool = False
+    #: Results from independent execution/quality validators, supplied only to
+    #: post-execute acceptance judges after those validators have completed.
+    execution_evidence: List[ValidatorResult] = field(default_factory=list)
 
 
 class ValidatorBase(ABC):

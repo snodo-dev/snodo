@@ -9,8 +9,8 @@ from snodo.validators.acceptance import AcceptanceValidator
 from snodo.validators.context import ValidatorContext
 
 
-def test_acceptance_prompt_uncheckable_command_instruction():
-    """Acceptance validator prompt mandates UNCHECKABLE for command execution criteria."""
+def test_acceptance_prompt_requires_execution_evidence():
+    """Execution criteria cannot pass without independent verification evidence."""
     val_spec = Validator(validator_id="acceptance", name="acceptance", validator_type="acceptance")
     val = AcceptanceValidator(val_spec)
 
@@ -18,9 +18,22 @@ def test_acceptance_prompt_uncheckable_command_instruction():
     context = ValidatorContext(task=task, working_directory="/tmp")
 
     prompt = val._build_tool_loop_prompt(context, set())
-    assert "UNCHECKABLE: the criterion cannot be verified from static tree inspection" in prompt
+    assert "only on Independent Execution Evidence" in prompt
+    assert "plainly say it was not verified and treat it as unmet" in prompt
     assert "make check" in prompt
-    assert "NEVER mark a command execution criterion as MET" in prompt
+    assert "Never infer success from the tree or coder claims" in prompt
+
+
+def test_acceptance_prompt_cites_quality_evidence():
+    val_spec = Validator(validator_id="acceptance", name="acceptance", validator_type="acceptance")
+    val = AcceptanceValidator(val_spec)
+    task = Task(id="t1", spec="ACCEPTANCE CRITERIA:\n1. make gate passes")
+    context = ValidatorContext(task=task, working_directory="/tmp", execution_evidence=[
+        ValidatorResult(validator_id="quality", severity="pass", justification="make gate passed (exit 0)")
+    ])
+    prompt = val._build_tool_loop_prompt(context, set())
+    assert "quality: pass; make gate passed (exit 0)" in prompt
+    assert "Cite the validator, verdict," in prompt
 
 
 def test_post_validate_contradiction_detection():

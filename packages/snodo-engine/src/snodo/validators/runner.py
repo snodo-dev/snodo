@@ -605,9 +605,19 @@ def run_validators(
             progress_sink(f"    {v.validator_id}: started")
         return dispatch_fn(v, ctx, reg)
 
-    with ThreadPoolExecutor(max_workers=min(len(validators), 4)) as executor:
+    # Acceptance must be able to cite independent execution evidence. Run it
+    # after the other post-execute validators have produced their results.
+    deferred_acceptance = [
+        v for v in validators
+        if phase == "post_execute" and v.validator_type == "acceptance"
+        and v.validator_id not in results_by_id
+        and any(candidate.validator_type == "quality" for candidate in validators)
+    ]
+    active_validators = [v for v in validators if v not in deferred_acceptance]
+
+    with ThreadPoolExecutor(max_workers=max(1, min(len(active_validators), 4))) as executor:
         futures = {}
-        for v in validators:
+        for v in active_validators:
             if v.validator_id in results_by_id:
                 continue
             override_model = overrides.get(v.validator_id)
@@ -728,6 +738,46 @@ def run_validators(
                 if verdict_sink is not None:
                     verdict_sink(vid, result)
                 results_by_id[vid] = result
+
+    for v in deferred_acceptance:
+        ctx = copy.copy(context)
+        ctx.execution_evidence = [
+            result for result in results_by_id.values()
+            if result.validator_id != v.validator_id
+            and any(candidate.validator_id == result.validator_id
+                    and candidate.validator_type == "quality"
+                    for candidate in validators)
+        ]
+        override_model = overrides.get(v.validator_id)
+        ctx.model = override_model or v.model or default_model or DEFAULT_MODEL
+        ctx.max_tool_turns = v.max_tool_turns or _vcfg.max_tool_turns
+        try:
+            result = dispatch_fn(v, ctx, reg)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Validator %s failed outside the dispatch boundary: %s: %s", v.validator_id, type(e).__name__, e)
+            result = ValidatorResult(validator_id=v.validator_id, severity="blocker", justification=f"Validator error ({type(e).__name__}): {e}", error=True)
+        if result is not None:
+            if (
+                v.severity_cap is not None
+                and not getattr(result, "error", False)
+                and result.severity is not None
+            ):
+                from snodo.compiler.models import Severity
+
+                if Severity(result.severity) > v.severity_cap:
+                    original_severity = result.severity
+                    result = ValidatorResult(
+                        validator_id=result.validator_id,
+                        severity=v.severity_cap.value,
+                        justification=result.justification,
+                        cited_criteria=result.cited_criteria,
+                        severity_original=original_severity,
+                        reused=getattr(result, "reused", False),
+                    )
+                    cap_originals[result.validator_id] = original_severity
+            if verdict_sink is not None:
+                verdict_sink(v.validator_id, result)
+            results_by_id[v.validator_id] = result
 
     results = [results_by_id[v.validator_id] for v in validators]
     return results, cap_originals
