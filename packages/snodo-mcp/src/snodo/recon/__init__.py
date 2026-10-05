@@ -56,6 +56,7 @@ class ReconResult(BaseModel):
     #: it does not feed failover, selection or routing.
     served_model: Optional[str] = None
     usage: list[dict] = []
+    trace: dict = {}
 
 
 class ReconError(Exception):
@@ -166,8 +167,22 @@ _ANSWER_ONLY_INSTRUCTION = (
     "The read tools are no longer available. Answer the query now from what "
     "you have already gathered — do not narrate intentions or describe what "
     "you would read next. An answer reached on incomplete reading is a real "
-    "answer: state what you found and note what remains unverified."
+    "answer: state what you found and note what remains unverified. Submit "
+    "your answer using the submit_answer tool; a partial answer is still useful."
 )
+
+_SUBMIT_ANSWER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "submit_answer",
+        "description": "Submit the answer to the recon query, including a partial answer if needed.",
+        "parameters": {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+        },
+    },
+}
 
 
 def _adapter_model_prefixes() -> tuple[str, ...]:
@@ -507,7 +522,7 @@ def call_agent(
     extra_headers = ConfigManager.resolve_extra_headers(model, task_id="recon")
     api_key = ConfigManager().get_key_for_model(model)
 
-    def _complete(with_read_tools: bool):
+    def _complete(with_read_tools: bool, force_answer: bool = False):
         kwargs = {
             "model": model_param,
             "messages": messages,
@@ -517,6 +532,9 @@ def call_agent(
             kwargs["api_key"] = api_key
         if with_read_tools:
             kwargs["tools"] = _read_only_tools()
+        if force_answer:
+            kwargs["tools"] = [_SUBMIT_ANSWER_TOOL]
+            kwargs["tool_choice"] = {"type": "function", "function": {"name": "submit_answer"}}
         if api_base:
             kwargs["api_base"] = api_base
         if extra_headers:
@@ -526,13 +544,16 @@ def call_agent(
     turns_used = 0
     stall_streak = 0
     raw_turn = 0
+    trace = {"turns_used": 0, "tools_called": [], "ended": "unknown"}
+    earlier_prose: list[str] = []
+    truncated = False
     max_raw_turns = max_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 2
     while raw_turn < max_raw_turns:
         is_final_turn = turns_used >= max_turns or stall_streak >= _MAX_STALL_TURNS
         if is_final_turn:
             messages.append({"role": "user", "content": _ANSWER_ONLY_INSTRUCTION})
         try:
-            response = _complete(with_read_tools=not is_final_turn)
+            response = _complete(with_read_tools=not is_final_turn, force_answer=is_final_turn)
         except Exception as e:
             usage_records.append(_usage_record("failed"))
             return ReconResult(
@@ -547,6 +568,12 @@ def call_agent(
         choice = response.choices[0]
         msg = choice.message
         text = msg.content or ""
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason in {"length", "max_tokens", "content_filter"}:
+            truncated = True
+        trace["turns_used"] = raw_turn + 1
+        if getattr(msg, "tool_calls", None) and text.strip():
+            earlier_prose.append(text.strip())
 
         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
             if raw_turn == 0 and not text:
@@ -560,10 +587,32 @@ def call_agent(
             # tool-calling turn is narration between reads, never
             # the answer, so it is not accumulated here (Fixes #299).
             final_answer = text
+            if text.strip():
+                earlier_prose.append(text.strip())
+            if not text.strip() and earlier_prose:
+                final_answer = "Partial answer (final response was unusable):\n\n" + "\n\n".join(earlier_prose)
+                trace["ended"] = "partial_fallback"
+            else:
+                trace["ended"] = "prose" if not truncated else f"truncated:{finish_reason}"
             break
 
         if is_final_turn:
-            final_answer = text
+            for tc in msg.tool_calls:
+                if tc.function.name == "submit_answer":
+                    trace["tools_called"].append("submit_answer")
+                    try:
+                        final_answer = json.loads(tc.function.arguments).get("answer", "")
+                    except (json.JSONDecodeError, TypeError, AttributeError):
+                        final_answer = ""
+                    trace["ended"] = "submitted_answer"
+                    break
+            if not final_answer.strip() and text.strip():
+                final_answer = text
+            if not final_answer.strip() and earlier_prose:
+                final_answer = "Partial answer (final response was unusable):\n\n" + "\n\n".join(earlier_prose)
+                trace["ended"] = "partial_fallback"
+            elif not trace["ended"] or trace["ended"] == "unknown":
+                trace["ended"] = "empty_final"
             break
 
         # Execute read-only tool calls
@@ -579,6 +628,7 @@ def call_agent(
         turn_progressed = False
         for tc in msg.tool_calls:
             name = tc.function.name
+            trace["tools_called"].append(name)
             try:
                 args = json.loads(tc.function.arguments)
             except (json.JSONDecodeError, TypeError):
@@ -606,6 +656,7 @@ def call_agent(
         else:
             stall_streak += 1
         raw_turn += 1
+        trace["turns_used"] = turns_used
     else:
         # Reached only when the loop was never broken: the reading
         # budget is spent and the agent was still calling tools on
@@ -620,7 +671,7 @@ def call_agent(
             "content": _ANSWER_ONLY_INSTRUCTION,
         })
         try:
-            response = _complete(with_read_tools=False)
+            response = _complete(with_read_tools=False, force_answer=True)
         except Exception as e:
             usage_records.append(_usage_record("failed"))
             return ReconResult(
@@ -631,7 +682,35 @@ def call_agent(
                 usage=usage_records,
             )
         _record_response(response)
-        final_answer = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        msg = choice.message
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason in {"length", "max_tokens", "content_filter"}:
+            truncated = True
+        for tc in getattr(msg, "tool_calls", None) or []:
+            if tc.function.name == "submit_answer":
+                trace["tools_called"].append("submit_answer")
+                try:
+                    final_answer = json.loads(tc.function.arguments).get("answer", "")
+                except (json.JSONDecodeError, TypeError, AttributeError):
+                    final_answer = ""
+                trace["ended"] = "submitted_answer"
+                break
+        if not final_answer.strip() and (msg.content or "").strip():
+            final_answer = msg.content
+        if not final_answer.strip() and earlier_prose:
+            final_answer = "Partial answer (final response was unusable):\n\n" + "\n\n".join(earlier_prose)
+            trace["ended"] = "partial_fallback"
+        elif not final_answer.strip():
+            trace["ended"] = "empty_final"
+        trace["turns_used"] = raw_turn + 1
+
+    if truncated:
+        truncation_note = f"Output was truncated (finish_reason={finish_reason})."
+        final_answer = (final_answer.rstrip() + "\n\n" + truncation_note).strip()
+        trace["ended"] = f"truncated:{finish_reason}"
+    elif trace["ended"] == "unknown":
+        trace["ended"] = "completed"
 
     if not final_answer.strip():
         _logger.warning(
@@ -641,17 +720,20 @@ def call_agent(
         )
         return ReconResult(
             agent=agent_label, model=model,
-            result="", error="Agent returned empty result",
+            result="Partial answer unavailable: final response was empty.", error="Agent returned empty result",
             served_model=served_model,
             usage=[_usage_record("failed")],
+            trace=trace,
         )
 
     return ReconResult(
         agent=agent_label,
         model=model,
         result=final_answer.strip(),
+        error=(f"Output was truncated (finish_reason={finish_reason})." if truncated else None),
         served_model=served_model,
         usage=[_usage_record("succeeded")],
+        trace=trace,
     )
 
 

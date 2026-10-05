@@ -852,16 +852,17 @@ class TestTerminalAnswer:
         first_kwargs = mock_comp.call_args_list[0].kwargs
         assert "tools" in first_kwargs
 
-        # The third request is the terminal ask: no tools offered, and the
+        # The third request is the terminal ask: only submit_answer is offered,
         # instruction appended as the last user turn.
         final_kwargs = mock_comp.call_args.kwargs
-        assert "tools" not in final_kwargs
+        assert final_kwargs["tools"][0]["function"]["name"] == "submit_answer"
+        assert final_kwargs["tool_choice"]["function"]["name"] == "submit_answer"
         assert final_kwargs["messages"][-1] == {
             "role": "user",
             "content": _ANSWER_ONLY_INSTRUCTION,
         }
 
-    def test_terminal_ask_with_empty_answer_keeps_empty_result_error(
+    def test_terminal_ask_with_empty_answer_falls_back_to_prior_prose(
         self, project_with_snodo,
     ):
         """An agent that still produces nothing after being asked directly
@@ -869,7 +870,7 @@ class TestTerminalAnswer:
         from snodo.recon import call_agent
 
         responses = [
-            _reading_response("Let me check the specs.", "a.py"),
+            _reading_response("The worker dispatches bounded jobs to validators.", "a.py"),
             _prose_response(""),
         ]
 
@@ -883,8 +884,39 @@ class TestTerminalAnswer:
                 max_turns=1,
             )
 
-        assert res.error == "Agent returned empty result"
-        assert res.result == ""
+        assert res.error is None
+        assert "Partial answer" in res.result
+        assert "dispatches bounded jobs" in res.result
+        assert res.trace["ended"] == "partial_fallback"
+
+    def test_final_submit_answer_tool_call_is_returned(self, project_with_snodo):
+        from types import SimpleNamespace
+        from snodo.recon import call_agent
+
+        tc = SimpleNamespace(id="answer", function=SimpleNamespace(
+            name="submit_answer", arguments=json.dumps({"answer": "Structured answer."}),
+        ))
+        response = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="", tool_calls=[tc]), finish_reason="tool_calls",
+        )])
+        with patch("litellm.completion", side_effect=[_reading_response("Found facts.", "a.py"), response]) as completion:
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+        assert result.result == "Structured answer."
+        assert completion.call_args.kwargs["tool_choice"]["function"]["name"] == "submit_answer"
+        assert result.trace["ended"] == "submitted_answer"
+
+    def test_truncated_final_response_is_reported(self, project_with_snodo):
+        from types import SimpleNamespace
+        from snodo.recon import call_agent
+
+        response = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="Some incomplete answer", tool_calls=None), finish_reason="length",
+        )])
+        with patch("litellm.completion", side_effect=[_reading_response("Read context.", "a.py"), response]):
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+        assert "truncated" in result.result
+        assert "finish_reason=length" in result.error
+        assert result.trace["ended"] == "truncated:length"
 
     def test_natural_conclusion_returns_answer_not_accumulated_narration(
         self, project_with_snodo,

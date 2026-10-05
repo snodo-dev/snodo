@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Require structured recon answers on the final turn, preserve earlier findings as
+  partial answers when the final response is unusable, and record truncation and
+  per-agent execution traces. (Fixes #734; adds `trace` to stored recon results)
 - Recon agents now reuse the shared read-only workspace tools for batched and
   ranged reads, searches, line-numbered results, and repeat-read tracking.
   (Fixes #733)
