@@ -115,10 +115,13 @@ def test_recon_read_tools_reject_path_traversal(tmp_path):
     assert "secret" not in result
 
 
-def test_recon_agent_default_turn_budget_matches_validator_default():
+def test_recon_agent_default_budgets_are_sized_for_exploration():
     from snodo.infrastructure.config import ValidatorConfig, ReconConfig
 
-    assert ReconConfig().max_tool_turns == ValidatorConfig().max_tool_turns == 6
+    assert ReconConfig().max_tool_turns == 40
+    assert ReconConfig().max_tokens == 16000
+    assert ValidatorConfig().max_tool_turns == 6
+    assert ValidatorConfig().max_tokens == 1500
 
 
 @pytest.mark.parametrize(

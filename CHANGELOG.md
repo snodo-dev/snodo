@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Raise default recon budgets to 40 read-tool turns and 16,000 output tokens,
+  sharing these defaults across MCP, CLI, manager, and agent calls while keeping
+  configured values authoritative. (Fixes #735)
 - Teach orchestrators that blocked plans remain unfinished: read the halt, fix
   forward in the same plan, and land every wave before starting new work. (Fixes #732)
 - Deliver each fully passing plan wave immediately while keeping queue delivery

@@ -162,8 +162,8 @@ validator's own `model` setting takes precedence over the configured role model.
 | `llm.classifier.temperature` | `0.0` | Classifier temperature (0–2). |
 | `llm.recon.num_agents` | `1` | Default number of recon agents; minimum 1. |
 | `llm.recon.models` | `[]` | Ordered model priority list for recon. Empty uses the configured default model. |
-| `llm.recon.max_tokens` | `1500` | Maximum completion tokens per recon model call; minimum 1. |
-| `llm.recon.max_tool_turns` | `6` | Recon read-tool turn limit (1–200), matching the validator default. |
+| `llm.recon.max_tokens` | `16000` | Maximum completion tokens per recon model call; minimum 1. The model's own output limit may be lower. |
+| `llm.recon.max_tool_turns` | `40` | Recon read-tool turn limit (1–200). |
 | `llm.wave.max_age_days` | `14` | Hard expiry age for a wave; minimum 1. |
 | `llm.wave.max_idle_days` | `5` | Idle timeout before a wave closes; minimum 1. |
 
@@ -181,8 +181,8 @@ llm:
     concurrency: 1
   validator:
     model: claude-sonnet-4-20250514
-    max_tokens: 1500
-    max_tool_turns: 6
+    max_tokens: 16000
+    max_tool_turns: 40
   classifier:
     max_tokens: 500
     temperature: 0.0

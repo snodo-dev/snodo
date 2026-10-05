@@ -39,7 +39,12 @@ def recon_command(args) -> int:
         paths = ["./"]
 
     from snodo.infrastructure.paths import require_project_root
-    from snodo.recon import ReconManager, resolve_recon_agents_with_notice
+    from snodo.recon import (
+        RECON_DEFAULT_MAX_TOKENS,
+        RECON_DEFAULT_MAX_TOOL_TURNS,
+        ReconManager,
+        resolve_recon_agents_with_notice,
+    )
 
     project_root = require_project_root()
 
@@ -48,8 +53,8 @@ def recon_command(args) -> int:
     recon_cfg = config.get("llm", {}).get("recon", {})
     recon_models = recon_cfg.get("models", [])
     recon_default_n = recon_cfg.get("num_agents", 1)
-    max_tool_turns = recon_cfg.get("max_tool_turns", 6)
-    max_tokens = recon_cfg.get("max_tokens", 1500)
+    max_tool_turns = recon_cfg.get("max_tool_turns", RECON_DEFAULT_MAX_TOOL_TURNS)
+    max_tokens = recon_cfg.get("max_tokens", RECON_DEFAULT_MAX_TOKENS)
 
     lanes, agent_count_notice = resolve_recon_agents_with_notice(
         requested_n=num_agents,

@@ -31,15 +31,21 @@ class ReconToolHandler:
         explicit_agents = arguments.get("agents")
         num_agents = arguments.get("num_agents")
 
-        from snodo.recon import ReconManager, ReconError, resolve_recon_agents_with_notice
+        from snodo.recon import (
+            RECON_DEFAULT_MAX_TOKENS,
+            RECON_DEFAULT_MAX_TOOL_TURNS,
+            ReconManager,
+            ReconError,
+            resolve_recon_agents_with_notice,
+        )
         from snodo.config import ConfigManager
 
         config = ConfigManager().load()
         recon_cfg = config.get("llm", {}).get("recon", {})
         recon_models = recon_cfg.get("models", [])
         recon_default_n = recon_cfg.get("num_agents", 1)
-        max_tool_turns = recon_cfg.get("max_tool_turns", 6)
-        max_tokens = recon_cfg.get("max_tokens", 1500)
+        max_tool_turns = recon_cfg.get("max_tool_turns", RECON_DEFAULT_MAX_TOOL_TURNS)
+        max_tokens = recon_cfg.get("max_tokens", RECON_DEFAULT_MAX_TOKENS)
 
         agents, agent_count_notice = resolve_recon_agents_with_notice(
             requested_n=num_agents,

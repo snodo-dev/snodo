@@ -30,6 +30,19 @@ class TestReconSchema:
 # ---------------------------------------------------------------------------
 
 class TestHandleRecon:
+    def test_unconfigured_budgets_use_shared_recon_defaults(self):
+        from snodo.recon import RECON_DEFAULT_MAX_TOKENS, RECON_DEFAULT_MAX_TOOL_TURNS
+
+        with patch("snodo.config.ConfigManager") as MockCM, \
+             patch("snodo.recon.ReconManager") as MockRM:
+            MockCM.return_value.load.return_value = {"llm": {"recon": {}}}
+            MockRM.return_value.submit.return_value = "recon-default"
+            _handler().handle_recon({"query": "q", "paths": ["./"]})
+        assert MockRM.return_value.submit.call_args.kwargs == {
+            "max_tool_turns": RECON_DEFAULT_MAX_TOOL_TURNS,
+            "max_tokens": RECON_DEFAULT_MAX_TOKENS,
+        }
+
     def test_missing_query_raises(self):
         with pytest.raises(MCPError, match="requires query"):
             _handler().handle_recon({})
