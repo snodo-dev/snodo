@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Deliver each fully passing plan wave immediately while keeping queue delivery
+  grouped at the queue boundary. (Fixes #730)
 - Acceptance validation now requires independent execution evidence for command
   criteria and reports uncovered execution requirements as unverified. (Fixes #729)
 - Use the task worktree's recorded branch for plan-task merge verification,

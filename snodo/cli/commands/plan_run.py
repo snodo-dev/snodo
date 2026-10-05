@@ -32,6 +32,41 @@ def _remote_branch_matches(repo, remote: str, branch: str, local_sha: str) -> bo
     )
 
 
+def _deliver_healthy_plan_wave(project_root, integration_branch, plan_name,
+                               plan_data, protocol, mode, audit_log) -> bool:
+    """Deliver the current integration head; return whether delivery failed."""
+    from snodo.cli.commands.run_merge import _deliver_plan_integration
+    from snodo.infrastructure.worktree import _name_component, worktree_dir
+    from snodo.tools.git import open_repo
+
+    delivery_mode = protocol.delivery_for(mode)
+    try:
+        with open_repo(project_root) as repo:
+            if integration_branch not in repo.heads:
+                already_delivered = delivery_mode == "local_merge"
+            elif delivery_mode == "local_merge":
+                already_delivered = repo.git.merge_base(
+                    "--is-ancestor", integration_branch, "HEAD", with_exceptions=False
+                ) == 0
+            elif delivery_mode in {"push_branch", "change_request"}:
+                local_sha = repo.commit(integration_branch).hexsha
+                remote = getattr(protocol.execution, "delivery_remote", "origin")
+                already_delivered = _remote_branch_matches(repo, remote, integration_branch, local_sha)
+            else:
+                already_delivered = False
+    except Exception:
+        already_delivered = False
+    if already_delivered:
+        return False
+    result = _deliver_plan_integration(
+        str(project_root), integration_branch, str(plan_data.get("name", plan_name)),
+        str(plan_data.get("intent", "")), protocol, mode, audit_log,
+        integration_path=worktree_dir(str(project_root)) / _name_component(plan_name) / "integration",
+        keep_branch=True,
+    )
+    return bool(result)
+
+
 def _fixture_tree_identity(fixture: Path) -> str:
     """Return the identity of the committed tree supplied as a fixture."""
     result = subprocess.run(  # noqa: S603 - fixed git argv; fixture path is one argument
@@ -938,7 +973,8 @@ def _execute_wave_tasks_concurrent(
 
 
 def _execute_waves(waves, planner, args, protocol, model,
-                   all_waves, interactive, effective_concurrency: int = 1) -> bool:
+                   all_waves, interactive, effective_concurrency: int = 1,
+                   on_wave_complete=None) -> bool:
     """Execute waves in order, respecting dependencies and concurrency limits.
 
     Returns:
@@ -993,16 +1029,19 @@ def _execute_waves(waves, planner, args, protocol, model,
             os.environ["SNODO_WAVE_VERDICTS"] = json.dumps(wave_verdicts)
 
         wave_start_mono = time.monotonic()
+        wave_failed = False
         try:
             if effective_concurrency <= 1 or len(tasks_to_run) <= 1:
                 for task_id in tasks_to_run:
                     if not _execute_wave_task(planner, args, protocol, model, wave_id, task_id):
+                        wave_failed = True
                         has_failed_or_blocked = True
             else:
                 success = _execute_wave_tasks_concurrent(
                     planner, args, protocol, model, wave_id, tasks_to_run, effective_concurrency
                 )
                 if not success:
+                    wave_failed = True
                     has_failed_or_blocked = True
         finally:
             if previous_wave_verdicts is None:
@@ -1013,6 +1052,18 @@ def _execute_waves(waves, planner, args, protocol, model,
         wave_end_mono = time.monotonic()
         wave_dur = wave_end_mono - wave_start_mono
         print(f"Wave {wave_id} total: {_format_duration(wave_dur)}")
+        # Only deliver when every task belonging to this wave is complete.
+        # In particular, a successful sibling must not leak out of a blocked
+        # wave. Queue runs retain their queue-level delivery boundary.
+        if not wave_failed and on_wave_complete is not None:
+            wave_status = planner.get_status(args.plan).get("tasks", {})
+            wave_complete = all(
+                (entry.get("status") if isinstance(entry, dict) else entry) == "completed"
+                for task_id in wave.get("tasks", [])
+                for entry in [wave_status.get(task_id)]
+            )
+            if wave_complete and on_wave_complete():
+                has_failed_or_blocked = True
 
     return has_failed_or_blocked
 
@@ -1231,16 +1282,23 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
             os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = integration_branch
         else:
             os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
+        queue_integration_branch = os.environ.get("SNODO_QUEUE_INTEGRATION_BRANCH")
+        deliver_wave = None
+        if integration_branch and not queue_integration_branch:
+            deliver_wave = lambda: _deliver_healthy_plan_wave(
+                str(project_root), integration_branch, args.plan, plan_data,
+                protocol, active_mode, audit_log,
+            )
         failed = _execute_waves(
             waves, planner, args, protocol, model,
             all_waves, interactive, effective_concurrency=effective_concurrency,
+            on_wave_complete=deliver_wave,
         )
         if previous_integration_branch is None:
             os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
         else:
             os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = previous_integration_branch
 
-        queue_integration_branch = os.environ.get("SNODO_QUEUE_INTEGRATION_BRANCH")
         if not failed and getattr(args, "wave", None) is None and integration_branch:
             statuses = planner.get_status(args.plan).get("tasks", {})
             all_complete = all(

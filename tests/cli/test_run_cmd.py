@@ -347,6 +347,41 @@ class TestExecuteWaves:
         assert result is True
         assert "blocked" in capsys.readouterr().out
 
+    @patch("snodo.cli.commands.plan_run._execute_wave_task", return_value=True)
+    @patch("snodo.cli.commands.plan_run._should_skip_task", return_value=False)
+    def test_delivers_each_healthy_wave_even_if_later_wave_blocks(self, mock_skip, mock_exec, capsys):
+        from snodo.cli.commands.plan_run import _execute_waves
+
+        waves = [
+            {"id": "w1", "tasks": ["t1"], "depends_on": []},
+            {"id": "w2", "tasks": ["t2"], "depends_on": []},
+            {"id": "w3", "tasks": ["t3"], "depends_on": ["missing"]},
+        ]
+        planner = MagicMock()
+        planner.get_status.return_value = {"tasks": {"t1": "completed", "t2": "completed"}}
+        delivered = []
+        result = _execute_waves(
+            waves, planner, MagicMock(), MagicMock(), "gpt-4", waves, False,
+            on_wave_complete=lambda: delivered.append(True) or False,
+        )
+        assert result is True
+        assert len(delivered) == 2
+
+    @patch("snodo.cli.commands.plan_run._execute_wave_task", side_effect=[True, False])
+    @patch("snodo.cli.commands.plan_run._should_skip_task", return_value=False)
+    def test_wave_with_blocked_task_is_not_delivered(self, mock_skip, mock_exec, capsys):
+        from snodo.cli.commands.plan_run import _execute_waves
+
+        waves = [{"id": "w1", "tasks": ["t1", "t2"], "depends_on": []}]
+        planner = MagicMock()
+        delivered = []
+        result = _execute_waves(
+            waves, planner, MagicMock(), MagicMock(), "gpt-4", waves, False,
+            on_wave_complete=lambda: delivered.append(True) or False,
+        )
+        assert result is True
+        assert delivered == []
+
 
 # === _print_plan_progress tests ===
 

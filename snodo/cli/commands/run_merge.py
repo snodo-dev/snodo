@@ -498,6 +498,7 @@ def _deliver_plan_integration(
     project_root: str, branch: str, plan_name: str, intent: str,
     protocol: Protocol, mode: str, audit_log: Any,
     integration_path: Optional[Path] = None,
+    keep_branch: bool = False,
 ) -> int:
     """Deliver a completed plan branch using the task delivery machinery."""
     delivery = protocol.delivery_for(mode)
@@ -544,7 +545,7 @@ def _deliver_plan_integration(
     )
     if result:
         return 2
-    if delivery == "local_merge" and not preserve:
+    if delivery == "local_merge" and not preserve and not keep_branch:
         from snodo.infrastructure.worktree import _name_component, worktree_dir
         from snodo.tools.git import open_repo
         integration_path = integration_path or (
