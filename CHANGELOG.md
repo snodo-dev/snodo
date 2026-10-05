@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Update the README and MCP self-description to use the canonical plan-first
+  rule, including the single-task exception. (Fixes #725)
 - Align the unattended automation and queues guides with the plan-first rule,
   reserving direct task dispatch for true one-offs. (Fixes #724)
 - Teach the authoring guide to model related work as a plan, reserving direct

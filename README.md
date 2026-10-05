@@ -42,9 +42,11 @@ not the agent cooperates.
 
 ## The working loop
 
-Connect an agent to Snodo over MCP. The orchestrator chooses the smallest
-structure that fits—one task, a parallel wave, a multi-wave plan, or a queue of
-plans—then validates and starts the work. Each task still passes through the
+Connect an agent to Snodo over MCP. Group work into plans. A plan is one clear
+intention. Waves group its tasks: tasks in a wave run in parallel, and waves run
+in series. Queues group and schedule plans. Dispatch a single task only for a
+true one-off with no related work. A plan with one task in one wave adds nothing.
+The orchestrator then validates and starts the work. Each task still passes through the
 protocol's validator loop; jobs run asynchronously. Follow task status and
 progress in the configured cloud live view (`/now?task_ref=<task_ref>`) when
 cloud sync is configured, and follow live output with
