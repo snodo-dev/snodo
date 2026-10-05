@@ -12,6 +12,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Normalize Google Gemini model names to LiteLLM's `gemini/` routing form from
   shared model resolution, including user-defined Google provider blocks.
   (Fixes #719)
+- Fix `snodo models --benchmark` decode throughput for reasoning models by
+  timing from the first streamed output token, recording visible-answer timing
+  and reasoning/answer token counts, and reporting overall throughput. (Fixes #720)
 - Ensure recon agents pass provider-resolved model IDs to LiteLLM, translating
   configured `google/gemini/...` names while preserving valid LiteLLM model IDs.
   (Fixes #719)
