@@ -44,6 +44,83 @@ def test_call_agent_passes_each_model_key_without_environment_state(monkeypatch)
     assert "OPENAI_API_KEY" not in os.environ
 
 
+def test_call_agent_passes_configured_completion_budget(monkeypatch):
+    from snodo.config import ConfigManager
+
+    monkeypatch.setattr(ConfigManager, "resolve_litellm_model", staticmethod(lambda model: model))
+    monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
+    monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: None)
+    completion = MagicMock(
+        return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="answer", tool_calls=[]))])
+    )
+    with patch("litellm.completion", completion):
+        recon_module.call_agent(".", "model", "query", [], "agent", max_turns=17, max_tokens=2300)
+    assert completion.call_args.kwargs["max_tokens"] == 2300
+
+
+def test_recon_uses_shared_read_tools_lines_and_free_repeat(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from snodo.config import ConfigManager
+
+    (tmp_path / "sample.py").write_text("alpha\nneedle\nomega\n")
+    monkeypatch.setattr(ConfigManager, "resolve_litellm_model", staticmethod(lambda model: model))
+    monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
+    monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: None)
+
+    def tool_call(call_id, name, args):
+        return SimpleNamespace(id=call_id, function=SimpleNamespace(
+            name=name, arguments=json.dumps(args),
+        ))
+
+    responses = [
+        [tool_call("s", "search_string", {"query": "needle"})],
+        [tool_call("r", "read_file_lines", {"path": "sample.py", "start": 2, "end": 2})],
+        [tool_call("repeat", "read_file_lines", {"path": "sample.py", "start": 2, "end": 2})],
+    ]
+    requests = []
+
+    def completion(**kwargs):
+        requests.append(kwargs)
+        calls = responses.pop(0) if responses else []
+        content = "answer" if not calls else ""
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content=content, tool_calls=calls,
+        ))])
+
+    with patch("litellm.completion", side_effect=completion):
+        result = recon_module.call_agent(str(tmp_path), "model", "find", [], "agent", max_turns=4)
+
+    offered = {tool["function"]["name"] for tool in requests[0]["tools"]}
+    assert {"read_file_lines", "search_string", "search_symbol", "read_files"} <= offered
+    assert "run_tests" not in offered and "write_file" not in offered
+    contents = [message.get("content", "") for message in requests[-1]["messages"]]
+    assert any("needle" in content for content in contents)
+    assert any("2: needle" in content for content in contents)
+    assert any("already fetched" in content for content in contents)
+    assert result.result == "answer"
+
+
+def test_recon_read_tools_reject_path_traversal(tmp_path):
+    from snodo.tools.workspace import WorkspaceMCP
+    from snodo.coders.litellm import LiteLLMAdapter
+
+    outside = tmp_path.parent / "outside-recon.txt"
+    outside.write_text("secret")
+    result = LiteLLMAdapter._execute_tool(
+        "read_file", {"path": "../outside-recon.txt"}, WorkspaceMCP(str(tmp_path)),
+    )
+    assert "path" in result.lower() or "outside" in result.lower()
+    assert "secret" not in result
+
+
+def test_recon_agent_default_turn_budget_matches_validator_default():
+    from snodo.infrastructure.config import ValidatorConfig, ReconConfig
+
+    assert ReconConfig().max_tool_turns == ValidatorConfig().max_tool_turns == 6
+
+
 @pytest.mark.parametrize(
     ("configured_model", "litellm_model"),
     [
@@ -171,6 +248,22 @@ class TestReconManagerSubmit:
         assert "created_at" in state
         assert state["pid"] == os.getpid()
 
+    def test_submit_forwards_budgets_to_agent_run(self, recon_mgr, monkeypatch):
+        budgets = {}
+
+        def run_impl(self, recon_id, query, paths, agents, max_tool_turns, max_tokens):
+            budgets.update(max_tool_turns=max_tool_turns, max_tokens=max_tokens)
+
+        monkeypatch.setattr(ReconManager, "_run_recon_impl", run_impl)
+        monkeypatch.setattr(
+            ReconManager, "_run_recon",
+            lambda self, recon_id, query, paths, agents, max_tool_turns=6, max_tokens=1500:
+                self._run_recon_impl(recon_id, query, paths, agents, max_tool_turns, max_tokens),
+        )
+        recon_mgr.submit("q", ["./"], [["model"]], max_tool_turns=23, max_tokens=4200)
+        recon_mgr.shutdown()
+        assert budgets == {"max_tool_turns": 23, "max_tokens": 4200}
+
     def test_submit_appends_full_recon_started_event(self, recon_mgr):
         query = "Explain the entire system, including its edge cases."
         agents = [["model-a", "model-b"], ["model-c"]]
@@ -260,7 +353,7 @@ class TestReconManagerGetResults:
 def test_recon_started_and_completed_events_cover_terminal_outcomes(
     recon_mgr, monkeypatch, result, error, status, succeeded, failed,
 ):
-    def fake_chain(project_root, models, query, paths, agent_label, max_turns=10):
+    def fake_chain(project_root, models, query, paths, agent_label, max_turns=6, max_tokens=1500):
         return ReconResult(agent=agent_label, model=models[0], result=result, error=error)
 
     monkeypatch.setattr(recon_module, "call_agent_chain", fake_chain)
@@ -759,16 +852,17 @@ class TestTerminalAnswer:
         first_kwargs = mock_comp.call_args_list[0].kwargs
         assert "tools" in first_kwargs
 
-        # The third request is the terminal ask: no tools offered, and the
+        # The third request is the terminal ask: only submit_answer is offered,
         # instruction appended as the last user turn.
         final_kwargs = mock_comp.call_args.kwargs
-        assert "tools" not in final_kwargs
+        assert final_kwargs["tools"][0]["function"]["name"] == "submit_answer"
+        assert final_kwargs["tool_choice"]["function"]["name"] == "submit_answer"
         assert final_kwargs["messages"][-1] == {
             "role": "user",
             "content": _ANSWER_ONLY_INSTRUCTION,
         }
 
-    def test_terminal_ask_with_empty_answer_keeps_empty_result_error(
+    def test_terminal_ask_with_empty_answer_falls_back_to_prior_prose(
         self, project_with_snodo,
     ):
         """An agent that still produces nothing after being asked directly
@@ -776,7 +870,7 @@ class TestTerminalAnswer:
         from snodo.recon import call_agent
 
         responses = [
-            _reading_response("Let me check the specs.", "a.py"),
+            _reading_response("The worker dispatches bounded jobs to validators.", "a.py"),
             _prose_response(""),
         ]
 
@@ -790,8 +884,39 @@ class TestTerminalAnswer:
                 max_turns=1,
             )
 
-        assert res.error == "Agent returned empty result"
-        assert res.result == ""
+        assert res.error is None
+        assert "Partial answer" in res.result
+        assert "dispatches bounded jobs" in res.result
+        assert res.trace["ended"] == "partial_fallback"
+
+    def test_final_submit_answer_tool_call_is_returned(self, project_with_snodo):
+        from types import SimpleNamespace
+        from snodo.recon import call_agent
+
+        tc = SimpleNamespace(id="answer", function=SimpleNamespace(
+            name="submit_answer", arguments=json.dumps({"answer": "Structured answer."}),
+        ))
+        response = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="", tool_calls=[tc]), finish_reason="tool_calls",
+        )])
+        with patch("litellm.completion", side_effect=[_reading_response("Found facts.", "a.py"), response]) as completion:
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+        assert result.result == "Structured answer."
+        assert completion.call_args.kwargs["tool_choice"]["function"]["name"] == "submit_answer"
+        assert result.trace["ended"] == "submitted_answer"
+
+    def test_truncated_final_response_is_reported(self, project_with_snodo):
+        from types import SimpleNamespace
+        from snodo.recon import call_agent
+
+        response = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="Some incomplete answer", tool_calls=None), finish_reason="length",
+        )])
+        with patch("litellm.completion", side_effect=[_reading_response("Read context.", "a.py"), response]):
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+        assert "truncated" in result.result
+        assert "finish_reason=length" in result.error
+        assert result.trace["ended"] == "truncated:length"
 
     def test_natural_conclusion_returns_answer_not_accumulated_narration(
         self, project_with_snodo,
@@ -980,7 +1105,7 @@ class TestCallAgentChain:
 
         calls = []
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             calls.append(model)
             if model == "m1":
                 return self._fault("m1")
@@ -1002,7 +1127,7 @@ class TestCallAgentChain:
 
         calls = []
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             calls.append(model)
             return self._ok(model, result="first answer")
 
@@ -1018,7 +1143,7 @@ class TestCallAgentChain:
 
         calls = []
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             calls.append(model)
             return self._ok(model, result="i have no idea")
 
@@ -1031,7 +1156,7 @@ class TestCallAgentChain:
     def test_every_model_failing_reports_which_were_tried_and_why(self):
         from snodo.recon import call_agent_chain
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             return self._fault(model)
 
         with patch("snodo.recon.call_agent", fake_call):
@@ -1110,7 +1235,7 @@ class TestReconManagerFailover:
         mgr = ReconManager(project_with_snodo)
         calls = []
 
-        def fake_chain(project_root, models, query, paths, agent_label, max_turns=10):
+        def fake_chain(project_root, models, query, paths, agent_label, max_turns=6, max_tokens=1500):
             from snodo.recon import ReconResult
             calls.append(list(models))
             return ReconResult(agent=agent_label, model=models[-1], result="ok")
@@ -1131,7 +1256,7 @@ class TestReconManagerFailover:
         mgr = ReconManager(project_with_snodo)
         calls = []
 
-        def fake_chain(project_root, models, query, paths, agent_label, max_turns=10):
+        def fake_chain(project_root, models, query, paths, agent_label, max_turns=6, max_tokens=1500):
             from snodo.recon import ReconResult
             calls.append(list(models))
             return ReconResult(agent=agent_label, model=models[0], result="ok")

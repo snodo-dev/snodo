@@ -351,7 +351,7 @@ class TestJudgeAdapter:
         judge = survey_cmd.build_survey_judge(tmp_path, "force")
         captured = {}
 
-        def fake_call_agent(project_root, model, query, paths, agent_label, max_turns):
+        def fake_call_agent(project_root, model, query, paths, agent_label, max_turns, max_tokens):
             captured.update(
                 project_root=project_root, model=model, query=query,
                 agent_label=agent_label, max_turns=max_turns,
@@ -406,7 +406,7 @@ class TestJudgeAdapter:
 
         calls = []
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             calls.append(model)
             if model == "m1":
                 return self._result(error="disengaged", model="m1")
@@ -436,7 +436,7 @@ class TestJudgeAdapter:
 
         calls = []
 
-        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=6, max_tokens=1500):
             calls.append(model)
             return self._result(result="not json, but an answer")
 

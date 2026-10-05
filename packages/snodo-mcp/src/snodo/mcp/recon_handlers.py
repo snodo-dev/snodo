@@ -38,6 +38,8 @@ class ReconToolHandler:
         recon_cfg = config.get("llm", {}).get("recon", {})
         recon_models = recon_cfg.get("models", [])
         recon_default_n = recon_cfg.get("num_agents", 1)
+        max_tool_turns = recon_cfg.get("max_tool_turns", 6)
+        max_tokens = recon_cfg.get("max_tokens", 1500)
 
         agents, agent_count_notice = resolve_recon_agents_with_notice(
             requested_n=num_agents,
@@ -48,7 +50,10 @@ class ReconToolHandler:
 
         mgr = ReconManager(self.project_root)
         try:
-            recon_id = mgr.submit(query, paths, agents)
+            recon_id = mgr.submit(
+                query, paths, agents,
+                max_tool_turns=max_tool_turns, max_tokens=max_tokens,
+            )
         except ReconError as e:
             raise MCPError(str(e)) from e
 

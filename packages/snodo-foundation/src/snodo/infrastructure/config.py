@@ -38,6 +38,8 @@ _CODER_SILENCE_TIMEOUT_SECONDS_DEFAULT = 600
 _CODER_CONCURRENCY_DEFAULT = 1
 _VALIDATOR_MAX_TOKENS_DEFAULT = 1500
 _VALIDATOR_MAX_TOOL_TURNS_DEFAULT = 6
+_RECON_MAX_TOKENS_DEFAULT = _VALIDATOR_MAX_TOKENS_DEFAULT
+_RECON_MAX_TOOL_TURNS_DEFAULT = _VALIDATOR_MAX_TOOL_TURNS_DEFAULT
 
 
 class ConfigLoadError(Exception):
@@ -94,6 +96,8 @@ class ReconConfig(BaseModel):
 
     num_agents: int = Field(default=1, ge=1, description="Default number of agents for recon fan-out")
     models: list[str] = Field(default_factory=list, description="Ordered model priority list for recon")
+    max_tokens: int = Field(default=_RECON_MAX_TOKENS_DEFAULT, ge=1)
+    max_tool_turns: int = Field(default=_RECON_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
 
 
 class WaveConfig(BaseModel):

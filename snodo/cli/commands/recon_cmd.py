@@ -48,6 +48,8 @@ def recon_command(args) -> int:
     recon_cfg = config.get("llm", {}).get("recon", {})
     recon_models = recon_cfg.get("models", [])
     recon_default_n = recon_cfg.get("num_agents", 1)
+    max_tool_turns = recon_cfg.get("max_tool_turns", 6)
+    max_tokens = recon_cfg.get("max_tokens", 1500)
 
     lanes, agent_count_notice = resolve_recon_agents_with_notice(
         requested_n=num_agents,
@@ -56,7 +58,10 @@ def recon_command(args) -> int:
     )
 
     mgr = ReconManager(project_root)
-    recon_id = mgr.submit(query, paths, lanes)
+    recon_id = mgr.submit(
+        query, paths, lanes,
+        max_tool_turns=max_tool_turns, max_tokens=max_tokens,
+    )
 
     print(f"Recon dispatched: {recon_id}")
     if agent_count_notice:

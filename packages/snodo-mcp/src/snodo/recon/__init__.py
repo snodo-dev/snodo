@@ -56,6 +56,7 @@ class ReconResult(BaseModel):
     #: it does not feed failover, selection or routing.
     served_model: Optional[str] = None
     usage: list[dict] = []
+    trace: dict = {}
 
 
 class ReconError(Exception):
@@ -117,43 +118,42 @@ _threads: list[Thread] = []
 
 
 # Read-only tool definitions for the recon agent surface.
-_READ_FILE_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "read_file",
-        "description": "Read file content within the project",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "File path relative to project root",
-                },
-            },
-            "required": ["path"],
-        },
-    },
-}
+_RECON_READ_TOOLS = frozenset({
+    "read_files", "read_file", "read_file_lines", "list_files",
+    "search_string", "search_symbol",
+})
+_MAX_STALL_TURNS = 3
 
-_LIST_FILES_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "list_files",
-        "description": "List files in a directory",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "directory": {
-                    "type": "string",
-                    "description": "Directory path (default: .)",
-                },
-            },
-            "required": ["directory"],
-        },
-    },
-}
 
-_READ_ONLY_TOOLS = [_READ_FILE_TOOL, _LIST_FILES_TOOL]
+def _read_only_tools() -> list[dict]:
+    """Return shared coder schemas filtered to recon's read-only surface."""
+    from snodo.coders.litellm import LiteLLMAdapter
+
+    return [tool for tool in LiteLLMAdapter._build_tool_definitions()
+            if tool["function"]["name"] in _RECON_READ_TOOLS]
+
+
+def _legacy_tool(name: str) -> dict:
+    return next(tool for tool in _read_only_tools() if tool["function"]["name"] == name)
+
+
+_READ_FILE_TOOL = _legacy_tool("read_file")
+_LIST_FILES_TOOL = _legacy_tool("list_files")
+_READ_ONLY_TOOLS = _read_only_tools()
+
+
+def _execute_recon_read(name: str, args: dict, workspace) -> str:
+    """Execute a shared read tool, adding explicit file:line evidence for ranges."""
+    from snodo.coders.litellm import LiteLLMAdapter
+
+    result = LiteLLMAdapter._execute_tool(name, args, workspace)
+    if name == "read_file_lines" and not result.startswith("Tool error:"):
+        first = int(args["start"])
+        return "\n".join(
+            f"{line}: {content}"
+            for line, content in enumerate(result.splitlines(), start=first)
+        )
+    return result
 
 # The instruction that closes the reading window — the recon analogue of the
 # validator's _VERDICT_ONLY_INSTRUCTION (snodo/validators/llm_validator.py).
@@ -167,8 +167,22 @@ _ANSWER_ONLY_INSTRUCTION = (
     "The read tools are no longer available. Answer the query now from what "
     "you have already gathered — do not narrate intentions or describe what "
     "you would read next. An answer reached on incomplete reading is a real "
-    "answer: state what you found and note what remains unverified."
+    "answer: state what you found and note what remains unverified. Submit "
+    "your answer using the submit_answer tool; a partial answer is still useful."
 )
+
+_SUBMIT_ANSWER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "submit_answer",
+        "description": "Submit the answer to the recon query, including a partial answer if needed.",
+        "parameters": {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+        },
+    },
+}
 
 
 def _adapter_model_prefixes() -> tuple[str, ...]:
@@ -370,7 +384,8 @@ def call_agent_chain(
     query: str,
     paths: list[str],
     agent_label: str,
-    max_turns: int = 10,
+    max_turns: int = 6,
+    max_tokens: int = 1500,
 ) -> ReconResult:
     """Ask *models* in order and return the first answer.
 
@@ -385,7 +400,7 @@ def call_agent_chain(
     usage: list[dict] = []
     for model in models:
         result = call_agent(
-            project_root, model, query, paths, agent_label, max_turns,
+            project_root, model, query, paths, agent_label, max_turns, max_tokens,
         )
         if not result.error and result.result.strip():
             result.attempts = attempts + [ReconAttempt(model=model)]
@@ -409,42 +424,14 @@ def call_agent_chain(
     )
 
 
-def _read_file(project_root: str, path: str) -> str:
-    """Read a file within *project_root*, rejecting path traversal."""
-    resolved = (Path(project_root) / path).resolve()
-    if not str(resolved).startswith(str(Path(project_root).resolve())):
-        return "Error: path traversal rejected"
-    try:
-        return resolved.read_text()
-    except Exception as e:
-        return f"Error reading file: {e}"
-
-
-def _list_files(project_root: str, directory: str) -> str:
-    """List files in *directory*, rejecting path traversal."""
-    resolved = (Path(project_root) / directory).resolve()
-    if not str(resolved).startswith(str(Path(project_root).resolve())):
-        return "Error: path traversal rejected"
-    try:
-        if not resolved.is_dir():
-            return f"Error: not a directory: {directory}"
-        entries = sorted(resolved.iterdir())
-        lines = []
-        for e in entries:
-            marker = "/" if e.is_dir() else ""
-            lines.append(f"{e.name}{marker}")
-        return "\n".join(lines)
-    except Exception as e:
-        return f"Error listing files: {e}"
-
-
 def call_agent(
     project_root: str,
     model: str,
     query: str,
     paths: list[str],
     agent_label: str,
-    max_turns: int = 10,
+    max_turns: int = 6,
+    max_tokens: int = 1500,
 ) -> ReconResult:
     """Run a single recon agent: LLM with read-only tools, returning raw text.
 
@@ -525,30 +512,48 @@ def call_agent(
                 pass
 
     from snodo.config import ConfigManager
+    from snodo.tools.workspace import WorkspaceMCP
+    from snodo.coders.litellm import ReadMemoryTracker, format_repeat_read_response
+    workspace = WorkspaceMCP(project_root)
+    read_tracker = ReadMemoryTracker(project_root)
     _logger.debug("recon: resolving API key for model=%s", model)
     api_base = ConfigManager.resolve_api_base(model)
     model_param = ConfigManager.resolve_litellm_model(model)
     extra_headers = ConfigManager.resolve_extra_headers(model, task_id="recon")
     api_key = ConfigManager().get_key_for_model(model)
 
-    def _complete(with_read_tools: bool):
+    def _complete(with_read_tools: bool, force_answer: bool = False):
         kwargs = {
             "model": model_param,
             "messages": messages,
+            "max_tokens": max_tokens,
         }
         if api_key:
             kwargs["api_key"] = api_key
         if with_read_tools:
-            kwargs["tools"] = _READ_ONLY_TOOLS
+            kwargs["tools"] = _read_only_tools()
+        if force_answer:
+            kwargs["tools"] = [_SUBMIT_ANSWER_TOOL]
+            kwargs["tool_choice"] = {"type": "function", "function": {"name": "submit_answer"}}
         if api_base:
             kwargs["api_base"] = api_base
         if extra_headers:
             kwargs["extra_headers"] = extra_headers
         return litellm.completion(**kwargs)
 
-    for _turn in range(max_turns):
+    turns_used = 0
+    stall_streak = 0
+    raw_turn = 0
+    trace = {"turns_used": 0, "tools_called": [], "ended": "unknown"}
+    earlier_prose: list[str] = []
+    truncated = False
+    max_raw_turns = max_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 2
+    while raw_turn < max_raw_turns:
+        is_final_turn = turns_used >= max_turns or stall_streak >= _MAX_STALL_TURNS
+        if is_final_turn:
+            messages.append({"role": "user", "content": _ANSWER_ONLY_INSTRUCTION})
         try:
-            response = _complete(with_read_tools=True)
+            response = _complete(with_read_tools=not is_final_turn, force_answer=is_final_turn)
         except Exception as e:
             usage_records.append(_usage_record("failed"))
             return ReconResult(
@@ -563,9 +568,15 @@ def call_agent(
         choice = response.choices[0]
         msg = choice.message
         text = msg.content or ""
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason in {"length", "max_tokens", "content_filter"}:
+            truncated = True
+        trace["turns_used"] = raw_turn + 1
+        if getattr(msg, "tool_calls", None) and text.strip():
+            earlier_prose.append(text.strip())
 
         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
-            if _turn == 0 and not text:
+            if raw_turn == 0 and not text:
                 _logger.warning(
                     "Recon agent disengaged on turn 0 — model=%s, "
                     "content=%r",
@@ -576,6 +587,32 @@ def call_agent(
             # tool-calling turn is narration between reads, never
             # the answer, so it is not accumulated here (Fixes #299).
             final_answer = text
+            if text.strip():
+                earlier_prose.append(text.strip())
+            if not text.strip() and earlier_prose:
+                final_answer = "Partial answer (final response was unusable):\n\n" + "\n\n".join(earlier_prose)
+                trace["ended"] = "partial_fallback"
+            else:
+                trace["ended"] = "prose" if not truncated else f"truncated:{finish_reason}"
+            break
+
+        if is_final_turn:
+            for tc in msg.tool_calls:
+                if tc.function.name == "submit_answer":
+                    trace["tools_called"].append("submit_answer")
+                    try:
+                        final_answer = json.loads(tc.function.arguments).get("answer", "")
+                    except (json.JSONDecodeError, TypeError, AttributeError):
+                        final_answer = ""
+                    trace["ended"] = "submitted_answer"
+                    break
+            if not final_answer.strip() and text.strip():
+                final_answer = text
+            if not final_answer.strip() and earlier_prose:
+                final_answer = "Partial answer (final response was unusable):\n\n" + "\n\n".join(earlier_prose)
+                trace["ended"] = "partial_fallback"
+            elif not trace["ended"] or trace["ended"] == "unknown":
+                trace["ended"] = "empty_final"
             break
 
         # Execute read-only tool calls
@@ -588,25 +625,38 @@ def call_agent(
             for tc in msg.tool_calls
         ]})
 
+        turn_progressed = False
         for tc in msg.tool_calls:
             name = tc.function.name
+            trace["tools_called"].append(name)
             try:
                 args = json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 args = {}
 
-            if name == "read_file":
-                result = _read_file(project_root, args.get("path", ""))
-            elif name == "list_files":
-                result = _list_files(project_root, args.get("directory", "."))
-            else:
+            if name not in _RECON_READ_TOOLS:
                 result = f"Error: unknown tool: {name}"
+            else:
+                prev_turn = read_tracker.check_read(name, args)
+                if prev_turn is not None:
+                    result = format_repeat_read_response(name, args, prev_turn)
+                else:
+                    result = _execute_recon_read(name, args, workspace)
+                    read_tracker.record_read(name, args, raw_turn + 1)
+                    turn_progressed = True
 
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
                 "content": result,
             })
+        if turn_progressed:
+            turns_used += 1
+            stall_streak = 0
+        else:
+            stall_streak += 1
+        raw_turn += 1
+        trace["turns_used"] = turns_used
     else:
         # Reached only when the loop was never broken: the reading
         # budget is spent and the agent was still calling tools on
@@ -621,7 +671,7 @@ def call_agent(
             "content": _ANSWER_ONLY_INSTRUCTION,
         })
         try:
-            response = _complete(with_read_tools=False)
+            response = _complete(with_read_tools=False, force_answer=True)
         except Exception as e:
             usage_records.append(_usage_record("failed"))
             return ReconResult(
@@ -632,7 +682,35 @@ def call_agent(
                 usage=usage_records,
             )
         _record_response(response)
-        final_answer = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        msg = choice.message
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason in {"length", "max_tokens", "content_filter"}:
+            truncated = True
+        for tc in getattr(msg, "tool_calls", None) or []:
+            if tc.function.name == "submit_answer":
+                trace["tools_called"].append("submit_answer")
+                try:
+                    final_answer = json.loads(tc.function.arguments).get("answer", "")
+                except (json.JSONDecodeError, TypeError, AttributeError):
+                    final_answer = ""
+                trace["ended"] = "submitted_answer"
+                break
+        if not final_answer.strip() and (msg.content or "").strip():
+            final_answer = msg.content
+        if not final_answer.strip() and earlier_prose:
+            final_answer = "Partial answer (final response was unusable):\n\n" + "\n\n".join(earlier_prose)
+            trace["ended"] = "partial_fallback"
+        elif not final_answer.strip():
+            trace["ended"] = "empty_final"
+        trace["turns_used"] = raw_turn + 1
+
+    if truncated:
+        truncation_note = f"Output was truncated (finish_reason={finish_reason})."
+        final_answer = (final_answer.rstrip() + "\n\n" + truncation_note).strip()
+        trace["ended"] = f"truncated:{finish_reason}"
+    elif trace["ended"] == "unknown":
+        trace["ended"] = "completed"
 
     if not final_answer.strip():
         _logger.warning(
@@ -642,17 +720,20 @@ def call_agent(
         )
         return ReconResult(
             agent=agent_label, model=model,
-            result="", error="Agent returned empty result",
+            result="Partial answer unavailable: final response was empty.", error="Agent returned empty result",
             served_model=served_model,
             usage=[_usage_record("failed")],
+            trace=trace,
         )
 
     return ReconResult(
         agent=agent_label,
         model=model,
         result=final_answer.strip(),
+        error=(f"Output was truncated (finish_reason={finish_reason})." if truncated else None),
         served_model=served_model,
         usage=[_usage_record("succeeded")],
+        trace=trace,
     )
 
 
@@ -722,10 +803,11 @@ class ReconManager:
             return json.load(f)
 
     def _run_recon(self, recon_id: str, query: str, paths: list[str],
-                   agents: list) -> None:
+                   agents: list, max_tool_turns: int = 6,
+                   max_tokens: int = 1500) -> None:
         """Background entry point — fans out agents, writes results, updates state."""
         try:
-            self._run_recon_impl(recon_id, query, paths, agents)
+            self._run_recon_impl(recon_id, query, paths, agents, max_tool_turns, max_tokens)
         except Exception as e:
             _logger.debug("Recon background task error for %s: %s", recon_id, e)
             try:
@@ -793,7 +875,8 @@ class ReconManager:
             _logger.debug("Could not start cloud sync after recon completion", exc_info=True)
 
     def _run_recon_impl(self, recon_id: str, query: str, paths: list[str],
-                        agents: list) -> None:
+                        agents: list, max_tool_turns: int = 6,
+                        max_tokens: int = 1500) -> None:
         recon_dir = self.recons_dir / recon_id
 
         lanes = normalize_recon_agents(agents)
@@ -809,6 +892,7 @@ class ReconManager:
                 future = executor.submit(
                     call_agent_chain,
                     self.project_root, models, query, paths, agent_label,
+                    max_tool_turns, max_tokens,
                 )
                 futures[future] = agent_label
 
@@ -835,7 +919,8 @@ class ReconManager:
         self._append_completion_event(state, results)
 
     def submit(self, query: str, paths: list[str],
-               agents: Optional[list] = None) -> str:
+               agents: Optional[list] = None, max_tool_turns: int = 6,
+               max_tokens: int = 1500) -> str:
         """Submit a recon query — returns immediately with a recon_id.
 
         Args:
@@ -884,6 +969,7 @@ class ReconManager:
         thread = Thread(
             target=self._run_recon,
             args=(recon_id, query, paths, lanes),
+            kwargs={"max_tool_turns": max_tool_turns, "max_tokens": max_tokens},
         )
         thread.start()
         _threads.append(thread)

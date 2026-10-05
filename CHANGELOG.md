@@ -13,6 +13,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
   forward in the same plan, and land every wave before starting new work. (Fixes #732)
 - Deliver each fully passing plan wave immediately while keeping queue delivery
   grouped at the queue boundary. (Fixes #730)
+- Require structured recon answers on the final turn, preserve earlier findings as
+  partial answers when the final response is unusable, and record truncation and
+  per-agent execution traces. (Fixes #734; adds `trace` to stored recon results)
+- Recon agents now reuse the shared read-only workspace tools for batched and
+  ranged reads, searches, line-numbered results, and repeat-read tracking.
+  (Fixes #733)
+- Configure recon completion-token and read-tool-turn budgets through `llm.recon`,
+  passing them from MCP and CLI submissions to each agent run. (Fixes #731)
 - Acceptance validation now requires independent execution evidence for command
   criteria and reports uncovered execution requirements as unverified. (Fixes #729)
 - Use the task worktree's recorded branch for plan-task merge verification,
