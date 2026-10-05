@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Isolate PR-review recon state and CLI help smoke tests from the suite checkout,
   preventing test runs from creating project state under its `.snodo/`. (Fixes #717)
+- Assert that subcommand help leaves fresh project state and identity files
+  uncreated, preventing help invocations from persisting project state. (Fixes #717)
 - Resolve configured provider prefixes separately from LiteLLM model ids, so
   models such as `google/gemini/gemini-3.8-flash` use Google credentials and
   reach LiteLLM as `gemini/gemini-3.8-flash`. (`Fixes #718`)

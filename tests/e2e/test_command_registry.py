@@ -142,6 +142,16 @@ def test_subcommand_help(snodo_cli, group, sub):
     assert len(out.strip()) > 0, (
         f"`snodo {group} {sub} --help` produced empty output"
     )
+    # Help is handled by Typer before command callbacks should run. In
+    # particular, a fresh project's identity and execution state must not be
+    # initialized just to render subcommand help.
+    project_state = snodo_cli.home / ".snodo"
+    assert not (project_state / "state.json").exists(), (
+        f"`snodo {group} {sub} --help` created project state"
+    )
+    assert not (project_state / "project.json").exists(), (
+        f"`snodo {group} {sub} --help` cached project identity"
+    )
 
 
 # ---------------------------------------------------------------------------
