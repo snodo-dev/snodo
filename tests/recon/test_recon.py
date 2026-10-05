@@ -44,6 +44,48 @@ def test_call_agent_passes_each_model_key_without_environment_state(monkeypatch)
     assert "OPENAI_API_KEY" not in os.environ
 
 
+@pytest.mark.parametrize(
+    ("configured_model", "litellm_model"),
+    [
+        ("google/gemini/gemini-3.8-flash", "gemini/gemini-3.8-flash"),
+        ("openai/gpt-5.6-terra", "openai/gpt-5.6-terra"),
+        ("ollama-cloud/deepseek-v4-pro:0813", "ollama-cloud/deepseek-v4-pro:0813"),
+    ],
+)
+def test_recon_routes_resolved_model_to_litellm(
+    monkeypatch, configured_model, litellm_model
+):
+    """Recon hands LiteLLM its routing name, preserving valid model ids."""
+    from snodo.config import ConfigManager
+
+    # Exercise the actual shared resolver while keeping provider configuration
+    # hermetic and avoiding reads from the user's home directory.
+    monkeypatch.setattr(
+        ConfigManager,
+        "_provider_for_model",
+        staticmethod(lambda model: "google" if model.startswith("google/") else None),
+    )
+    monkeypatch.setattr(
+        ConfigManager,
+        "get_providers",
+        lambda self: {"google": type("Provider", (), {"litellm_provider": "gemini"})()},
+    )
+    monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
+    monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: None)
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return MagicMock(choices=[MagicMock(message=MagicMock(content="answer", tool_calls=[]))])
+
+    with patch("litellm.completion", side_effect=completion):
+        recon_module.call_agent(".", configured_model, "query", [], "recon", max_turns=1)
+
+    assert calls[0]["model"] == litellm_model
+
+
 @pytest.fixture
 def project_with_snodo():
     """Create a temp project with .snodo dir."""
