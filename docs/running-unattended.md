@@ -156,9 +156,12 @@ is recorded as `merge_conflict_escalated`, leaves the task `unmerged`, and
 preserves the task branch/worktree for resolution.
 
 - **`blocker`**: a validator judged the work and rejected it. Never ask a human
-  to authorize past it. Address the defect with a corrective follow-up task
-  (or revise the spec when the spec itself is wrong), then let validators judge
-  that new work. In plan task status this is `blocked`.
+  to authorize past it. A blocked plan is unfinished work: read the halt and
+  fix it forward within the same plan. If the task spec is wrong, replace that
+  task's spec and rerun its wave until every wave lands. Do not start new plans
+  or dispatch one-off tasks for the plan's remaining work meanwhile. Healthy
+  completed waves are already on `main`, so the fix builds on them. In plan task
+  status this is `blocked`.
 - **`escalate`**: park this task until a human reviews and authorizes it with
   `snodo authorize`. Do not wait indefinitely, self-authorize, or route around
   the gate. Keep processing independent work that does not depend on the parked
@@ -186,12 +189,13 @@ merged. Never use it to manufacture completion on an unattended run.
 ## Fix forward; do not spin
 
 If a defect becomes clear while a task is running, let that run reach its
-terminal result. Then put the correction in a later wave of the same plan, or
-create a new plan with a focused spec if the original plan has already ended.
-Plan dependencies connect waves within one plan; a task in a new plan cannot
-depend on a task from another plan. This preserves the original judgement and
-its evidence while the follow-up is independently judged. Do not stop or revert
-an in-flight task merely because a later correction is needed.
+terminal result. A plan that blocks partway remains unfinished: read the halt,
+then fix forward within that same plan by replacing the blocked task's spec when
+the spec is wrong and rerunning that wave until every wave lands. Do not start
+new plans or dispatch one-off tasks for the remaining plan work while it is
+unfinished. Healthy completed waves are already on `main`, so the corrected
+wave builds on them. Do not stop or revert an in-flight task merely because a
+later correction is needed.
 
 Do not blindly call `retry_job` in a loop on a halted task. First inspect the
 job status, logs, plan status, and halt outcome. A task halt is not one generic

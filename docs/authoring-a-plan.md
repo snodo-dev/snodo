@@ -402,3 +402,10 @@ to see which tasks completed and whether any are blocked, errored, or unmerged.
 Confirm success from the recorded outcomes, not from the fact that `run_plan`
 returned. If work did not complete, use the task and job details to decide what
 to fix or resolve before running the plan again.
+
+A blocked plan is unfinished work. Read the halt and diagnose the blocked task;
+when its specification is wrong, replace that task's spec within this same plan
+and run its wave again. Continue fixing forward and rerunning the blocked wave
+until every wave lands. Do not start a new plan or dispatch a one-off task for
+the plan's remaining work while it is unfinished. Healthy completed waves are
+already on `main`, so the next attempt builds on them.

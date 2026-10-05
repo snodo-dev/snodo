@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Teach orchestrators that blocked plans remain unfinished: read the halt, fix
+  forward in the same plan, and land every wave before starting new work. (Fixes #732)
 - Deliver each fully passing plan wave immediately while keeping queue delivery
   grouped at the queue boundary. (Fixes #730)
 - Acceptance validation now requires independent execution evidence for command

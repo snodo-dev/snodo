@@ -22,10 +22,14 @@ task status is `blocked`.
 
 **Next:** Inspect the returned validator result and, when necessary,
 `get_job_logs` and the current repository/worktree evidence. If the concern is
-valid, create a focused corrective follow-up task and let validators judge that
-work. Change the specification only when evidence shows the specification
-itself is wrong. A reported stale premise can be false: check the premise
-against the current source before changing either implementation or spec.
+valid, diagnose whether the work or specification is wrong. A blocked plan is
+unfinished work: fix it forward within that same plan.
+When its spec is wrong, replace that task's spec and rerun the wave; repeat
+until every wave lands. Do not start another plan or dispatch a one-off task for
+the remaining plan work. Healthy completed waves are already on `main`, so the
+fix builds on them. Change the specification only when evidence shows the
+specification itself is wrong. A reported stale premise can be false: check the
+premise against the current source before changing either implementation or spec.
 
 **Never:** Override a blocker, including with `propose_adjudicate`; a blocker is
 non-overridable (INV3). Do not rewrite a spec merely to silence an unverified
