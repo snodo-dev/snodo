@@ -9,6 +9,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Guard every orchestrator-facing guidance surface against drift from the
+  canonical plan-first rule. (Fixes #726)
+- Update the README and MCP self-description to use the canonical plan-first
+  rule, including the single-task exception. (Fixes #725)
+- Align the unattended automation and queues guides with the plan-first rule,
+  reserving direct task dispatch for true one-offs. (Fixes #724)
+- Teach the authoring guide to model related work as a plan, reserving direct
+  task dispatch for true one-offs. (Fixes #723)
+- Teach orchestrators that plans are the default unit of work in MCP server
+  instructions and the guide default path. (Fixes #722)
 - Ensure task preparation and ShellMCP child shells omit inherited Snodo
   job-context variables while retaining ordinary environment settings. (Fixes #640)
 - Validator `git_show` now returns a revision's top-level tree listing when asked

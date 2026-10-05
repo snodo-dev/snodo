@@ -18,9 +18,11 @@ for live output. Do not hand out the MCP server's `/watch/` capability URL. Use
 `get_job_status` or `get_job_logs` for a specific follow-up, not as the routine
 polling loop. See [Following a run](../following-a-run.md).
 
-Instructions recommend the smallest structure that fits: one direct task, a
-wave for parallel tasks, a plan for multiple waves, and a queue for several
-plans. Tool access is bounded by the active mode's capability grant. A server
+Instructions recommend: Group work into plans. A plan is one clear intention.
+Waves group its tasks: tasks in a wave run in parallel, and waves run in series.
+Queues group and schedule plans. Dispatch a single task only for a true one-off
+with no related work. A plan with one task in one wave adds nothing. Tool access
+is bounded by the active mode's capability grant. A server
 without an explicit `--mode` serves the current mode. The implementation's
 current tool resolution for that case differs; see the report for the code/doc
 discrepancy.

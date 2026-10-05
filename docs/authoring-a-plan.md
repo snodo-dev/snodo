@@ -14,9 +14,7 @@ everything below is authored.
 
 **Dependencies are between waves, not between tasks.**
 
-Choose the smallest structure that fits: dispatch one task directly; use a
-wave only for more than one task that can run together; use a plan only when
-there is more than one wave; use a queue only to schedule several plans.
+Group work into plans. A plan is one clear intention. Waves group its tasks: tasks in a wave run in parallel, and waves run in series. Queues group and schedule plans. Dispatch a single task only for a true one-off with no related work. A plan with one task in one wave adds nothing.
 
 Every task in a wave may run in any order, and a wave is only entered once
 every wave it depends on has *completely* finished. There is no way to say
@@ -175,8 +173,13 @@ are two plans.
 
 ### Choose the structure before authoring
 
-Follow the smallest-structure rule above. A plan adds durable plan→wave→task
-history, but does not change task validation or merge policy.
+Follow the canonical rule above: group work into plans, and dispatch a single
+task only for a true one-off with no related work. Sending related work as a
+string of single tasks, or putting one task in each wave, adds unnecessary
+wrappers and barriers.
+
+A plan adds durable plan→wave→task history, but does not change task validation
+or merge policy.
 
 There is no additional human authorization gate in `validate_plan`: it checks
 plan structure and spec references before a plan run, while `validate_task`
@@ -305,20 +308,20 @@ hosting split and then discovering the second half was never written.
 <!-- snodo-guide topic="planning" aliases="end-to-end" summary="The end-to-end plan loop" section="## 8. The planning loop, end to end" -->
 ## 8. The planning loop, end to end
 
-Follow the smallest-structure rule in [The one modelling
-rule](#1-the-one-modelling-rule). For one task, call `validate_task` and then
+Start with one clear intention as a plan and group its work into waves. A plan's
+`validate_plan` is a structural/preflight check, not a separate human
+authorization gate; each plan task still goes through the same execution
+validators and auto-merge policy as a direct task. Plans provide durable
+plan→wave→task history that the cloud can reconstruct (ADR 054), including
+bounded authored intent on plan proposal and run events.
+
+For a true one-off with no related work, call `validate_task` and then
 `dispatch_task`, and follow the returned job using [the live job
-guide](following-a-run.md). A plan's `validate_plan` is a structural/preflight
-check, not a separate human authorization gate; each plan task still goes
-through the same execution validators and auto-merge policy as a direct task.
-Plans do provide durable plan→wave→task history that the cloud can reconstruct
-(ADR 054), including bounded authored intent on plan proposal and run events,
-hierarchy is an intentional reporting requirement.
+guide](following-a-run.md). A plan with one task in one wave adds nothing.
 
 ### Write the intent
 
-When multiple waves are needed, start with the outcome the whole plan should
-produce, in product terms. Keep
+Start with the outcome the whole plan should produce, in product terms. Keep
 the intent to one or two sentences; it is not a task list. `propose_plan`
 creates an inert plan scaffold from that intent. `decompose` creates a scaffold
 with the requested number of empty wave slots; it does not invent or populate

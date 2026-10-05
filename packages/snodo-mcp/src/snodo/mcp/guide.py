@@ -193,11 +193,11 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
 
     menu = guide_menu(project_root, exposed)
     if "queue_run" in exposed and "run_plan" in exposed:
-        path = "See the `waves` topic for the smallest-structure rule. For plans, use `propose_plan` → `generate_spec` → `validate_plan` → `run_plan`; use `queue_run` for queued plans. See `following-a-run` for live watching."
+        path = "Plans are the default: group related tasks into one plan; tasks in a wave run in parallel, waves in series. `propose_plan` → `generate_spec` → `validate_plan` → `run_plan`; `queue_run` for queued plans."
     elif "queue_run" in exposed:
         path = "Use `queue_list` and `queue_validate`, reorder, remove plans, or create queues with `queue_move` / `queue_remove` / `queue_create`, then start progression with `queue_run`; see `following-a-run` for live watching."
     elif "run_plan" in exposed:
-        path = "See the `waves` topic for the smallest-structure rule. For multi-wave work, use `propose_plan`, `generate_spec`, `validate_plan`, and `run_plan`; see `following-a-run` for live watching."
+        path = "Plans are the default: group related tasks into one plan; tasks in a wave run in parallel, waves in series. `propose_plan` → `generate_spec` → `validate_plan` → `run_plan`; see `following-a-run` for live watching."
     elif "dispatch_task" in exposed:
         path = "Write a standalone spec, call `validate_task`, then `dispatch_task`; name `module` when the task is confined to one declared module. See `following-a-run` for live watching and specific job follow-up."
     else:
