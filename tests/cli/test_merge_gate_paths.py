@@ -105,6 +105,52 @@ def test_task_branch_merge_requires_exact_commit_verification(tmp_path, scope):
         assert "task.txt" in repo.git.ls_tree("-r", target)
 
 
+def test_replaced_plan_spec_merges_recorded_worktree_branch_with_its_verification(tmp_path):
+    """A rerun must not derive the branch from a replacement task spec."""
+    from git import Repo
+    from snodo.cli.commands.run_merge import _merge_on_success
+    from snodo.core.interfaces import Task
+    from snodo.infrastructure.audit import AuditLog
+    from snodo.infrastructure.worktree import create_worktree
+
+    project, _base = _repository(tmp_path)
+    integration_branch = "plan/orchestrators-default-to-plans-2/integration"
+    _branch(project, _base, integration_branch, "integration.txt")
+    original_spec = "Before starting, open a GitHub issue"
+    replaced_spec = "Open issue 726 on snodo-dev/snodo"
+    task = Task(id="5.1_consistency_guard", spec=replaced_spec)
+    worktree = create_worktree(
+        str(project), task.id, original_spec, plan_name="orchestrators-default-to-plans-2",
+    )
+    (worktree / "task.txt").write_text("verified change\n")
+    with Repo(str(worktree)) as repo:
+        repo.index.add(["task.txt"])
+        commit = repo.index.commit("verified task").hexsha
+        task.branch = repo.active_branch.name
+
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    _verification(audit, task.id, commit)
+
+    import os
+    previous = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH")
+    os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = integration_branch
+    try:
+        result = _merge_on_success(
+            str(project), task, 0, None, audit,
+            plan_name="orchestrators-default-to-plans-2",
+        )
+    finally:
+        if previous is None:
+            os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
+        else:
+            os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = previous
+
+    assert result[0] == 0
+    assert result[2] == task.branch
+    with Repo(str(project)) as repo:
+        assert "task.txt" in repo.git.ls_tree("-r", integration_branch)
+
+
 def test_custom_quality_validator_id_is_accepted_without_loosening_evidence(tmp_path):
     from snodo.cli.commands.run_merge import _merge_on_success
     from snodo.compiler.models import Validator

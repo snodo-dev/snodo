@@ -196,7 +196,7 @@ def _merge_on_success(
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
     from snodo.infrastructure.worktree import _task_identity
     _, branch = _task_identity(project_root, task.id, spec_for_branch, plan_name)
-    branch = branch_override or branch
+    branch = branch_override or getattr(task, "branch", None) or branch
 
     target_commit = ""
     try:

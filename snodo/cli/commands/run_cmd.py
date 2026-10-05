@@ -883,6 +883,15 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             protocol=protocol,
             base=os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if task.plan_name else None,
         )
+        task_branch = None
+        if worktree_path_val:
+            # The checked-out branch is the durable identity for this run. The
+            # task spec may be replaced before a plan wave is rerun.
+            task_branch = subprocess.check_output(
+                ["git", "-C", str(worktree_path_val), "symbolic-ref", "--quiet", "--short", "HEAD"],
+                text=True,
+            ).strip()
+        task.branch = task_branch
         worktree_failure = None
     except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently
         worktree_path_val = None

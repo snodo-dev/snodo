@@ -139,6 +139,20 @@ def _task_identity(
     """Select the new identity, falling back to an existing legacy identity."""
     new_path = worktree_path(project_root, task_id, plan_name)
     new_branch = task_branch_name(task_id, spec, plan_name)
+    # A linked worktree is the source of truth once created. In particular,
+    # plan task specs can be replaced between wave runs; deriving its branch
+    # again from the edited text would strand the committed work.
+    for candidate_path in (new_path,):
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(candidate_path), "symbolic-ref", "--quiet", "--short", "HEAD"],
+                capture_output=True, text=True, check=True,
+            )
+            branch = result.stdout.strip()
+            if branch:
+                return candidate_path, branch
+        except (OSError, subprocess.SubprocessError):
+            pass
     if not plan_name:
         return new_path, new_branch
 

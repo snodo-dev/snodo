@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Use the task worktree's recorded branch for plan-task merge verification,
+  preserving the committed branch when a task spec is replaced and rerun. (Fixes #728)
 - Make the task gate warn about missing changelog entries while `make release`
   enforces complete entries for issue-closing commits since the last tag. (Fixes #727)
 - Guard every orchestrator-facing guidance surface against drift from the
