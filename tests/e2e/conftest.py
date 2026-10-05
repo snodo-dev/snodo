@@ -14,6 +14,8 @@ from typing import List
 
 import pytest
 
+from snodo.paths import subprocess_env_without_job_context
+
 
 def pytest_collection_modifyitems(config, items):
     """Fail collection if a test under tests/e2e/ lacks the ``e2e`` marker.
@@ -63,38 +65,29 @@ def snodo_cli(tmp_path):
     snodo_home.mkdir()
 
     # Initialize git repo (snodo requires one)
-    subprocess.run(["git", "init", "-q"], cwd=str(project_root), check=False)
+    clean_env = subprocess_env_without_job_context()
+    subprocess.run(["git", "init", "-q"], cwd=str(project_root), env=clean_env, check=False)
     subprocess.run(
         ["git", "config", "user.email", "test@e2e.local"],
-        cwd=str(project_root), check=False,
+        cwd=str(project_root), env=clean_env, check=False,
     )
     subprocess.run(
         ["git", "config", "user.name", "E2E Test"],
-        cwd=str(project_root), check=False,
+        cwd=str(project_root), env=clean_env, check=False,
     )
 
     def _run(cmd_args: List[str], **kwargs) -> subprocess.CompletedProcess:
-        env = os.environ.copy()
+        env = subprocess_env_without_job_context()
         env["SNODO_HOME"] = str(snodo_home)
         env["SNODO_TOKEN_SECRET"] = "e2e_test_fixed_secret_32bytes!"
         env["PYTHONIOENCODING"] = "utf-8"
-        # Keep job context from overriding this fixture's isolated project.
-        for key in (
-            "SNODO_PROJECT_ROOT",
-            "SNODO_JOB_ID",
-            "SNODO_WORKTREE_PATH",
-            "SNODO_PLAN_JOB",
-            "SNODO_TASK_PLAN",
-            "SNODO_TASK_PLAN_WAVE",
-            "SNODO_BENCHMARK",
-        ):
-            env.pop(key, None)
         # The audit log is a property of the PROJECT (Fixes #111): the CLI must
         # write to <project_root>/.snodo/audit.log, not to SNODO_HOME. The
         # in-process suite fixture sets SNODO_AUDIT_LOG to keep unit tests off
         # the suite repo; a subprocess must NOT inherit it, or it would write
         # the project's audit log to the test harness's temp file instead.
         env.pop("SNODO_AUDIT_LOG", None)
+        _run.last_env = env.copy()
         return subprocess.run(
             _snodo_cmd() + cmd_args,
             cwd=str(project_root),

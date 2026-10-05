@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- E2E fixture subprocesses now use the shared job-context scrubber, including
+  plan-trigger and queue variables; regression coverage verifies a simulated job
+  cannot expose or modify its dispatching project. (Fixes #542)
 - Make PR-review tests explicitly control GitHub Actions run variables so CI and
   local runs exercise the same behavior and state remains in the isolated project.
   (Fixes #717)

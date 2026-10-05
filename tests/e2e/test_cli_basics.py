@@ -3,52 +3,29 @@
 FILE: tests/e2e/test_cli_basics.py (Task 7.13)
 """
 
-import json
-import os
 import re
-import subprocess
-import sys
 
 import pytest
 
 
 @pytest.mark.e2e
 def test_subprocess_ignores_inherited_job_project(snodo_cli, monkeypatch, tmp_path):
-    """An e2e child resolves its fixture project despite a dispatch context."""
+    """An e2e child gets no job context and cannot touch the dispatching project."""
     other_project = tmp_path / "dispatching-project"
     (other_project / ".snodo").mkdir(parents=True)
+    sentinel = other_project / ".snodo" / "sentinel"
+    sentinel.write_text("untouched")
     (snodo_cli.home / ".snodo").mkdir()
-    monkeypatch.setenv("SNODO_PROJECT_ROOT", str(other_project))
-    monkeypatch.setenv("SNODO_JOB_ID", "j_outer")
+    from snodo.paths import JOB_CONTEXT_ENV_VARS
+
+    for key in JOB_CONTEXT_ENV_VARS:
+        monkeypatch.setenv(key, str(other_project) if key == "SNODO_PROJECT_ROOT" else "outer-job-value")
 
     result = snodo_cli(["--version"])
     assert result.returncode == 0, result.stderr
-
-    env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
-    for key in (
-        "SNODO_PROJECT_ROOT",
-        "SNODO_JOB_ID",
-        "SNODO_WORKTREE_PATH",
-        "SNODO_PLAN_JOB",
-        "SNODO_TASK_PLAN",
-        "SNODO_TASK_PLAN_WAVE",
-        "SNODO_BENCHMARK",
-    ):
-        env.pop(key, None)
-    resolved = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import json; from snodo.paths import resolve_project_root; "
-            "print(json.dumps(resolve_project_root()))",
-        ],
-        cwd=snodo_cli.home,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert json.loads(resolved.stdout) == str(snodo_cli.home)
+    assert not set(JOB_CONTEXT_ENV_VARS) & snodo_cli.last_env.keys()
+    assert sentinel.read_text() == "untouched"
+    assert list((other_project / ".snodo").iterdir()) == [sentinel]
 
 
 def _strip_ansi(text):
