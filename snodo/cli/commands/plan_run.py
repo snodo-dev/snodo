@@ -1285,10 +1285,11 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
         queue_integration_branch = os.environ.get("SNODO_QUEUE_INTEGRATION_BRANCH")
         deliver_wave = None
         if integration_branch and not queue_integration_branch:
-            deliver_wave = lambda: _deliver_healthy_plan_wave(
-                str(project_root), integration_branch, args.plan, plan_data,
-                protocol, active_mode, audit_log,
-            )
+            def deliver_wave():
+                return _deliver_healthy_plan_wave(
+                    str(project_root), integration_branch, args.plan, plan_data,
+                    protocol, active_mode, audit_log,
+                )
         failed = _execute_waves(
             waves, planner, args, protocol, model,
             all_waves, interactive, effective_concurrency=effective_concurrency,
