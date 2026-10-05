@@ -164,50 +164,6 @@ def test_classify_wave_uses_single_resolved_model(sample_protocol, sample_task):
     assert call_model == cc_keywords.get("model")
 
 
-@pytest.mark.parametrize(
-    "resolved_headers",
-    [{"x-opencode-session": "task-session"}, None],
-    ids=["opencode", "other-provider"],
-)
-def test_classifier_completion_resolves_task_scoped_provider_headers(
-    sample_protocol, sample_task, monkeypatch, resolved_headers
-):
-    """Classifier requests get task-scoped headers without changing other providers."""
-    from types import SimpleNamespace
-
-    completion = MagicMock()
-    builder = GraphBuilder(sample_protocol)
-    builder._project_root = "/fake/project"
-    builder._classifier_model = "configured/model"
-    builder._classifier_completion_fn = completion
-    monkeypatch.setattr(
-        "snodo.config.ConfigManager.resolve_extra_headers",
-        lambda model, task_id=None: resolved_headers,
-    )
-    monkeypatch.setattr(
-        "snodo.infrastructure.config.load_llm_config",
-        lambda: SimpleNamespace(wave=None, classifier=None),
-    )
-
-    def classify_task(registry, spec, task_id, completion_fn, model):
-        completion_fn(_configured_model=model, messages=[{"role": "user", "content": spec}])
-        return {"flow_type": "feature", "wave_id": "w1"}
-
-    monkeypatch.setattr(
-        "snodo.infrastructure.wave_registry.WaveRegistry.classify_task",
-        classify_task,
-    )
-    state = SimpleNamespace(task=sample_task, iteration=1, metadata={})
-    builder._classify_wave(state)
-
-    kwargs = completion.call_args.kwargs
-    if resolved_headers:
-        assert kwargs["extra_headers"] == resolved_headers
-    else:
-        assert "extra_headers" not in kwargs
-    assert kwargs["messages"] == [{"role": "user", "content": sample_task.spec}]
-
-
 def test_classify_wave_passes_classifier_config(sample_protocol, sample_task):
     """WaveRegistry is constructed with the classifier config (budget/temperature)."""
     builder = GraphBuilder(sample_protocol)
@@ -458,3 +414,4 @@ def test_wave_created_not_reemitted_for_subsequent_tasks_in_wave(sample_protocol
     event_types = [call[0][0] for call in audit.append_event.call_args_list]
     assert event_types.count("wave_created") == 1
     assert event_types.count("task_classified") == 2
+

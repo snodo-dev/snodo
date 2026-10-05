@@ -189,7 +189,6 @@ class GovernanceNodeMixin:
         if loop_state.iteration == 1 and self._project_root:
             try:
                 from snodo.infrastructure.config import load_llm_config
-                from snodo.infrastructure.completion_headers import wrap_completion_fn_with_headers
                 from snodo.infrastructure.wave_registry import WaveRegistry
                 llm_cfg = load_llm_config()
                 registry = WaveRegistry(
@@ -200,17 +199,10 @@ class GovernanceNodeMixin:
                 classifier_model = getattr(
                     self, "_classifier_model", None
                 ) or self._default_model
-                classifier_completion_fn = getattr(
-                    self, '_classifier_completion_fn', self._completion_fn
-                )
-                if classifier_completion_fn:
-                    classifier_completion_fn = wrap_completion_fn_with_headers(
-                        classifier_completion_fn, loop_state.task.id
-                    )
                 result = registry.classify_task(
                     loop_state.task.spec,
                     loop_state.task.id,
-                    classifier_completion_fn,
+                    getattr(self, '_classifier_completion_fn', self._completion_fn),
                     classifier_model,
                 )
                 loop_state.task.flow_type = result.get("flow_type") or "feature"
