@@ -117,43 +117,41 @@ _threads: list[Thread] = []
 
 
 # Read-only tool definitions for the recon agent surface.
-_READ_FILE_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "read_file",
-        "description": "Read file content within the project",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "File path relative to project root",
-                },
-            },
-            "required": ["path"],
-        },
-    },
-}
+_RECON_READ_TOOLS = frozenset({
+    "read_files", "read_file", "read_file_lines", "list_files",
+    "search_string", "search_symbol",
+})
+_MAX_STALL_TURNS = 3
 
-_LIST_FILES_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "list_files",
-        "description": "List files in a directory",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "directory": {
-                    "type": "string",
-                    "description": "Directory path (default: .)",
-                },
-            },
-            "required": ["directory"],
-        },
-    },
-}
 
-_READ_ONLY_TOOLS = [_READ_FILE_TOOL, _LIST_FILES_TOOL]
+def _read_only_tools() -> list[dict]:
+    """Return shared coder schemas filtered to recon's read-only surface."""
+    from snodo.coders.litellm import LiteLLMAdapter
+
+    return [tool for tool in LiteLLMAdapter._build_tool_definitions()
+            if tool["function"]["name"] in _RECON_READ_TOOLS]
+
+
+def _legacy_tool(name: str) -> dict:
+    return next(tool for tool in _read_only_tools() if tool["function"]["name"] == name)
+
+
+_READ_FILE_TOOL = _legacy_tool("read_file")
+_LIST_FILES_TOOL = _legacy_tool("list_files")
+
+
+def _execute_recon_read(name: str, args: dict, workspace) -> str:
+    """Execute a shared read tool, adding explicit file:line evidence for ranges."""
+    from snodo.coders.litellm import LiteLLMAdapter
+
+    result = LiteLLMAdapter._execute_tool(name, args, workspace)
+    if name == "read_file_lines" and not result.startswith("Tool error:"):
+        first = int(args["start"])
+        return "\n".join(
+            f"{line}: {content}"
+            for line, content in enumerate(result.splitlines(), start=first)
+        )
+    return result
 
 # The instruction that closes the reading window — the recon analogue of the
 # validator's _VERDICT_ONLY_INSTRUCTION (snodo/validators/llm_validator.py).
@@ -410,35 +408,6 @@ def call_agent_chain(
     )
 
 
-def _read_file(project_root: str, path: str) -> str:
-    """Read a file within *project_root*, rejecting path traversal."""
-    resolved = (Path(project_root) / path).resolve()
-    if not str(resolved).startswith(str(Path(project_root).resolve())):
-        return "Error: path traversal rejected"
-    try:
-        return resolved.read_text()
-    except Exception as e:
-        return f"Error reading file: {e}"
-
-
-def _list_files(project_root: str, directory: str) -> str:
-    """List files in *directory*, rejecting path traversal."""
-    resolved = (Path(project_root) / directory).resolve()
-    if not str(resolved).startswith(str(Path(project_root).resolve())):
-        return "Error: path traversal rejected"
-    try:
-        if not resolved.is_dir():
-            return f"Error: not a directory: {directory}"
-        entries = sorted(resolved.iterdir())
-        lines = []
-        for e in entries:
-            marker = "/" if e.is_dir() else ""
-            lines.append(f"{e.name}{marker}")
-        return "\n".join(lines)
-    except Exception as e:
-        return f"Error listing files: {e}"
-
-
 def call_agent(
     project_root: str,
     model: str,
@@ -527,6 +496,10 @@ def call_agent(
                 pass
 
     from snodo.config import ConfigManager
+    from snodo.tools.workspace import WorkspaceMCP
+    from snodo.coders.litellm import ReadMemoryTracker, format_repeat_read_response
+    workspace = WorkspaceMCP(project_root)
+    read_tracker = ReadMemoryTracker(project_root)
     _logger.debug("recon: resolving API key for model=%s", model)
     api_base = ConfigManager.resolve_api_base(model)
     model_param = ConfigManager.resolve_litellm_model(model)
@@ -542,16 +515,23 @@ def call_agent(
         if api_key:
             kwargs["api_key"] = api_key
         if with_read_tools:
-            kwargs["tools"] = _READ_ONLY_TOOLS
+            kwargs["tools"] = _read_only_tools()
         if api_base:
             kwargs["api_base"] = api_base
         if extra_headers:
             kwargs["extra_headers"] = extra_headers
         return litellm.completion(**kwargs)
 
-    for _turn in range(max_turns):
+    turns_used = 0
+    stall_streak = 0
+    raw_turn = 0
+    max_raw_turns = max_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 2
+    while raw_turn < max_raw_turns:
+        is_final_turn = turns_used >= max_turns or stall_streak >= _MAX_STALL_TURNS
+        if is_final_turn:
+            messages.append({"role": "user", "content": _ANSWER_ONLY_INSTRUCTION})
         try:
-            response = _complete(with_read_tools=True)
+            response = _complete(with_read_tools=not is_final_turn)
         except Exception as e:
             usage_records.append(_usage_record("failed"))
             return ReconResult(
@@ -568,7 +548,7 @@ def call_agent(
         text = msg.content or ""
 
         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
-            if _turn == 0 and not text:
+            if raw_turn == 0 and not text:
                 _logger.warning(
                     "Recon agent disengaged on turn 0 — model=%s, "
                     "content=%r",
@@ -578,6 +558,10 @@ def call_agent(
             # concluding: its text is the answer. Prose on a
             # tool-calling turn is narration between reads, never
             # the answer, so it is not accumulated here (Fixes #299).
+            final_answer = text
+            break
+
+        if is_final_turn:
             final_answer = text
             break
 
@@ -591,25 +575,36 @@ def call_agent(
             for tc in msg.tool_calls
         ]})
 
+        turn_progressed = False
         for tc in msg.tool_calls:
             name = tc.function.name
             try:
                 args = json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 args = {}
 
-            if name == "read_file":
-                result = _read_file(project_root, args.get("path", ""))
-            elif name == "list_files":
-                result = _list_files(project_root, args.get("directory", "."))
-            else:
+            if name not in _RECON_READ_TOOLS:
                 result = f"Error: unknown tool: {name}"
+            else:
+                prev_turn = read_tracker.check_read(name, args)
+                if prev_turn is not None:
+                    result = format_repeat_read_response(name, args, prev_turn)
+                else:
+                    result = _execute_recon_read(name, args, workspace)
+                    read_tracker.record_read(name, args, raw_turn + 1)
+                    turn_progressed = True
 
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
                 "content": result,
             })
+        if turn_progressed:
+            turns_used += 1
+            stall_streak = 0
+        else:
+            stall_streak += 1
+        raw_turn += 1
     else:
         # Reached only when the loop was never broken: the reading
         # budget is spent and the agent was still calling tools on

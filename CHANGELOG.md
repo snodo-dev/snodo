@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Recon agents now reuse the shared read-only workspace tools for batched and
+  ranged reads, searches, line-numbered results, and repeat-read tracking.
+  (Fixes #733)
 - Configure recon completion-token and read-tool-turn budgets through `llm.recon`,
   passing them from MCP and CLI submissions to each agent run. (Fixes #731)
 - Acceptance validation now requires independent execution evidence for command

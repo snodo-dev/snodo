@@ -59,6 +59,62 @@ def test_call_agent_passes_configured_completion_budget(monkeypatch):
     assert completion.call_args.kwargs["max_tokens"] == 2300
 
 
+def test_recon_uses_shared_read_tools_lines_and_free_repeat(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from snodo.config import ConfigManager
+
+    (tmp_path / "sample.py").write_text("alpha\nneedle\nomega\n")
+    monkeypatch.setattr(ConfigManager, "resolve_litellm_model", staticmethod(lambda model: model))
+    monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
+    monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: None)
+
+    def tool_call(call_id, name, args):
+        return SimpleNamespace(id=call_id, function=SimpleNamespace(
+            name=name, arguments=json.dumps(args),
+        ))
+
+    responses = [
+        [tool_call("s", "search_string", {"query": "needle"})],
+        [tool_call("r", "read_file_lines", {"path": "sample.py", "start": 2, "end": 2})],
+        [tool_call("repeat", "read_file_lines", {"path": "sample.py", "start": 2, "end": 2})],
+    ]
+    requests = []
+
+    def completion(**kwargs):
+        requests.append(kwargs)
+        calls = responses.pop(0) if responses else []
+        content = "answer" if not calls else ""
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content=content, tool_calls=calls,
+        ))])
+
+    with patch("litellm.completion", side_effect=completion):
+        result = recon_module.call_agent(str(tmp_path), "model", "find", [], "agent", max_turns=4)
+
+    offered = {tool["function"]["name"] for tool in requests[0]["tools"]}
+    assert {"read_file_lines", "search_string", "search_symbol", "read_files"} <= offered
+    assert "run_tests" not in offered and "write_file" not in offered
+    contents = [message.get("content", "") for message in requests[-1]["messages"]]
+    assert any("needle" in content for content in contents)
+    assert any("2: needle" in content for content in contents)
+    assert any("already fetched" in content for content in contents)
+    assert result.result == "answer"
+
+
+def test_recon_read_tools_reject_path_traversal(tmp_path):
+    from snodo.tools.workspace import WorkspaceMCP
+    from snodo.coders.litellm import LiteLLMAdapter
+
+    outside = tmp_path.parent / "outside-recon.txt"
+    outside.write_text("secret")
+    result = LiteLLMAdapter._execute_tool(
+        "read_file", {"path": "../outside-recon.txt"}, WorkspaceMCP(str(tmp_path)),
+    )
+    assert "path" in result.lower() or "outside" in result.lower()
+    assert "secret" not in result
+
+
 def test_recon_agent_default_turn_budget_matches_validator_default():
     from snodo.infrastructure.config import ValidatorConfig, ReconConfig
 
