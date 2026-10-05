@@ -138,6 +138,7 @@ def _legacy_tool(name: str) -> dict:
 
 _READ_FILE_TOOL = _legacy_tool("read_file")
 _LIST_FILES_TOOL = _legacy_tool("list_files")
+_READ_ONLY_TOOLS = _read_only_tools()
 
 
 def _execute_recon_read(name: str, args: dict, workspace) -> str:
