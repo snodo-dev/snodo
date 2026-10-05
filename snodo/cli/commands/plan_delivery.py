@@ -1,5 +1,7 @@
 """Delivery helpers for plan integration branches."""
 
+import sys
+
 from snodo.cli.commands.run_merge import _deliver_plan_integration
 from snodo.core.interfaces import Task
 from snodo.infrastructure.worktree import _name_component, worktree_dir
