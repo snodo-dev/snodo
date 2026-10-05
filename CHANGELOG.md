@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Validator `git_show` now returns a revision's top-level tree listing when asked
+  for the repository root, while preserving path-boundary checks. (Fixes #721)
 - Expand the configuration reference with provider preflight, cloud runtime
   behavior, environment variables, protocol execution budgets, and configuration
   editing limits. (Fixes #566)

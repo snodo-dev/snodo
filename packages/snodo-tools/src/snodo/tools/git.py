@@ -555,18 +555,20 @@ class GitMCP:
             raise GitError(f"Git change-size diff failed: {e}") from e
 
     def show(self, ref: str, path: str) -> str:
-        """Read a file's content at a specific git ref.
+        """Read a file or tree listing at a specific git ref.
 
         Args:
             ref: Git ref (e.g. "HEAD", "main", "abc1234")
-            path: File path relative to project root
+            path: File or directory path relative to project root
 
         Returns:
-            File content at the given ref
+            File content or tree listing at the given ref
         """
         validated = self.validate_path(path)
         rel_path = str(validated.relative_to(self.project_root))
         try:
+            if rel_path == ".":
+                return self.repo.git.ls_tree("--name-only", ref)
             return self.repo.git.show(f"{ref}:{rel_path}")
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e

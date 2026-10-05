@@ -676,6 +676,36 @@ def test_show_reads_file_at_previous_ref(temp_git_repo):
     assert "# Test Repo" in content
 
 
+@pytest.mark.parametrize("path", [".", "./", ""])
+def test_show_lists_repository_root_at_ref(temp_git_repo, path):
+    """Root spellings return the selected ref's top-level tree listing."""
+    git_mcp, _ = temp_git_repo
+
+    listing = git_mcp.show("HEAD", path)
+
+    assert "README.md" in listing.splitlines()
+
+
+def test_show_lists_subdirectory_at_ref(temp_git_repo):
+    git_mcp, root = temp_git_repo
+    source = Path(root) / "src"
+    source.mkdir()
+    (source / "main.py").write_text("print('hello')")
+    git_mcp.stage_files(["src/main.py"])
+    git_mcp.commit("Add source file")
+
+    listing = git_mcp.show("HEAD", "src")
+
+    assert "main.py" in listing
+
+
+def test_show_root_refuses_path_outside_repository(temp_git_repo):
+    git_mcp, _ = temp_git_repo
+
+    with pytest.raises(PathValidationError):
+        git_mcp.show("HEAD", "../outside")
+
+
 def test_show_path_validation(temp_git_repo):
     """Test show validates path is within project root."""
     git_mcp, _ = temp_git_repo
@@ -827,4 +857,3 @@ def test_merge_branch_fails_with_staged_unrelated_file(temp_git_repo):
 
     assert "Staged changes in index would be overwritten by merge" in str(exc_info.value)
     assert "scripts/deploy.sh" in str(exc_info.value)
-
