@@ -2099,12 +2099,15 @@ class TestInstructions:
         assert "watch_job(job_id)" in instructions
         assert "snodo logs <job_id> --watch" in instructions
 
-    def test_instructions_teach_smallest_work_structure(self, dispatching_server):
+    def test_instructions_teach_plans_as_default_work_unit(self, dispatching_server):
         instructions = _build_instructions(dispatching_server)
-        assert "dispatch one task directly" in instructions
-        assert "wave only for multiple tasks that can run together" in instructions
-        assert "plan only for multiple waves" in instructions
-        assert "queue only to schedule several plans" in instructions
+        assert "Group work into plans. A plan is one clear intention." in instructions
+        assert "Waves group its tasks: tasks in a wave run in parallel, and waves run in series." in instructions
+        assert "Queues group and schedule plans." in instructions
+        assert "Dispatch a single task only for a true one-off with no related work." in instructions
+        assert "A plan with one task in one wave adds nothing." in instructions
+        assert "smallest structure" not in instructions
+        assert "dispatch one task directly" not in instructions
         assert "does not add a human authorization gate" in instructions
 
     def test_instructions_describe_only_the_tools_the_server_has(self, server):
@@ -2177,7 +2180,9 @@ class TestInstructions:
         """The default path contains documented advice without naming withheld tools."""
         exposed = {tool["name"] for tool in guide_server.get_tools()}
         text = guide_text(guide_server.project_root, exposed)
-        assert "waves` topic for the smallest-structure rule" in text
+        assert "Plans are the default" in text
+        assert "propose_plan" in text
+        assert "smallest-structure" not in text
         assert "Guide topics:" in text
         assert len(text) < 1000
         assert "dispatch_task" not in text

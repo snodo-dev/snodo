@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Teach orchestrators that plans are the default unit of work in MCP server
+  instructions and the guide default path. (Fixes #722)
 - Ensure task preparation and ShellMCP child shells omit inherited Snodo
   job-context variables while retaining ordinary environment settings. (Fixes #640)
 - Validator `git_show` now returns a revision's top-level tree listing when asked

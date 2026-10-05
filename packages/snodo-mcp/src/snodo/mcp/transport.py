@@ -362,7 +362,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"# Snodo Protocol Engine — {p.protocol_id} v{p.version}\n",
         f"Serving mode: `{protocol_server._active_mode()}`.\n",
         "You are the orchestrator. Use MCP tools and resources only; you cannot read the filesystem directly.\n",
-        "Choose the smallest structure that fits: dispatch one task directly; use a wave only for multiple tasks that can run together; use a plan only for multiple waves; use a queue only to schedule several plans. A one-task plan adds plan→wave→task history for cloud reporting, but does not add a human authorization gate, change the task validator loop, or change auto-merge policy.\n",
+        "Group work into plans. A plan is one clear intention. Waves group its tasks: tasks in a wave run in parallel, and waves run in series. Queues group and schedule plans. Dispatch a single task only for a true one-off with no related work. A plan with one task in one wave adds nothing. A plan adds plan→wave→task history for cloud reporting, does not add a human authorization gate, and does not change the validator loop or auto-merge policy.\n",
         "Tool access follows the active mode grant; no tool call is refused for want of a caller-held token. The validator quorum is enforced inside the engine loop (ADR 047); a `blocker` is never overridable, and `escalate` requires human `snodo authorize`.\n",
     ]
 
