@@ -1279,4 +1279,40 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                         failed = True
 
         _print_plan_progress(planner, args.plan)
+        final_statuses = planner.get_status(args.plan).get("tasks", {})
+        blocked_tasks = sorted(
+            task_id for task_id, entry in final_statuses.items()
+            if (entry.get("status") if isinstance(entry, dict) else entry) == "blocked"
+        )
+        if blocked_tasks:
+            completed_waves = [
+                str(wave.get("id")) for wave in all_waves
+                if wave.get("tasks") and all(
+                    (entry.get("status") if isinstance(entry, dict) else entry) == "completed"
+                    for task_id in wave.get("tasks", [])
+                    for entry in [final_statuses.get(task_id)]
+                )
+            ]
+            integration_data = planner.get_status(args.plan).get("integration") or {}
+            integration_ref = integration_data.get("branch")
+            delivered = False
+            if integration_ref and integration_branch:
+                try:
+                    from snodo.tools.git import open_repo, resolve_base_branch
+                    with open_repo(str(project_root)) as repo:
+                        base_ref = resolve_base_branch(str(project_root))
+                        delivered = repo.git.merge_base(
+                            "--is-ancestor", integration_ref, base_ref,
+                            with_exceptions=False,
+                        ) == 0
+                except Exception:
+                    delivered = False
+            delivered_waves = ", ".join(completed_waves) if delivered else "none"
+            undelivered_waves = "none" if delivered else (", ".join(completed_waves) or "none")
+            print(
+                f"Plan unfinished: blocked task(s) {', '.join(blocked_tasks)}. "
+                f"Completed waves delivered to the base branch: {delivered_waves}; "
+                f"not delivered: {undelivered_waves}. Fix the blocked task forward "
+                "within this plan: replace its spec, then run that wave."
+            )
         return 1 if failed else 0

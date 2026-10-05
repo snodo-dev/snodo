@@ -101,6 +101,56 @@ class PlanToolHandler:
                 statuses[tid] = str(entry)
         return statuses
 
+    def _blocked_plan_instruction(self, plan_name: str, plan_data: dict,
+                                  statuses: Dict[str, str]) -> Optional[str]:
+        """Describe unfinished blocked work and Git-derived wave delivery."""
+        blocked = sorted(task for task, status in statuses.items() if status == "blocked")
+        if not blocked:
+            return None
+
+        completed = sorted(
+            task for task, status in statuses.items() if status == "completed"
+        )
+        delivered: list[str] = []
+        not_delivered: list[str] = []
+        try:
+            from snodo.tools.git import open_repo, resolve_base_branch
+
+            status_file = self._planner.plans_dir / plan_name / "status.json"
+            status_data = json.loads(status_file.read_text()) if status_file.exists() else {}
+            integration_branch = (status_data.get("integration") or {}).get("branch")
+            with open_repo(str(self._planner.project_root)) as repo:
+                base = resolve_base_branch(str(self._planner.project_root))
+                base_commit = repo.commit(base)
+                integration = repo.commit(integration_branch) if integration_branch in repo.heads else None
+                for wave in plan_data.get("waves", []):
+                    wave_tasks = [t for t in wave.get("tasks", []) if t in completed]
+                    if not wave_tasks:
+                        continue
+                    # A wave is delivered once its current integration head is
+                    # contained in the configured base branch history.
+                    is_delivered = (
+                        integration is None
+                        or repo.git.merge_base(
+                            "--is-ancestor", integration.hexsha, base_commit.hexsha,
+                            with_exceptions=False,
+                        ) == 0
+                    )
+                    (delivered if is_delivered else not_delivered).append(str(wave.get("id")))
+        except Exception:
+            not_delivered = [
+                str(wave.get("id")) for wave in plan_data.get("waves", [])
+                if any(task in completed for task in wave.get("tasks", []))
+            ]
+
+        delivered_text = ", ".join(delivered) or "none"
+        pending_text = ", ".join(not_delivered) or "none"
+        return (
+            f"Plan unfinished: blocked task(s) {', '.join(blocked)}. Completed waves "
+            f"delivered to the base branch: {delivered_text}; not delivered: {pending_text}. "
+            "Fix the blocked task forward within this plan: replace its spec, then run that wave."
+        )
+
     def _task_modules(self, plan_name: str) -> Dict[str, str]:
         """Return explicitly declared module scopes from task status records."""
         status_file = self._planner.plans_dir / plan_name / "status.json"
@@ -182,15 +232,20 @@ class PlanToolHandler:
 
             raise MCPError(f"Failed to read plan.yml for '{plan_name}': {e}") from e
 
-        return {
+        statuses = self._task_statuses(plan_name)
+        result = {
             "name": plan_data.get("name", plan_name),
             "intent": plan_data.get("intent", ""),
             "waves": plan_data.get("waves", []),
-            "tasks": self._task_statuses(plan_name),
+            "tasks": statuses,
             "task_modules": self._task_modules(plan_name),
             "task_runs": self._task_runs(plan_name),
             "validation": self._validation(plan_dir),
         }
+        instruction = self._blocked_plan_instruction(plan_name, plan_data, statuses)
+        if instruction:
+            result["instruction"] = instruction
+        return result
 
     def handle_record_task_status(self, arguments: Dict[str, Any]) -> dict:
         """Record an operator's status for a task, outside the loop.
@@ -398,6 +453,11 @@ class PlanToolHandler:
             result["stderr_tail"] = _tail(
                 job_mgr.get_logs(job_id, stream="stderr") or ""
             )
+        instruction = self._blocked_plan_instruction(
+            plan_name, self._planner.get_plan(plan_name), result["tasks"],
+        )
+        if instruction:
+            result["summary"] = instruction
         return result
 
     def _wait_with_progress(self, job_mgr, job_id: str, plan_name: str,

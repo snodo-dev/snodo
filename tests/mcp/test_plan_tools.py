@@ -194,6 +194,35 @@ class TestProposePlan:
         assert "Plan has no tasks in any wave" in result["validation"]["errors"]
 
 
+def test_get_plan_explains_blocked_plan_and_fix_forward(server, project_dir):
+    _propose(server, name="blocked")
+    _add_task(server, "blocked", "1.1_ready", "INTENT: Ready.\nCONSTRAINTS: None.")
+    _add_task(server, "blocked", "2.1_stuck", "INTENT: Stuck.\nCONSTRAINTS: None.")
+    status_path = Path(project_dir) / ".snodo" / "plans" / "blocked" / "status.json"
+    status_path.write_text(json.dumps({"tasks": {
+        "1.1_ready": "completed", "2.1_stuck": "blocked",
+    }}))
+
+    result = server.call_tool("get_plan", {"plan_name": "blocked"})
+
+    instruction = result["instruction"]
+    assert "Plan unfinished" in instruction
+    assert "2.1_stuck" in instruction
+    assert "delivered to the base branch" in instruction
+    assert "not delivered" in instruction
+    assert "replace its spec, then run that wave" in instruction
+
+
+def test_get_plan_completed_response_has_no_extra_guidance(server):
+    _propose(server, name="finished")
+    _add_task(server, "finished", "1.1_done", "INTENT: Done.\nCONSTRAINTS: None.")
+
+    result = server.call_tool("get_plan", {"plan_name": "finished"})
+
+    assert "instruction" not in result
+    assert result["tasks"] == {"1.1_done": "pending"}
+
+
 # === Validate without spend ===
 
 class TestValidateWithoutExecution:
