@@ -144,14 +144,12 @@ def _task_identity(
     # again from the edited text would strand the committed work.
     for candidate_path in (new_path,):
         try:
-            result = subprocess.run(
-                ["git", "-C", str(candidate_path), "symbolic-ref", "--quiet", "--short", "HEAD"],
-                capture_output=True, text=True, check=True,
-            )
-            branch = result.stdout.strip()
+            from snodo.tools.git import open_repo
+            with open_repo(str(candidate_path)) as repo:
+                branch = repo.active_branch.name
             if branch:
                 return candidate_path, branch
-        except (OSError, subprocess.SubprocessError):
+        except Exception:
             pass
     if not plan_name:
         return new_path, new_branch
