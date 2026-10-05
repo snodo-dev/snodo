@@ -2279,6 +2279,9 @@ class TestInstructions:
         assert "do not wake or" in text
         assert "watch_job" in text
         assert "snodo logs <job_id> --watch" in text
+        assert "Group work into plans. A plan is one clear intention. Waves group its tasks: tasks in a wave run in parallel, and waves run in series. Queues group and schedule plans. Dispatch a single task only for a true one-off with no related work. A plan with one task in one wave adds nothing." in text
+        assert "For a true one-off with no related work, call `validate_task`" in text
+        assert "Prefer a plan for each intent" in text
 
     def test_guide_queues_topic_teaches_queue_progression(self, guide_server):
         exposed = {tool["name"] for tool in guide_server.get_tools()}
@@ -2307,6 +2310,7 @@ class TestInstructions:
         assert "Example: one overnight session" in text
         assert "human decision or repair" in text
         assert "Poll each returned job" not in text
+        assert "Group work into plans. A plan is one clear intention. Waves group its tasks: tasks in a wave run in parallel, and waves run in series. Queues group and schedule plans. Dispatch a single task only for a true one-off with no related work. A plan with one task in one wave adds nothing." in text
 
     def test_guide_mistakes_names_unnecessary_wrappers_and_plan_differences(self, guide_server):
         exposed = {tool["name"] for tool in guide_server.get_tools()}

@@ -7,7 +7,7 @@ runner processes a queue FIFO and stops at its first plan that ends `blocked`,
 reorders plans, and nudges queues by starting another run. A runner exits when
 there is nothing runnable; it does not wait for a future fix or for more plans.
 
-Follow the [smallest-structure rule](authoring-a-plan.md#1-the-one-modelling-rule).
+Group work into plans. A plan is one clear intention. Waves group its tasks: tasks in a wave run in parallel, and waves run in series. Queues group and schedule plans. Dispatch a single task only for a true one-off with no related work. A plan with one task in one wave adds nothing. See [the one modelling rule](authoring-a-plan.md#1-the-one-modelling-rule).
 A queue is a scheduler for plans, not a wrapper for one task or one plan.
 
 For `push_branch` and `change_request` delivery, one successful queue run is

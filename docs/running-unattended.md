@@ -3,8 +3,8 @@
 
 This guide is for an orchestrator that takes a stream of intents and keeps
 turning them into judged, recorded work without a person watching every tool
-call. Follow the [smallest-structure rule](authoring-a-plan.md#1-the-one-modelling-rule)
-for each intent. Snodo's execution loop and validators decide whether work passes. Treat
+call. Group work into plans. A plan is one clear intention. Waves group its tasks: tasks in a wave run in parallel, and waves run in series. Queues group and schedule plans. Dispatch a single task only for a true one-off with no related work. A plan with one task in one wave adds nothing. See [the one modelling rule](authoring-a-plan.md#1-the-one-modelling-rule).
+Snodo's execution loop and validators decide whether work passes. Treat
 each run as a job with an outcome to inspect, not as a single call that
 completes the intent.
 
@@ -87,8 +87,9 @@ select its position, while `--to <queue>` selects a destination (the back by
 default). Moving a plan that is running is refused. These commands accept
 `--json` for the versioned machine interface.
 
-For an intent that is one task, call `validate_task`, then `dispatch_task`, and
-follow the returned job with `watch_job`; do not wrap it in a one-task plan.
+For a true one-off with no related work, call `validate_task`, then
+`dispatch_task`, and follow the returned job with `watch_job`. Otherwise, put
+the intent in a plan, even when it has one task.
 When a task is confined to one declared module, name it with `module` on
 `dispatch_task` or `generate_spec`; its module test command is selected and its
 writable paths are bounded. For multi-wave work, use the plan workflow below:
@@ -120,8 +121,8 @@ writable paths are bounded. For multi-wave work, use the plan workflow below:
 human authorization gate. Plan tasks use the same execution validators and
 auto-merge policy as direct tasks. A plan does add durable plan→wave→task
 history that the cloud can reconstruct under ADR 054, while direct task history
-has no plan hierarchy. Prefer the direct path for one task unless preserving
-that hierarchy is an intentional reporting requirement.
+has no plan hierarchy. Prefer a plan for each intent; use direct dispatch only
+for a true one-off with no related work.
 
 Plan and job vocabularies are different. Job status is `queued`, `running`,
 `completed`, `failed`, `cancelled`, or `unmerged`. Per-task plan status is `pending`,
