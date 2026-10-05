@@ -18,10 +18,10 @@ from threading import Thread
 from typing import Optional
 
 
+from pydantic import BaseModel
+
 RECON_DEFAULT_MAX_TOOL_TURNS = 40
 RECON_DEFAULT_MAX_TOKENS = 16000
-
-from pydantic import BaseModel
 
 _logger = logging.getLogger(__name__)
 
