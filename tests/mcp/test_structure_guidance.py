@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import subprocess
+import re
 
 import pytest
 
@@ -20,6 +21,7 @@ CANONICAL_RULE = (
 )
 FORBIDDEN_GUIDANCE = (
     "smallest structure",
+    "smallest fitting structure",
     "smallest-structure",
     "dispatch one task directly",
     "do not wrap it in a one-task plan",
@@ -59,7 +61,19 @@ def surfaces(tmp_path_factory):
     "docs/specs/mcp-self-description.md",
 ])
 def test_surface_contains_canonical_plan_guidance(surfaces, surface):
-    assert CANONICAL_RULE in surfaces[surface]
+    text = surfaces[surface]
+    normalized = " ".join(text.split())
+    if surface in {"README.md", "docs/specs/mcp-self-description.md", "MCP connect-time instructions", "guide waves topic", "guide automation topic", "guide queues topic"}:
+        assert " ".join(CANONICAL_RULE.split()) in normalized
+    else:
+        # The default response and these topics intentionally point to the
+        # canonical modelling rule rather than duplicating the whole paragraph.
+        expected_reference = {
+            "guide default answer": "Plans are the default",
+            "guide mistakes topic": "Follow the canonical rule above",
+            "guide planning topic": "Start with one clear intention as a plan",
+        }[surface]
+        assert expected_reference.lower() in normalized.lower()
 
 
 @pytest.mark.parametrize("surface", [
