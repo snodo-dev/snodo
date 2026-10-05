@@ -41,7 +41,9 @@ def benchmark_json_payload(model: str, prompt: str, samples: list, attempted_run
 
 def print_benchmark_report(model: str, prompt: str, result: dict, prompt_identity, prompt_path: Path) -> None:
     """Print one benchmark's counts, timing, and throughput."""
-    rate = lambda value: f"{value:.1f}" if value is not None else "n/a"
+    def rate(value):
+        return f"{value:.1f}" if value is not None else "n/a"
+
     ttft = result["time_to_first_token"]
     ttft_text = f"{ttft:.2f}s" if ttft is not None else "n/a"
     print(f"Benchmark result: {model}")
