@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Expand the configuration reference with provider preflight, cloud runtime
+  behavior, environment variables, protocol execution budgets, and configuration
+  editing limits. (Fixes #566)
 - E2E fixture subprocesses now use the shared job-context scrubber, including
   plan-trigger and queue variables; regression coverage verifies a simulated job
   cannot expose or modify its dispatching project. (Fixes #542)

@@ -363,6 +363,8 @@ are provider credentials documented under [Providers](#providers).
 | `SNODO_PROJECT_ROOT` | Internal: overrides the project root used by Snodo; run commands set it while executing. |
 | `SNODO_JOB_ID` | Internal: identifies the background job associated with a run. |
 | `SNODO_PLAN_JOB` | Internal: marks plan-run job context so the plan job ID is not treated as a child task job ID. |
+| `SNODO_PLAN_TRIGGER` | Internal: supplies the trigger associated with the current plan run. |
+| `SNODO_PLAN_QUEUE` | Internal: supplies the queue associated with the current plan run. |
 
 The internal variables are primarily set by Snodo's job and plan runners; they
 are not ordinary configuration knobs to set for a normal run.
