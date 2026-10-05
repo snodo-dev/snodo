@@ -204,7 +204,7 @@ class TestReconManagerSubmit:
             lambda self, recon_id, query, paths, agents, max_tool_turns=6, max_tokens=1500:
                 self._run_recon_impl(recon_id, query, paths, agents, max_tool_turns, max_tokens),
         )
-        recon_id = recon_mgr.submit("q", ["./"], [["model"]], max_tool_turns=23, max_tokens=4200)
+        recon_mgr.submit("q", ["./"], [["model"]], max_tool_turns=23, max_tokens=4200)
         recon_mgr.shutdown()
         assert budgets == {"max_tool_turns": 23, "max_tokens": 4200}
 
