@@ -1,0 +1,32 @@
+intent: "Finish the \"orchestrators default to plans\" change. Every surface an orchestrating\
+  \ agent reads \u2014 the connect-time instructions, the guide default, and the waves,\
+  \ mistakes, planning, automation and queues topics, plus the README and the MCP\
+  \ self-description spec \u2014 teaches plans as the default unit of work. Each wording\
+  \ change lands together with the tests that pin its wording and its CHANGELOG entry,\
+  \ so `make gate` passes. A guard test then keeps the surfaces from drifting apart."
+name: orchestrators-default-to-plans-2
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_server_instructions
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_authoring_topics
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_automation_queues_topics
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_readme_selfdescription
+- depends_on:
+  - 4
+  id: 5
+  tasks:
+  - 5.1_consistency_guard

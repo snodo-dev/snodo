@@ -1,0 +1,20 @@
+intent: Orchestrating agents that read Snodo's connect-time instructions, guide topics
+  and docs default to grouping work into plans (a plan is one clear intention; waves
+  group its tasks, parallel within a wave and serial across waves; queues group and
+  schedule plans) and treat a single dispatched task as the exception for a true one-off,
+  instead of being steered toward single tasks by the current "smallest structure"
+  rule.
+name: orchestrators-default-to-plans
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_server_instructions
+  - 1.2_authoring_topics
+  - 1.3_automation_queues_topics
+  - 1.4_readme_selfdescription
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_consistency_guard

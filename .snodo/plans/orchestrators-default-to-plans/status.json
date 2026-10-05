@@ -1,0 +1,38 @@
+{
+  "tasks": {
+    "1.1_server_instructions": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "eccd68150f0712d8"
+    },
+    "1.2_authoring_topics": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "78b121ac67a7c5d0"
+    },
+    "1.3_automation_queues_topics": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4fc69f001e84f4f3"
+    },
+    "1.4_readme_selfdescription": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "bd048937dfcdc0f2"
+    },
+    "2.1_consistency_guard": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "93c8da4c3dac8a20"
+    }
+  },
+  "integration": {
+    "branch": "plan/orchestrators-default-to-plans/integration",
+    "base_sha": "170364ba260564162ce022dcffb520a0273b0a7b"
+  }
+}
