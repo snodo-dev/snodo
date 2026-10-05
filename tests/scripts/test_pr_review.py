@@ -1,12 +1,31 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "pr_review.py"
 SPEC = importlib.util.spec_from_file_location("pr_review", SCRIPT)
 review = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(review)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _isolated_project_root(tmp_path_factory):
+    """Keep every project-state operation in this module out of the checkout.
+
+    ``run_recon`` resolves its project from the process cwd, so isolate the
+    module as a whole, including tests added later that exercise the same path.
+    """
+    root = tmp_path_factory.mktemp("pr_review_project")
+    previous = Path.cwd()
+    os.chdir(root)
+    try:
+        yield root
+    finally:
+        os.chdir(previous)
 
 
 def _results():
