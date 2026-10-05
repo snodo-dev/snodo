@@ -883,12 +883,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             protocol=protocol,
             base=os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if task.plan_name else None,
         )
-        task_branch = None
-        if worktree_path_val:
-            # Preserve the branch identity if a plan spec is replaced.
-            from snodo.infrastructure.worktree import task_worktree_branch
-            task_branch = task_worktree_branch(worktree_path_val)
-        task.branch = task_branch
+        from snodo.infrastructure.worktree import task_worktree_branch
+        task.branch = task_worktree_branch(worktree_path_val) if worktree_path_val else None
         worktree_failure = None
     except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently
         worktree_path_val = None
