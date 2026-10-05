@@ -885,8 +885,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         )
         task_branch = None
         if worktree_path_val:
-            # The checked-out branch is the durable identity for this run. The
-            # task spec may be replaced before a plan wave is rerun.
+            # Preserve the branch identity if a plan spec is replaced.
             from snodo.infrastructure.worktree import task_worktree_branch
             task_branch = task_worktree_branch(worktree_path_val)
         task.branch = task_branch
