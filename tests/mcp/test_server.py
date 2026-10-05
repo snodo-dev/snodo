@@ -2106,8 +2106,6 @@ class TestInstructions:
         assert "Queues group and schedule plans." in instructions
         assert "Dispatch a single task only for a true one-off with no related work." in instructions
         assert "A plan with one task in one wave adds nothing." in instructions
-        assert "smallest structure" not in instructions
-        assert "dispatch one task directly" not in instructions
         assert "does not add a human authorization gate" in instructions
 
     def test_instructions_describe_only_the_tools_the_server_has(self, server):
@@ -2182,7 +2180,7 @@ class TestInstructions:
         text = guide_text(guide_server.project_root, exposed)
         assert "Plans are the default" in text
         assert "propose_plan" in text
-        assert "smallest-structure" not in text
+        assert "Plans are the default" in text
         assert "Guide topics:" in text
         assert len(text) < 1000
         assert "dispatch_task" not in text
@@ -2250,7 +2248,8 @@ class TestInstructions:
         text = guide_text(server.project_root, exposed, "waves")
 
         assert "A plan runs wave by wave" in text
-        assert "dispatch one task directly" in text
+        assert "Group work into plans. A plan is one clear intention." in text
+        assert "Dispatch a single task only for a true one-off with no related work." in text
         assert "assets/plan-waves.svg" not in text
         assert "## 1. The one modelling rule" not in text
 
@@ -2307,17 +2306,25 @@ class TestInstructions:
         assert "Blocked:" in text and "Errored:" in text and "Unmerged:" in text
         assert "Example: one overnight session" in text
         assert "human decision or repair" in text
-        assert "smallest-structure rule" in text
         assert "Poll each returned job" not in text
 
     def test_guide_mistakes_names_unnecessary_wrappers_and_plan_differences(self, guide_server):
         exposed = {tool["name"] for tool in guide_server.get_tools()}
         text = guide_text(guide_server.project_root, exposed, "mistakes")
 
-        assert "smallest-structure rule above" in text
+        assert "Follow the canonical rule above" in text
+        assert "string of single tasks" in text
         assert "no additional human authorization gate" in text
         assert "same execution loop and auto-merge policy" in text
         assert "cloud can reconstruct" in text
+
+    def test_guide_planning_starts_with_plan_and_reserves_direct_dispatch_for_one_offs(self, guide_server):
+        exposed = {tool["name"] for tool in guide_server.get_tools()}
+        text = guide_text(guide_server.project_root, exposed, "planning")
+
+        assert "Start with one clear intention as a plan" in text
+        assert "For a true one-off with no related work, call `validate_task`" in text
+        assert "When multiple waves are needed" not in text
 
     def test_queue_triage_guide_teaches_inherited_plan_review(self, guide_server):
         exposed = {tool["name"] for tool in guide_server.get_tools()}

@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Teach the authoring guide to model related work as a plan, reserving direct
+  task dispatch for true one-offs. (Fixes #723)
 - Teach orchestrators that plans are the default unit of work in MCP server
   instructions and the guide default path. (Fixes #722)
 - Ensure task preparation and ShellMCP child shells omit inherited Snodo
