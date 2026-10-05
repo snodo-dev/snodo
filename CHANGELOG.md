@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Ensure recon agents pass provider-resolved model IDs to LiteLLM, translating
+  configured `google/gemini/...` names while preserving valid LiteLLM model IDs.
+  (Fixes #719)
 - Isolate PR-review recon state and CLI help smoke tests from the suite checkout,
   preventing test runs from creating project state under its `.snodo/`. (Fixes #717)
 - Assert that subcommand help leaves fresh project state and identity files
