@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Resolve provider headers for wave-classifier calls using the current task id,
+  including the task-scoped OpenCode session header. (Fixes #551)
 - Resolve configured provider prefixes separately from LiteLLM model ids, so
   models such as `google/gemini/gemini-3.8-flash` use Google credentials and
   reach LiteLLM as `gemini/gemini-3.8-flash`. (`Fixes #718`)
