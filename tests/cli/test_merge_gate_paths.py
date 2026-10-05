@@ -176,7 +176,7 @@ def test_custom_quality_validator_id_is_accepted_without_loosening_evidence(tmp_
 
     for task_ref, sha, outcome in (
         ("other-task", commit, "pass"),
-        (task.id, "f" + commit[1:], "pass"),
+        (task.id, ("0" if commit[0] != "0" else "1") + commit[1:], "pass"),
         (task.id, commit, "fail"),
     ):
         record(task_ref, sha, outcome)
