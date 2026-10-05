@@ -32,27 +32,29 @@ from snodo.cli.commands.models_cmd import (
 # ---------------------------------------------------------------------------
 
 class _Delta:
-    def __init__(self, content):
+    def __init__(self, content=None, reasoning_content=None):
         self.content = content
+        self.reasoning_content = reasoning_content
 
 
 class _Choice:
-    def __init__(self, content):
-        self.delta = _Delta(content)
+    def __init__(self, content=None, reasoning_content=None):
+        self.delta = _Delta(content, reasoning_content)
 
 
 class _Chunk:
     """One streamed chunk; ``usage`` appears only on the final chunk."""
 
-    def __init__(self, content=None, usage=None):
-        self.choices = [_Choice(content)] if content is not None else []
+    def __init__(self, content=None, usage=None, reasoning_content=None):
+        self.choices = [_Choice(content, reasoning_content)] if content is not None or reasoning_content is not None else []
         self.usage = usage
 
 
 class _Usage:
-    def __init__(self, prompt_tokens=None, completion_tokens=None):
+    def __init__(self, prompt_tokens=None, completion_tokens=None, reasoning_tokens=None):
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
+        self.completion_tokens_details = SimpleNamespace(reasoning_tokens=reasoning_tokens)
 
 
 def _fake_completion(chunks):
@@ -309,6 +311,48 @@ def test_run_benchmark_call_reports_both_rates_and_ttft():
     assert result["decode_tok_per_sec"] is not None
 
 
+def test_reasoning_stream_counts_as_first_token_and_keeps_consistent_decode_rate(monkeypatch, capsys):
+    times = iter([0.0, 0.4, 0.8, 2.0])
+    monkeypatch.setattr(models_cmd.time, "perf_counter", lambda: next(times))
+    chunks = [
+        _Chunk(reasoning_content="thinking"),
+        _Chunk("answer"),
+        _Chunk(usage=_Usage(prompt_tokens=3, completion_tokens=10, reasoning_tokens=6)),
+    ]
+    result = _run_benchmark_call(
+        "openai/gpt-4o", "prompt", completion_fn=_fake_completion(chunks),
+        token_counter_fn=lambda **k: 1,
+    )
+    assert result["time_to_first_token"] == 0.4
+    assert result["time_to_first_answer_token"] == 0.8
+    assert result["reasoning_tokens"] == 6
+    assert result["answer_tokens"] == 4
+    assert result["decode_tok_per_sec"] == 9 / 1.6
+    assert result["overall_tok_per_sec"] == 5
+
+    models_cmd._print_benchmark_report("openai/gpt-4o", "prompt", result)
+    output = capsys.readouterr().out
+    assert "first token 0.40s" in output
+    assert "reasoning 6 / answer 4 tokens" in output
+    assert "overall 5.0 output tok/s" in output
+
+
+def test_plain_stream_retains_original_rate_arithmetic(monkeypatch):
+    times = iter([0.0, 0.5, 0.6, 2.0])
+    monkeypatch.setattr(models_cmd.time, "perf_counter", lambda: next(times))
+    result = _run_benchmark_call(
+        "openai/gpt-4o", "prompt",
+        completion_fn=_fake_completion([
+            _Chunk("answer"),
+            _Chunk(usage=_Usage(prompt_tokens=3, completion_tokens=5)),
+        ]),
+        token_counter_fn=lambda **k: 1,
+    )
+    assert result["time_to_first_token"] == 0.5
+    assert result["decode_tok_per_sec"] == 4 / 1.5
+    assert result["overall_tok_per_sec"] == 5 / 2
+
+
 def test_run_benchmark_call_passes_model_credential(monkeypatch):
     """The benchmark binds the configured model credential to its call."""
     monkeypatch.setattr(
@@ -386,9 +430,9 @@ def test_repeated_benchmark_reports_median_and_mean(monkeypatch, capsys):
     )
 
     samples = iter([
-        {"time_to_first_token": 1.0, "decode_tok_per_sec": 10.0},
-        {"time_to_first_token": 2.0, "decode_tok_per_sec": 20.0},
-        {"time_to_first_token": 10.0, "decode_tok_per_sec": 100.0},
+        {"time_to_first_token": 1.0, "decode_tok_per_sec": 10.0, "overall_tok_per_sec": 4.0},
+        {"time_to_first_token": 2.0, "decode_tok_per_sec": 20.0, "overall_tok_per_sec": 5.0},
+        {"time_to_first_token": 10.0, "decode_tok_per_sec": 100.0, "overall_tok_per_sec": 6.0},
     ])
 
     def _fake_completion(model, prompt):
@@ -406,6 +450,7 @@ def test_repeated_benchmark_reports_median_and_mean(monkeypatch, capsys):
     assert "3 succeeded / 3 attempted" in out
     assert "first token median 2.00s, mean 4.33s" in out
     assert "decode median 20.00 output tok/s, mean 43.33 output tok/s" in out
+    assert "overall median" in out
 
 
 def test_benchmark_intent_says_it_will_spend(monkeypatch, capsys):

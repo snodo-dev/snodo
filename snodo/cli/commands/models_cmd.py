@@ -1059,18 +1059,27 @@ def _run_benchmark_call(
 
     start = time.perf_counter()
     ttft: Optional[float] = None
+    answer_start: Optional[float] = None
     text_parts: list = []
     usage: Any = None
 
     for chunk in completion_fn(**kwargs):
         content = None
+        reasoning = None
         try:
-            content = getattr(chunk.choices[0].delta, "content", None)
+            delta = chunk.choices[0].delta
+            content = getattr(delta, "content", None)
+            reasoning = getattr(delta, "reasoning_content", None)
         except (AttributeError, IndexError) as e:
             _logger.debug("Skipping chunk without a content delta: %s", e)
+        if reasoning:
+            if ttft is None:
+                ttft = time.perf_counter() - start
         if content:
             if ttft is None:
                 ttft = time.perf_counter() - start
+            if answer_start is None:
+                answer_start = time.perf_counter() - start
             text_parts.append(content)
         chunk_usage = getattr(chunk, "usage", None)
         if chunk_usage is not None:
@@ -1080,6 +1089,7 @@ def _run_benchmark_call(
 
     output_tokens: Optional[int] = None
     prompt_tokens: Optional[int] = None
+    reasoning_tokens: Optional[int] = None
     if usage is not None:
         ct = getattr(usage, "completion_tokens", None)
         if ct is None:
@@ -1091,6 +1101,10 @@ def _run_benchmark_call(
             output_tokens = ct
         if isinstance(pt, int):
             prompt_tokens = pt
+        details = getattr(usage, "completion_tokens_details", None)
+        rt = getattr(details, "reasoning_tokens", None)
+        if isinstance(rt, int):
+            reasoning_tokens = rt
 
     if output_tokens is not None:
         counts_basis = "provider-reported usage"
@@ -1099,6 +1113,11 @@ def _run_benchmark_call(
         counts_basis = "local tokenizer estimate (provider reported no usage)"
     if prompt_tokens is None:
         prompt_tokens = int(token_counter_fn(model=litellm_model, text=prompt))
+
+    answer_tokens = (
+        max(0, output_tokens - reasoning_tokens)
+        if reasoning_tokens is not None else None
+    )
 
     overall_rate = output_tokens / wall if wall > 0 and output_tokens else None
     decode_rate = None
@@ -1110,36 +1129,18 @@ def _run_benchmark_call(
         "prompt_tokens": prompt_tokens,
         "counts_basis": counts_basis,
         "time_to_first_token": ttft,
+        "time_to_first_answer_token": answer_start,
         "wall_seconds": wall,
+        "reasoning_tokens": reasoning_tokens,
+        "answer_tokens": answer_tokens,
         "decode_tok_per_sec": decode_rate,
         "overall_tok_per_sec": overall_rate,
     }
 
 
 def _print_benchmark_report(model: str, prompt: str, result: Dict[str, Any]) -> None:
-    """Print the measurement, naming the prompt, the counts and the timing basis."""
-    def _rate(val: Optional[float]) -> str:
-        return f"{val:.1f}" if val is not None else "n/a"
-
-    ttft = result["time_to_first_token"]
-    ttft_str = f"{ttft:.2f}s" if ttft is not None else "n/a"
-
-    print(f"Benchmark result: {model}")
-    print(f"  prompt       {_benchmark_prompt_identity(prompt)}")
-    print(f"  prompt file  {_BENCHMARK_PROMPT_PATH}")
-    print(
-        f"  tokens       prompt {result['prompt_tokens']} / "
-        f"output {result['output_tokens']}  ({result['counts_basis']})"
-    )
-    print(
-        f"  timing       first token {ttft_str}, "
-        f"total wall {result['wall_seconds']:.2f}s"
-    )
-    print(
-        f"  throughput   decode {_rate(result['decode_tok_per_sec'])} output tok/s "
-        f"(after first token); overall {_rate(result['overall_tok_per_sec'])} "
-        "output tok/s (including first-token wait)"
-    )
+    from .models_benchmark_report import print_benchmark_report
+    print_benchmark_report(model, prompt, result, _benchmark_prompt_identity, _BENCHMARK_PROMPT_PATH)
 
 
 def _print_benchmark_distribution(
@@ -1170,6 +1171,10 @@ def _print_benchmark_distribution(
     print(
         f"  throughput   decode "
         f"{_format_stats(_stats('decode_tok_per_sec'), ' output tok/s')}"
+    )
+    print(
+        f"               overall "
+        f"{_format_stats(_stats('overall_tok_per_sec'), ' output tok/s')}"
     )
 
 
