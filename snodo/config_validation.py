@@ -76,7 +76,7 @@ def validate_config(manager: ConfigManager) -> list[dict[str, str]]:
         return []
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
+    except (OSError, yaml.YAMLError):
         # YAML parser messages can include source snippets; never echo them.
         return [{"path": str(path), "section": "file", "message": "Invalid YAML.", "hint": "Correct the YAML syntax."}]
     if raw is None:
