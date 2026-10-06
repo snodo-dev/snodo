@@ -125,13 +125,49 @@ def test_ready_cmd_json_output(git_project: Path, capsys):
     captured = capsys.readouterr()
 
     data = json.loads(captured.out)
-    assert data["schema"] == "snodo.ready.v1"
+    assert data["schema"] == "snodo.ready.v2"
     assert data["ok"] is True
     assert data["protocol_id"] == "proto-readiness"
     assert isinstance(data["score"], int)
     assert data["total_checks"] >= 2
     assert "findings" in data
     assert any(f["id"].startswith("architecture_decisions") for f in data["findings"])
+    assert set(data["extensions"]) == {
+        "snodo.providers", "snodo.validators", "snodo.predicates", "snodo.coders",
+    }
+
+
+@pytest.mark.parametrize("load_error, expected_status", [(None, "installed"), (ImportError("missing dependency"), "failed")])
+def test_ready_reports_validator_extension_status(git_project: Path, capsys, monkeypatch, load_error, expected_status):
+    from snodo.validators.context import ValidatorBase
+    from snodo.validators.registry import _default_registry
+
+    class FakeValidator(ValidatorBase):
+        @classmethod
+        def registered_type(cls):
+            return "ready_fake"
+
+        def evaluate(self, context):
+            raise NotImplementedError
+
+    class FakeEntryPoint:
+        name = "ready_fake"
+
+        def load(self):
+            if load_error:
+                raise load_error
+            return FakeValidator
+
+    monkeypatch.setattr("importlib.metadata.entry_points", lambda **kwargs: [FakeEntryPoint()])
+    _default_registry.discover_plugins()
+
+    code = ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=True))
+    assert code == 0
+    data = json.loads(capsys.readouterr().out)
+    plugin = data["extensions"]["snodo.validators"]["ready_fake"]
+    assert plugin["status"] == expected_status
+    if load_error:
+        assert "ImportError: missing dependency" == plugin["error"]
 
 
 def test_ready_reports_unknown_and_legacy_capability_grants(git_project: Path, capsys):

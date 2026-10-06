@@ -100,9 +100,10 @@ class DiagnosticToolHandler:
             known = ", ".join(mode.mode_id for mode in protocol.modes)
             return _error("ready", f"Unknown mode '{mode_filter}'. Known modes: {known}")
         assessment = assess_readiness(root, protocol)
+        from snodo.cli.commands.ready_cmd import _extension_plugin_status
         project_id, _ = get_project_id(str(root))
         return {
-            "schema": "snodo.ready.v1", "ok": True, "project_root": str(root),
+            "schema": "snodo.ready.v2", "ok": True, "project_root": str(root),
             "mode_filter": mode_filter, "project_id": project_id,
             "scope": scope_for_project_id(project_id), "display_name": root.name,
             "protocol_id": assessment.protocol_id, "score": assessment.score,
@@ -111,6 +112,7 @@ class DiagnosticToolHandler:
             "workstation_findings_count": len(assessment.workstation_findings),
             "findings": [finding.to_dict() for finding in assessment.all_findings],
             "warnings": unknown_capability_warnings(protocol),
+            "extensions": _extension_plugin_status(),
         }
 
     def protocol_schema(self, arguments: dict) -> dict:

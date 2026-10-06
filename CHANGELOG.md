@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- `snodo ready` now reports loaded and failed extensions for all four entry-point
+  groups; the versioned JSON contract is `snodo.ready.v2`. Document publishing,
+  installing and referencing validator, predicate and coder extensions.
+  (Fixes #755)
 - Discover installed `snodo.coders` entry points, allowing third-party coder
   adapters to be selected by name or model prefix while retaining load failures.
   (Fixes #743)

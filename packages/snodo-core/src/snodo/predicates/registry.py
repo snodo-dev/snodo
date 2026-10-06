@@ -21,6 +21,7 @@ class PredicateRegistry:
     def __init__(self) -> None:
         self._predicates: Dict[str, Predicate] = {}
         self._plugin_load_failures: Dict[str, str] = {}
+        self._loaded_plugins: set[str] = set()
 
     def register(self, name: str, predicate: Predicate) -> None:
         """Register a predicate under the given name.
@@ -74,6 +75,7 @@ class PredicateRegistry:
                 if not isinstance(predicate, Predicate):
                     raise TypeError("entry point must load a Predicate subclass or instance")
                 self.register(point.name, predicate)
+                self._loaded_plugins.add(point.name)
                 self._plugin_load_failures.pop(point.name, None)
             except Exception as exc:
                 self._plugin_load_failures[point.name] = f"{type(exc).__name__}: {exc}"
@@ -85,6 +87,13 @@ class PredicateRegistry:
     def plugin_load_failures(self) -> Dict[str, str]:
         """Return entry-point load failures keyed by plugin name."""
         return dict(self._plugin_load_failures)
+
+    def plugin_status(self) -> Dict[str, Dict[str, str]]:
+        """Return installed and failed predicate entry points."""
+        result = {name: {"status": "installed", "error": ""} for name in self._loaded_plugins}
+        result.update({name: {"status": "failed", "error": error}
+                       for name, error in self._plugin_load_failures.items()})
+        return result
 
 
 # Module-level default registry — populated by individual predicate modules

@@ -21,6 +21,7 @@ class ValidatorRegistry:
         self._registry: Dict[str, Type[ValidatorBase]] = {}
         self._compound: Dict[str, str] = {}  # type → primary key
         self._plugin_load_failures: Dict[str, str] = {}
+        self._loaded_plugins: set[str] = set()
 
     def register(self, validator_type: str, cls: Type[ValidatorBase]) -> None:
         """Register a validator class for a validator_type string."""
@@ -73,6 +74,7 @@ class ValidatorRegistry:
         from importlib.metadata import entry_points
 
         self._plugin_load_failures.clear()
+        self._loaded_plugins.clear()
         try:
             plugins = entry_points(group="snodo.validators")
         except Exception as exc:
@@ -87,6 +89,7 @@ class ValidatorRegistry:
                 if not isinstance(validator_cls, type) or not issubclass(validator_cls, ValidatorBase):
                     raise TypeError("entry point must load a ValidatorBase subclass")
                 self.register(plugin.name, validator_cls)
+                self._loaded_plugins.add(plugin.name)
             except Exception as exc:
                 message = f"{type(exc).__name__}: {exc}"
                 self._plugin_load_failures[plugin.name] = message
@@ -95,6 +98,13 @@ class ValidatorRegistry:
     def plugin_load_failures(self) -> Dict[str, str]:
         """Return a copy of plugin load failures for readiness reporting."""
         return self._plugin_load_failures.copy()
+
+    def plugin_status(self) -> Dict[str, Dict[str, str]]:
+        """Return installed and failed validator entry points."""
+        result = {name: {"status": "installed", "error": ""} for name in self._loaded_plugins}
+        result.update({name: {"status": "failed", "error": error}
+                       for name, error in self._plugin_load_failures.items()})
+        return result
 
 
 # Module-level default registry — populated on import by each validator module
