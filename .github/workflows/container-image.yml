@@ -1,0 +1,48 @@
+name: Container image
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "docker/Dockerfile"
+      - ".github/workflows/container-image.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "packages/**"
+      - "snodo/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docker/Dockerfile"
+      - ".github/workflows/container-image.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "packages/**"
+      - "snodo/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build image
+        run: docker build --file docker/Dockerfile --tag snodo:ci .
+      - name: Smoke-test image
+        run: |
+          set -euo pipefail
+          docker run --rm snodo:ci --version
+          mkdir -p "$RUNNER_TEMP/snodo-project"
+          git -C "$RUNNER_TEMP/snodo-project" init -q
+          docker run --rm \
+            -v "$RUNNER_TEMP/snodo-project:/workspace" \
+            -w /workspace \
+            snodo:ci init --template solo --yes --no-input --test-command true
+          docker run --rm \
+            -v "$RUNNER_TEMP/snodo-project:/workspace" \
+            -w /workspace \
+            snodo:ci ready
