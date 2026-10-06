@@ -204,7 +204,9 @@ def test_init_command_existing_snodo_dir_with_force(git_project_dir, monkeypatch
 )
 def test_detect_test_command_rules(marker_file, expected_cmd, tmp_path):
     """_detect_test_command resolves correct command for each project marker file."""
-    (tmp_path / marker_file).write_text("marker content")
+    (tmp_path / marker_file).write_text(
+        '{"scripts":{"test":"vitest"}}' if marker_file == "package.json" else "marker content"
+    )
     detected = _detect_test_command(tmp_path)
     assert detected == expected_cmd
 
@@ -214,9 +216,16 @@ def test_detect_test_command_none(tmp_path):
     assert _detect_test_command(tmp_path) is None
 
 
+@pytest.mark.parametrize("lockfile,manager", [("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lock", "bun")])
+def test_detect_node_test_command_uses_package_manager(tmp_path, lockfile, manager):
+    (tmp_path / "package.json").write_text('{"scripts":{"test":"vitest run"}}')
+    (tmp_path / lockfile).touch()
+    assert _detect_test_command(tmp_path) == f"{manager} test"
+
+
 def test_configure_test_command_injection(tmp_path):
     """_configure_test_command injects detected test command into quality validator."""
-    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / "package.json").write_text('{"scripts":{"test":"jest"}}')
     template_raw = PROTOCOL_TEMPLATES["solo"]
 
     args = SimpleNamespace(test_command=None, yes=True)

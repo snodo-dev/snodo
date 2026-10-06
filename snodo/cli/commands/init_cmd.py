@@ -4,6 +4,7 @@ FILE: snodo/cli/commands/init_cmd.py
 """
 
 import logging
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -119,29 +120,48 @@ def _select_template(args) -> str:
         print(f"Invalid choice: {choice!r}. Choose 1-{len(names)}.", file=sys.stderr)
 
 
-_DETECT_RULES = [
-    ("package.json", "npm test"),
-    ("pyproject.toml", "pytest"),
-    ("setup.py", "pytest"),
-    ("setup.cfg", "pytest"),
-    ("Cargo.toml", "cargo test"),
-    ("Makefile", "make test"),
-    ("go.mod", "go test ./..."),
-]
-
-
 def _detect_test_command(project_dir: Path) -> Optional[str]:
-    """Auto-detect test command from project marker files in project_dir."""
-    for marker_file, command in _DETECT_RULES:
-        if (project_dir / marker_file).exists():
-            return command
+    """Detect a supported stack's runnable test command from its root markers."""
+    if (project_dir / "package.json").is_file():
+        try:
+            package = json.loads((project_dir / "package.json").read_text(encoding="utf-8"))
+            test_script = package.get("scripts", {}).get("test")
+        except (OSError, ValueError, AttributeError):
+            test_script = None
+        if isinstance(test_script, str) and test_script.strip():
+            for lockfile, manager in (
+                ("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"),
+                ("bun.lock", "bun"), ("bun.lockb", "bun"),
+            ):
+                if (project_dir / lockfile).exists():
+                    return f"{manager} test"
+            return "npm test"
+    if any((project_dir / marker).is_file() for marker in ("pyproject.toml", "setup.py", "setup.cfg")):
+        return "pytest"
+    if (project_dir / "go.mod").is_file():
+        return "go test ./..."
+    if (project_dir / "Cargo.toml").is_file():
+        return "cargo test"
+    if (project_dir / "Makefile").is_file():
+        return "make test"
     return None
 
 
 def _configure_test_command(args, template_raw: str, project_dir: Path) -> str:
     """Infer, prompt for, or apply --test-command to protocol template YAML."""
     cli_cmd = getattr(args, "test_command", None)
-    test_cmd = cli_cmd or _detect_test_command(project_dir)
+    detected_cmd = _detect_test_command(project_dir) if not cli_cmd else None
+    test_cmd = cli_cmd or detected_cmd
+
+    if cli_cmd:
+        print(f"Test command: using explicit --test-command '{cli_cmd}'.")
+    elif detected_cmd:
+        stack = {
+            "pytest": "Python", "npm test": "Node/TypeScript", "pnpm test": "Node/TypeScript",
+            "yarn test": "Node/TypeScript", "bun test": "Node/TypeScript",
+            "go test ./...": "Go", "cargo test": "Rust", "make test": "Makefile",
+        }.get(detected_cmd, "project")
+        print(f"Detected {stack}; test command: {detected_cmd}.")
 
     if (
         not test_cmd
@@ -157,6 +177,7 @@ def _configure_test_command(args, template_raw: str, project_dir: Path) -> str:
             pass
 
     if not test_cmd:
+        print("No supported test stack detected; keeping the template's default test command.")
         return template_raw
 
     from snodo.validators.quality import NOOP_TEST_COMMAND

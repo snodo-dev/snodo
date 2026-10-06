@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Detect Python, Node/TypeScript, Go, and Rust test commands during `snodo init`,
+  use the Node package manager and declared test script, and report detected or
+  unrecognized stacks while preserving explicit `--test-command` overrides.
+  (Fixes #744)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
   unusable final answer once, accept content-only answers, and fail with the run
   trace rather than returning narration. (Fixes #736)
