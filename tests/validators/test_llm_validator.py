@@ -751,6 +751,66 @@ class TestPostExecuteToolLoop:
         assert "workspace unavailable" in result.justification
         completion_fn.assert_called_once()
 
+    def test_list_files_argument_error_returns_to_model_and_verdict_succeeds(self, security_validator):
+        """Bad read-tool arguments are evidence for a retry, not an outage."""
+        workspace = MagicMock()
+        workspace.list_files.side_effect = ValueError("Path is not a directory: snodo/protocol_validation.py")
+        git = MagicMock()
+        git.diff_between_refs.return_value = "+change"
+        calls = []
+
+        def completion_side_effect(**kwargs):
+            calls.append(kwargs["messages"])
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if len(calls) == 1:
+                tc = MagicMock()
+                tc.id = "tc_bad_path"
+                tc.function.name = "list_files"
+                tc.function.arguments = '{"directory":"snodo/protocol_validation.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+            else:
+                assert any(
+                    m.get("role") == "tool" and "Path is not a directory" in m.get("content", "")
+                    for m in kwargs["messages"]
+                )
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = '{"severity":"pass","justification":"Reviewed"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        result = validator.evaluate(self._make_post_context(completion_fn, workspace, git))
+
+        assert result.error is not True
+        assert result.severity == "pass"
+        assert any("list_files snodo/protocol_validation.py" in item for item in result.examined)
+
+    def test_unexpected_value_error_from_tool_implementation_fails_closed(self, security_validator):
+        completion_fn = MagicMock()
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        tc = MagicMock()
+        tc.id = "tc_bug"
+        tc.function.name = "list_files"
+        tc.function.arguments = '{"directory":"."}'
+        resp.choices[0].message.content = None
+        resp.choices[0].message.tool_calls = [tc]
+        completion_fn.return_value = resp
+        workspace = MagicMock()
+        workspace.list_files.side_effect = ValueError("internal invariant broken")
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+
+        result = validator.evaluate(self._make_post_context(completion_fn, workspace, MagicMock()))
+
+        assert result.error is True
+        assert "internal invariant broken" in result.justification
+
     def test_missing_declared_tool_infrastructure_is_validator_error(self, security_validator):
         completion_fn = MagicMock()
         validator = LLMValidator(self._make_post_validator(security_validator), completion_fn, model="gpt-4")
