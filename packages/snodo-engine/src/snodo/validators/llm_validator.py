@@ -1071,15 +1071,12 @@ class LLMValidator(ValidatorBase):
 
         if isinstance(error, (PathValidationError, FileNotFoundError, KeyError, TypeError)):
             return True
-        if isinstance(error, ValueError):
-            # These are workspace API validations of caller-supplied paths or
-            # ranges. Other ValueErrors may indicate a tool implementation bug.
-            message = str(error).lower()
-            return any(marker in message for marker in (
-                "path is not a ", "directory not found:", "file not found:",
-                "start must be", "end must be", "invalid path",
-            ))
-        return False
+        # Restrict ValueError recovery to known workspace input validations.
+        message = str(error).lower()
+        return isinstance(error, ValueError) and any(marker in message for marker in (
+            "path is not a ", "directory not found:", "file not found:",
+            "start must be", "end must be", "invalid path",
+        ))
 
     # ------------------------------------------------------------------
     # Single-completion path (pre-execute, unchanged)
