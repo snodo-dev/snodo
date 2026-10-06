@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
 from snodo.config import ConfigManager, ProviderConfig
 from snodo.infrastructure.config import LlmConfig
@@ -18,11 +18,11 @@ class _EngineConfig(BaseModel):
 
 
 class _CloudConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
     api_key: str = ""
     api_url: str = "https://api.snodo.dev"
     tunnel_api_url: str = "https://app.snodo.dev"
-    sync_enabled: bool = False
+    sync_enabled: StrictBool = False
     liveness_interval_seconds: int = Field(default=60, ge=1)
     liveness_url: str | None = None
     liveness_api_url: str | None = None
@@ -67,6 +67,76 @@ class _UserConfig(BaseModel):
 
 
 _SECRET_PARTS = ("api_key", "token", "secret", "password", "credential")
+
+
+class ConfigKeyError(ValueError):
+    """A dotted config path is unknown or has an invalid value."""
+
+
+_EDITABLE_SECTIONS = {"providers", "cloud", "notifications"}
+
+
+def is_secret_config_key(key_path: str) -> bool:
+    parts = key_path.split(".")
+    return any(part.lower().replace("-", "_").endswith(_SECRET_PARTS) for part in parts) or any(
+        part in {"api_key_env", "api_key_ref"} for part in parts
+    ) or (parts[0] == "notifications" and "targets" in parts and parts[-1] == "url")
+
+
+def get_config_value(manager: ConfigManager, key_path: str) -> Any:
+    parts = _config_parts(key_path)
+    data = _validated_user_config(manager.load())
+    current: Any = data
+    try:
+        for part in parts:
+            current = current[int(part)] if isinstance(current, list) else current[part]
+    except (KeyError, IndexError, ValueError, TypeError):
+        raise ConfigKeyError(f"Unknown config key: {key_path}") from None
+    if isinstance(current, dict):
+        raise ConfigKeyError(f"Config key must name a value: {key_path}")
+    return current
+
+
+def set_config_value(manager: ConfigManager, key_path: str, value: Any) -> None:
+    parts = _config_parts(key_path)
+    raw = manager.load()
+    # A dynamic provider can be introduced one declared field at a time.
+    if parts[0] == "providers" and len(parts) == 3:
+        fields = _ProviderConfig.model_fields
+        if parts[2] not in fields:
+            raise ConfigKeyError(f"Unknown config key: {key_path}")
+        raw.setdefault("providers", {}).setdefault(parts[1], {})[parts[2]] = value
+    try:
+        candidate = _validated_user_config(raw)
+        cursor: Any = candidate
+        for part in parts[:-1]:
+            cursor = cursor[int(part)] if isinstance(cursor, list) else cursor[part]
+        if isinstance(cursor, list):
+            cursor[int(parts[-1])] = value
+        elif parts[-1] in cursor:
+            cursor[parts[-1]] = value
+        else:
+            raise KeyError(parts[-1])
+        _validated_user_config(candidate)
+    except KeyError as exc:
+        raise ConfigKeyError(f"Unknown config key: {key_path}") from exc
+    except (IndexError, ValueError, TypeError, ValidationError) as exc:
+        raise ConfigKeyError(f"Invalid config value for {key_path}: {exc}") from exc
+    manager.set_value(parts, value)
+
+
+def _config_parts(key_path: str) -> tuple[str, ...]:
+    parts = tuple(key_path.split("."))
+    if len(parts) < 2 or parts[0] not in _EDITABLE_SECTIONS or any(not p for p in parts):
+        raise ConfigKeyError(f"Unknown config key: {key_path}")
+    return parts
+
+
+def _validated_user_config(raw: dict) -> dict:
+    try:
+        return _UserConfig.model_validate(raw).model_dump(mode="python")
+    except ValidationError as exc:
+        raise ConfigKeyError(str(exc)) from exc
 
 
 def validate_config(manager: ConfigManager) -> list[dict[str, str]]:

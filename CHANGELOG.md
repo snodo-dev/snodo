@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Enable `snodo config set/get` for typed provider, cloud, and notification
+  fields, redact secret values on read, and document local Ollama setup. (Fixes #760)
 - Add `snodo config validate` to check user configuration with path-aware,
   secret-safe findings and machine-readable JSON output. (Fixes #757)
 - Keep the pytest repository guard sensitive to this checkout's HEAD and branch

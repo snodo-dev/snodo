@@ -164,8 +164,8 @@ notifications:
   silence_threshold_seconds: 900
 ```
 
-Three shapes of key are settable without hand-editing — the bare key
-`model`, anything under `engine.`, and anything under `llm.`:
+The bare key `model` and settings under `engine.`, `llm.`, `providers.`,
+`cloud.`, and `notifications.` are settable without hand-editing:
 
 ```bash
 snodo config set model deepseek/deepseek-v4
@@ -173,13 +173,16 @@ snodo config set llm.coder.max_tokens 32000
 snodo config set llm.validator.model openai/@cf/google/gemma-4
 snodo config set llm.recon.num_agents 2
 snodo config get llm.coder.max_tool_turns
+snodo config set providers.ollama.base_url http://localhost:11434/v1
+snodo config set providers.ollama.litellm_provider openai
+snodo config get providers.ollama.base_url
+snodo config set cloud.sync_enabled true
+snodo config set notifications.silence_threshold_seconds 1200
 ```
 
-Anything else — including cloud settings, notification targets, and provider
-endpoint settings such as `base_url`, `litellm_provider`, and `api_key_env` —
-is answered with `Unknown config key` and can only be changed by editing
-`~/.snodo/config.yml` by hand. The provider `api_key` field has dedicated
-commands: `snodo config add` and `snodo config remove`.
+Unknown keys report the rejected key. Secret fields are redacted by `config
+get`; provider credentials can also be managed with `snodo config add` and
+`snodo config remove`.
 
 Anthropic, OpenAI, Google, OpenRouter, DeepSeek and Cloudflare Workers AI have
 built-in provider configuration. `litellm_provider: openai` is what makes an

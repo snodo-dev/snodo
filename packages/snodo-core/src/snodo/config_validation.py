@@ -159,8 +159,11 @@ def set_config_value(manager: ConfigManager, key_path: str, value: Any) -> None:
         provider = raw.setdefault("providers", {}).setdefault(parts[1], {})
         if not isinstance(provider, dict):
             raise ConfigKeyError(f"Invalid config value at providers.{parts[1]}")
-        provider.setdefault(parts[2], value)
-    candidate = _validated_config(raw)
+        provider[parts[2]] = value
+    try:
+        candidate = _validated_config(raw)
+    except ConfigKeyError as exc:
+        raise ConfigKeyError(f"Invalid value for config key {key_path}: {exc}") from exc
     cursor: Any = candidate
     for part in parts[:-1]:
         if isinstance(cursor, list):
@@ -184,7 +187,10 @@ def set_config_value(manager: ConfigManager, key_path: str, value: Any) -> None:
         cursor[last] = value
     else:
         raise ConfigKeyError(f"Unknown config key: {key_path}")
-    _validated_config(candidate)
+    try:
+        _validated_config(candidate)
+    except ConfigKeyError as exc:
+        raise ConfigKeyError(f"Invalid value for config key {key_path}: {exc}") from exc
     manager.set_value(parts, value)
 
 
