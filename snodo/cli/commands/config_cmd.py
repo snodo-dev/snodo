@@ -94,6 +94,26 @@ def config_get_cmd(
     return config_command(args)
 
 
+@app.command("validate")
+def config_validate_cmd(
+    json_output: bool = typer.Option(False, "--json", help="Emit validation findings as JSON"),
+):
+    """Validate the user configuration against Snodo's runtime models."""
+    from snodo.config_validation import validate_config
+
+    findings = validate_config(ConfigManager())
+    if json_output:
+        import json
+
+        print(json.dumps({"schema": "snodo.config.validate.v1", "ok": not findings, "findings": findings}, indent=2))
+    elif not findings:
+        print("Config: valid")
+    else:
+        for finding in findings:
+            print(f"{finding['path']} ({finding['section']}): {finding['message']} Hint: {finding['hint']}")
+    return 1 if findings else 0
+
+
 
 def config_command(args) -> int:
     """Manage Snodo configuration and API keys."""
