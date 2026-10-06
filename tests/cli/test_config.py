@@ -464,6 +464,28 @@ class TestCLIConfigShow:
 
 class TestCLIConfigValidate:
     def test_valid_config_passes(self, cli_config_dir, capsys):
+        cli_config_dir.save({"model": "gpt-4o", "llm": {"num_retries": 2}})
+        assert main(["config", "validate"]) == 0
+        assert "valid" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("yaml_text,path", [
+        ("llm:\n  coder:\n    mystery: value\n", "llm.coder.mystery"),
+        ("llm:\n  num_retries: wrong\n", "llm.num_retries"),
+    ])
+    def test_invalid_key_or_type_reports_path(self, cli_config_dir, capsys, yaml_text, path):
+        cli_config_dir.config_path.write_text(yaml_text)
+        assert main(["config", "validate"]) == 1
+        assert path in capsys.readouterr().out
+
+    def test_json_validation_never_emits_secret(self, cli_config_dir, capsys):
+        secret = "highly-sensitive-secret-value"
+        cli_config_dir.config_path.write_text(f"cloud:\n  api_key: {secret}\n  mystery: {secret}\n")
+        assert main(["config", "validate", "--json"]) == 1
+        output = capsys.readouterr().out
+        assert '"schema": "snodo.config.validate.v1"' in output
+        assert '"ok": false' in output
+
+    def test_valid_config_with_engine_passes(self, cli_config_dir, capsys):
         cli_config_dir.save({"model": "gpt-4o", "engine": {"max_subtask_depth": 3}})
         assert main(["config", "validate"]) == 0
         assert "valid" in capsys.readouterr().out
@@ -487,6 +509,34 @@ class TestCLIConfigValidate:
         output = capsys.readouterr().out
         assert '"schema": "snodo.config.validate.v1"' in output
         assert secret not in output
+
+
+class TestCLIConfigResolvedKeys:
+    def test_provider_cloud_notification_set_and_get(self, cli_config_dir, capsys):
+        cases = [
+            ("providers.ollama.base_url", "http://localhost:11434/v1"),
+            ("cloud.sync_enabled", "true"),
+            ("notifications.silence_threshold_seconds", "1200"),
+        ]
+        for key, value in cases:
+            assert main(["config", "set", key, value]) == 0
+            capsys.readouterr()
+            assert main(["config", "get", key]) == 0
+            assert value.lower() in capsys.readouterr().out.lower()
+
+    def test_secret_get_is_redacted(self, cli_config_dir, capsys):
+        secret = "private-cloud-token"
+        assert main(["config", "set", "cloud.api_key", secret]) == 0
+        assert secret not in capsys.readouterr().out
+        assert main(["config", "get", "cloud.api_key"]) == 0
+        output = capsys.readouterr().out
+        assert secret not in output
+        assert "redacted" in output
+
+    def test_unknown_key_error_includes_key(self, cli_config_dir, capsys):
+        key = "cloud.not_a_setting"
+        assert main(["config", "get", key]) == 1
+        assert key in capsys.readouterr().err
 
 
 class TestCLIConfigAdd:

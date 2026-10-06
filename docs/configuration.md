@@ -106,10 +106,18 @@ with status 1 and suggests the provider environment variable or
 endpoint) are exempt; mock runs skip this check.
 
 User configuration is edited in `~/.snodo/config.yml` (or
-`$SNODO_HOME/config.yml`). `snodo config set/get` supports only `model`,
-`engine.*`, and `llm.*`; use `snodo config add/remove` for provider keys and edit
-YAML directly for other `providers.*` settings, `cloud.*`, and
-`notifications.*`.
+`$SNODO_HOME/config.yml`). `snodo config set/get` supports `model`, `engine.*`,
+`llm.*`, and typed dotted keys under `providers.*`, `cloud.*`, and
+`notifications.*`. For example, configure a local Ollama endpoint with:
+
+```bash
+snodo config set providers.ollama.base_url http://localhost:11434/v1
+snodo config set providers.ollama.litellm_provider openai
+snodo config get providers.ollama.base_url
+```
+
+Secret fields are redacted by `config get`; use `snodo config add/remove` for
+provider API-key management.
 
 ## Engine
 

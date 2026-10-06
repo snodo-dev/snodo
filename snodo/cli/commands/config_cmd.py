@@ -5,11 +5,13 @@ FILE: snodo/cli/commands/config_cmd.py
 
 import sys
 import shlex
+import json
 from types import SimpleNamespace
 
 import typer
 
 from snodo.config import ConfigManager, ConfigError, DEFAULT_MODEL
+from snodo.config_validation import ConfigKeyError, get_config_value, is_secret_config_key, set_config_value
 
 # ---------------------------------------------------------------------------
 # Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
@@ -46,6 +48,23 @@ def config_show():
     """Show configured keys (masked)."""
     args = SimpleNamespace(config_action="show")
     return config_command(args)
+
+
+@app.command("validate")
+def config_validate(json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON")):
+    """Validate the user configuration against Snodo's runtime models."""
+    from snodo.config_validation import validate_config
+
+    findings = validate_config(ConfigManager())
+    ok = not findings
+    if json_output:
+        print(json.dumps({"schema": "snodo.config.validate.v1", "ok": ok, "findings": findings}, indent=2))
+    elif ok:
+        print("Configuration is valid.")
+    else:
+        for finding in findings:
+            print(f"{finding['path']}: {finding['message']} Hint: {finding['hint']}")
+    return 0 if ok else 1
 
 
 @app.command("add")
@@ -299,6 +318,16 @@ def _config_set(mgr: ConfigManager, key: str, value: str) -> int:
         mgr.set_model(value)
         print(f"Set model = {value}")
         return 0
+    elif key.startswith(("providers.", "cloud.", "notifications.")):
+        try:
+            import yaml
+
+            set_config_value(mgr, key, yaml.safe_load(value))
+        except (ConfigKeyError, ValueError, yaml.YAMLError) as e:
+            print(f"Error setting {key}: {e}", file=sys.stderr)
+            return 1
+        print(f"Set {key} = {'[redacted]' if is_secret_config_key(key) else value}")
+        return 0
     else:
         print(f"Error: Unknown config key: {key}", file=sys.stderr)
         return 1
@@ -318,6 +347,14 @@ def _config_get(mgr: ConfigManager, key: str) -> int:
         return _get_llm_value(parts[1])
     elif key == "model":
         print(mgr.get_model())
+        return 0
+    elif key.startswith(("providers.", "cloud.", "notifications.")):
+        try:
+            value = get_config_value(mgr, key)
+        except ConfigKeyError as e:
+            print(f"Error reading {key}: {e}", file=sys.stderr)
+            return 1
+        print("[redacted]" if is_secret_config_key(key) and value else ("" if is_secret_config_key(key) else value))
         return 0
     else:
         print(f"Error: Unknown config key: {key}", file=sys.stderr)

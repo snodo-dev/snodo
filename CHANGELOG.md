@@ -11,6 +11,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Give every job notification event a distinct leading icon across delivery
   targets, including ⏳ for no log activity and ❌ for failures. (Fixes #759)
+- Enable `snodo config set/get` for typed provider, cloud, and notification
+  fields, redact secret values on read, and document local Ollama setup. (Fixes #760)
+- Add `snodo config validate` to check user configuration with path-aware,
+  secret-safe findings and machine-readable JSON output. (Fixes #757)
 - Keep the pytest repository guard sensitive to this checkout's HEAD and branch
   mutations while ignoring shared task/plan refs and branches owned by sibling
   worktrees, so concurrent gates do not fail on unrelated job activity. (Fixes #754)
