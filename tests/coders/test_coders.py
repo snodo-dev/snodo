@@ -263,6 +263,84 @@ def test_mock_adapter_typescript_project_emits_js_files():
     )
 
 
+@pytest.mark.parametrize(
+    ("language", "expected_paths", "forbidden_suffixes"),
+    [
+        ("go", {"go.mod", "src/hello.go", "src/hello_test.go"}, (".py", ".js")),
+        ("rust", {"Cargo.toml", "src/lib.rs"}, (".py", ".js", ".go")),
+    ],
+)
+def test_mock_adapter_compiled_language_fixtures(language, expected_paths, forbidden_suffixes):
+    """Go and Rust fixtures contain their manifest, source, and test files."""
+    from snodo.coders import MockAdapter
+
+    artifact = MockAdapter().implement(
+        TaskSpec(description="hello world", constraints=[], project_context={"language": language})
+    )
+    files = {file.path: file.content for file in artifact.files}
+    assert expected_paths <= files.keys()
+    assert all(not path.endswith(forbidden_suffixes) for path in files)
+    assert "world" in " ".join(files.values())
+
+
+@pytest.mark.parametrize(
+    ("language", "command"),
+    [
+        ("go", "go"),
+        ("rust", "cargo"),
+    ],
+)
+def test_mock_adapter_compiled_language_fixture_smoke(tmp_path, language, command):
+    """Run each compiled fixture when its language toolchain is installed."""
+    import shutil
+    import subprocess
+
+    executable = shutil.which(command)
+    if executable is None:
+        pytest.skip(f"{command} is not installed")
+
+    from snodo.coders import MockAdapter
+
+    artifact = MockAdapter().implement(TaskSpec(
+        description="hello world", constraints=[], project_context={"language": language}
+    ))
+    for file in artifact.files:
+        destination = tmp_path / file.path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(file.content)
+    result = subprocess.run(
+        [executable, "test", "./..."] if language == "go" else [executable, "test"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, f"{language} fixture failed:\n{result.stdout}\n{result.stderr}"
+
+
+def test_mock_adapter_javascript_fixture_passes_node_test(tmp_path):
+    """The existing JS/TypeScript fixture passes Node's built-in test runner."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    from snodo.coders import MockAdapter
+
+    artifact = MockAdapter().implement(TaskSpec(
+        description="hello world", constraints=[], project_context={"language": "typescript"}
+    ))
+    for file in artifact.files:
+        destination = tmp_path / file.path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(file.content)
+    result = subprocess.run(
+        [node, "--test", "src/hello.test.js"], cwd=tmp_path, capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 0, f"Node fixture failed:\n{result.stdout}\n{result.stderr}"
+
+
 def test_mock_adapter_explicit_mock_files_win_over_language_fixture():
     """An explicitly supplied mock_files wins over the JS/Ts built-in fixture (Refs #206).
 

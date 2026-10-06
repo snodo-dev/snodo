@@ -11,6 +11,8 @@ validator (pytest for Python, npm test for JavaScript).
 Language selection is driven by ``TaskSpec.project_context["language"]``:
 - ``javascript`` or ``typescript`` → ``src/hello.js`` + ``src/hello.test.js``
   (uses Node's built-in ``node:test`` module; no npm install needed)
+- ``go`` → ``go.mod`` + ``src/hello.go`` + ``src/hello_test.go``
+- ``rust`` → ``Cargo.toml`` + ``src/lib.rs``
 - anything else (``python``, ``unknown``, or unset) → ``src/hello.py`` +
   ``tests/test_hello.py`` (the original Python fixture, fixed in #185)
 
@@ -203,6 +205,56 @@ class MockAdapter(CoderAdapter):
                     ),
                 ),
             ]
+        elif not self._mock_files_explicit and language == "go":
+            files = [
+                FileArtifact(
+                    path="go.mod",
+                    content="module mockfixture\n\ngo 1.20\n",
+                ),
+                FileArtifact(
+                    path="src/hello.go",
+                    content="package hello\n\nfunc Hello() string {\n\treturn \"world\"\n}\n",
+                ),
+                FileArtifact(
+                    path="src/hello_test.go",
+                    content=(
+                        "package hello\n\n"
+                        "import \"testing\"\n\n"
+                        "func TestHello(t *testing.T) {\n"
+                        "\tif got := Hello(); got != \"world\" {\n"
+                        "\t\tt.Fatalf(\"Hello() = %q, want %q\", got, \"world\")\n"
+                        "\t}\n"
+                        "}\n"
+                    ),
+                ),
+            ]
+        elif not self._mock_files_explicit and language == "rust":
+            files = [
+                FileArtifact(
+                    path="Cargo.toml",
+                    content=(
+                        "[package]\n"
+                        "name = \"mockfixture\"\n"
+                        "version = \"0.1.0\"\n"
+                        "edition = \"2021\"\n"
+                    ),
+                ),
+                FileArtifact(
+                    path="src/lib.rs",
+                    content=(
+                        "pub fn hello() -> &'static str {\n"
+                        "    \"world\"\n"
+                        "}\n\n"
+                        "#[cfg(test)]\n"
+                        "mod tests {\n"
+                        "    #[test]\n"
+                        "    fn hello_returns_world() {\n"
+                        "        assert_eq!(super::hello(), \"world\");\n"
+                        "    }\n"
+                        "}\n"
+                    ),
+                ),
+            ]
         else:
             files = self.mock_files
 
@@ -211,4 +263,3 @@ class MockAdapter(CoderAdapter):
             if not is_protected_workspace_path(f.path, getattr(self, "workspace_dir", None) or Path.cwd())
         ]
         return CodeArtifact(files=valid_files)
-

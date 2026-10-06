@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add self-contained Go and Rust mock coder fixtures with source and passing tests,
+  and verify the existing Node/TypeScript fixture with Node's test runner. (Fixes #748)
 - Detect Python, Node/TypeScript, Go, and Rust test commands during `snodo init`,
   use the Node package manager and declared test script, and report detected or
   unrecognized stacks while preserving explicit `--test-command` overrides.
