@@ -136,6 +136,16 @@ three-dot diff, or `--pr <number>` to resolve that range through the installed
 code-host provider. Ref ranges are resolved locally with git. JSON output and
 the exit codes below are identical to task-spec validation.
 
+### `snodo ready --json`
+
+Schema: `snodo.ready.v2`
+
+The readiness payload adds `extensions`, keyed by entry-point group
+(`snodo.providers`, `snodo.validators`, `snodo.predicates`, `snodo.coders`).
+Each value maps installed entry-point names to `{status, error}` records;
+`status` is `installed` or `failed`, and failed entries include their load
+error. The schema version is bumped because this is a payload-shape change.
+
 ### `snodo survey --json`
 
 Schema: `snodo.survey.v1`

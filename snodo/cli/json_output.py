@@ -45,6 +45,8 @@ OUTCOME_EXIT_CODES = {
 
 def schema_name(command: str) -> str:
     """Return the versioned schema identifier for *command* (e.g. ``status``)."""
+    if command == "ready":
+        return "snodo.ready.v2"
     return f"snodo.{command}.v{SCHEMA_VERSION}"
 
 

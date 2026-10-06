@@ -63,8 +63,9 @@ def test_chat_platform_payloads_render_the_actionable_message():
             notifications.send({"type": kind, "url": f"{base}/{kind}"}, event)
 
         requests = {path.removeprefix("/"): json.loads(body) for path, _headers, body in StubHandler.requests}
-        assert requests["slack"] == {"text": event["message"]}
-        assert requests["discord"] == {"content": event["message"], "allowed_mentions": {"parse": []}}
+        assert requests["slack"]["text"].startswith("✅ ")
+        assert requests["slack"]["text"].endswith(event["message"])
+        assert requests["discord"]["content"] == f"✅ {event['message']}"
         teams = requests["teams"]
         assert teams["type"] == "message"
         attachment = teams["attachments"][0]
@@ -72,7 +73,7 @@ def test_chat_platform_payloads_render_the_actionable_message():
         assert attachment["contentUrl"] is None
         assert attachment["content"]["type"] == "AdaptiveCard"
         assert attachment["content"]["version"] == "1.2"
-        assert attachment["content"]["body"] == [{"type": "TextBlock", "text": event["message"], "wrap": True}]
+        assert attachment["content"]["body"] == [{"type": "TextBlock", "text": f"✅ {event['message']}", "wrap": True}]
     finally:
         httpd.shutdown()
 
@@ -136,12 +137,12 @@ def test_notification_targets_prominently_format_project_and_host():
 
         requests = {path.removeprefix("/"): (headers, body) for path, headers, body in StubHandler.requests}
         assert requests["ntfy"][0]["Title"] == "Snodo Cloud - gpu2"
-        assert requests["ntfy"][1].decode().startswith("**Snodo Cloud** · gpu2\n")
-        assert json.loads(requests["slack"][1])["text"].startswith("*Snodo Cloud* · gpu2\n")
-        assert json.loads(requests["discord"][1])["content"].startswith("**Snodo Cloud** · gpu2\n")
+        assert requests["ntfy"][1].decode().startswith("✅ **Snodo Cloud** · gpu2\n")
+        assert json.loads(requests["slack"][1])["text"].startswith("✅ *Snodo Cloud* · gpu2\n")
+        assert json.loads(requests["discord"][1])["content"].startswith("✅ **Snodo Cloud** · gpu2\n")
         card = json.loads(requests["teams"][1])["attachments"][0]["content"]
         assert card["body"][0] == {
-            "type": "TextBlock", "text": "Snodo Cloud", "weight": "Bolder", "size": "Medium", "wrap": True,
+            "type": "TextBlock", "text": "✅ Snodo Cloud", "weight": "Bolder", "size": "Medium", "wrap": True,
         }
         assert card["body"][1]["text"] == "Runner: gpu2"
         assert card["body"][2]["text"].startswith("job j_123 — plan nightly")
@@ -152,7 +153,7 @@ def test_notification_targets_prominently_format_project_and_host():
         httpd.shutdown()
 
 
-def test_job_finished_status_icons_are_slack_only():
+def test_job_finished_status_icons_are_distinct_and_shared_across_sinks():
     httpd = server()
     try:
         base = f"http://127.0.0.1:{httpd.server_port}"
@@ -169,20 +170,48 @@ def test_job_finished_status_icons_are_slack_only():
                 notifications.send({"type": kind, "url": f"{base}/{kind}"}, event)
 
         slack_bodies = [json.loads(body)["text"] for path, _headers, body in StubHandler.requests if path == "/slack"]
-        assert slack_bodies[0].startswith(":white_check_mark: *Snodo Cloud*")
-        assert slack_bodies[1].startswith(":warning: *Snodo Cloud*")
-        assert slack_bodies[2].startswith(":warning: *Snodo Cloud*")
-        assert slack_bodies[3].startswith("*Snodo Cloud*")
+        assert slack_bodies[0].startswith("✅ *Snodo Cloud*")
+        assert slack_bodies[1].startswith("❌ *Snodo Cloud*")
+        assert slack_bodies[2].startswith("❌ *Snodo Cloud*")
+        assert slack_bodies[3].startswith("🛑 *Snodo Cloud*")
 
         for index, event in enumerate(events):
             offset = index * len(targets)
             group = StubHandler.requests[offset:offset + len(targets)]
             bodies = {path.removeprefix("/"): body for path, _headers, body in group}
-            assert json.loads(bodies["webhook"]) == event
-            assert bodies["ntfy"] == message.encode("utf-8")
-            assert json.loads(bodies["discord"])["content"] == message
+            icon = (
+                "🛑" if event["event"] == "task_halted"
+                else "✅" if event.get("exit_code", 0) == 0 and event.get("status") != "failed"
+                else "❌"
+            )
+            assert json.loads(bodies["webhook"])["message"] == f"{icon} {message}"
+            assert bodies["ntfy"] == f"{icon} {message}".encode("utf-8")
+            assert json.loads(bodies["discord"])["content"] == f"{icon} {message}"
             teams = json.loads(bodies["teams"])["attachments"][0]["content"]
-            assert teams["body"][0]["text"] == message
+            assert teams["body"][0]["text"] == f"{icon} {message}"
+    finally:
+        httpd.shutdown()
+
+
+def test_every_emitted_event_has_a_unique_icon_and_silence_starts_with_hourglass():
+    assert set(notifications.EVENT_ICONS) == notifications.EVENTS
+    assert len(set(notifications.EVENT_ICONS.values())) == len(notifications.EVENTS)
+    assert notifications._event_icon("job_silent") == "⏳"
+    for event_type, icon in notifications.EVENT_ICONS.items():
+        assert notifications._event_icon(event_type) == icon
+
+    httpd = server()
+    try:
+        event = {"event": "job_silent", "message": "job j_1 — no log activity for 900s — Inspect: snodo logs j_1"}
+        for kind in ("webhook", "ntfy", "slack", "discord", "teams"):
+            notifications.send({"type": kind, "url": f"http://127.0.0.1:{httpd.server_port}/{kind}"}, event)
+        messages = {path.removeprefix("/"): body for path, _headers, body in StubHandler.requests}
+        assert json.loads(messages["webhook"])["message"].startswith("⏳ ")
+        assert messages["ntfy"].decode().startswith("⏳ ")
+        assert json.loads(messages["slack"])["text"].startswith("⏳ ")
+        assert json.loads(messages["discord"])["content"].startswith("⏳ ")
+        teams = json.loads(messages["teams"])["attachments"][0]["content"]
+        assert teams["body"][0]["text"].startswith("⏳ ")
     finally:
         httpd.shutdown()
 

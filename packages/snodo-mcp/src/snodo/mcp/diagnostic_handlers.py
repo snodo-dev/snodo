@@ -102,7 +102,7 @@ class DiagnosticToolHandler:
         assessment = assess_readiness(root, protocol)
         project_id, _ = get_project_id(str(root))
         return {
-            "schema": "snodo.ready.v1", "ok": True, "project_root": str(root),
+            "schema": "snodo.ready.v2", "ok": True, "project_root": str(root),
             "mode_filter": mode_filter, "project_id": project_id,
             "scope": scope_for_project_id(project_id), "display_name": root.name,
             "protocol_id": assessment.protocol_id, "score": assessment.score,
@@ -111,6 +111,7 @@ class DiagnosticToolHandler:
             "workstation_findings_count": len(assessment.workstation_findings),
             "findings": [finding.to_dict() for finding in assessment.all_findings],
             "warnings": unknown_capability_warnings(protocol),
+            "extensions": _extension_plugin_status(),
         }
 
     def protocol_schema(self, arguments: dict) -> dict:
@@ -122,3 +123,18 @@ class DiagnosticToolHandler:
     def tool_handlers(self) -> dict:
         return {"survey": self.survey, "intake": self.intake, "ready": self.ready,
                 "protocol_schema": self.protocol_schema}
+
+
+def _extension_plugin_status() -> dict:
+    """Return installed and failed plugin status for readiness diagnostics."""
+    from snodo.coders import coder_plugin_status
+    from snodo.predicates.registry import _default_registry as predicates
+    from snodo.validators.registry import _default_registry as validators
+    from snodo.providers.registry import provider_plugin_status
+
+    return {
+        "snodo.providers": provider_plugin_status(),
+        "snodo.validators": validators.plugin_status(),
+        "snodo.predicates": predicates.plugin_status(),
+        "snodo.coders": coder_plugin_status(),
+    }

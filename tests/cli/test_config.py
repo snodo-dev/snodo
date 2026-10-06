@@ -462,6 +462,33 @@ class TestCLIConfigShow:
         assert "No API keys configured" not in out
 
 
+class TestCLIConfigValidate:
+    def test_valid_config_passes(self, cli_config_dir, capsys):
+        cli_config_dir.save({"model": "gpt-4o", "engine": {"max_subtask_depth": 3}})
+        assert main(["config", "validate"]) == 0
+        assert "valid" in capsys.readouterr().out
+
+    def test_reports_unknown_key_and_wrong_type_paths(self, cli_config_dir, capsys):
+        cli_config_dir.config_dir.mkdir(parents=True, exist_ok=True)
+        cli_config_dir.config_path.write_text("cloud:\n  sync_enabled: nope\n  api_urll: https://example.test\n")
+        assert main(["config", "validate"]) != 0
+        output = capsys.readouterr().out
+        assert "cloud.api_urll" in output
+        assert "cloud.sync_enabled" in output
+        assert "Hint:" in output
+
+    def test_secret_values_never_appear_in_human_or_json_output(self, cli_config_dir, capsys):
+        secret = "secret-config-validation-value"
+        cli_config_dir.config_dir.mkdir(parents=True, exist_ok=True)
+        cli_config_dir.config_path.write_text(f"cloud:\n  api_key: {secret}\n  sync_enabled: nope\n")
+        assert main(["config", "validate"]) != 0
+        assert secret not in capsys.readouterr().out
+        assert main(["config", "validate", "--json"]) != 0
+        output = capsys.readouterr().out
+        assert '"schema": "snodo.config.validate.v1"' in output
+        assert secret not in output
+
+
 class TestCLIConfigAdd:
     def test_add_key(self, cli_config_dir, capsys):
         result = main(["config", "add", "openai", "sk-testkey123"])

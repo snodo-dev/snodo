@@ -57,12 +57,39 @@ def _head_state(repo_root: Path) -> tuple:
 
 
 def _branch_set(repo_root: Path) -> set:
-    """Return the set of branch names in *repo_root*."""
+    """Return branch refs owned by the suite checkout, ignoring sibling work.
+
+    Local refs are shared by linked worktrees. Snodo task/plan refs are omitted
+    because concurrent jobs create and delete them routinely. Branches checked
+    out in another worktree are omitted too. The suite's own branch and other
+    unowned refs remain guarded, while HEAD is independently checkout-local.
+    """
     out = subprocess.run(
         ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads"],
         cwd=repo_root, capture_output=True, text=True, check=True,
     ).stdout
-    return {line for line in out.splitlines() if line}
+    branches = {line for line in out.splitlines() if line}
+    worktrees = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=repo_root, capture_output=True, text=True, check=True,
+    ).stdout
+    current_path = repo_root.resolve()
+    sibling_branches: set[str] = set()
+    worktree_path = None
+    for line in worktrees.splitlines() + [""]:
+        if line.startswith("worktree "):
+            worktree_path = Path(line.removeprefix("worktree ")).resolve()
+        elif line.startswith("branch refs/heads/") and worktree_path != current_path:
+            sibling_branches.add(line.removeprefix("branch refs/heads/"))
+        elif not line:
+            worktree_path = None
+    own_branch = _head_state(repo_root)[0]
+    return {
+        branch for branch in branches
+        if branch == own_branch or (
+            not branch.startswith(("task/", "plan/")) and branch not in sibling_branches
+        )
+    }
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -73,8 +100,10 @@ def _guard_suite_repo_unchanged():
     engine's executor create a task branch in the suite's own working tree
     (e.g. by building a graph without a fixture ``project_root``) creates a
     branch and moves HEAD, silently redirecting every subsequent commit. Record
-    the suite repo's HEAD and branch set at session start and assert both are
-    unchanged at session end.
+    the suite repo's HEAD and owned branch refs at session start and assert both
+    are unchanged at session end. Linked worktrees share local refs, so task/plan
+    namespaces and branches checked out in sibling worktrees are excluded from
+    the branch snapshot; this checkout's HEAD and own/unowned refs remain guarded.
 
     The same invariant covers the suite repo's own ``.snodo/`` directory
     (Fixes #65): code under test is not always the project under test, and a

@@ -119,6 +119,7 @@ def ready_command(args) -> int:
     assessment = assess_readiness(project_root, protocol, protocol_errors=protocol_errors)
     _append_mcp_install_findings(assessment)
     _append_provider_findings(assessment, project_root, protocol)
+    extension_status = _extension_plugin_status()
     protocol_warnings = unknown_capability_warnings(protocol)
 
     # Resolve project identity for audit logging
@@ -172,6 +173,7 @@ def ready_command(args) -> int:
                 "workstation_findings_count": len(assessment.workstation_findings),
                 "findings": [f.to_dict() for f in assessment.all_findings],
                 "warnings": protocol_warnings,
+                "extensions": extension_status,
             },
             EXIT_PASS,
         )
@@ -188,6 +190,18 @@ def ready_command(args) -> int:
         for warning in protocol_warnings:
             print(f"  ⚠️ {warning}")
         print()
+
+    print("Installed extensions:")
+    for group, plugins in extension_status.items():
+        print(f"  {group}:")
+        if not plugins:
+            print("    (none)")
+        for name, entry in sorted(plugins.items()):
+            if entry["status"] == "installed":
+                print(f"    {name}: installed")
+            else:
+                print(f"    {name}: failed to load: {entry['error']}")
+    print()
 
     # Filter findings if mode_filter is set
     repo_findings = [
@@ -310,3 +324,18 @@ def _append_provider_findings(assessment, project_root: Path, protocol) -> None:
         severity=FindingSeverity.INFO, modes=["all"],
         description=" ".join(lines), remediation="No action required.", fix_cost=1,
     ))
+
+
+def _extension_plugin_status() -> dict:
+    """Return installed and failed plugins for every supported entry-point group."""
+    from snodo.coders import coder_plugin_status
+    from snodo.predicates.registry import _default_registry as predicates
+    from snodo.validators.registry import _default_registry as validators
+    from snodo.providers.registry import provider_plugin_status
+
+    return {
+        "snodo.providers": provider_plugin_status(),
+        "snodo.validators": validators.plugin_status(),
+        "snodo.predicates": predicates.plugin_status(),
+        "snodo.coders": coder_plugin_status(),
+    }

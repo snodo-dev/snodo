@@ -12,6 +12,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Add `snodo validate --base <ref> --head <ref>` and provider-resolved `--pr <number>` to judge branch changes with project validators. (Fixes #750)
 - Add a Python 3.12 Snodo container image with a CI build and CLI smoke test, and
   document how to build and run it. (Fixes #756)
+- Give every job notification event a distinct leading icon across delivery
+  targets, including ⏳ for no log activity and ❌ for failures. (Fixes #759)
+- Keep the pytest repository guard sensitive to this checkout's HEAD and branch
+  mutations while ignoring shared task/plan refs and branches owned by sibling
+  worktrees, so concurrent gates do not fail on unrelated job activity. (Fixes #754)
+- Add typed dotted-key reads and writes for provider, cloud, and notification
+  configuration, with strict runtime validation and secret-field metadata. (Fixes #752)
+- Add `snodo config validate` to check user configuration against strict models,
+  report safe path-specific findings, and emit a machine-readable `--json` result. (Fixes #747)
+- Return validator read-tool argument errors to the model as tool results so it
+  can correct them within its turn budget; operational failures remain fail-closed. (Fixes #751)
+- `snodo ready` now reports loaded and failed extensions for all four entry-point
+  groups; the versioned JSON contract is `snodo.ready.v2`. Document publishing,
+  installing and referencing validator, predicate and coder extensions.
+  (Fixes #755)
+- Discover installed `snodo.coders` entry points, allowing third-party coder
+  adapters to be selected by name or model prefix while retaining load failures.
+  (Fixes #743)
+- Discover installed `snodo.predicates` entry points at startup, register them
+  for protocol dispatch, and retain plugin load failures for diagnostics. (Fixes #753)
+- Discover installed `snodo.validators` entry points at startup, register them
+  for protocol dispatch, and retain plugin load failures for reporting. (Fixes #742)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
   unusable final answer once, accept content-only answers, and fail with the run
   trace rather than returning narration. (Fixes #736)

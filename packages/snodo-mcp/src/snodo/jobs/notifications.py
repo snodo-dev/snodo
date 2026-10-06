@@ -22,6 +22,12 @@ from snodo.config import ConfigError, ConfigManager
 
 logger = logging.getLogger(__name__)
 EVENTS = {"job_finished", "task_halted", "authorization_needed", "job_silent"}
+EVENT_ICONS = {
+    "job_finished": "✅",
+    "task_halted": "🛑",
+    "authorization_needed": "🙋",
+    "job_silent": "⏳",
+}
 _DELIVERY_TIMEOUT = 2
 _POLL_SECONDS = 0.1
 _MISSING_REFERENCES: set[str] = set()
@@ -108,7 +114,12 @@ def _display_name(root: Path) -> str | None:
 def send(target: dict, event: dict) -> None:
     """Deliver one short event with a hard network timeout."""
     kind = target["type"]
+    event = dict(event)
     message = event["message"]
+    event_type = event.get("event")
+    if event_type in EVENT_ICONS:
+        message = f"{_event_icon(event_type, event)} {message}"
+        event["message"] = message
     if kind == "ntfy":
         body = message.encode("utf-8")
         project = event.get("project")
@@ -117,11 +128,6 @@ def send(target: dict, event: dict) -> None:
         headers = {"Content-Type": "text/plain; charset=utf-8", "Title": title}
     elif kind == "slack":
         first_line, separator, remainder = message.partition("\n")
-        if event.get("event") == "job_finished" and event.get("status") in {"completed", "failed"}:
-            status = event.get("status")
-            exit_code = event.get("exit_code")
-            icon = ":white_check_mark:" if status == "completed" and exit_code == 0 else ":warning:"
-            first_line = f"{icon} {first_line}"
         # Slack mrkdwn uses single asterisks for bold; the shared message uses
         # Markdown's double-asterisk syntax for Discord and generic consumers.
         bold_start = first_line.find("**")
@@ -143,7 +149,7 @@ def send(target: dict, event: dict) -> None:
             "type": "AdaptiveCard",
             "version": "1.2",
             "body": ([
-                {"type": "TextBlock", "text": event["project"], "weight": "Bolder", "size": "Medium", "wrap": True},
+                {"type": "TextBlock", "text": f"{message.split(' ', 1)[0]} {event['project']}", "weight": "Bolder", "size": "Medium", "wrap": True},
                 {"type": "TextBlock", "text": f"Runner: {event['host']}", "isSubtle": True, "wrap": True},
                 {"type": "TextBlock", "text": message.partition("\n")[2] or message, "wrap": True},
             ] if event.get("project") and event.get("host") else [
@@ -188,6 +194,16 @@ def test_targets() -> list[tuple[str, bool]]:
         else:
             results.append((target.get("name") or f"{target['type']} {index}", True))
     return results
+
+
+def _event_icon(event_type: str, event: dict | None = None) -> str:
+    """Return the presentation icon for one emitted event type."""
+    if event_type not in EVENT_ICONS:
+        raise ValueError(f"No icon configured for notification event {event_type!r}")
+    if event_type == "job_finished" and event is not None:
+        if event.get("status") == "failed" or event.get("exit_code", 0) != 0:
+            return "❌"
+    return EVENT_ICONS[event_type]
 
 
 def _claim(sent_dir: Path, event_id: str) -> bool:
