@@ -5,6 +5,7 @@ FILE: snodo/cli/commands/config_cmd.py
 
 import sys
 import shlex
+import json
 from types import SimpleNamespace
 
 import typer
@@ -46,6 +47,23 @@ def config_show():
     """Show configured keys (masked)."""
     args = SimpleNamespace(config_action="show")
     return config_command(args)
+
+
+@app.command("validate")
+def config_validate(json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON")):
+    """Validate the user configuration against Snodo's runtime models."""
+    from snodo.config_validation import validate_config
+
+    findings = validate_config(ConfigManager())
+    ok = not findings
+    if json_output:
+        print(json.dumps({"schema": "snodo.config.validate.v1", "ok": ok, "findings": findings}, indent=2))
+    elif ok:
+        print("Configuration is valid.")
+    else:
+        for finding in findings:
+            print(f"{finding['path']}: {finding['message']} Hint: {finding['hint']}")
+    return 0 if ok else 1
 
 
 @app.command("add")

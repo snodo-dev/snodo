@@ -462,6 +462,31 @@ class TestCLIConfigShow:
         assert "No API keys configured" not in out
 
 
+class TestCLIConfigValidate:
+    def test_valid_config_passes(self, cli_config_dir, capsys):
+        cli_config_dir.save({"model": "gpt-4o", "llm": {"num_retries": 2}})
+        assert main(["config", "validate"]) == 0
+        assert "valid" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("yaml_text,path", [
+        ("llm:\n  coder:\n    mystery: value\n", "llm.coder.mystery"),
+        ("llm:\n  num_retries: wrong\n", "llm.num_retries"),
+    ])
+    def test_invalid_key_or_type_reports_path(self, cli_config_dir, capsys, yaml_text, path):
+        cli_config_dir.config_path.write_text(yaml_text)
+        assert main(["config", "validate"]) == 1
+        assert path in capsys.readouterr().out
+
+    def test_json_validation_never_emits_secret(self, cli_config_dir, capsys):
+        secret = "highly-sensitive-secret-value"
+        cli_config_dir.config_path.write_text(f"cloud:\n  api_key: {secret}\n  mystery: {secret}\n")
+        assert main(["config", "validate", "--json"]) == 1
+        output = capsys.readouterr().out
+        assert '"schema": "snodo.config.validate.v1"' in output
+        assert '"ok": false' in output
+        assert secret not in output
+
+
 class TestCLIConfigAdd:
     def test_add_key(self, cli_config_dir, capsys):
         result = main(["config", "add", "openai", "sk-testkey123"])

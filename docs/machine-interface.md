@@ -18,6 +18,13 @@ bumps the schema version so a consumer can detect it before parsing.
 
 ## Commands
 
+### `snodo config validate --json`
+
+Schema: `snodo.config.validate.v1`. Emits `{schema, ok, findings}`; each
+finding contains `path`, `section`, `message`, and `hint`. Secret values are
+never included. Exit code is 0 for valid configuration and 1 when findings
+are present.
+
 ### `snodo status --json`
 
 Schema: `snodo.status.v1`
