@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Return validator read-tool argument errors to the model as tool results so it
+  can correct them within its turn budget; operational failures remain fail-closed. (Fixes #751)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
   unusable final answer once, accept content-only answers, and fail with the run
   trace rather than returning narration. (Fixes #736)
