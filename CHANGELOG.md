@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add typed dotted-key reads and writes for provider, cloud, and notification
+  configuration, with strict runtime validation and secret-field metadata. (Fixes #752)
 - Add `snodo config validate` to check user configuration against strict models,
   report safe path-specific findings, and emit a machine-readable `--json` result. (Fixes #747)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
