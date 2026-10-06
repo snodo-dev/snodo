@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Guide interactive `snodo init` in existing repositories through stack/test-command
+  confirmation, template selection, optional decision-record intake, readiness,
+  and first-run next steps; non-interactive and `--yes` behavior is unchanged.
+  (Fixes #763)
 - Add self-contained Go and Rust mock coder fixtures with source and passing tests,
   and verify the existing Node/TypeScript fixture with Node's test runner. (Fixes #748)
 - Detect Python, Node/TypeScript, Go, and Rust test commands during `snodo init`,
