@@ -4,6 +4,7 @@ FILE: tests/cli/test_task_cmd.py
 """
 
 import json
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -520,6 +521,57 @@ def test_task_show_displays_halt_and_failure(tmp_path, monkeypatch, capsys):
     assert data["halt"]["halt_type"] == "blocked"
     assert data["failure"]["attempt"] == 2
     assert data["spec"] is None
+
+
+def _init_task_diff_repo(path):
+    def git(*args):
+        subprocess.run(["git", *args], cwd=path, check=True, capture_output=True)
+    git("init", "-b", "main")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    (path / "base.txt").write_text("base\n")
+    git("add", "base.txt")
+    git("commit", "-m", "base")
+    git("branch", "task/t1")
+    git("checkout", "task/t1")
+    (path / "change.txt").write_text("changed\n")
+    git("add", "change.txt")
+    git("commit", "-m", "task change")
+    git("checkout", "main")
+
+
+def test_task_show_diff_displays_patch_and_grouped_verdicts(tmp_path, monkeypatch, capsys):
+    _init_task_diff_repo(tmp_path)
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+    mgr.update_decision(session.session_id, "task_failure", {"t1": {"branch": "task/t1"}})
+    mgr.update_decision(session.session_id, "halt", {"t1": {
+        "halt_type": "blocked", "validator_results": [
+            {"validator_id": "quality", "severity": "blocker", "justification": "tests fail"},
+            {"validator_id": "quality", "severity": "escalate", "justification": "review needed"},
+        ]
+    }})
+    assert task_show_command(SimpleNamespace(task_id="t1", diff=True, json=False)) == 0
+    out = capsys.readouterr().out
+    assert "change.txt" in out and "+changed" in out
+    assert out.count("quality:") == 1
+    assert "tests fail" in out and "review needed" in out
+
+
+def test_task_show_diff_missing_branch_and_json(tmp_path, monkeypatch, capsys):
+    _init_task_diff_repo(tmp_path)
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+    mgr.update_decision(session.session_id, "task_failure", {"t1": {"branch": "task/gone"}})
+    mgr.update_decision(session.session_id, "halt", {"t1": {
+        "halt_type": "blocked", "validator_results": [
+            {"validator_id": "quality", "severity": "blocker", "justification": "broken"},
+        ]
+    }})
+    assert task_show_command(SimpleNamespace(task_id="t1", diff=True, json=True)) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["diff"]["message"] and "no longer available" in data["diff"]["message"]
+    assert data["diff"]["validators"]["quality"][0]["justification"] == "broken"
 
 
 def test_task_show_spec_from_halt_only_record(tmp_path, monkeypatch, capsys):
