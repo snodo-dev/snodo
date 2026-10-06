@@ -461,7 +461,12 @@ def task_show_command(args) -> int:
     halt_entry = halt.get(task_id) if isinstance(halt, dict) else None
     failure_entry = failure.get(task_id) if isinstance(failure, dict) else None
 
-    diff_payload = _task_diff(project_root, task_id, failure_entry, halt_entry, max_diff_lines) if show_diff else None
+    if show_diff:
+        from snodo.cli.commands.task_diff import task_diff, print_task_diff
+        diff_payload = task_diff(project_root, task_id, failure_entry, halt_entry, max_diff_lines)
+    else:
+        print_task_diff = None
+        diff_payload = None
 
     from snodo.cli.commands.task_complete import get_hand_completion_record, print_hand_completion_info
     hand_completion = get_hand_completion_record(project_root, task_id)
@@ -532,7 +537,7 @@ def task_show_command(args) -> int:
                                   "session_id": session.session_id, "mode": session.mode,
                                   "halt": None, "failure": None, "spec": None, "diff": diff_payload})
             print(f"Task: {task_id}\n")
-            _print_task_diff(diff_payload)
+            print_task_diff(diff_payload)
             return 0
         if json_out:
             from snodo.cli.json_output import emit_error
@@ -664,7 +669,7 @@ def task_show_command(args) -> int:
 
     if show_diff:
         print()
-        _print_task_diff(diff_payload)
+        print_task_diff(diff_payload)
 
     if isinstance(failure_entry, dict):
         print()
@@ -727,69 +732,6 @@ def task_show_command(args) -> int:
         if pending_retryable_task(session, task_id):
             print(f"  {followup.task_retry(task_id)}")
     return 0
-
-
-def _task_diff(project_root: str, task_id: str, failure_entry: Any, halt_entry: Any, max_lines: int) -> dict:
-    """Read a preserved task branch's stat and patch using Git only."""
-    from snodo.tools.git import open_repo, resolve_base_branch
-
-    branch = (failure_entry or {}).get("branch") if isinstance(failure_entry, dict) else None
-    state = _read_task_state(project_root, task_id) or {}
-    branch = branch or state.get("branch")
-    if not branch:
-        try:
-            from snodo.infrastructure.worktree import _task_identity
-            spec = (halt_entry or {}).get("task_spec", "") if isinstance(halt_entry, dict) else ""
-            _, branch = _task_identity(project_root, task_id, spec, None)
-        except Exception:
-            branch = f"task/{task_id}"
-    validators: dict[str, list[dict]] = {}
-    results = (halt_entry or {}).get("validator_results", []) if isinstance(halt_entry, dict) else []
-    for verdict in results if isinstance(results, list) else []:
-        if isinstance(verdict, dict):
-            validators.setdefault(str(verdict.get("validator_id") or "?"), []).append({
-                "severity": verdict.get("severity"), "justification": verdict.get("justification", "")
-            })
-    payload = {"branch": branch, "base": None, "stat": "", "patch": "", "truncated": False,
-               "message": None, "validators": validators}
-    try:
-        base = resolve_base_branch(project_root)
-        with open_repo(project_root) as repo:
-            if branch not in repo.heads:
-                raise ValueError(f"Task branch '{branch}' is no longer available.")
-            payload["base"] = base
-            payload["stat"] = repo.git.diff("--stat", f"{base}...{branch}")
-            patch = repo.git.diff("--no-ext-diff", f"{base}...{branch}")
-        lines = patch.splitlines()
-        if max_lines and len(lines) > max_lines:
-            payload["patch"] = "\n".join(lines[:max_lines])
-            payload["truncated"] = True
-        else:
-            payload["patch"] = patch
-    except Exception as exc:
-        payload["message"] = str(exc)
-    return payload
-
-
-def _print_task_diff(payload: dict) -> None:
-    print("Changes:")
-    print(f"  branch: {payload['branch']}")
-    if payload.get("message"):
-        print(f"  {payload['message']}")
-    else:
-        print(f"  base: {payload['base']}")
-        print(payload.get("stat") or "  (no changes)")
-        if payload.get("patch"):
-            print(payload["patch"])
-        if payload.get("truncated"):
-            print("  (patch truncated; use --max-diff-lines 0 for full patch)")
-    print("Validator verdicts:")
-    if not payload.get("validators"):
-        print("  (none recorded)")
-    for validator, verdicts in payload.get("validators", {}).items():
-        print(f"  {validator}:")
-        for verdict in verdicts:
-            print(f"    [{verdict.get('severity')}] {verdict.get('justification', '')}")
 
 
 def task_abandon_command(args) -> int:
