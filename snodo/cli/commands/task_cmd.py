@@ -687,7 +687,7 @@ def task_show_command(args) -> int:
 
     from snodo.cli.commands import followup
 
-    from snodo.cli.commands.task_specs import superseded_specs
+    from snodo.cli.commands.task_specs import print_spec_block, superseded_specs
     superseded = superseded_specs(failure_entry)
     if superseded:
         # A retry that replaced the spec discards it from the live record. Print
@@ -700,14 +700,14 @@ def task_show_command(args) -> int:
         label = "Superseded spec" if len(superseded) == 1 else "Superseded specs"
         print(f"{label} (replaced by a later retry):")
         for index, old_spec in enumerate(superseded, start=1):
-            _print_spec_block(old_spec, task_id=task_id, prefix=f"  [{index}] ")
+            print_spec_block(old_spec, task_id=task_id, prefix=f"  [{index}] ")
         print(f"  Full text: {followup.task_inspect_json(task_id)}")
         print(f"  To restore one: {followup.task_retry_restore(task_id)}")
 
     if spec:
         print()
         print("Task spec:")
-        _print_spec_block(spec, task_id=task_id, prefix="  ")
+        print_spec_block(spec, task_id=task_id, prefix="  ")
 
     print()
     print("Inspect:")
@@ -1020,74 +1020,6 @@ def task_report_command(args) -> int:
     return 0
 
 
-_SPEC_DISPLAY_LIMIT = 400
-
-
-def _print_spec_block(spec: str, *, task_id: str, prefix: str = "  ") -> None:
-    """Print one specification, truncated the same way everywhere it is shown."""
-    if len(spec) > _SPEC_DISPLAY_LIMIT:
-        print(f"{prefix}{spec[:_SPEC_DISPLAY_LIMIT]}…")
-        print(f"{prefix}(truncated — full spec: snodo task show {task_id} --json)")
-    else:
-        print(f"{prefix}{spec}")
-
-
-def _unwrap_spec(spec: str) -> str:
-    """Unwrap engine scaffolding or retry/recovery wrappers to recover the original request."""
-    if not spec:
-        return ""
-    # 1. Recovery spec wrapper (from _build_recovery_spec)
-    intent_marker = "INTENT (unchanged from the original task):"
-    if intent_marker in spec:
-        after_marker = spec.split(intent_marker, 1)[1]
-        for marker in ("\n\nCONSTRAINTS:", "\nCONSTRAINTS:"):
-            if marker in after_marker:
-                after_marker = after_marker.split(marker, 1)[0]
-        extracted = after_marker.strip()
-        if extracted:
-            return _unwrap_spec(extracted)
-
-    # 2. Retry prompt wrapper (from snodo run --retry)
-    if "Revised spec (replaces original):" in spec:
-        after_revised = spec.split("Revised spec (replaces original):", 1)[1]
-        for marker in ("\n\nPrevious attempt", "\nPrevious attempt", "\n\nFiles changed", "\n\nFix the issues"):
-            if marker in after_revised:
-                after_revised = after_revised.split(marker, 1)[0]
-        extracted = after_revised.strip()
-        if extracted:
-            return _unwrap_spec(extracted)
-
-    if spec.startswith("Original spec:"):
-        after_orig = spec[len("Original spec:"):].strip()
-        for marker in (
-            "\n\nPrevious attempt", "\nPrevious attempt", "\n\nRevised spec",
-            # The additive retry wrapper (`--append-spec`): guidance riding on
-            # top of the spec is not part of the spec the attempt was asked to
-            # satisfy, so the excerpt stops at the spec.
-            "\n\nAdded guidance",
-            "\n\nFiles changed", "\n\nFix the issues",
-        ):
-            if marker in after_orig:
-                after_orig = after_orig.split(marker, 1)[0]
-        extracted = after_orig.strip()
-        if extracted:
-            return _unwrap_spec(extracted)
-
-    return spec.strip()
-
-
-def _spec_excerpt(spec: Optional[str], max_chars: int = 80) -> str:
-    """Return a one-line excerpt of *spec* for the pending list."""
-    if spec is None:
-        return "(unrecoverable description)"
-    if not spec:
-        return "(empty)"
-    one_line = " ".join(spec.split())
-    if len(one_line) <= max_chars:
-        return one_line
-    return one_line[: max_chars - 1] + "…"
-
-
 def task_review_pending_command(args) -> int:
     """List every merged unit with no review record, newest first.
 
@@ -1096,7 +1028,7 @@ def task_review_pending_command(args) -> int:
     mutates or clears any review record.
     """
     from datetime import datetime
-    from snodo.cli.commands.task_specs import spec_excerpt
+    from snodo.cli.commands.task_specs import spec_excerpt, unwrap_spec
 
     from snodo.infrastructure.audit import get_audit_log
 
@@ -1159,7 +1091,7 @@ def task_review_pending_command(args) -> int:
         event_data = info.get("event_data") or {}
         raw_spec = event_data.get("spec") or event_data.get("root_spec") or event_data.get("task_spec")
         if raw_spec is not None:
-            unwrapped = _unwrap_spec(raw_spec)
+            unwrapped = unwrap_spec(raw_spec)
             specs[identity] = unwrapped
             specs[info["task_ref"]] = unwrapped
 
@@ -1180,7 +1112,7 @@ def task_review_pending_command(args) -> int:
                     or (task_data.get("halt", {}) or {}).get("task_spec")
                 )
                 if raw_spec is not None:
-                    unwrapped = _unwrap_spec(raw_spec)
+                    unwrapped = unwrap_spec(raw_spec)
                     specs[identity] = unwrapped
                     specs[task_ref] = unwrapped
             except Exception as e:
@@ -1217,7 +1149,7 @@ def task_review_pending_command(args) -> int:
                     if raw_spec is None and isinstance(c_entry, dict):
                         raw_spec = c_entry.get("root_spec") or c_entry.get("task_spec")
                     if raw_spec is not None:
-                        specs[tid] = _unwrap_spec(raw_spec)
+                        specs[tid] = unwrap_spec(raw_spec)
 
         # Then check all other sessions in the project
         all_sessions = mgr.list_sessions(project_root=project_root)
@@ -1242,7 +1174,7 @@ def task_review_pending_command(args) -> int:
                 if raw_spec is None and isinstance(c_entry, dict):
                     raw_spec = c_entry.get("root_spec") or c_entry.get("task_spec")
                 if raw_spec is not None:
-                    specs[tid] = _unwrap_spec(raw_spec)
+                    specs[tid] = unwrap_spec(raw_spec)
     except Exception as e:
         _logger.debug("Could not read sessions for spec excerpts: %s", e)
 
