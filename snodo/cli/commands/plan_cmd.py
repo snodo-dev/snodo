@@ -379,7 +379,7 @@ def _plan_list(planner, args=None) -> int:
         return 0
     from rich.console import Console
     from rich.table import Table
-    from snodo.cli.commands.task_cmd import _spec_excerpt
+    from snodo.cli.commands.task_specs import spec_excerpt as _spec_excerpt
     table = Table(title="Plans")
     for column in ("PLAN", "SUMMARY", "AGE", "LAST ACTIVE", "PROGRESS", "STATUS"):
         table.add_column(column)

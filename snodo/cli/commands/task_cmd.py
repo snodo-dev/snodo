@@ -687,7 +687,8 @@ def task_show_command(args) -> int:
 
     from snodo.cli.commands import followup
 
-    superseded = _superseded_specs(failure_entry)
+    from snodo.cli.commands.task_specs import superseded_specs
+    superseded = superseded_specs(failure_entry)
     if superseded:
         # A retry that replaced the spec discards it from the live record. Print
         # what was discarded, so the copy an operator was told to overwrite is
@@ -1019,25 +1020,6 @@ def task_report_command(args) -> int:
     return 0
 
 
-def _superseded_specs(failure_entry) -> list:
-    """Return the specs a replacing retry discarded, oldest first.
-
-    ``superseded_specs`` is the history the CLI and the engine keep; the singular
-    ``superseded_spec`` is what older records carry. Reading both means a spec
-    replaced before this field existed is still recoverable.
-    """
-    if not isinstance(failure_entry, dict):
-        return []
-    history = failure_entry.get("superseded_specs")
-    specs = [s for s in (history or []) if isinstance(s, str) and s.strip()]
-    if specs:
-        return specs
-    single = failure_entry.get("superseded_spec")
-    if isinstance(single, str) and single.strip():
-        return [single]
-    return []
-
-
 _SPEC_DISPLAY_LIMIT = 400
 
 
@@ -1114,6 +1096,7 @@ def task_review_pending_command(args) -> int:
     mutates or clears any review record.
     """
     from datetime import datetime
+    from snodo.cli.commands.task_specs import spec_excerpt
 
     from snodo.infrastructure.audit import get_audit_log
 
@@ -1274,7 +1257,7 @@ def task_review_pending_command(args) -> int:
             "task_id": task_ref,
             "branch": info["branch"],
             "merge_timestamp": info["merge_ts"].isoformat() if info["merge_ts"] else "",
-            "spec_excerpt": _spec_excerpt(raw_spec),
+            "spec_excerpt": spec_excerpt(raw_spec),
         })
 
     # Newest first; units without a parseable timestamp sort last.
