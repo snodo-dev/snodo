@@ -46,8 +46,6 @@ def test_ref_range_runs_existing_validator_and_returns_pass(tmp_path, capsys):
 
 def test_blocking_verdict_uses_documented_exit_and_payload(tmp_path, capsys):
     from tests.cli.test_machine_interface import _completion_fn, _mock_validator_config
-    from snodo.cli.commands.validate_cmd import validate_command
-
     project = tmp_path
     base, head = _project(project)
     with patch("snodo.infrastructure.paths.resolve_project_root", return_value=str(project)), \

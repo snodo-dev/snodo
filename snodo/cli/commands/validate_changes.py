@@ -3,7 +3,6 @@
 import contextlib
 import io
 import json
-import subprocess
 from pathlib import Path
 
 
@@ -29,10 +28,16 @@ def validate_changes(*, task_spec, phase, protocol, mode, json_output, base, hea
             base, head = provider.resolve_change_request_refs(str(change_request))
         if not base:
             raise ValueError("A base/head ref range or --pr is required")
-        diff = subprocess.run(
-            ["git", "diff", "--no-ext-diff", "--no-renames", f"{base}...{head}", "--"],
-            cwd=root, capture_output=True, text=True, check=True,
-        ).stdout
+        from git import Repo
+        repository = Repo(root)
+        try:
+            base_commit = repository.commit(base).hexsha
+            head_commit = repository.commit(head).hexsha
+            diff = repository.git.diff(
+                "--no-ext-diff", "--no-renames", f"{base_commit}...{head_commit}", "--",
+            )
+        finally:
+            repository.close()
         if not diff.strip():
             raise ValueError(f"No changes found between {base} and {head}")
     except Exception as exc:  # noqa: BLE001
