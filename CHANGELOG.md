@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Keep the pytest repository guard sensitive to this checkout's HEAD and branch
+  mutations while ignoring shared task/plan refs and branches owned by sibling
+  worktrees, so concurrent gates do not fail on unrelated job activity. (Fixes #754)
 - Add typed dotted-key reads and writes for provider, cloud, and notification
   configuration, with strict runtime validation and secret-field metadata. (Fixes #752)
 - Add `snodo config validate` to check user configuration against strict models,
