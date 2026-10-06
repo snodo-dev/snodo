@@ -64,9 +64,8 @@ runner, bounded, and best-effort. Each event starts with its own icon: ✅
 completed, ❌ failed, 🛑 task halted,
 🙋 authorization needed, and ⏳ no log activity. Icons are presentation only;
 the notification details and delivery behavior are unchanged. Verify all
-configured targets with `snodo config --notify-test`. Notifications reach the
-operator; they do not wake or
-resume the orchestrating agent. An unattended agent must keep its own process,
+configured targets with `snodo config --notify-test`. Notifications reach the operator;
+they do not wake or resume the orchestrating agent. An unattended agent must keep its own process,
 watch, and next action alive rather than relying on a notification to restart it.
 
 For plans organized into queues, start an orchestration pass with
