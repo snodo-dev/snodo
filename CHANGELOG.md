@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Discover installed `snodo.validators` entry points at startup, register them
+  for protocol dispatch, and retain plugin load failures for reporting. (Fixes #742)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
   unusable final answer once, accept content-only answers, and fail with the run
   trace rather than returning narration. (Fixes #736)

@@ -6,9 +6,12 @@ Mirrors the PredicateRegistry pattern from 7.8.  Module-level default
 singleton with self-registration by each validator module on import.
 """
 
+import logging
 from typing import Dict, List, Optional, Type
 
 from snodo.validators.context import ValidatorBase
+
+_logger = logging.getLogger(__name__)
 
 
 class ValidatorRegistry:
@@ -17,6 +20,7 @@ class ValidatorRegistry:
     def __init__(self) -> None:
         self._registry: Dict[str, Type[ValidatorBase]] = {}
         self._compound: Dict[str, str] = {}  # type → primary key
+        self._plugin_load_failures: Dict[str, str] = {}
 
     def register(self, validator_type: str, cls: Type[ValidatorBase]) -> None:
         """Register a validator class for a validator_type string."""
@@ -59,9 +63,43 @@ class ValidatorRegistry:
         self._registry = registry.copy()
         self._compound = compound.copy()
 
+    def discover_plugins(self) -> None:
+        """Load installed ``snodo.validators`` entry points.
+
+        Entry point values must resolve to a :class:`ValidatorBase` subclass.
+        Each entry-point name is the protocol's ``validator_type``. Failures
+        are retained for readiness/reporting callers and never abort startup.
+        """
+        from importlib.metadata import entry_points
+
+        self._plugin_load_failures.clear()
+        try:
+            plugins = entry_points(group="snodo.validators")
+        except Exception as exc:
+            message = f"{type(exc).__name__}: {exc}"
+            self._plugin_load_failures["*"] = message
+            _logger.warning("Could not discover snodo.validators entry points: %s", message)
+            return
+
+        for plugin in plugins:
+            try:
+                validator_cls = plugin.load()
+                if not isinstance(validator_cls, type) or not issubclass(validator_cls, ValidatorBase):
+                    raise TypeError("entry point must load a ValidatorBase subclass")
+                self.register(plugin.name, validator_cls)
+            except Exception as exc:
+                message = f"{type(exc).__name__}: {exc}"
+                self._plugin_load_failures[plugin.name] = message
+                _logger.warning("Could not load validator plugin '%s': %s", plugin.name, message)
+
+    def plugin_load_failures(self) -> Dict[str, str]:
+        """Return a copy of plugin load failures for readiness reporting."""
+        return self._plugin_load_failures.copy()
+
 
 # Module-level default registry — populated on import by each validator module
 _default_registry = ValidatorRegistry()
+_default_registry.discover_plugins()
 
 
 def list_validator_types() -> List[str]:
