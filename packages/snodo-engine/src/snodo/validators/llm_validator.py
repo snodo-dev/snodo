@@ -645,7 +645,6 @@ class LLMValidator(ValidatorBase):
                                 # an ordinary inspection result, not a broken
                                 # tool transport. Preserve the existing
                                 # reasoned-refusal / model-evaluation contract.
-                                from snodo.tools.workspace import PathValidationError
                                 if self._is_tool_argument_error(e):
                                     result = f"Tool error: {e}"
                                 else:
