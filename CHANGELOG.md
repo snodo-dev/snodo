@@ -15,6 +15,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
   report safe path-specific findings, and emit a machine-readable `--json` result. (Fixes #747)
 - Return validator read-tool argument errors to the model as tool results so it
   can correct them within its turn budget; operational failures remain fail-closed. (Fixes #751)
+- Discover installed `snodo.coders` entry points, allowing third-party coder
+  adapters to be selected by name or model prefix while retaining load failures.
+  (Fixes #743)
+- Discover installed `snodo.predicates` entry points at startup, register them
+  for protocol dispatch, and retain plugin load failures for diagnostics. (Fixes #753)
+- Discover installed `snodo.validators` entry points at startup, register them
+  for protocol dispatch, and retain plugin load failures for reporting. (Fixes #742)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
   unusable final answer once, accept content-only answers, and fail with the run
   trace rather than returning narration. (Fixes #736)

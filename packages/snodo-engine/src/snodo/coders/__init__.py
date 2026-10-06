@@ -1,10 +1,12 @@
-"""Coder adapter registry.
+"""Coder adapter registry and installed coder plugin discovery.
 
 FILE: snodo/coders/__init__.py
 
 Registry pattern for pluggable coder backends.
 """
 
+import logging
+from importlib.metadata import entry_points
 from typing import Any, Dict, Optional, Type
 
 from snodo.coders.base import (
@@ -32,6 +34,8 @@ from snodo.coders.codex_cli_adapter import CodexCLIAdapter
 from snodo.coders.claude_cli_adapter import ClaudeCLIAdapter
 from snodo.infrastructure.config import DEFAULT_MODEL
 
+_logger = logging.getLogger(__name__)
+
 # Backward-compatible aliases
 BasicCoderAdapter = LiteLLMAdapter
 MockCoderAdapter = MockAdapter
@@ -49,6 +53,44 @@ CODER_REGISTRY: Dict[str, Type[CoderAdapter]] = {
     "codex-cli": CodexCLIAdapter,
     "claude-cli": ClaudeCLIAdapter,
 }
+
+_BUILTIN_CODER_NAMES = frozenset(CODER_REGISTRY)
+_PLUGIN_LOAD_FAILURES: Dict[str, str] = {}
+
+
+def discover_coder_plugins() -> None:
+    """Load installed ``snodo.coders`` entry points into the coder registry.
+
+    Entry-point names are selectable coder names. Invalid adapters and import
+    failures are retained for callers that report plugin readiness and never
+    prevent Snodo from starting.
+    """
+    _PLUGIN_LOAD_FAILURES.clear()
+    try:
+        plugins = entry_points(group="snodo.coders")
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {exc}"
+        _PLUGIN_LOAD_FAILURES["*"] = message
+        _logger.warning("Could not discover snodo.coders entry points: %s", message)
+        return
+
+    for plugin in plugins:
+        try:
+            adapter_cls = plugin.load()
+            if not isinstance(adapter_cls, type) or not issubclass(adapter_cls, CoderAdapter):
+                raise TypeError("entry point must load a CoderAdapter subclass")
+            if plugin.name in _BUILTIN_CODER_NAMES:
+                raise ValueError(f"coder name '{plugin.name}' is reserved by a built-in coder")
+            CODER_REGISTRY[plugin.name] = adapter_cls
+        except Exception as exc:
+            message = f"{type(exc).__name__}: {exc}"
+            _PLUGIN_LOAD_FAILURES[plugin.name] = message
+            _logger.warning("Could not load coder plugin '%s': %s", plugin.name, message)
+
+
+def coder_plugin_load_failures() -> Dict[str, str]:
+    """Return a copy of coder plugin discovery and load failures."""
+    return _PLUGIN_LOAD_FAILURES.copy()
 
 
 def resolve_coder_name(
@@ -81,6 +123,11 @@ def resolve_coder_name(
             return "opencode"
         if model.startswith("agy/"):
             return "agy"
+        # Built-in routes above retain priority; installed plugins may opt in
+        # to model routing by using their registered name as a prefix.
+        for coder_name in CODER_REGISTRY:
+            if coder_name not in _BUILTIN_CODER_NAMES and model.startswith(f"{coder_name}/"):
+                return coder_name
         if model.startswith(("gpt", "o1", "o3")):
             return "openai"
         if model.startswith("claude"):
@@ -120,3 +167,6 @@ def get_coder(name: str, **config: Any) -> CoderAdapter:
         available = ", ".join(sorted(CODER_REGISTRY.keys()))
         raise KeyError(f"Unknown coder '{name}'. Available: {available}")
     return CODER_REGISTRY[name](**config)
+
+
+discover_coder_plugins()
