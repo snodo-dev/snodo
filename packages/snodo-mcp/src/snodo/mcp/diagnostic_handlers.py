@@ -100,7 +100,6 @@ class DiagnosticToolHandler:
             known = ", ".join(mode.mode_id for mode in protocol.modes)
             return _error("ready", f"Unknown mode '{mode_filter}'. Known modes: {known}")
         assessment = assess_readiness(root, protocol)
-        from snodo.cli.commands.ready_cmd import _extension_plugin_status
         project_id, _ = get_project_id(str(root))
         return {
             "schema": "snodo.ready.v2", "ok": True, "project_root": str(root),
@@ -124,3 +123,18 @@ class DiagnosticToolHandler:
     def tool_handlers(self) -> dict:
         return {"survey": self.survey, "intake": self.intake, "ready": self.ready,
                 "protocol_schema": self.protocol_schema}
+
+
+def _extension_plugin_status() -> dict:
+    """Return installed and failed plugin status for readiness diagnostics."""
+    from snodo.coders import coder_plugin_status
+    from snodo.predicates.registry import _default_registry as predicates
+    from snodo.validators.registry import _default_registry as validators
+    from snodo.providers.registry import provider_plugin_status
+
+    return {
+        "snodo.providers": provider_plugin_status(),
+        "snodo.validators": validators.plugin_status(),
+        "snodo.predicates": predicates.plugin_status(),
+        "snodo.coders": coder_plugin_status(),
+    }
