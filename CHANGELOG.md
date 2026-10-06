@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Give every job notification event a distinct leading icon across delivery
+  targets, including ⏳ for no log activity and ❌ for failures. (Fixes #759)
 - Keep the pytest repository guard sensitive to this checkout's HEAD and branch
   mutations while ignoring shared task/plan refs and branches owned by sibling
   worktrees, so concurrent gates do not fail on unrelated job activity. (Fixes #754)
