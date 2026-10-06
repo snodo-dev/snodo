@@ -12,6 +12,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Discover installed `snodo.coders` entry points, allowing third-party coder
   adapters to be selected by name or model prefix while retaining load failures.
   (Fixes #743)
+- Discover installed `snodo.predicates` entry points at startup, register them
+  for protocol dispatch, and retain plugin load failures for diagnostics. (Fixes #753)
 - Discover installed `snodo.validators` entry points at startup, register them
   for protocol dispatch, and retain plugin load failures for reporting. (Fixes #742)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
