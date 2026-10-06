@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a shared pure mapping from each canonical halt outcome to ordered operator
+  next actions, including task-specific commands and plan fix-forward guidance.
+  (Fixes #749)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
   unusable final answer once, accept content-only answers, and fail with the run
   trace rather than returning narration. (Fixes #736)
