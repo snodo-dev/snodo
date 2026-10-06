@@ -24,8 +24,9 @@ def main() -> int:
     if os.environ.get("INPUT_GITHUB_TOKEN"):
         os.environ["GITHUB_TOKEN"] = os.environ["INPUT_GITHUB_TOKEN"]
 
-    ready = subprocess.run(
-        ["snodo", "ready", "--protocol", protocol, "--json"],
+    # Fixed executable/argument structure; input values are separate argv items.
+    ready = subprocess.run(  # noqa: S603
+        ["snodo", "ready", "--protocol", protocol, "--json"],  # noqa: S607
         text=True,
         capture_output=True,
         check=False,
@@ -43,7 +44,7 @@ def main() -> int:
     command = ["snodo", "validate", "--protocol", protocol, "--pr", pr_number, "--json"]
     if mode:
         command.extend(["--mode", mode])
-    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    result = subprocess.run(command, text=True, capture_output=True, check=False)  # noqa: S603
     if result.stdout:
         print(result.stdout, end="")
     if result.stderr:
