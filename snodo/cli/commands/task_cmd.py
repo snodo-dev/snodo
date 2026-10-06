@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 import typer
 
+from snodo.cli.commands.task_specs import unwrap_spec as _unwrap_spec
 from snodo.infrastructure.paths import resolve_project_root
 
 _logger = logging.getLogger(__name__)
