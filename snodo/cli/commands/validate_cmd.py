@@ -30,7 +30,7 @@ def register(app: typer.Typer) -> None:
 
     @app.command()
     def validate(
-        task_spec: str = typer.Argument(..., help="Task spec to validate"),
+        task_spec: str = typer.Argument("", help="Task spec to validate (omit with --base/--head or --pr)"),
         phase: str = typer.Option(
             "pre_execute", "--phase", help="Validation phase (pre_execute or post_execute)",
         ),
@@ -41,8 +41,17 @@ def register(app: typer.Typer) -> None:
             None, "--mode", help="Mode to validate in (default: active mode)",
         ),
         json: bool = typer.Option(True, "--json/--no-json", help="Emit machine-readable JSON"),
+        base: Optional[str] = typer.Option(None, "--base", help="Base git ref for change validation"),
+        head: Optional[str] = typer.Option(None, "--head", help="Head git ref for change validation"),
+        pr: Optional[int] = typer.Option(None, "--pr", help="Pull/merge request number (resolved by provider)"),
     ):
         """Run a phase's validators and return the structured result."""
+        if base or head or pr is not None:
+            from snodo.cli.commands.validate_changes import validate_changes
+            return validate_changes(
+                task_spec=task_spec, phase=phase, protocol=protocol, mode=mode,
+                json_output=json, base=base, head=head, change_request=pr,
+            )
         args = SimpleNamespace(
             task_spec=task_spec, phase=phase, protocol=protocol, mode=mode, json=json,
         )

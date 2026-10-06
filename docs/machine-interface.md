@@ -131,6 +131,11 @@ invokes a coder, it is not one of the outcomes returned here.
 | `policy_decision` | object \| null | the policy decision |
 | `instruction` | string | follow-up instruction |
 
+The same command accepts `--base <ref> --head <ref>` to validate the git
+three-dot diff, or `--pr <number>` to resolve that range through the installed
+code-host provider. Ref ranges are resolved locally with git. JSON output and
+the exit codes below are identical to task-spec validation.
+
 ### `snodo survey --json`
 
 Schema: `snodo.survey.v1`

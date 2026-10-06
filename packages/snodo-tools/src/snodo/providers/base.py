@@ -18,6 +18,10 @@ class CodeHostProvider(ABC):
         """Return whether this provider recognizes a Git remote URL."""
         return False
 
+    def resolve_change_request_refs(self, change_request_id: str) -> tuple[str, str]:
+        """Return (base ref, head ref) for a hosted change request."""
+        raise ProviderError("This provider cannot resolve change-request refs")
+
     def __init_subclass__(cls, **kwargs):
         """Adapt legacy provider subclasses while they migrate to the new API."""
         super().__init_subclass__(**kwargs)
