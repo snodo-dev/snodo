@@ -18,6 +18,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   report safe path-specific findings, and emit a machine-readable `--json` result. (Fixes #747)
 - Return validator read-tool argument errors to the model as tool results so it
   can correct them within its turn budget; operational failures remain fail-closed. (Fixes #751)
+- `snodo ready` now reports loaded and failed extensions for all four entry-point
+  groups; the versioned JSON contract is `snodo.ready.v2`. Document publishing,
+  installing and referencing validator, predicate and coder extensions.
+  (Fixes #755)
 - Discover installed `snodo.coders` entry points, allowing third-party coder
   adapters to be selected by name or model prefix while retaining load failures.
   (Fixes #743)

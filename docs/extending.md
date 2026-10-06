@@ -38,7 +38,15 @@ For a validator that handles multiple types, use `register_compound`:
 _default_registry.register_compound({"my_type", "my_alias"}, MyValidator)
 ```
 
-Registration must happen at import time — put it at the bottom of your validator module. Snodo imports its built-in validator modules through `snodo.validators.__init__`; it does not discover third-party validators through package entry points. Installing a third-party package does not load it: its module must be imported by the process before protocol dispatch (for example, by application code that imports the module). Once imported, module-level registration makes the type available in the default registry. The public CLI currently has no third-party validator plugin loader.
+Register an installable validator package with the `snodo.validators` entry-point group. The entry-point name becomes the protocol's `validator_type`; its value must load a `ValidatorBase` subclass:
+
+```toml
+# pyproject.toml
+[project.entry-points."snodo.validators"]
+my_type = "my_package.validator:MyValidator"
+```
+
+After publishing and installing the package in Snodo's environment, Snodo discovers it automatically. `snodo ready` lists loaded and failed plugins, including load errors. Validators may still use the default registry's `register`/`register_compound` APIs for in-process registrations.
 
 ### Wiring into the protocol
 
@@ -121,7 +129,14 @@ from snodo.predicates.registry import _default_registry
 _default_registry.register("my_predicate", MyPredicate())
 ```
 
-Note the difference from validators: predicates register **instances**, not classes. Put registration at import time in your predicate module. Built-in predicate modules are imported by Snodo; there is no third-party predicate entry-point discovery or public plugin loader today. Installing a package alone does not import its module: application code must import it before the protocol references its predicate. WF5 verifies that referenced predicate names are registered at protocol load time.
+Note the difference from validators: predicates register **instances**, not classes. For an installable package, register the instance or subclass in the `snodo.predicates` entry-point group; the entry-point name is the predicate name. The entry point may resolve to an instance or a no-argument `Predicate` subclass:
+
+```toml
+[project.entry-points."snodo.predicates"]
+my_predicate = "my_package.predicates:MyPredicate"
+```
+
+Snodo discovers installed predicate plugins automatically, and `snodo ready` reports loaded plugins and failures. WF5 verifies referenced predicate names at protocol load time.
 
 ### Wiring into the protocol
 
@@ -187,7 +202,14 @@ A `CodeArtifact` is a list of `FileArtifact` objects (path, content, action="wri
 
 ### Wiring
 
-Coder names resolve through `CODER_REGISTRY` in `snodo.coders`. Register an adapter class there under the name used by the protocol. This is an in-process mapping, not an installed-package entry-point mechanism; installing a package alone does not add a coder. The built-in CLI does not load third-party coder packages automatically. A process embedding Snodo must import the extension and register its class before building the execution graph.
+Coder names resolve through `CODER_REGISTRY` in `snodo.coders`. An installable adapter package registers its class in the `snodo.coders` entry-point group; the entry-point name is the coder name used by the protocol:
+
+```toml
+[project.entry-points."snodo.coders"]
+my_coder = "my_package.coder:MyCoder"
+```
+
+The entry point must load a `CoderAdapter` subclass. Snodo discovers installed adapters automatically, and `snodo ready` reports loaded plugins and failures. Built-in coder names are reserved.
 
 ```yaml
 modes:

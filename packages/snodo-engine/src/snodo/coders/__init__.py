@@ -56,6 +56,7 @@ CODER_REGISTRY: Dict[str, Type[CoderAdapter]] = {
 
 _BUILTIN_CODER_NAMES = frozenset(CODER_REGISTRY)
 _PLUGIN_LOAD_FAILURES: Dict[str, str] = {}
+_LOADED_PLUGINS: set[str] = set()
 
 
 def discover_coder_plugins() -> None:
@@ -66,6 +67,7 @@ def discover_coder_plugins() -> None:
     prevent Snodo from starting.
     """
     _PLUGIN_LOAD_FAILURES.clear()
+    _LOADED_PLUGINS.clear()
     try:
         plugins = entry_points(group="snodo.coders")
     except Exception as exc:
@@ -82,6 +84,7 @@ def discover_coder_plugins() -> None:
             if plugin.name in _BUILTIN_CODER_NAMES:
                 raise ValueError(f"coder name '{plugin.name}' is reserved by a built-in coder")
             CODER_REGISTRY[plugin.name] = adapter_cls
+            _LOADED_PLUGINS.add(plugin.name)
         except Exception as exc:
             message = f"{type(exc).__name__}: {exc}"
             _PLUGIN_LOAD_FAILURES[plugin.name] = message
@@ -91,6 +94,14 @@ def discover_coder_plugins() -> None:
 def coder_plugin_load_failures() -> Dict[str, str]:
     """Return a copy of coder plugin discovery and load failures."""
     return _PLUGIN_LOAD_FAILURES.copy()
+
+
+def coder_plugin_status() -> Dict[str, Dict[str, str]]:
+    """Return installed and failed coder entry points."""
+    result = {name: {"status": "installed", "error": ""} for name in _LOADED_PLUGINS}
+    result.update({name: {"status": "failed", "error": error}
+                   for name, error in _PLUGIN_LOAD_FAILURES.items()})
+    return result
 
 
 def resolve_coder_name(

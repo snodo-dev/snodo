@@ -131,6 +131,16 @@ invokes a coder, it is not one of the outcomes returned here.
 | `policy_decision` | object \| null | the policy decision |
 | `instruction` | string | follow-up instruction |
 
+### `snodo ready --json`
+
+Schema: `snodo.ready.v2`
+
+The readiness payload adds `extensions`, keyed by entry-point group
+(`snodo.providers`, `snodo.validators`, `snodo.predicates`, `snodo.coders`).
+Each value maps installed entry-point names to `{status, error}` records;
+`status` is `installed` or `failed`, and failed entries include their load
+error. The schema version is bumped because this is a payload-shape change.
+
 ### `snodo survey --json`
 
 Schema: `snodo.survey.v1`
