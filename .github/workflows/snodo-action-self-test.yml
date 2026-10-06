@@ -1,0 +1,56 @@
+name: Snodo action self-test
+on:
+  pull_request:
+    paths:
+      - action.yml
+      - action/**
+      - scripts/run_validation.py
+      - .github/workflows/snodo-action-self-test.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  mock-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install workspace Snodo
+        run: python -m pip install .
+      - name: Exercise the action runner with mock inputs
+        env:
+          INPUT_PROTOCOL: .snodo/protocol.yml
+          INPUT_MODE: implementation
+          INPUT_PR: "1"
+          INPUT_GITHUB_TOKEN: mock-token
+          GITHUB_EVENT_NUMBER: "1"
+          GITHUB_STEP_SUMMARY: ${{ runner.temp }}/summary.md
+          GITHUB_OUTPUT: ${{ runner.temp }}/outputs.txt
+          PATH: ${{ env.PATH }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          # Isolate the action runner from provider/network calls and exercise
+          # its status/summary contract using a deterministic mock CLI.
+          temp = Path(os.environ["RUNNER_TEMP"])
+          mock = temp / "bin"
+          mock.mkdir(exist_ok=True)
+          executable = mock / "snodo"
+          executable.write_text("#!/usr/bin/env python3\nimport json, sys\nif sys.argv[1] == 'ready': print(json.dumps({'schema':'snodo.ready.v2','ok':True}))\nelse: print(json.dumps({'schema':'snodo.validate.v1','ok':True,'status':'pass','results':[{'validator_id':'mock','severity':'info','justification':'mock pass'}]}))\n", encoding="utf-8")
+          executable.chmod(0o755)
+          env = os.environ.copy()
+          env["PATH"] = str(mock) + os.pathsep + env["PATH"]
+          result = subprocess.run([sys.executable, "scripts/run_validation.py"], env=env, check=False)
+          assert result.returncode == 0, result.returncode
+          summary = Path(env["GITHUB_STEP_SUMMARY"]).read_text(encoding="utf-8")
+          outputs = Path(env["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
+          assert "pass" in summary and "mock" in summary
+          assert "verdict=pass" in outputs
+          PY

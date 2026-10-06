@@ -1,0 +1,52 @@
+name: Snodo protocol validation
+description: Run Snodo readiness and protocol validation for a pull request
+inputs:
+  protocol:
+    description: Path to the Snodo protocol file
+    required: false
+    default: .snodo/protocol.yml
+  mode:
+    description: Protocol mode to validate
+    required: false
+  model:
+    description: Model identifier used by model-backed validators
+    required: false
+  provider-api-key:
+    description: Provider API key (for example an OpenAI or Anthropic key)
+    required: false
+  provider-api-key-env:
+    description: Environment variable name for the supplied provider key
+    required: false
+    default: OPENAI_API_KEY
+  pr-number:
+    description: Pull request number (defaults to the pull_request event number)
+    required: false
+  github-token:
+    description: Token used by the GitHub provider to resolve the pull request
+    required: false
+    default: ${{ github.token }}
+outputs:
+  verdict:
+    description: Validation outcome (pass, blocker, escalate, or validator_error)
+    value: ${{ steps.validate.outputs.verdict }}
+  status:
+    description: Process exit code from snodo validate
+    value: ${{ steps.validate.outputs.status }}
+runs:
+  using: composite
+  steps:
+    - name: Install Snodo
+      shell: bash
+      run: python -m pip install --upgrade snodo
+    - name: Run readiness and protocol validation
+      id: validate
+      shell: bash
+      env:
+        INPUT_PROTOCOL: ${{ inputs.protocol }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_KEY: ${{ inputs.provider-api-key }}
+        INPUT_KEY_ENV: ${{ inputs.provider-api-key-env }}
+        INPUT_PR: ${{ inputs.pr-number }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: python "${{ github.action_path }}/scripts/run_validation.py"

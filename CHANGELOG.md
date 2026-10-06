@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a reusable GitHub Action that runs readiness and pull-request protocol
+  validation, publishes verdicts to the job summary, and fails on blocking
+  outcomes. (Fixes #762)
 - Add `snodo validate --base <ref> --head <ref>` and provider-resolved `--pr <number>` to judge branch changes with project validators. (Fixes #750)
 - Add a Python 3.12 Snodo container image with a CI build and CLI smoke test, and
   document how to build and run it. (Fixes #756)
