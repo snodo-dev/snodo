@@ -268,6 +268,22 @@ def test_init_infers_test_command_from_marker_files(temp_project_dir, no_keygen)
     assert quality["tooling"]["test_command"] == "pytest"
 
 
+@pytest.mark.parametrize(
+    "marker,command",
+    [("package.json", "npm test"), ("go.mod", "go test ./..."), ("Cargo.toml", "cargo test")],
+)
+def test_init_detects_supported_stack_commands(temp_project_dir, no_keygen, marker, command, capsys):
+    contents = '{"scripts":{"test":"vitest run"}}' if marker == "package.json" else "module example.test\n"
+    (temp_project_dir / marker).write_text(contents)
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
+        assert main() == 0
+    import yaml
+    proto = yaml.safe_load((temp_project_dir / ".snodo" / "protocol.yml").read_text())
+    quality = next(v for v in proto["validators"] if v["validator_id"] == "quality")
+    assert quality["tooling"]["test_command"] == command
+    assert "Detected" in capsys.readouterr().out
+
+
 def test_init_explicit_test_command_flag(temp_project_dir, no_keygen):
     """--test-command flag sets the test_command in protocol.yml explicitly."""
     with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes", "--test-command", "npm test"]):
@@ -278,6 +294,16 @@ def test_init_explicit_test_command_flag(temp_project_dir, no_keygen):
     proto = yaml.safe_load((temp_project_dir / ".snodo" / "protocol.yml").read_text())
     quality = next(v for v in proto["validators"] if v["validator_id"] == "quality")
     assert quality["tooling"]["test_command"] == "npm test"
+
+
+def test_init_unknown_stack_keeps_template_default(temp_project_dir, no_keygen, capsys):
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
+        assert main() == 0
+    import yaml
+    proto = yaml.safe_load((temp_project_dir / ".snodo" / "protocol.yml").read_text())
+    quality = next(v for v in proto["validators"] if v["validator_id"] == "quality")
+    assert quality["tooling"]["test_command"]
+    assert "No supported test stack detected" in capsys.readouterr().out
 
 
 def test_init_interactive_test_command_prompt(temp_project_dir, no_keygen):

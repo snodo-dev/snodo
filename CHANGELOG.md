@@ -35,6 +35,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   for protocol dispatch, and retain plugin load failures for diagnostics. (Fixes #753)
 - Discover installed `snodo.validators` entry points at startup, register them
   for protocol dispatch, and retain plugin load failures for reporting. (Fixes #742)
+- Add self-contained Go and Rust mock coder fixtures with source and passing tests,
+  and verify the existing Node/TypeScript fixture with Node's test runner. (Fixes #748)
+- Detect Python, Node/TypeScript, Go, and Rust test commands during `snodo init`,
+  use the Node package manager and declared test script, and report detected or
+  unrecognized stacks while preserving explicit `--test-command` overrides.
+  (Fixes #744)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
   unusable final answer once, accept content-only answers, and fail with the run
   trace rather than returning narration. (Fixes #736)
