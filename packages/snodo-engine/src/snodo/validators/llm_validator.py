@@ -535,6 +535,7 @@ class LLMValidator(ValidatorBase):
             # Check for submit_verdict before anything else
             verdict = self._extract_submit_verdict(tool_calls)
             if verdict is not None:
+                verdict.examined = examination or None
                 self._emit_turn_telemetry(
                     turn_index=turn + 1,
                     tool="submit_verdict",
@@ -644,8 +645,7 @@ class LLMValidator(ValidatorBase):
                                 # an ordinary inspection result, not a broken
                                 # tool transport. Preserve the existing
                                 # reasoned-refusal / model-evaluation contract.
-                                from snodo.tools.workspace import PathValidationError
-                                if isinstance(e, (PathValidationError, FileNotFoundError)):
+                                if self._is_tool_argument_error(e):
                                     result = f"Tool error: {e}"
                                 else:
                                     _logger.warning(
@@ -1059,6 +1059,24 @@ class LLMValidator(ValidatorBase):
             return workspace.summarize_directory(args.get("directory", "."))
         else:
             return f"Unknown tool: {name}"
+
+    @staticmethod
+    def _is_tool_argument_error(error: Exception) -> bool:
+        """Return whether a read-tool exception describes invalid call input.
+
+        Keep this classification deliberately narrow: arbitrary exceptions
+        raised by a tool implementation remain operational failures.
+        """
+        from snodo.tools.workspace import PathValidationError
+
+        if isinstance(error, (PathValidationError, FileNotFoundError, KeyError, TypeError)):
+            return True
+        # Restrict ValueError recovery to known workspace input validations.
+        message = str(error).lower()
+        return isinstance(error, ValueError) and any(marker in message for marker in (
+            "path is not a ", "directory not found:", "file not found:",
+            "start must be", "end must be", "invalid path",
+        ))
 
     # ------------------------------------------------------------------
     # Single-completion path (pre-execute, unchanged)

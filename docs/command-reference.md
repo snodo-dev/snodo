@@ -21,6 +21,7 @@ walkthrough.
 | `snodo config add` | `<provider> [key]`, `--ref env:NAME\|command:COMMAND` (choose key or reference) |
 | `snodo config remove` | `<provider>` |
 | `snodo config test` | — |
+| `snodo config validate` | `[--json]` |
 | `snodo config set` | `<key> <value>` |
 | `snodo config get` | `<key>` |
 | `snodo config` (group options) | `--encrypt-provider-keys`, `--notify-test` |
