@@ -133,6 +133,7 @@ validators:
     # It deselects e2e tests; `make gate-ci` includes them plus coverage (slower).
     tooling:
       test_command: "make gate"
+      timeout: 600
 
   - validator_id: "meta-spec"
     validator_type: "architecture"
