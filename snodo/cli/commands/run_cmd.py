@@ -1495,6 +1495,8 @@ def _print_halt_followup(halt_payload: dict, session_id: Optional[str]) -> None:
     print("Follow-up:")
     for cmd in commands:
         print(f"  {cmd}")
+    if task_id and final_decision not in ("completed", None):
+        followup.print_halt_next_actions(halt_payload)
     print()
 
 

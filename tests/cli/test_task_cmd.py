@@ -483,8 +483,8 @@ def test_task_show_displays_halt_and_failure(tmp_path, monkeypatch, capsys):
 
     halt_data = {
         "t1": {
-            "final_decision": "halt",
-            "halt_type": "blocked",
+            "final_decision": "blocker",
+            "halt_type": "blocker",
             "phase": "post_execute",
             "reason": "quality failed",
             "hint": "check tests",
@@ -506,10 +506,12 @@ def test_task_show_displays_halt_and_failure(tmp_path, monkeypatch, capsys):
     assert res == 0
     out = capsys.readouterr().out
     assert "Task:    t1" in out
-    assert "final_decision: halt" in out
+    assert "final_decision: blocker" in out
     assert "reason:         quality failed" in out
     assert "hint:           check tests" in out
     assert "quality [blocker]: failed" in out
+    assert "snodo task show t1 --diff" in out
+    assert "Fix the specification or code, then retry the task." in out
     assert "branch:  task/t1" in out
     assert "files:   src/app.py" in out
 
@@ -518,7 +520,7 @@ def test_task_show_displays_halt_and_failure(tmp_path, monkeypatch, capsys):
     assert res == 0
     data = json.loads(capsys.readouterr().out)
     assert data["ok"] is True
-    assert data["halt"]["halt_type"] == "blocked"
+    assert data["halt"]["halt_type"] == "blocker"
     assert data["failure"]["attempt"] == 2
     assert data["spec"] is None
 

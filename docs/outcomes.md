@@ -24,6 +24,9 @@ task status is `blocked`.
 `get_job_logs` and the current repository/worktree evidence. If the concern is
 valid, diagnose whether the work or specification is wrong. A blocked plan is
 unfinished work: fix it forward within that same plan.
+For a blocked task, review `snodo task show <task_id> --diff` alongside the
+grouped validator verdicts, then take the recommended action shown by the halt
+or task status. The CLI and MCP status guidance use the same outcome mapping.
 When its spec is wrong, replace that task's spec and rerun the wave; repeat
 until every wave lands. Do not start another plan or dispatch a one-off task for
 the remaining plan work. Healthy completed waves are already on `main`, so the

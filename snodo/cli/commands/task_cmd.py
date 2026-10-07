@@ -668,6 +668,14 @@ def task_show_command(args) -> int:
                 for line in str(findings).strip().splitlines():
                     print(f"  {line}")
 
+        if halt_entry.get("final_decision") not in ("completed", None):
+            guidance_halt = dict(halt_entry)
+            guidance_halt.setdefault("task_id", task_id)
+            from snodo.cli.commands import followup
+            print("\nReview the task changes and grouped validator verdicts with:")
+            print(f"  snodo task show {task_id} --diff")
+            followup.print_halt_next_actions(guidance_halt)
+
     if show_diff:
         print()
         print_task_diff(diff_payload)
