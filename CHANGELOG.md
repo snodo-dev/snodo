@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Report plan integration delivery only when a merge advances the base branch,
+  so a repeated no-op delivery does not print a second success line. (Fixes #769)
 - Retry transient provider failures once in recon, honoring bounded provider
   delays and recording each attempt without retrying permanent errors. (Fixes #768)
 - Isolate recon agent failures and persist each completed answer and trace as

@@ -338,9 +338,14 @@ def _merge_on_success(
                 })
             return 1, True, None
         if outcome == "merged":
+            merge_sha = merge_head_sha(project_root)
+            if base_sha and merge_sha == base_sha:
+                # Git reports an already-contained branch as a successful
+                # merge. It did not create a delivery, so don't report it as
+                # another merge (or record another task_merged event).
+                return result, False, branch
             if audit_log:
                 authoritative_spec = getattr(task, "root_spec", None) or getattr(task, "spec", "")
-                merge_sha = merge_head_sha(project_root)
                 audit_log.append_event("task_merged", {
                     "op": "task_merged",
                     "task_ref": task.id,

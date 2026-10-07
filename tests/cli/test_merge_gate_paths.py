@@ -416,6 +416,37 @@ def test_plan_integration_without_quality_validator_delivers_ungated(tmp_path, c
         assert "combined.txt" in repo.git.ls_tree("-r", "HEAD")
 
 
+def test_already_delivered_plan_integration_does_not_report_second_merge(tmp_path, capsys):
+    from snodo.cli.commands.run_merge import _deliver_plan_integration
+    from snodo.compiler.models import Validator
+    from snodo.infrastructure.audit import AuditLog
+
+    project, base = _repository(tmp_path)
+    branch = "plan/already-delivered/integration"
+    integration, _commit = _branch(project, base, branch, "combined.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = SimpleNamespace(
+        delivery_for=lambda _mode: "local_merge",
+        execution=SimpleNamespace(delivery_remote="origin"),
+        metadata={}, validators=[Validator(validator_id="security", validator_type="security")],
+    )
+
+    assert _deliver_plan_integration(
+        str(project), branch, "already-delivered", "intent", protocol, "producer", audit,
+        integration_path=integration, keep_branch=True,
+    ) == 0
+    first_output = capsys.readouterr().out
+    assert first_output.count("✓ Merged ") == 1
+
+    assert _deliver_plan_integration(
+        str(project), branch, "already-delivered", "intent", protocol, "producer", audit,
+        integration_path=integration, keep_branch=True,
+    ) == 0
+    second_output = capsys.readouterr().out
+    assert "✓ Merged " not in second_output
+    assert len(audit.get_history("task_merged")) == 1
+
+
 @pytest.mark.parametrize(
     ("record_task", "record_commit", "outcome", "should_merge"),
     [
