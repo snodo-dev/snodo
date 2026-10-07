@@ -36,6 +36,9 @@ commands and options.
 [User configuration reference →](configuration.md) — `~/.snodo/config.yml`,
 provider credentials, model tuning, cloud and notification settings.
 
+[Running Snodo in CI →](running-in-ci.md) — validate pull-request and
+merge-request changes in GitHub Actions or GitLab CI.
+
 ## Coder backends
 
 The coder writes; snodo governs, gates and records. `litellm` (default),

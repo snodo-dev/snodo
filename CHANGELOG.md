@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document GitHub Actions and GitLab CI workflows for validating pull-request
+  and merge-request changes with Snodo, including credentials and exit codes. (Fixes #764)
 - Add a reusable GitHub Action that runs readiness and pull-request protocol
   validation, publishes verdicts to the job summary, and fails on blocking
   outcomes. (Fixes #762)

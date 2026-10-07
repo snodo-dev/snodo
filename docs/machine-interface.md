@@ -135,6 +135,8 @@ The same command accepts `--base <ref> --head <ref>` to validate the git
 three-dot diff, or `--pr <number>` to resolve that range through the installed
 code-host provider. Ref ranges are resolved locally with git. JSON output and
 the exit codes below are identical to task-spec validation.
+See [Running Snodo in CI](running-in-ci.md) for GitHub Actions and GitLab CI
+examples that use this interface.
 
 ### `snodo ready --json`
 
