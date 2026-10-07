@@ -18,6 +18,7 @@ from snodo.cli.commands.init_cmd import (
     _select_template,
     init_command,
     register,
+    _run_interactive_onboarding,
 )
 
 
@@ -44,6 +45,34 @@ def test_init_register():
     register(app)
     command_names = [cmd.name or cmd.callback.__name__ for cmd in app.registered_commands]
     assert "init" in command_names
+
+
+def test_interactive_onboarding_composes_existing_commands(monkeypatch, tmp_path):
+    calls = []
+    answers = iter([True, True, True, True])
+    monkeypatch.setattr("snodo.cli.commands.init_cmd.typer.confirm", lambda *a, **k: next(answers))
+    monkeypatch.setattr("snodo.cli.commands.init_cmd._detect_test_command", lambda root: "pytest")
+    monkeypatch.setattr("snodo.cli.commands.survey_cmd.survey_command", lambda args: calls.append("survey"))
+    monkeypatch.setattr("snodo.cli.commands.intake_cmd.intake_command", lambda args: calls.append("intake"))
+    monkeypatch.setattr("snodo.cli.commands.ready_cmd.ready_command", lambda args: calls.append("ready"))
+
+    _run_interactive_onboarding(tmp_path)
+
+    assert calls == ["survey", "intake", "ready"]
+
+
+def test_interactive_onboarding_skipped_steps_do_not_run(monkeypatch, tmp_path):
+    calls = []
+    answers = iter([True, False, False, False])
+    monkeypatch.setattr("snodo.cli.commands.init_cmd.typer.confirm", lambda *a, **k: next(answers))
+    monkeypatch.setattr("snodo.cli.commands.init_cmd._detect_test_command", lambda root: None)
+    monkeypatch.setattr("snodo.cli.commands.survey_cmd.survey_command", lambda args: calls.append("survey"))
+    monkeypatch.setattr("snodo.cli.commands.intake_cmd.intake_command", lambda args: calls.append("intake"))
+    monkeypatch.setattr("snodo.cli.commands.ready_cmd.ready_command", lambda args: calls.append("ready"))
+
+    _run_interactive_onboarding(tmp_path)
+
+    assert calls == []
 
 
 # ============================================================================

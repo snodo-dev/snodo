@@ -264,18 +264,91 @@ git add README.md
 # Git must have user.name and user.email configured for this commit.
 git commit -m "Initial project commit"
 
-# uvx runs the published package in a temporary environment; --with makes
-# pytest available to the verification command during the Snodo run.
-# For the pip fallback instead, install with: pip install snodo
-# Then install pytest with: pip install pytest
+# uvx runs the published package in a temporary environment. For the pip
+# fallback instead, install Snodo and the selected stack's test runner first.
+# pip install snodo
+# pip install pytest
 uvx --with pytest snodo init --template team --test-command "PYTHONPATH=. pytest" --yes
 uvx --with pytest snodo run "add a hello() function that returns the string 'world', with a test" --mock
 ```
 
-For regular use, install Snodo with `uv tool install snodo` (or use the pip
-fallback above), then run the `snodo` commands directly. `uvx --with pytest`
-keeps this quickstart self-contained while making pytest available to the
-verification command.
+The examples below use the same sequence for each stack: add that stack's root
+manifest, initialize Snodo, run the deterministic mock task, then read the
+result printed by the run (including its outcome and task branch). `snodo init`
+detects the test command from these root files. The Node example declares a
+`test` script and uses npm unless a pnpm, Yarn, or Bun lockfile selects that
+package manager. Install Snodo with `uv tool install snodo` for regular use (or
+`pip install snodo`); `uvx` runs the published package in a temporary environment.
+
+### Python
+
+```bash
+# Add pytest as the project's declared test dependency before committing.
+printf '[project]\nname = "my-project"\nversion = "0.1.0"\n\n[tool.pytest.ini_options]\npythonpath = ["."]\n' > pyproject.toml
+printf '# My project\n' > README.md
+git init -b main
+git add README.md pyproject.toml
+git commit -m "Initial project commit"
+
+# Pip alternative: pip install snodo
+# Then install the test runner: pip install pytest
+uvx --with pytest snodo init --template team --test-command "PYTHONPATH=. pytest" --yes
+uvx --with pytest snodo run "add a hello() function that returns the string 'world', with a test" --mock
+```
+
+For auto-detection rather than an explicit override, use `uvx --with pytest
+snodo init --template team --yes`; `pyproject.toml` selects `pytest`. The
+explicit `--test-command` form above also works and is useful when the detected
+command needs project-specific options.
+
+### Node / TypeScript
+
+```bash
+printf '{"name":"my-project","version":"1.0.0","scripts":{"test":"node --test"}}\n' > package.json
+printf '# My project\n' > README.md
+git init -b main
+git add README.md package.json
+git commit -m "Initial project commit"
+
+uvx snodo init --template team --yes
+uvx snodo run "add a hello() function that returns the string 'world', with a test" --mock
+```
+
+The mock fixture uses Node's built-in test runner, so Node.js must be available.
+For TypeScript projects, keep a real test script in `package.json`; init uses
+that script, while the mock fixture remains JavaScript.
+
+### Go
+
+```bash
+printf 'module example.com/my-project\n\ngo 1.22\n' > go.mod
+printf '# My project\n' > README.md
+git init -b main
+git add README.md go.mod
+git commit -m "Initial project commit"
+
+uvx snodo init --template team --yes
+uvx snodo run "add a hello() function that returns the string 'world', with a test" --mock
+```
+
+The Go toolchain must be installed; init detects `go.mod` and configures
+`go test ./...`.
+
+### Rust
+
+```bash
+printf '[package]\nname = "my-project"\nversion = "0.1.0"\nedition = "2021"\n' > Cargo.toml
+printf '# My project\n' > README.md
+git init -b main
+git add README.md Cargo.toml
+git commit -m "Initial project commit"
+
+uvx snodo init --template team --yes
+uvx snodo run "add a hello() function that returns the string 'world', with a test" --mock
+```
+
+The Rust toolchain must be installed; init detects `Cargo.toml` and configures
+`cargo test`.
 
 This is the canonical first-run command sequence; the [README](https://github.com/snodo-dev/snodo#readme) and
 [docs home](index.md) link here. Git needs a committer identity before the
@@ -304,10 +377,11 @@ requirements.
 
 On a successful mock run, the quality validator reports that the fixture test
 passed and Snodo resolves the task. The `team` template deliberately leaves
-producer work unmerged, so the run also prints `Task resolved but its work was
-NOT merged to the base branch.` The output names the task branch holding the
-work and gives the exact command to merge it manually (`git merge <branch>`);
-the base branch has not moved. This is the expected result, not a failed run.
+producer work unmerged, so the run prints `Task resolved but its work was NOT
+merged to the base branch.` The output names the task branch holding the work
+and gives the exact command to merge it manually (`git merge <branch>`); the
+base branch has not moved. This is the expected result, not a failed run, for
+all four stacks.
 
 If you want Snodo to merge producer work automatically after verification,
 edit `.snodo/protocol.yml` and set `delivery: local_merge` on the `producer`

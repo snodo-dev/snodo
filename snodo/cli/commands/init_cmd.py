@@ -203,6 +203,51 @@ def _configure_test_command(args, template_raw: str, project_dir: Path) -> str:
     return template_raw
 
 
+def _is_existing_codebase(project_dir: Path) -> bool:
+    """Whether the checkout already contains project files beyond git/snodo state."""
+    return any(
+        child.name not in {".git", ".snodo"} and child.name != "__pycache__"
+        for child in project_dir.iterdir()
+    )
+
+
+def _run_interactive_onboarding(project_dir: Path) -> None:
+    """Compose the existing survey, intake, and readiness command paths."""
+    from snodo.cli.commands.survey_cmd import survey_command
+    from snodo.cli.commands.intake_cmd import intake_command
+    from snodo.cli.commands.ready_cmd import ready_command
+
+    detected = _detect_test_command(project_dir)
+    if detected is None:
+        # There is no stack or command to confirm; preserve init's existing
+        # prompts for repositories whose test setup is not recognized.
+        return
+    stack = {
+        "pytest": "Python", "npm test": "Node/TypeScript", "pnpm test": "Node/TypeScript",
+        "yarn test": "Node/TypeScript", "bun test": "Node/TypeScript",
+        "go test ./...": "Go", "cargo test": "Rust",
+    }.get(detected, "an unrecognized stack")
+    print(f"Detected stack: {stack}; test command: {detected or 'not detected'}.")
+    if typer.confirm("Continue with this detected stack?", default=True):
+        print("\nRepository survey")
+        if typer.confirm("Run snodo survey now?", default=True):
+            survey_command(SimpleNamespace(json=False, agent="auto"))
+
+        print("\nDecision-record intake")
+        if typer.confirm("Ingest existing decision records into validator criteria?", default=False):
+            intake_command(SimpleNamespace(
+                validator=None, json=False, accept_all=False, reject_all=False, no_input=False,
+            ))
+
+        print("\nReadiness check")
+        if typer.confirm("Run snodo ready now?", default=True):
+            ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=False))
+
+    print("\nNext steps:")
+    print('  1. Try a mock run: snodo run --mock "describe a small task"')
+    print('  2. Start your first real run: snodo run "describe your task"')
+
+
 def _pick_mode(args, modes: list, default_mode: str) -> str:
     """Interactive mode picker. Returns selected mode_id.
 
@@ -622,5 +667,13 @@ def init_command(args) -> int:
     print("  1. Configure provider credentials (e.g. set OPENAI_API_KEY or run 'snodo config add <provider> <key>')")
     print("  2. Edit .snodo/protocol.yml to customize your protocol")
     print("  3. Run: snodo run \"your task description\"")
+
+    if (
+        _is_existing_codebase(Path.cwd())
+        and sys.stdin.isatty()
+        and not getattr(args, "yes", False)
+        and not getattr(args, "no_input", False)
+    ):
+        _run_interactive_onboarding(Path.cwd())
 
     return 0
