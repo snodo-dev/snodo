@@ -38,6 +38,7 @@ nav:
       - Protocol reference: protocol.md
       - Cloud sync contract: specs/cloud-sync.md
       - Running unattended: running-unattended.md
+      - Running Snodo in CI: running-in-ci.md
       - Runbooks and guides:
           - Choosing models: choosing-models.md
           - Discovery and recon: decompose-and-recon.md

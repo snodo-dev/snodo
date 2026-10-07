@@ -103,6 +103,14 @@ class GitHubProvider(CodeHostProvider):
         except Exception as exc:
             raise ProviderError(f"Failed to read PR diff: {exc}") from exc
 
+    def resolve_change_request_refs(self, change_request_id: str) -> tuple[str, str]:
+        """Return GitHub PR base and head commit SHAs for local git validation."""
+        try:
+            pr = self._repo.get_pull(int(change_request_id))
+            return pr.base.sha, pr.head.sha
+        except Exception as exc:
+            raise ProviderError(f"Failed to resolve PR refs: {exc}") from exc
+
     def post_change_request_comment(self, change_request_id: str, comment: str) -> str:
         try:
             return self._repo.get_pull(int(change_request_id)).create_issue_comment(comment).html_url

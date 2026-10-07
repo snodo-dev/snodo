@@ -90,6 +90,15 @@ Try the published package without installing it with `uvx snodo --version`, or
 install it for regular use with `uv tool install snodo`; `pip install snodo` is
 also available as a fallback. Python 3.12+ is required.
 
+### Container image
+
+Build the Snodo engine image from the repository root with
+`docker build -f docker/Dockerfile -t snodo .`. Run it against a mounted Git
+repository with `docker run --rm -v "$PWD:/workspace" -w /workspace snodo ready`;
+the image's entrypoint is `snodo`, so CLI arguments are passed directly. The
+image contains no code-host credentials; provide any required credentials through
+your runtime's normal environment or secret mechanism.
+
 Before spending anything on an existing repository, run `snodo ready`. Without
 an LLM, it checks whether the artefacts the protocol expects — decision records,
 a resolvable test command, coder configs — are **committed**, and scores what is

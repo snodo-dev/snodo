@@ -9,6 +9,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document GitHub Actions and GitLab CI workflows for validating pull-request
+  and merge-request changes with Snodo, including credentials and exit codes. (Fixes #764)
+- Add a reusable GitHub Action that runs readiness and pull-request protocol
+  validation, publishes verdicts to the job summary, and fails on blocking
+  outcomes. (Fixes #762)
+- Add `snodo validate --base <ref> --head <ref>` and provider-resolved `--pr <number>` to judge branch changes with project validators. (Fixes #750)
+- Add a Python 3.12 Snodo container image with a CI build and CLI smoke test, and
+  document how to build and run it. (Fixes #756)
 - Give every job notification event a distinct leading icon across delivery
   targets, including ⏳ for no log activity and ❌ for failures. (Fixes #759)
 - Enable `snodo config set/get` for typed provider, cloud, and notification

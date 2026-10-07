@@ -8,6 +8,9 @@ four suggested outcomes are **MERGED**, **MINOR REWORK**, **MAJOR REWORK**, and
 **REJECTED**; they are recommendations for human reviewers, not GitHub review
 decisions. The workflow updates its existing comment when rerun.
 
+For a pipeline gate that runs Snodo's protocol validators on a pull-request or
+merge-request diff, see [Running Snodo in CI](running-in-ci.md).
+
 Add these repository actions secrets under **Settings → Secrets and variables
 → Actions**: `OLLAMA_CLOUD_API_KEY`, `OCGO_API_KEY` (the first OpenCode Go account, provider `ocgo1`), and `OCGO2_API_KEY` (the second account, provider `ocgo2`). An
 optional fourth, `SNODO_CLOUD_API_KEY`, lets the run's recon audit events sync to
