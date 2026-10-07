@@ -900,6 +900,9 @@ class ReconManager:
             resolved_lanes.append((lane[0], resolved))
 
         results = []
+        # Persist each lane as it finishes. A recon interrupted while another
+        # provider is still running must not lose completed answers/traces.
+        self._save_results(recon_dir, results)
         with ThreadPoolExecutor(max_workers=min(len(resolved_lanes), 4)) as executor:
             futures = {}
             for agent_label, models in resolved_lanes:
@@ -920,10 +923,10 @@ class ReconManager:
                         model="",
                         result="",
                         error=str(e),
+                        trace={"ended": "error"},
                     )
                 results.append(result)
-
-        self._save_results(recon_dir, results)
+                self._save_results(recon_dir, results)
 
         state = self._load_state(recon_dir)
         succeeded = sum(1 for r in results if isinstance(r, ReconResult) and not r.error)

@@ -1262,6 +1262,75 @@ def test_two_agent_recon_persists_usage_and_unknowns_as_null(project_with_snodo,
 
 
 class TestReconManagerFailover:
+    def test_agent_failure_does_not_cancel_other_agents(
+        self, project_with_snodo, monkeypatch
+    ):
+        from snodo.recon import ReconResult
+
+        monkeypatch.setattr(recon_module, "_threads", [])
+        mgr = ReconManager(project_with_snodo)
+
+        def fake_chain(project_root, models, query, paths, agent_label, max_turns=6, max_tokens=1500):
+            if models[0] == "broken":
+                raise RuntimeError("provider failed")
+            return ReconResult(agent=agent_label, model=models[0], result="answer",
+                               trace={"ended": "submitted_answer"})
+
+        monkeypatch.setattr(recon_module, "call_agent_chain", fake_chain)
+        recon_id = mgr.submit("q", ["./"], agents=[["broken"], ["healthy"]])
+        mgr.shutdown()
+
+        results = mgr.get_results(recon_id)["results"]
+        assert {item["agent"]: item["error"] for item in results} == {
+            "broken": "provider failed", "healthy": None,
+        }
+        assert next(item for item in results if item["agent"] == "healthy")["result"] == "answer"
+
+    def test_completed_agent_trace_is_durable_while_another_agent_runs(
+        self, project_with_snodo, monkeypatch
+    ):
+        from threading import Event, Thread
+        from snodo.recon import ReconResult
+
+        monkeypatch.setattr(recon_module, "_threads", [])
+        mgr = ReconManager(project_with_snodo)
+        slow_started, release_slow, quick_saved = Event(), Event(), Event()
+
+        def fake_chain(project_root, models, query, paths, agent_label, max_turns=6, max_tokens=1500):
+            if models[0] == "slow":
+                slow_started.set()
+                release_slow.wait(timeout=5)
+            return ReconResult(agent=agent_label, model=models[0], result=models[0],
+                               trace={"ended": "completed", "turns_used": 2})
+
+        monkeypatch.setattr(recon_module, "call_agent_chain", fake_chain)
+        save_results = mgr._save_results
+
+        def track_saved(directory, results):
+            save_results(directory, results)
+            if results:
+                quick_saved.set()
+
+        monkeypatch.setattr(mgr, "_save_results", track_saved)
+        recon_id = mgr._generate_id()
+        directory = mgr.recons_dir / recon_id
+        directory.mkdir()
+        mgr._save_state(directory, {"recon_id": recon_id, "query": "q", "paths": ["./"],
+                                    "agents": [["quick"], ["slow"]], "status": "running",
+                                    "created_at": 0, "completed_at": None})
+        runner = Thread(target=mgr._run_recon_impl,
+                        args=(recon_id, "q", ["./"], [["quick"], ["slow"]]))
+        runner.start()
+        assert slow_started.wait(timeout=2)
+        try:
+            assert quick_saved.wait(timeout=2)
+            records = mgr._load_results(directory)
+            assert len(records) == 1
+            assert records[0]["trace"] == {"ended": "completed", "turns_used": 2}
+        finally:
+            release_slow.set()
+            runner.join(timeout=5)
+
     def test_lane_failover_is_called_and_first_answer_wins(
         self, project_with_snodo, monkeypatch
     ):
