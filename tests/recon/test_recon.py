@@ -1228,6 +1228,46 @@ class TestCallAgentChain:
         assert all(item["duration_ms"] is not None for item in result.usage)
         assert result.usage[0]["input_tokens"] is None
 
+    def test_transient_failure_retries_once_and_records_both_attempts(self, monkeypatch):
+        from snodo.recon import ReconResult, call_agent_chain
+
+        outcomes = [
+            ReconResult(agent="a", model="m1", result="", error='429 RESOURCE_EXHAUSTED {"retryDelay":"52s"}'),
+            ReconResult(agent="a", model="m1", result="answer"),
+        ]
+        sleeps = []
+        monkeypatch.setattr("snodo.recon.call_agent", lambda *args, **kwargs: outcomes.pop(0))
+        monkeypatch.setattr("snodo.recon.time.sleep", sleeps.append)
+        result = call_agent_chain("/tmp", ["m1"], "q", [], "a")
+        assert result.result == "answer"
+        assert sleeps == [30.0]
+        assert [(item.model, item.error) for item in result.attempts] == [
+            ("m1", '429 RESOURCE_EXHAUSTED {"retryDelay":"52s"}'), ("m1", None),
+        ]
+
+    def test_body_read_failure_retries_once(self, monkeypatch):
+        from snodo.recon import ReconResult, call_agent_chain
+
+        outcomes = [ReconResult(agent="a", model="m", result="", error="failed to read request body"),
+                    ReconResult(agent="a", model="m", result="ok")]
+        calls = []
+        monkeypatch.setattr("snodo.recon.call_agent", lambda *args, **kwargs: (calls.append(1), outcomes.pop(0))[1])
+        monkeypatch.setattr("snodo.recon.time.sleep", lambda _: None)
+        result = call_agent_chain("/tmp", ["m"], "q", [], "a")
+        assert len(calls) == 2
+        assert len(result.attempts) == 2
+
+    def test_authentication_failure_is_not_retried(self, monkeypatch):
+        from snodo.recon import ReconResult, call_agent_chain
+
+        calls = []
+        monkeypatch.setattr("snodo.recon.call_agent", lambda *args, **kwargs: (
+            calls.append(1), ReconResult(agent="a", model="m", result="", error="401 invalid API key")
+        )[1])
+        result = call_agent_chain("/tmp", ["m"], "q", [], "a")
+        assert len(calls) == 1
+        assert len(result.attempts) == 1
+
 
 def test_two_agent_recon_persists_usage_and_unknowns_as_null(project_with_snodo, monkeypatch):
     from types import SimpleNamespace

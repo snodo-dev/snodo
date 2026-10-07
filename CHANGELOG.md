@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Retry transient provider failures once in recon, honoring bounded provider
+  delays and recording each attempt without retrying permanent errors. (Fixes #768)
 - Isolate recon agent failures and persist each completed answer and trace as
   soon as its agent finishes, preserving partial results when a run stops early. (Fixes #767)
 - Document GitHub Actions and GitLab CI workflows for validating pull-request
