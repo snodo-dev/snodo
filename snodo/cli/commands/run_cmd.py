@@ -1496,13 +1496,7 @@ def _print_halt_followup(halt_payload: dict, session_id: Optional[str]) -> None:
     for cmd in commands:
         print(f"  {cmd}")
     if task_id and final_decision not in ("completed", None):
-        actions = followup.halt_next_actions(halt_payload)
-        if actions:
-            print("Recommended next actions:")
-            for action in actions:
-                print(f"  {action.instruction}")
-                if action.command:
-                    print(f"  {action.command}")
+        followup.print_halt_next_actions(halt_payload)
     print()
 
 

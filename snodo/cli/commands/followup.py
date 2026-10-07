@@ -126,6 +126,18 @@ def halt_next_actions(halt_payload: dict) -> tuple:
         return ()
 
 
+def print_halt_next_actions(halt_payload: dict) -> None:
+    """Print shared recommendations without changing structured halt output."""
+    actions = halt_next_actions(halt_payload)
+    if not actions:
+        return
+    print("Recommended next actions:")
+    for action in actions:
+        print(f"  {action.instruction}")
+        if action.command:
+            print(f"  {action.command}")
+
+
 def task_retry(task_id: str) -> str:
     """Command to retry a failed task with its spec unchanged.
 

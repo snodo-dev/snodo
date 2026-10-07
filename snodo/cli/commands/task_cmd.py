@@ -672,15 +672,9 @@ def task_show_command(args) -> int:
             guidance_halt = dict(halt_entry)
             guidance_halt.setdefault("task_id", task_id)
             from snodo.cli.commands import followup
-            actions = followup.halt_next_actions(guidance_halt)
-            if actions:
-                print("\nRecommended next actions:")
-                print("  Review the task changes and grouped validator verdicts with:")
-                print(f"  snodo task show {task_id} --diff")
-                for action in actions:
-                    print(f"  {action.instruction}")
-                    if action.command:
-                        print(f"  {action.command}")
+            print("\nReview the task changes and grouped validator verdicts with:")
+            print(f"  snodo task show {task_id} --diff")
+            followup.print_halt_next_actions(guidance_halt)
 
     if show_diff:
         print()
