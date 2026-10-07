@@ -113,6 +113,19 @@ def halt_followup(halt_payload: dict, task_id: str) -> list:
     return commands
 
 
+def halt_next_actions(halt_payload: dict) -> tuple:
+    """Resolve canonical shared recommendations, failing closed on old records."""
+    from snodo.infrastructure.next_actions import next_actions_for_halt
+
+    try:
+        return next_actions_for_halt(
+            halt_payload,
+            in_plan=bool(halt_payload.get("plan_name") or halt_payload.get("plan")),
+        )
+    except (ValueError, TypeError):
+        return ()
+
+
 def task_retry(task_id: str) -> str:
     """Command to retry a failed task with its spec unchanged.
 

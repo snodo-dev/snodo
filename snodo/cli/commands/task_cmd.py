@@ -669,17 +669,10 @@ def task_show_command(args) -> int:
                     print(f"  {line}")
 
         if halt_entry.get("final_decision") not in ("completed", None):
-            from snodo.infrastructure.next_actions import next_actions_for_halt
-
             guidance_halt = dict(halt_entry)
             guidance_halt.setdefault("task_id", task_id)
-            try:
-                actions = next_actions_for_halt(
-                    guidance_halt,
-                    in_plan=bool(guidance_halt.get("plan_name") or guidance_halt.get("plan")),
-                )
-            except (ValueError, TypeError):
-                actions = ()
+            from snodo.cli.commands import followup
+            actions = followup.halt_next_actions(guidance_halt)
             if actions:
                 print("\nRecommended next actions:")
                 print("  Review the task changes and grouped validator verdicts with:")
