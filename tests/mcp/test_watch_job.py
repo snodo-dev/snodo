@@ -74,6 +74,19 @@ def test_watch_job_text_snapshot_contains_clean_log_lines():
     assert mock_jm.get_logs.return_value == raw_log
 
 
+def test_watch_job_includes_shared_halt_action_for_failed_task():
+    handler = JobToolHandler("/project")
+    status = {"id": "j_abc", "status": "failed", "task_ref": "t1", "created_at": 100.0}
+    full = {"halt": {"final_decision": "blocker", "halt_type": "blocker", "task_id": "t1"}}
+    with patch.object(handler, "handle_get_job_status", return_value=status), patch.object(
+        handler, "handle_get_job_logs", return_value={"log": "blocked"}
+    ), patch("snodo.jobs.JobManager") as manager:
+        manager.return_value.get_status.return_value = full
+        result = handler.handle_watch_job({"job_id": "j_abc"})
+
+    assert "Fix the specification or code, then retry the task." in result
+
+
 def test_watch_job_is_a_dispatch_observer_and_uses_only_job_tools():
     assert "watch_job" in MODE_TOOL_MAP["dispatch"]
     assert "watch_job" in JOB_OBSERVATION_TOOLS

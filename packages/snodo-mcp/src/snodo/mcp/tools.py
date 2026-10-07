@@ -476,7 +476,9 @@ TOOL_REGISTRY = {
             "Poll execution status of one dispatched job and its full task "
             "spec. Call after dispatch_task, run_plan, or queue_run returns a job id. "
             "Status progresses: queued → running → completed | failed. Check "
-            "for completed + exit_code=0 to confirm success."
+            "for completed + exit_code=0 to confirm success. For a halted task, "
+            "review its diff and validator verdicts, then follow the recommended "
+            "next action in the job/task status text."
         ),
         "inputSchema": {
             "type": "object",

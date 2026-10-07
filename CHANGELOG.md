@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Surface the shared halt next actions in CLI halt and task inspection output and
+  MCP status guidance; document the blocked-task diff/verdict review loop.
+  (Fixes #766)
 - Add a shared pure mapping from each canonical halt outcome to ordered operator
   next actions, including task-specific commands and plan fix-forward guidance.
   (Fixes #749)

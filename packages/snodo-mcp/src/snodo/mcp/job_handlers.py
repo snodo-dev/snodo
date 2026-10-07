@@ -119,9 +119,32 @@ class JobToolHandler:
         status = self.handle_get_job_status({"job_id": job_id})
         logs = self.handle_get_job_logs({"job_id": job_id, "tail": 10})
         output = logs.get("log", "") or "(no stdout output)"
+        next_action = ""
+        if status.get("status") == "failed" and status.get("task_ref"):
+            try:
+                from snodo.jobs import JobManager
+                full = JobManager(self.project_root).get_status(job_id)
+                halt = full.get("halt") or {}
+                if halt and (halt.get("final_decision") or halt.get("halt_type")):
+                    from snodo.infrastructure.next_actions import next_actions_for_halt
+
+                    halt = dict(halt)
+                    halt.setdefault("task_id", status["task_ref"])
+                    actions = next_actions_for_halt(
+                        halt, in_plan=bool(status.get("plan"))
+                    )
+                    if actions:
+                        lines = ["\nRecommended next actions:"]
+                        for action in actions:
+                            lines.append(action.instruction)
+                            if action.command:
+                                lines.append(action.command)
+                        next_action = "\n" + "\n".join(lines)
+            except (ValueError, TypeError, KeyError):
+                pass
         return (
             f"Job {job_id} — {status['status']} ({_job_elapsed(status)})\n"
-            f"\nLast output lines:\n{output.rstrip()}"
+            f"\nLast output lines:\n{output.rstrip()}{next_action}"
         )
 
     def tool_handlers(self) -> dict:

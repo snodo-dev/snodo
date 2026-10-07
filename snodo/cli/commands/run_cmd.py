@@ -1495,6 +1495,21 @@ def _print_halt_followup(halt_payload: dict, session_id: Optional[str]) -> None:
     print("Follow-up:")
     for cmd in commands:
         print(f"  {cmd}")
+    if task_id and final_decision not in ("completed", None):
+        from snodo.infrastructure.next_actions import next_actions_for_halt
+
+        try:
+            actions = next_actions_for_halt(
+                halt_payload, in_plan=bool(halt_payload.get("plan_name") or halt_payload.get("plan"))
+            )
+        except (ValueError, TypeError):
+            actions = ()
+        if actions:
+            print("Recommended next actions:")
+            for action in actions:
+                print(f"  {action.instruction}")
+                if action.command:
+                    print(f"  {action.command}")
     print()
 
 

@@ -38,6 +38,15 @@ uv sync --all-extras
 
 ## Configure
 
+## Task blocked
+
+When a task blocks, inspect its preserved changes and grouped validator verdicts
+with `snodo task show <task_id> --diff`. Use the recommended next action printed
+with the halt and in task/job status: review and authorize an `escalate`, repair
+the cause of an operational failure before retrying, or fix a `blocker` forward.
+For a blocked plan, keep the work in that plan, replace the task spec only when
+the spec is wrong, and rerun the affected wave until all waves are delivered.
+
 ### API keys
 
 Store keys in `~/.snodo/config.yml` (permissions 0600, file created on first `snodo config add`):

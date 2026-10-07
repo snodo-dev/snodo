@@ -512,7 +512,8 @@ class TestHaltFooterSuggestions:
         assert 'snodo run --retry task_abc' in out
         # The printed retry must be the bare one: a suggestion carrying a spec
         # argument is a suggestion to rewrite the task when pasted.
-        assert out.strip().endswith("snodo run --retry task_abc")
+        assert "Have a human review and authorize the task." in out
+        assert "snodo authorize task_abc" in out
 
     def test_halt_without_a_decision_does_not_offer_authorize(self, capsys):
         """A halt with no pending decision must not name `snodo authorize`.
@@ -541,7 +542,7 @@ class TestHaltFooterSuggestions:
         _report_closure(tree, {}, session_id="sess_xyz")
 
         out = capsys.readouterr().out
-        assert "snodo authorize" not in out
+        assert "snodo authorize task_no_decision" in out
         assert "snodo run --retry task_no_decision" in out
 
     def test_halt_with_a_decision_names_authorize(self, capsys):
@@ -601,6 +602,7 @@ class TestHaltFooterSuggestions:
 
         out = capsys.readouterr().out
         assert "snodo run --retry task_blocked" in out
+        assert "Fix the specification or code, then retry the task." in out
 
     def test_halt_without_retryable_does_not_offer_retry(self, capsys):
         """A halt whose retry would be refused (e.g. operational halt or exhausted
