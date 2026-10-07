@@ -7,11 +7,11 @@ three-dot diff. The result is a validation outcome suitable for a pipeline gate.
 
 ## GitHub Actions
 
-The repository provides the composite action in [`action.yml`](../action.yml),
-with its inputs documented in [`action/README.md`](../action/README.md). It
-checks readiness, runs `snodo validate --pr`, and writes the verdict to the job
-summary. The repository's [example workflow](../action/README.md#copyable-workflow)
-shows the supported invocation; the action takes the PR number from the
+The repository provides the composite action in
+[`action.yml`](https://github.com/snodo-dev/snodo/blob/main/action.yml), with
+its inputs and [example workflow](https://github.com/snodo-dev/snodo/blob/main/action/README.md#copyable-workflow)
+documented in the action README. It checks readiness, runs
+`snodo validate --pr`, and writes the verdict to the job summary. The action takes the PR number from the
 `pull_request` event unless `pr-number` is supplied explicitly.
 
 Pass provider credentials through Actions secrets, never as committed workflow
@@ -59,7 +59,7 @@ merge-request data. Keep model-provider keys in masked CI/CD variables too, and
 expose them only to the validation job; the protocol's configured provider
 environment variable is what the validator uses. For self-hosted GitLab, set
 the provider's host configuration as described in the
-[GitLab provider package](../packages/snodo-provider-gitlab/pyproject.toml).
+  [GitLab provider package](https://github.com/snodo-dev/snodo/tree/main/packages/snodo-provider-gitlab).
 
 The example uses `entrypoint: [""]` so GitLab Runner can execute its script
 instead of passing it to the image's `snodo` entrypoint. Full-depth checkout
