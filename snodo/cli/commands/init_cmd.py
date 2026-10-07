@@ -218,6 +218,10 @@ def _run_interactive_onboarding(project_dir: Path) -> None:
     from snodo.cli.commands.ready_cmd import ready_command
 
     detected = _detect_test_command(project_dir)
+    if detected is None:
+        # There is no stack or command to confirm; preserve init's existing
+        # prompts for repositories whose test setup is not recognized.
+        return
     stack = {
         "pytest": "Python", "npm test": "Node/TypeScript", "pnpm test": "Node/TypeScript",
         "yarn test": "Node/TypeScript", "bun test": "Node/TypeScript",
