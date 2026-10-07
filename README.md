@@ -83,9 +83,10 @@ or a containerised server all converge on the same gate and the same merge path.
 
 ## Install and first run
 
-Follow the canonical [first-run quickstart](docs/runbook.md#quickstart). It
-includes the starter file needed for the initial commit, the Git identity
-prerequisite, and the same governed hello-world mock task shown in the docs.
+Follow the canonical [per-language first-run quickstart](docs/runbook.md#quickstart)
+for Python, Node/TypeScript, Go, or Rust. It includes the starter files needed
+for the initial commit, the Git identity prerequisite, and each stack's
+detected test command and governed hello-world mock task.
 Try the published package without installing it with `uvx snodo --version`, or
 install it for regular use with `uv tool install snodo`; `pip install snodo` is
 also available as a fallback. Python 3.12+ is required.
@@ -100,11 +101,11 @@ full configuration surface, and the command reference.
 ## What a mock run does
 
 The canonical quickstart's `--mock` run uses a deterministic stub coder that
-writes `src/hello.py` and `tests/test_hello.py`; it implements the hello-world
-task. The task still passes through the configured governance and verification
-flow; with pytest installed and configured, the generated test passes. The
-mock makes no provider API call and does not prove that a real coder can
-implement your project's requirements. For provider-backed coding, configure
+writes a stack-specific hello-world fixture and test; it implements the
+hello-world task. The task still passes through the configured governance and
+verification flow, and the generated test passes with that stack's test runner
+available. The mock makes no provider API call and does not prove that a real
+coder can implement your project's requirements. For provider-backed coding, configure
 credentials (for example, `snodo config add anthropic <key>` or
 `ANTHROPIC_API_KEY`) and run without `--mock`.
 

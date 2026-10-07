@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Expand the canonical first-run quickstart with detected test-command and
+  mock-run examples for Python, Node/TypeScript, Go, and Rust; link the README
+  directly to the per-language guide. (Fixes #765)
 - Guide interactive `snodo init` in existing repositories through stack/test-command
   confirmation, template selection, optional decision-record intake, readiness,
   and first-run next steps; non-interactive and `--yes` behavior is unchanged.
