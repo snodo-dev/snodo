@@ -263,6 +263,8 @@ git commit -m "Initial project commit"
 
 # uvx runs the published package in a temporary environment. For the pip
 # fallback instead, install Snodo and the selected stack's test runner first.
+# pip install snodo
+# pip install pytest
 uvx --with pytest snodo init --template team --test-command "PYTHONPATH=. pytest" --yes
 uvx --with pytest snodo run "add a hello() function that returns the string 'world', with a test" --mock
 ```
