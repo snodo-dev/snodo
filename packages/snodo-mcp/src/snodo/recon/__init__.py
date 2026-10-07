@@ -11,7 +11,6 @@ using litellm.completion with a read-only tool surface.
 import json
 import logging
 import os
-import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -413,7 +412,7 @@ def call_agent_chain(
             attempts.append(ReconAttempt(model=model, error=result.error))
             usage.extend(result.usage)
             delay = provider_retry_delay(result.error)
-            time.sleep(delay if delay is not None else 1.0 + random.random() * 0.25)
+            time.sleep(delay if delay is not None else 1.0)
             result = call_agent(project_root, model, query, paths, agent_label, max_turns, max_tokens)
         if not result.error and result.result.strip():
             result.attempts = attempts + [ReconAttempt(model=model)]
