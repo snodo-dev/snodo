@@ -31,7 +31,11 @@ class TestReconSchema:
 
 class TestHandleRecon:
     def test_unconfigured_budgets_use_shared_recon_defaults(self):
-        from snodo.recon import RECON_DEFAULT_MAX_TOKENS, RECON_DEFAULT_MAX_TOOL_TURNS
+        from snodo.recon import (
+            RECON_DEFAULT_DEADLINE_SECONDS,
+            RECON_DEFAULT_MAX_TOKENS,
+            RECON_DEFAULT_MAX_TOOL_TURNS,
+        )
 
         with patch("snodo.config.ConfigManager") as MockCM, \
              patch("snodo.recon.ReconManager") as MockRM:
@@ -41,6 +45,7 @@ class TestHandleRecon:
         assert MockRM.return_value.submit.call_args.kwargs == {
             "max_tool_turns": RECON_DEFAULT_MAX_TOOL_TURNS,
             "max_tokens": RECON_DEFAULT_MAX_TOKENS,
+            "deadline_seconds": RECON_DEFAULT_DEADLINE_SECONDS,
         }
 
     def test_missing_query_raises(self):
@@ -133,7 +138,7 @@ class TestHandleRecon:
         submitted = MockRM.return_value.submit.call_args[0]
         assert submitted[2] == [["m1", "m2"]]
         assert MockRM.return_value.submit.call_args.kwargs == {
-            "max_tool_turns": 31, "max_tokens": 3600,
+            "max_tool_turns": 31, "max_tokens": 3600, "deadline_seconds": 300,
         }
         assert result["agents"] == ["m1"]
 
