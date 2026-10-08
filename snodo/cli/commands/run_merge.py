@@ -35,13 +35,13 @@ def _change_request_content(repo: Any, branch: str, task: Any) -> tuple[str, str
     return title, body
 
 
-def _merge_base_sha(project_root: str) -> str:
-    """Return the current base HEAD before a task branch is merged."""
+def _merge_target_sha(project_root: str, target_ref: Optional[str]) -> str:
+    """Return the current tip of the ref that this merge will update."""
     try:
         with open_repo(str(Path(project_root))) as repo:
-            return repo.head.commit.hexsha
+            return repo.commit(target_ref).hexsha if target_ref else repo.head.commit.hexsha
     except Exception as e:
-        _logger.debug("Could not resolve base HEAD before merge: %s", e)
+        _logger.debug("Could not resolve merge target %s before merge: %s", target_ref or "HEAD", e)
         return ""
 
 
@@ -187,7 +187,6 @@ def _merge_on_success(
     """
     from snodo.infrastructure.worktree import (
         merge_task_branch,
-        merge_head_sha,
         merge_lock,
         stale_index_lock,
     )
@@ -306,10 +305,10 @@ def _merge_on_success(
             return 1, True, None
 
     with merge_lock(project_root):
-        base_sha = _merge_base_sha(project_root)
+        target_ref = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if plan_name else None
+        base_sha = _merge_target_sha(project_root, target_ref)
 
         try:
-            target_ref = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if plan_name else None
             from git import Repo
             with Repo(project_root) as repo:
                 current_commit = repo.commit(branch).hexsha
@@ -338,7 +337,7 @@ def _merge_on_success(
                 })
             return 1, True, None
         if outcome == "merged":
-            merge_sha = merge_head_sha(project_root)
+            merge_sha = _merge_target_sha(project_root, target_ref)
             if base_sha and merge_sha == base_sha:
                 # Git reports an already-contained branch as a successful
                 # merge. It did not create a delivery, so don't report it as

@@ -12,6 +12,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Force a tool-disabled final-answer call when recon exhausts its reading budget
   mid-tool loop, preserving gathered findings as a truncated answer if the model
   continues returning tool calls. (Fixes #771)
+- Compare merge no-op state against the actual target ref, so task merges into
+  plan integration branches are reported and audited while already-delivered
+  plans still suppress duplicate success lines. (Fixes #772)
 - Preserve failed recon agents' execution traces and any partial answers through
   provider failures and exhausted model failover chains. (Fixes #770)
 - Report plan integration delivery only when a merge advances the base branch,

@@ -151,6 +151,89 @@ def test_replaced_plan_spec_merges_recorded_worktree_branch_with_its_verificatio
         assert "task.txt" in repo.git.ls_tree("-r", integration_branch)
 
 
+def test_plan_task_merge_reports_and_audits_integration_target(tmp_path, monkeypatch, capsys):
+    from git import Repo
+    from snodo.cli.commands.run_merge import _merge_on_success
+    from snodo.core.interfaces import Task
+    from snodo.infrastructure.audit import AuditLog
+    from snodo.infrastructure.worktree import task_branch_name
+
+    project, base = _repository(tmp_path)
+    plan_name = "merge-target-check"
+    integration_branch = f"plan/{plan_name}/integration"
+    _branch(project, base, integration_branch, "integration.txt")
+    task = Task(id="1.1_task_merge", spec="add task content")
+    branch = task_branch_name(task.id, task.spec, plan_name)
+    _path, commit = _branch(project, base, branch, "task.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    _verification(audit, task.id, commit)
+    monkeypatch.setenv("SNODO_PLAN_INTEGRATION_BRANCH", integration_branch)
+
+    result = _merge_on_success(str(project), task, 0, None, audit, plan_name=plan_name)
+
+    assert result[0] == 0
+    assert f"✓ Merged {branch} into {integration_branch}" in capsys.readouterr().out
+    events = audit.get_history("task_merged")
+    assert len(events) == 1
+    assert events[0].data["task_ref"] == task.id
+    with Repo(str(project)) as repo:
+        assert repo.commit("main").hexsha == base
+        assert "task.txt" in repo.git.ls_tree("-r", integration_branch)
+
+
+def test_already_delivered_plan_integration_is_silent_and_unrecorded(tmp_path, capsys):
+    from git import Repo
+    from snodo.cli.commands.run_merge import _merge_on_success
+    from snodo.core.interfaces import Task
+    from snodo.infrastructure.audit import AuditLog
+
+    project, base = _repository(tmp_path)
+    branch = "plan/already-delivered/integration"
+    _path, commit = _branch(project, base, branch, "plan.txt")
+    with Repo(str(project)) as repo:
+        repo.git.merge(branch, "--no-edit")
+        repo.git.checkout("main")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    _verification(audit, "already-delivered", commit)
+
+    result = _merge_on_success(
+        str(project), Task(id="already-delivered", spec="deliver plan"), 0,
+        None, audit, branch_override=branch,
+    )
+
+    assert result[0] == 0
+    assert "✓ Merged" not in capsys.readouterr().out
+    assert not audit.get_history("task_merged")
+
+
+def test_real_plan_delivery_to_main_reports_once(tmp_path, monkeypatch, capsys):
+    from git import Repo
+    from snodo.cli.commands.run_merge import _deliver_plan_integration
+    from snodo.infrastructure.audit import AuditLog
+
+    project, base = _repository(tmp_path)
+    plan_name = "real-delivery"
+    branch = f"plan/{plan_name}/integration"
+    _path, _commit = _branch(project, base, branch, "plan.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = SimpleNamespace(
+        delivery_for=lambda _mode: "local_merge",
+        execution=SimpleNamespace(delivery_remote="origin"), metadata={},
+        validators=[],
+    )
+
+    result = _deliver_plan_integration(
+        str(project), branch, plan_name, "deliver content", protocol,
+        "producer", audit, integration_path=project,
+    )
+
+    assert result == 0
+    assert capsys.readouterr().out.count(f"✓ Merged {branch} into the base branch") == 1
+    assert len(audit.get_history("task_merged")) == 1
+    with Repo(str(project)) as repo:
+        assert "plan.txt" in repo.git.ls_tree("-r", "main")
+
+
 def test_custom_quality_validator_id_is_accepted_without_loosening_evidence(tmp_path):
     from snodo.cli.commands.run_merge import _merge_on_success
     from snodo.compiler.models import Validator
