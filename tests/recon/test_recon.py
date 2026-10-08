@@ -929,10 +929,11 @@ class TestTerminalAnswer:
         tc = SimpleNamespace(id="read", function=SimpleNamespace(
             name="read_file", arguments=json.dumps({"path": "module.py"}),
         ))
-        call = lambda content: SimpleNamespace(choices=[SimpleNamespace(
-            message=SimpleNamespace(content=content, tool_calls=[tc]),
-            finish_reason="tool_calls",
-        )])
+        def call(content):
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content=content, tool_calls=[tc]),
+                finish_reason="tool_calls",
+            )])
         responses = [
             _reading_response("", "listing.txt"),
             _reading_response("", "module.py"),
