@@ -207,3 +207,27 @@ def test_rich_output_preserves_stdout_bytes(monkeypatch) -> None:
         time.sleep(0.35)
         Console(file=sys.stdout, force_terminal=False, color_system=None).print(table)
     assert stdout.getvalue().encode() == expected.getvalue().encode()
+
+
+def test_wave_while_silent_restores_global_output_state_on_exception(monkeypatch) -> None:
+    import sys
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    original_stdout = sys.__stdout__
+    original_stderr = sys.__stderr__
+    original_print = Console.print
+
+    with pytest.raises(RuntimeError, match="failed"):
+        with wave_while_silent("loading tasks"):
+            assert sys.stdout is not stdout
+            assert sys.stderr is not stderr
+            assert Console.print is not original_print
+            raise RuntimeError("failed")
+
+    assert sys.stdout is stdout
+    assert sys.stderr is stderr
+    assert sys.__stdout__ is original_stdout
+    assert sys.__stderr__ is original_stderr
+    assert Console.print is original_print
