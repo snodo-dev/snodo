@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Exclude assistant fallback text that mostly echoes this recon agent's own
+  tool results, while retaining genuine prose alongside retrieved content.
+  (Fixes #776)
 - Never expose gathered tool output as a recon answer when forced final-answer
   retries return tool calls; return only earlier model prose or an empty result
   with a clear error, preserving the execution trace. (Fixes #775)

@@ -891,6 +891,61 @@ def _prose_response(text):
 
 
 class TestTerminalAnswer:
+    def test_fallback_drops_echo_but_keeps_genuine_prose(self, project_with_snodo):
+        from types import SimpleNamespace
+        from snodo.recon import call_agent
+
+        output = "\n".join(f"{i}: source line {i}" for i in range(30))
+        echo = SimpleNamespace(id="echo", function=SimpleNamespace(
+            name="read_file", arguments=json.dumps({"path": "again.py"}),
+        ))
+        responses = [
+            _reading_response("", "source.py"),
+            SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(
+                    content=f"{output}\n\nThis module handles recon dispatch.",
+                    tool_calls=[echo],
+                ), finish_reason="tool_calls",
+            )]),
+            SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content="", tool_calls=[echo]),
+                finish_reason="tool_calls",
+            )]),
+        ]
+        with patch("snodo.recon._execute_recon_read", return_value=output), \
+             patch("litellm.completion", side_effect=responses):
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+
+        assert result.result == "This module handles recon dispatch."
+        assert output not in result.result
+
+    def test_fallback_is_empty_when_agent_echoes_listing_and_file_output(self, project_with_snodo):
+        from types import SimpleNamespace
+        from snodo.recon import call_agent
+
+        listing = "\n".join(f"snodo/cli/commands/item_{i}.py" for i in range(30))
+        source = "\n".join(f"{i}: def function_{i}(): return {i}" for i in range(40))
+        combined = f"{listing}\n{source}"
+        tc = SimpleNamespace(id="read", function=SimpleNamespace(
+            name="read_file", arguments=json.dumps({"path": "module.py"}),
+        ))
+        call = lambda content: SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content=content, tool_calls=[tc]),
+            finish_reason="tool_calls",
+        )])
+        responses = [
+            _reading_response("", "listing.txt"),
+            _reading_response("", "module.py"),
+            call(combined),
+            call(""),
+        ]
+        with patch("snodo.recon._execute_recon_read", side_effect=[listing, source]), \
+             patch("litellm.completion", side_effect=responses):
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=2)
+
+        assert result.result == ""
+        assert "Model returned tool calls instead of an answer after" in result.error
+
     def test_tool_calling_budget_never_returns_raw_tool_output(self, project_with_snodo):
         from types import SimpleNamespace
         from snodo.recon import call_agent

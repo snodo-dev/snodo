@@ -8,6 +8,7 @@ results.json.  The background process fans out N agents in parallel
 using litellm.completion with a read-only tool surface.
 """
 
+from difflib import SequenceMatcher
 import json
 import logging
 import os
@@ -580,8 +581,12 @@ def call_agent(
                 if answer:
                     trace["ended"] = "submitted_answer"
                     break
-        if not str(answer or "").strip() and (msg.content or "").strip():
-            answer = msg.content
+        if (
+            not str(answer or "").strip()
+            and (msg.content or "").strip()
+            and _without_tool_output_echo(msg.content).strip()
+        ):
+            answer = _without_tool_output_echo(msg.content).strip()
         if finish in {"length", "max_tokens", "content_filter"}:
             nonlocal truncated
             truncated = True
@@ -603,7 +608,10 @@ def call_agent(
             nonlocal truncated
             truncated = True
             trace["ended"] = "truncated:tool_calls"
-            retry_answer = "\n\n".join(earlier_prose)
+            retry_answer = "\n\n".join(
+                prose for item in earlier_prose
+                if (prose := _without_tool_output_echo(item))
+            )
         return retry_answer, retry_finish
 
     turns_used = 0
@@ -611,8 +619,30 @@ def call_agent(
     raw_turn = 0
     trace = {"turns_used": 0, "tools_called": [], "ended": "unknown"}
     earlier_prose: list[str] = []
+    tool_outputs: list[str] = []
     gathered_findings: list[str] = []
     truncated = False
+
+    def _without_tool_output_echo(text: str) -> str:
+        # Providers can copy retrieved content into assistant messages; compare
+        # against this agent's own tool results before treating it as prose.
+        normalized = " ".join(text.split())
+        remaining = text
+        for output in tool_outputs:
+            if output:
+                remaining = remaining.replace(output, "")
+        normalized_remaining = " ".join(remaining.split())
+        if normalized_remaining != " ".join(text.split()):
+            return normalized_remaining
+        if len(normalized) < 80:
+            return normalized_remaining
+        source = " ".join(" ".join(output.split()) for output in tool_outputs)
+        if source and SequenceMatcher(
+            None, normalized, source, autojunk=False,
+        ).find_longest_match().size >= len(normalized) * 0.6:
+            return ""
+        return normalized_remaining
+
     max_raw_turns = max_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 2
     while raw_turn < max_raw_turns:
         is_final_turn = turns_used >= max_turns or stall_streak >= _MAX_STALL_TURNS
@@ -702,6 +732,8 @@ def call_agent(
                 "tool_call_id": tc.id,
                 "content": result,
             })
+            if result.strip():
+                tool_outputs.append(result.strip())
         if turn_progressed:
             turns_used += 1
             stall_streak = 0
