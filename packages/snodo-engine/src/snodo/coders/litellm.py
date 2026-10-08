@@ -971,9 +971,18 @@ Return ONLY the JSON array, no other text.
                             allowed_content_bytes = max_bytes - current_bytes - len(header.encode("utf-8")) - 100
                             if allowed_content_bytes > 0:
                                 truncated_content = content.encode("utf-8")[:allowed_content_bytes].decode("utf-8", errors="ignore")
-                                results.append(f"{header}{truncated_content}\n[TRUNCATED: Content cut off at 32KB batch limit]")
+                                next_line = len(truncated_content.splitlines()) + 1
+                                line_count = len(content.splitlines())
+                                results.append(
+                                    f"{header}{truncated_content}\n[TRUNCATED: Content cut off at 32KB batch limit; "
+                                    f"{p} continues at line {next_line} of {line_count}]"
+                                )
                             else:
-                                results.append(f"{header}[OMITTED: Exceeded 32KB batch limit]")
+                                line_count = len(content.splitlines())
+                                results.append(
+                                    f"{header}[OMITTED: Exceeded 32KB batch limit; "
+                                    f"read {p} with read_file_lines(path, 1, {min(line_count, 200)}) "
+                                    f"and continue through line {line_count}]")
                             truncated = True
                             omitted_paths.extend(processed_paths[idx + 1:])
                             break
@@ -989,8 +998,8 @@ Return ONLY the JSON array, no other text.
                     if omitted_paths:
                         notice_parts.append(f"{len(omitted_paths)} path(s) omitted ({', '.join(omitted_paths)})")
                     if truncated:
-                        notice_parts.append("content truncated at 32KB batch limit")
-                    output += f"\n\n[TRUNCATED BATCH: {'; '.join(notice_parts)}. Use read_file_lines(path, start, end) for targeted line ranges.]"
+                        notice_parts.append("content truncated at 32KB batch limit; use read_file_lines(path, start, end) from the next line range shown above")
+                    output += f"\n\n[TRUNCATED BATCH: {'; '.join(notice_parts)}. Read each named file with read_file_lines and continue from its stated next line.]"
                 return output
             elif name == "read_file":
                 return workspace.read_file(args["path"])

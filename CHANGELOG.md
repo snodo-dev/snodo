@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Name files truncated by recon batch reads and provide a `read_file_lines`
+  continuation range; preserve the stall-limit reason in traces so agents can
+  continue productive exploration up to budget. (Fixes #777)
 - Exclude assistant fallback text that mostly echoes this recon agent's own
   tool results, while retaining genuine prose alongside retrieved content.
   (Fixes #776)

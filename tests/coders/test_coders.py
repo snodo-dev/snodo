@@ -924,13 +924,16 @@ class TestCoderToolLoop:
 
         workspace = Mock()
         # Each file is ~10KB
-        workspace.read_file.side_effect = lambda p: "x" * 10240
+        workspace.read_file.side_effect = lambda p: "line\n" * 2560
 
         paths = ["src/a.py", "src/b.py", "src/c.py", "src/d.py"]
         output = LiteLLMAdapter._execute_tool("read_files", {"paths": paths}, workspace)
 
         assert "[TRUNCATED BATCH:" in output
         assert "content truncated at 32KB batch limit" in output
+        assert "src/c.py" in output
+        assert "read_file_lines" in output
+        assert "continues at line" in output
 
     def test_read_files_duplicate_paths_truncation(self):
         """read_files handles duplicate paths during byte-cap truncation without index corruption."""

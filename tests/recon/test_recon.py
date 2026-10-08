@@ -102,6 +102,53 @@ def test_recon_uses_shared_read_tools_lines_and_free_repeat(tmp_path, monkeypatc
     assert result.result == "answer"
 
 
+def test_recon_keeps_read_tools_available_while_reads_make_progress(tmp_path):
+    from types import SimpleNamespace
+    from snodo.recon import call_agent
+
+    def response(name=None, path=None, text=""):
+        calls = [] if name is None else [SimpleNamespace(
+            id=path, function=SimpleNamespace(name=name, arguments=json.dumps({"path": path})),
+        )]
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content=text, tool_calls=calls), finish_reason="tool_calls",
+        )])
+
+    responses = [response("read_file", f"file{i}.py") for i in range(4)]
+    responses.append(response(text="finished"))
+    with patch("snodo.recon._execute_recon_read", return_value="new content"), \
+         patch("litellm.completion", side_effect=responses) as completion:
+        result = call_agent(str(tmp_path), "test/model", "query", ["./"], "agent", max_turns=5)
+
+    assert result.result == "finished"
+    assert completion.call_count == 5
+    assert all("read_file" in {t["function"]["name"] for t in call.kwargs["tools"]}
+               for call in completion.call_args_list[:4])
+    assert result.trace["ended"] == "prose"
+
+
+def test_recon_forces_answer_after_repeated_read_stall(tmp_path):
+    from types import SimpleNamespace
+    from snodo.recon import call_agent
+
+    repeat = SimpleNamespace(id="same", function=SimpleNamespace(
+        name="read_file", arguments=json.dumps({"path": "same.py"}),
+    ))
+    tool_response = SimpleNamespace(choices=[SimpleNamespace(
+        message=SimpleNamespace(content="", tool_calls=[repeat]), finish_reason="tool_calls",
+    )])
+    answer = SimpleNamespace(choices=[SimpleNamespace(
+        message=SimpleNamespace(content="partial answer", tool_calls=[]), finish_reason="stop",
+    )])
+    with patch("snodo.recon._execute_recon_read", return_value="content"), \
+         patch("litellm.completion", side_effect=[tool_response, tool_response, tool_response, tool_response, answer]) as completion:
+        result = call_agent(str(tmp_path), "test/model", "query", ["./"], "agent", max_turns=10)
+
+    assert result.result == "partial answer"
+    assert completion.call_count == 5
+    assert result.trace["ended"] == "stalled"
+
+
 def test_recon_read_tools_reject_path_traversal(tmp_path):
     from snodo.tools.workspace import WorkspaceMCP
     from snodo.coders.litellm import LiteLLMAdapter

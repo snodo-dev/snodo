@@ -647,6 +647,8 @@ def call_agent(
     while raw_turn < max_raw_turns:
         is_final_turn = turns_used >= max_turns or stall_streak >= _MAX_STALL_TURNS
         if is_final_turn:
+            if stall_streak >= _MAX_STALL_TURNS and turns_used < max_turns:
+                trace["ended"] = "stalled"
             messages.append({"role": "user", "content": _ANSWER_ONLY_INSTRUCTION})
         try:
             response = _complete(with_read_tools=not is_final_turn, force_answer=is_final_turn)
@@ -686,7 +688,8 @@ def call_agent(
             final_answer = text
             if text.strip():
                 earlier_prose.append(text.strip())
-            trace["ended"] = "prose" if not truncated else f"truncated:{finish_reason}"
+            if trace["ended"] != "stalled":
+                trace["ended"] = "prose" if not truncated else f"truncated:{finish_reason}"
             break
 
         if is_final_turn:
