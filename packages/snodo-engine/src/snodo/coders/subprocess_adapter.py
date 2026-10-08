@@ -62,6 +62,35 @@ _REPORT_FILENAME = "coder-report.json"
 #: cannot drift from the shape the engine parses (ADR 048).
 _REPORT_STOP_REASONS = "|".join(sorted(STOP_REASONS))
 
+
+def _terminate_descendants(processes: dict[int, Any]) -> None:
+    """Best-effort TERM/KILL of processes observed below the coder."""
+    try:
+        import psutil
+
+        live = []
+        for process in processes.values():
+            try:
+                if process.is_running() and process.status() != psutil.STATUS_ZOMBIE:
+                    live.append(process)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        for process in reversed(live):
+            try:
+                process.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        _, alive = psutil.wait_procs(live, timeout=0.3)
+        for process in alive:
+            try:
+                process.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        if alive:
+            psutil.wait_procs(alive, timeout=0.3)
+    except Exception:
+        _logger.warning("Could not fully clean up coder descendant processes", exc_info=True)
+
 #: Instruction appended to a subprocess coder's prompt when the engine can offer
 #: somewhere to write. It asks ONLY for the report — it must never change what
 #: the coder is asked to build — and it says the report is optional, because a
@@ -381,6 +410,35 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             start_new_session=True,
             env=subprocess_env_without_job_context(),
         )
+        import psutil
+
+        descendants: dict[int, Any] = {}
+        descendant_lock = threading.Lock()
+        tracking_done = threading.Event()
+
+        def _track_descendants() -> None:
+            try:
+                parent = psutil.Process(proc.pid)
+                while not tracking_done.is_set():
+                    try:
+                        current = parent.children(recursive=True)
+                        with descendant_lock:
+                            descendants.update((child.pid, child) for child in current)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        break
+                    tracking_done.wait(0.05)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        tracker = threading.Thread(target=_track_descendants, daemon=True)
+        tracker.start()
+
+        def _cleanup_descendants() -> None:
+            tracking_done.set()
+            tracker.join(timeout=0.2)
+            with descendant_lock:
+                tracked = dict(descendants)
+            _terminate_descendants(tracked)
         emit = getattr(self, "progress_callback", None)
         out_chunks: list[str] = []
         err_chunks: list[str] = []
@@ -396,6 +454,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
                 if quiet_for >= self.silence_timeout_seconds:
                     silence_halted.set()
                     try:
+                        _cleanup_descendants()
                         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
                     except (ProcessLookupError, OSError):
                         proc.kill()
@@ -444,6 +503,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             proc.wait(timeout=self.timeout_seconds)
         except subprocess.TimeoutExpired as e:
             try:
+                _cleanup_descendants()
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except (ProcessLookupError, OSError):
                 proc.kill()
@@ -461,6 +521,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             raise timeout_error from e
 
         if silence_halted.is_set():
+            _cleanup_descendants()
             _join_readers()
             silence_error = subprocess.TimeoutExpired(
                 cmd=argv,
@@ -471,6 +532,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             silence_error.silence_halted = True
             raise silence_error
 
+        _cleanup_descendants()
         _join_readers()
 
         return subprocess.CompletedProcess(

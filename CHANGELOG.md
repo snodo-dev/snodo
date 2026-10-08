@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Avoid per-task Git ancestry checks when listing task branches by using the
   existing batched merged-branch query. (Fixes #785)
+- Terminate tracked coder descendants on silence and wall-clock halts, including
+  detached process groups, and clean up stragglers after normal exit. (Fixes #788)
 - Show the delayed wave by default for silent CLI commands, with explicit
   exclusions for terminal-owning commands and command-specific activity labels.
   (Fixes #783)
