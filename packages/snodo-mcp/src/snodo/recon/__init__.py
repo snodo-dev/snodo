@@ -579,7 +579,8 @@ def call_agent(
                 except (json.JSONDecodeError, TypeError, AttributeError):
                     pass
                 if answer:
-                    trace["ended"] = "submitted_answer"
+                    if trace["ended"] != "stalled":
+                        trace["ended"] = "submitted_answer"
                     break
         if (
             not str(answer or "").strip()
@@ -590,7 +591,8 @@ def call_agent(
         if finish in {"length", "max_tokens", "content_filter"}:
             nonlocal truncated
             truncated = True
-            trace["ended"] = f"truncated:{finish}"
+            if trace["ended"] != "stalled":
+                trace["ended"] = f"truncated:{finish}"
         return str(answer or ""), finish
 
     def _retry_forced_answer(response):
@@ -783,7 +785,8 @@ def call_agent(
     if truncated and final_answer.strip():
         truncation_note = f"Output was truncated (finish_reason={finish_reason})."
         final_answer = (final_answer.rstrip() + "\n\n" + truncation_note).strip()
-        trace["ended"] = f"truncated:{finish_reason}"
+        if trace["ended"] != "stalled":
+            trace["ended"] = f"truncated:{finish_reason}"
     elif trace["ended"] == "unknown":
         trace["ended"] = "completed"
 

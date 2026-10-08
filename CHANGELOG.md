@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Keep recon stall detection limited to fully covered repeat reads, allowing
+  additional line ranges in an already-read file to count as progress; preserve
+  `stalled` in the trace after a forced answer. (Fixes #778)
 - Name files truncated by recon batch reads and provide a `read_file_lines`
   continuation range; preserve the stall-limit reason in traces so agents can
   continue productive exploration up to budget. (Fixes #777)

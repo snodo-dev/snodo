@@ -1369,6 +1369,9 @@ class ReadMemoryTracker:
             path = _normalize_path_arg(args, self._project_root)
             if path and path in self.file_ranges:
                 req_start, req_end = _extract_line_range(tool_name, args)
+                # Count only ranges wholly contained in a prior response as
+                # repeats: a new or partially overlapping range brings fresh
+                # source lines and must remain progress for exploration.
                 for cov_start, cov_end, turn_idx in self.file_ranges[path]:
                     if cov_start <= req_start and cov_end >= req_end:
                         return turn_idx

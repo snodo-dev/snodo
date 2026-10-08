@@ -127,6 +127,33 @@ def test_recon_keeps_read_tools_available_while_reads_make_progress(tmp_path):
     assert result.trace["ended"] == "prose"
 
 
+def test_recon_new_ranges_in_same_file_are_progress(tmp_path):
+    from types import SimpleNamespace
+    from snodo.recon import call_agent
+
+    def range_response(start):
+        call = SimpleNamespace(id=str(start), function=SimpleNamespace(
+            name="read_file_lines",
+            arguments=json.dumps({"path": "same.py", "start": start, "end": start + 4}),
+        ))
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="", tool_calls=[call]), finish_reason="tool_calls",
+        )])
+
+    responses = [range_response(start) for start in (1, 6, 11, 16, 21)]
+    responses.append(SimpleNamespace(choices=[SimpleNamespace(
+        message=SimpleNamespace(content="finished", tool_calls=[]), finish_reason="stop",
+    )]))
+    with patch("snodo.recon._execute_recon_read", return_value="new lines"), \
+         patch("litellm.completion", side_effect=responses) as completion:
+        result = call_agent(str(tmp_path), "test/model", "query", [], "agent", max_turns=8)
+
+    assert result.result == "finished"
+    assert completion.call_count == 6
+    assert result.trace["turns_used"] == 6
+    assert result.trace["ended"] == "prose"
+
+
 def test_recon_forces_answer_after_repeated_read_stall(tmp_path):
     from types import SimpleNamespace
     from snodo.recon import call_agent
@@ -145,6 +172,31 @@ def test_recon_forces_answer_after_repeated_read_stall(tmp_path):
         result = call_agent(str(tmp_path), "test/model", "query", ["./"], "agent", max_turns=10)
 
     assert result.result == "partial answer"
+    assert completion.call_count == 5
+    assert result.trace["ended"] == "stalled"
+
+
+def test_recon_stall_reason_survives_forced_submit_tool_call(tmp_path):
+    from types import SimpleNamespace
+    from snodo.recon import call_agent
+
+    repeat = SimpleNamespace(id="same", function=SimpleNamespace(
+        name="read_file", arguments=json.dumps({"path": "same.py"}),
+    ))
+    reading = SimpleNamespace(choices=[SimpleNamespace(
+        message=SimpleNamespace(content="", tool_calls=[repeat]), finish_reason="tool_calls",
+    )])
+    submit = SimpleNamespace(id="answer", function=SimpleNamespace(
+        name="submit_answer", arguments=json.dumps({"answer": "partial"}),
+    ))
+    forced = SimpleNamespace(choices=[SimpleNamespace(
+        message=SimpleNamespace(content="", tool_calls=[submit]), finish_reason="tool_calls",
+    )])
+    with patch("snodo.recon._execute_recon_read", return_value="content"), \
+         patch("litellm.completion", side_effect=[reading, reading, reading, reading, forced]) as completion:
+        result = call_agent(str(tmp_path), "test/model", "query", [], "agent", max_turns=8)
+
+    assert result.result == "partial"
     assert completion.call_count == 5
     assert result.trace["ended"] == "stalled"
 
