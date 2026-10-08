@@ -56,9 +56,11 @@ a test to every valid notification target.
 `snodo protocol schema --json` prints the generated, versioned JSON Schema for
 protocol authoring without reading the project's protocol file.
 
-Slow, silent CLI commands show a delayed wave on an interactive terminal, for
-example `[▁▃▅▇▅] testing providers… 1.2s`. It is written only to stderr, starts
-after 0.3 seconds, and clears before command output. It is automatically
+All CLI commands show a delayed wave when silent on an interactive terminal,
+for example `[▁▃▅▇▅] testing providers… 1.2s`. It is written only to stderr,
+starts after 0.3 seconds, and clears before command output or prompts. Commands
+that take over the terminal are excluded: `dashboard` (full-screen UI),
+`serve` (long-running server). The indicator is automatically
 disabled unless stderr is a terminal, and when
 `CI` is set, `NO_COLOR` is present, `TERM=dumb`, or running as the MCP server or
 a background job. Set `SNODO_NO_SPINNER=1` to turn it off.

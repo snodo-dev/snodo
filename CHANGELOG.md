@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Show the delayed wave by default for silent CLI commands, with explicit
+  exclusions for terminal-owning commands and command-specific activity labels.
+  (Fixes #783)
 - Document the delayed CLI wave indicator, its terminal and environment gating,
   and the `SNODO_NO_SPINNER=1` opt-out; list `--diff` in `snodo task show`.
   (Fixes #782)
