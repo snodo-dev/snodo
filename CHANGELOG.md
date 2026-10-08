@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Compare merge no-op state against the actual target ref, so task merges into
+  plan integration branches are reported and audited while already-delivered
+  plans still suppress duplicate success lines. (Fixes #772)
 - Preserve failed recon agents' execution traces and any partial answers through
   provider failures and exhausted model failover chains. (Fixes #770)
 - Report plan integration delivery only when a merge advances the base branch,
