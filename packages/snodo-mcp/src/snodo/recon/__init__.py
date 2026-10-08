@@ -402,6 +402,7 @@ def call_agent_chain(
     """
     attempts: list[ReconAttempt] = []
     usage: list[dict] = []
+    failed_results: list[ReconResult] = []
     for model in models:
         from snodo.infrastructure.provider_errors import (
             is_transient_provider_error, provider_retry_delay,
@@ -418,6 +419,7 @@ def call_agent_chain(
             result.attempts = attempts + [ReconAttempt(model=model)]
             result.usage = usage + result.usage
             return result
+        failed_results.append(result)
         usage.extend(result.usage)
         attempts.append(
             ReconAttempt(model=model, error=result.error or "empty result")
@@ -429,10 +431,15 @@ def call_agent_chain(
     return ReconResult(
         agent=agent_label,
         model=models[-1] if models else "",
-        result="",
+        result=next((r.result for r in reversed(failed_results) if r.result.strip()), ""),
         error=f"all models failed; tried {tried}",
         attempts=attempts,
         usage=usage,
+        trace=max(
+            (r.trace for r in failed_results if r.trace),
+            key=lambda trace: trace.get("turns_used", 0),
+            default={},
+        ),
     )
 
 
@@ -611,9 +618,10 @@ def call_agent(
             return ReconResult(
                 agent=agent_label,
                 model=model,
-                result="",
+                result=final_answer.strip(),
                 error=str(e),
                 usage=usage_records,
+                trace=trace,
             )
         _record_response(response)
 
@@ -712,9 +720,10 @@ def call_agent(
             return ReconResult(
                 agent=agent_label,
                 model=model,
-                result="",
+                result=final_answer.strip(),
                 error=str(e),
                 usage=usage_records,
+                trace=trace,
             )
         _record_response(response)
         choice = response.choices[0]
@@ -742,7 +751,8 @@ def call_agent(
         )
         return ReconResult(
             agent=agent_label, model=model,
-            result="", error=f"Final answer unavailable; run ended with {trace['ended']}.",
+            result="",
+            error=f"Final answer unavailable; run ended with {trace['ended']}.",
             served_model=served_model,
             usage=[_usage_record("failed")],
             trace=trace,

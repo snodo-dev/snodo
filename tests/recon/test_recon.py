@@ -166,6 +166,43 @@ def test_recon_routes_resolved_model_to_litellm(
     assert calls[0]["model"] == litellm_model
 
 
+def test_failed_failover_chain_keeps_trace_and_partial_answer(monkeypatch):
+    traces = [
+        ReconResult(agent="agent", model="first", result="Partial finding",
+                    error="provider failed", trace={"turns_used": 4,
+                    "tools_called": ["search_string"], "ended": "error"}),
+        ReconResult(agent="agent", model="second", result="", error="provider unavailable",
+                    trace={"turns_used": 0, "tools_called": [], "ended": "error"}),
+    ]
+    monkeypatch.setattr(recon_module, "call_agent", lambda *args: traces.pop(0))
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    result = recon_module.call_agent_chain(".", ["first", "second"], "query", [], "agent")
+
+    assert result.result == "Partial finding"
+    assert result.trace == {"turns_used": 4, "tools_called": ["search_string"], "ended": "error"}
+
+
+def test_failover_chain_keeps_zero_turn_trace(monkeypatch):
+    monkeypatch.setattr(
+        recon_module, "call_agent",
+        lambda *args: ReconResult(agent="agent", model="model", result="",
+                                  error="provider unavailable",
+                                  trace={"turns_used": 0, "tools_called": [], "ended": "error"}),
+    )
+    result = recon_module.call_agent_chain(".", ["model"], "query", [], "agent")
+    assert result.trace == {"turns_used": 0, "tools_called": [], "ended": "error"}
+
+
+def test_successful_failover_trace_is_unchanged(monkeypatch):
+    trace = {"turns_used": 2, "tools_called": ["read_file"], "ended": "prose"}
+    monkeypatch.setattr(
+        recon_module, "call_agent",
+        lambda *args: ReconResult(agent="agent", model="model", result="answer", trace=trace),
+    )
+    result = recon_module.call_agent_chain(".", ["model"], "query", [], "agent")
+    assert result.trace == trace
+
+
 @pytest.fixture
 def project_with_snodo():
     """Create a temp project with .snodo dir."""
