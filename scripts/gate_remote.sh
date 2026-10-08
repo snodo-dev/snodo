@@ -34,7 +34,7 @@ gate_run() {
   local -a pytest_args
   case "$target" in
     gate)
-      pytest_args=(tests/ -q -n "$GATE_JOBS")
+      pytest_args=(tests/ -q -n "$GATE_JOBS" --timeout=60)
       ;;
     gate-ci)
       pytest_args=(tests/ -m "" -n "$GATE_JOBS" --tb=short --timeout=60 \

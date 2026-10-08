@@ -436,3 +436,10 @@ def test_gate_targets_run_the_wrapper_over_a_terminal():
         "concurrent gates must be bounded so a burst cannot saturate the host"
     )
     assert "GATE_JOBS" in text
+
+
+def test_gate_pytest_invocation_has_a_per_test_timeout():
+    """A hung gate test must fail before the outer 600-second budget."""
+    text = GATE_REMOTE.read_text(encoding="utf-8")
+    gate_case = text.split("    gate)", 1)[1].split("    gate-ci)", 1)[0]
+    assert "--timeout=60" in gate_case
