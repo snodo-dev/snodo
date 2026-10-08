@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a reusable delayed Snodo wave loading indicator for interactive CLI stderr,
+  with quiet-output gating and terminal-safe cleanup. (Fixes #780)
 - Number whole-file and batch reads in recon with 1-based source line prefixes,
   preserving accurate batch truncation continuation ranges. (Fixes #779)
 - Keep recon stall detection limited to fully covered repeat reads, allowing
