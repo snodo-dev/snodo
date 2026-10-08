@@ -13,6 +13,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   existing batched merged-branch query. (Fixes #785)
 - Terminate tracked coder descendants on silence and wall-clock halts, including
   detached process groups, and clean up stragglers after normal exit. (Fixes #788)
+- Stop and clear the CLI wave on the first command output, including output from
+  Rich consoles created before the spinner, and never restart it afterward.
+  (Fixes #784)
 - Show the delayed wave by default for silent CLI commands, with explicit
   exclusions for terminal-owning commands and command-specific activity labels.
   (Fixes #783)
