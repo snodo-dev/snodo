@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document the delayed CLI wave indicator, its terminal and environment gating,
+  and the `SNODO_NO_SPINNER=1` opt-out; list `--diff` in `snodo task show`.
+  (Fixes #782)
 - Show the delayed wave indicator while readiness, validation, configuration
   checks and protocol/model checks work silently; clear it before any output.
   (Fixes #781)

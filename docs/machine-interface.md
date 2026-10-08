@@ -8,6 +8,8 @@ bumps the schema version so a consumer can detect it before parsing.
 
 - `--json` is **additive**. Human output is unchanged; `--json` only changes
   what is written to stdout.
+- The delayed CLI wave indicator writes only to stderr; it does not add output
+  to stdout or contaminate a `--json` document.
 - Every `--json` command writes a **single JSON object** to stdout. Errors are
   emitted to stdout as that object, so stdout is always one parseable document.
 - Every payload carries a `schema` field of the form `snodo.<command>.v<N>`.

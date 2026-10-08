@@ -56,6 +56,13 @@ a test to every valid notification target.
 `snodo protocol schema --json` prints the generated, versioned JSON Schema for
 protocol authoring without reading the project's protocol file.
 
+Slow, silent CLI commands show a delayed wave on an interactive terminal, for
+example `[▁▃▅▇▅] testing providers… 1.2s`. It is written only to stderr, starts
+after 0.3 seconds, and clears before command output. It is automatically
+disabled unless stderr is a terminal, and when
+`CI` is set, `NO_COLOR` is present, `TERM=dumb`, or running as the MCP server or
+a background job. Set `SNODO_NO_SPINNER=1` to turn it off.
+
 Use `snodo cloud login` to sign in through a browser and enable cloud sync;
 `snodo cloud login --no-browser` prints an authorization URL for a browser on
 another machine, then prompts for the code shown by the page. Paste either the
@@ -163,7 +170,7 @@ stderr. See [CLI recon](decompose-and-recon.md#cli-recon).
 | `snodo job unarchive` | `--days`, `--yes`/`-y` |
 | `snodo job retry` | `<job_id>`, `[description]`, `--replace-spec` |
 | `snodo task list` | — |
-| `snodo task show` | `<task_id>`, `--json` |
+| `snodo task show` | `<task_id>`, `--diff`, `--max-diff-lines`, `--json` |
 | `snodo task abandon` | `<task_id>` |
 | `snodo task prune` | `--days`/`--stale-days` |
 | `snodo task review` | `<task_id> <verdict>`, `--notes`, `--report`, `--pending`, `--days`, `--json` |
