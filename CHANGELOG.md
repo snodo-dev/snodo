@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Terminate tracked coder descendants on silence and wall-clock halts, including
+  detached process groups, and clean up stragglers after normal exit. (Fixes #788)
 - Show the delayed wave by default for silent CLI commands, with explicit
   exclusions for terminal-owning commands and command-specific activity labels.
   (Fixes #783)
