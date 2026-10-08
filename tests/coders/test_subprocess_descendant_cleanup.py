@@ -1,6 +1,5 @@
 """Real-process coverage for subprocess coder descendant cleanup."""
 
-import os
 import subprocess
 import sys
 import time
@@ -61,7 +60,7 @@ def test_normal_exit_cleans_stragglers_without_delay(tmp_path):
         "pass",
     )
     started = time.monotonic()
-    result = adapter._run_subprocess([sys.executable, "-c", source], str(tmp_path))
+    adapter._run_subprocess([sys.executable, "-c", source], str(tmp_path))
     assert time.monotonic() - started < 1
     pids = [int(pid) for pid in open(pid_file).read().split()]
     _wait_dead(pids)
