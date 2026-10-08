@@ -4,6 +4,8 @@ import io
 import time
 
 import pytest
+from rich.console import Console
+from rich.table import Table
 
 from snodo.cli.spinner import WaveSpinner, wave_frame, wave_while_silent
 
@@ -20,9 +22,14 @@ class Terminal(io.StringIO):
 def test_wave_frame_follows_staggered_cycle() -> None:
     cycle = "▁▂▃▄▅▆▇█▇▆▅▄▃▂"
     for index in range(len(cycle)):
-        assert wave_frame(index) == "[" + "".join(
-            cycle[(index + offset) % len(cycle)] for offset in (0, 2, 4, 6, 8)
-        ) + "]"
+        assert (
+            wave_frame(index)
+            == "["
+            + "".join(
+                cycle[(index + offset) % len(cycle)] for offset in (0, 2, 4, 6, 8)
+            )
+            + "]"
+        )
 
 
 def test_non_tty_writes_to_neither_stream(capsys) -> None:
@@ -32,9 +39,15 @@ def test_non_tty_writes_to_neither_stream(capsys) -> None:
     assert captured.out == captured.err == ""
 
 
-@pytest.mark.parametrize("name,value", [
-    ("CI", "true"), ("NO_COLOR", ""), ("TERM", "dumb"), ("SNODO_NO_SPINNER", "1"),
-])
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("CI", "true"),
+        ("NO_COLOR", ""),
+        ("TERM", "dumb"),
+        ("SNODO_NO_SPINNER", "1"),
+    ],
+)
 def test_environment_disables_spinner(monkeypatch, name: str, value: str) -> None:
     stream = Terminal()
     monkeypatch.setenv(name, value)
@@ -114,3 +127,83 @@ def test_wave_while_silent_never_draws_when_stderr_is_not_tty(monkeypatch) -> No
         time.sleep(0.02)
         sys.stdout.write("provider output\n")
     assert stderr.getvalue() == ""
+
+
+def _enable_wave(monkeypatch) -> None:
+    for name in (
+        "CI",
+        "NO_COLOR",
+        "SNODO_NO_SPINNER",
+        "SNODO_MCP_SERVER",
+        "SNODO_JOB_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("TERM", "xterm")
+
+
+def test_rich_console_output_stops_and_clears_wave(monkeypatch) -> None:
+    import sys
+
+    _enable_wave(monkeypatch)
+    stdout, stderr = Terminal(), Terminal()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    with wave_while_silent("loading tasks"):
+        time.sleep(0.35)
+        console = Console(file=sys.stdout, force_terminal=False)
+        console.print(Table("task"))
+        cleared = stderr.getvalue()
+        time.sleep(0.04)
+        assert stderr.getvalue() == cleared
+        assert cleared.endswith("\r\033[2K")
+
+
+def test_preexisting_rich_console_output_stops_wave(monkeypatch) -> None:
+    import sys
+
+    _enable_wave(monkeypatch)
+    stdout, stderr = Terminal(), Terminal()
+    console = Console(file=stdout, force_terminal=False)
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    with wave_while_silent("loading tasks"):
+        time.sleep(0.35)
+        console.print("table from old console")
+        cleared = stderr.getvalue()
+        time.sleep(0.04)
+        assert stderr.getvalue() == cleared
+        assert cleared.endswith("\r\033[2K")
+    assert "table from old console" in stdout.getvalue()
+
+
+def test_output_keeps_wave_stopped_during_later_silence(monkeypatch) -> None:
+    import sys
+
+    _enable_wave(monkeypatch)
+    stdout, stderr = Terminal(), Terminal()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    with wave_while_silent("loading tasks"):
+        time.sleep(0.35)
+        sys.stdout.write("first output\n")
+        after_output = stderr.getvalue()
+        time.sleep(0.35)
+        assert stderr.getvalue() == after_output
+    assert stdout.getvalue() == "first output\n"
+
+
+def test_rich_output_preserves_stdout_bytes(monkeypatch) -> None:
+    import sys
+
+    _enable_wave(monkeypatch)
+    stdout, stderr = Terminal(), Terminal()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    table = Table("task")
+    table.add_row("unchanged")
+    expected = io.StringIO()
+    Console(file=expected, force_terminal=False, color_system=None).print(table)
+    with wave_while_silent("loading tasks"):
+        time.sleep(0.35)
+        Console(file=sys.stdout, force_terminal=False, color_system=None).print(table)
+    assert stdout.getvalue().encode() == expected.getvalue().encode()
