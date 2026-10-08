@@ -74,6 +74,28 @@ def test_resolve_base_branch_uses_remote_head(repo):
     assert resolve_base_branch(str(repo)) == "master"
 
 
+def test_list_task_branches_uses_batched_merge_query_not_per_branch_ancestry(repo, monkeypatch):
+    """Listing many branches must not launch a git ancestry check per branch."""
+    from git import Repo
+    from snodo.infrastructure.worktree import list_task_branches
+
+    for index in range(8):
+        subprocess.run(["git", "branch", f"task/task-{index}"], cwd=repo, check=True)
+
+    ancestry_calls = []
+
+    def unexpected_ancestry(self, *args, **kwargs):
+        ancestry_calls.append(args)
+        return False
+
+    monkeypatch.setattr(Repo, "is_ancestor", unexpected_ancestry)
+    available, branches = list_task_branches(str(repo))
+
+    assert available
+    assert len(branches) == 8
+    assert ancestry_calls == []
+
+
 # === unborn HEAD (no commits) — fail loud, never degrade to no isolation ===
 
 def _init_unborn_repo(root: Path) -> None:

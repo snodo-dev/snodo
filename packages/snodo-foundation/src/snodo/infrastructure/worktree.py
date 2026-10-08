@@ -1022,12 +1022,6 @@ def list_task_branches(project_root: str) -> Tuple[bool, dict]:
         except Exception as e:
             _logger.debug("Could not read merged branches: %s", e)
 
-        base_commit = None
-        try:
-            base_commit = git.repo.commit(base_branch)
-        except Exception as e:
-            _logger.debug("Could not resolve base commit for %s: %s", base_branch, e)
-
         for head in git.repo.heads:
             if head.name.startswith("task/"):
                 branch_suffix = head.name[5:]
@@ -1045,14 +1039,11 @@ def list_task_branches(project_root: str) -> Tuple[bool, dict]:
                 except Exception:
                     commit_ts = None
 
+                # ``git branch --merged`` above is the batched source of truth
+                # for containment. Falling back to ``is_ancestor`` here starts
+                # one git process per task branch, making a plain task listing
+                # scale linearly in process launches.
                 is_contained = head.name in git_merged_branches
-                if not is_contained and base_commit is not None and hasattr(git.repo, "is_ancestor"):
-                    try:
-                        anc = git.repo.is_ancestor(head.commit, base_commit)
-                        if isinstance(anc, bool) and anc is True:
-                            is_contained = True
-                    except Exception as e:
-                        _logger.debug("Could not check is_ancestor for %s: %s", head.name, e)
 
                 branch_info = {
                     "name": head.name,
