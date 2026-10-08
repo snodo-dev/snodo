@@ -120,8 +120,28 @@ def test_recon_agent_default_budgets_are_sized_for_exploration():
 
     assert ReconConfig().max_tool_turns == 40
     assert ReconConfig().max_tokens == 16000
+    assert ReconConfig().deadline_seconds == 300
     assert ValidatorConfig().max_tool_turns == 6
     assert ValidatorConfig().max_tokens == 1500
+
+
+def test_recon_deadline_is_loaded_from_config(tmp_path, monkeypatch):
+    from snodo.config import ConfigManager
+    (tmp_path / ".snodo").mkdir()
+    monkeypatch.setattr(ConfigManager, "load", lambda self: {"llm": {"recon": {"deadline_seconds": 19}}})
+    from snodo.mcp.recon_handlers import ReconToolHandler
+
+    submitted = {}
+    monkeypatch.setattr(ReconManager, "submit", lambda self, *args, **kwargs: submitted.update(kwargs) or "rec_test")
+    result = ReconToolHandler(str(tmp_path)).handle_recon({"query": "q", "paths": ["./"]})
+    assert result["recon_id"] == "rec_test"
+    assert submitted["deadline_seconds"] == 19
+
+
+def test_credit_billing_exhaustion_is_not_transient():
+    from snodo.infrastructure.provider_errors import is_transient_provider_error
+
+    assert not is_transient_provider_error("credit balance exhausted / billing")
 
 
 @pytest.mark.parametrize(
@@ -291,18 +311,21 @@ class TestReconManagerSubmit:
     def test_submit_forwards_budgets_to_agent_run(self, recon_mgr, monkeypatch):
         budgets = {}
 
-        def run_impl(self, recon_id, query, paths, agents, max_tool_turns, max_tokens):
-            budgets.update(max_tool_turns=max_tool_turns, max_tokens=max_tokens)
+        def run_impl(self, recon_id, query, paths, agents, max_tool_turns, max_tokens, deadline_seconds):
+            budgets.update(max_tool_turns=max_tool_turns, max_tokens=max_tokens,
+                           deadline_seconds=deadline_seconds)
 
         monkeypatch.setattr(ReconManager, "_run_recon_impl", run_impl)
         monkeypatch.setattr(
             ReconManager, "_run_recon",
-            lambda self, recon_id, query, paths, agents, max_tool_turns=6, max_tokens=1500:
-                self._run_recon_impl(recon_id, query, paths, agents, max_tool_turns, max_tokens),
+            lambda self, recon_id, query, paths, agents, max_tool_turns=6, max_tokens=1500,
+            deadline_seconds=300:
+                self._run_recon_impl(recon_id, query, paths, agents, max_tool_turns, max_tokens,
+                                     deadline_seconds),
         )
         recon_mgr.submit("q", ["./"], [["model"]], max_tool_turns=23, max_tokens=4200)
         recon_mgr.shutdown()
-        assert budgets == {"max_tool_turns": 23, "max_tokens": 4200}
+        assert budgets == {"max_tool_turns": 23, "max_tokens": 4200, "deadline_seconds": 300}
 
     def test_submit_appends_full_recon_started_event(self, recon_mgr):
         query = "Explain the entire system, including its edge cases."

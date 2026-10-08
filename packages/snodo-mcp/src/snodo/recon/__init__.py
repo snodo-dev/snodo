@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
 from typing import Optional
@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 RECON_DEFAULT_MAX_TOOL_TURNS = 40
 RECON_DEFAULT_MAX_TOKENS = 16000
+RECON_DEFAULT_DEADLINE_SECONDS = 300
 
 _logger = logging.getLogger(__name__)
 
@@ -844,10 +845,11 @@ class ReconManager:
 
     def _run_recon(self, recon_id: str, query: str, paths: list[str],
                    agents: list, max_tool_turns: int = RECON_DEFAULT_MAX_TOOL_TURNS,
-                   max_tokens: int = RECON_DEFAULT_MAX_TOKENS) -> None:
+                   max_tokens: int = RECON_DEFAULT_MAX_TOKENS,
+                   deadline_seconds: int = RECON_DEFAULT_DEADLINE_SECONDS) -> None:
         """Background entry point — fans out agents, writes results, updates state."""
         try:
-            self._run_recon_impl(recon_id, query, paths, agents, max_tool_turns, max_tokens)
+            self._run_recon_impl(recon_id, query, paths, agents, max_tool_turns, max_tokens, deadline_seconds)
         except Exception as e:
             _logger.debug("Recon background task error for %s: %s", recon_id, e)
             try:
@@ -916,7 +918,8 @@ class ReconManager:
 
     def _run_recon_impl(self, recon_id: str, query: str, paths: list[str],
                         agents: list, max_tool_turns: int = RECON_DEFAULT_MAX_TOOL_TURNS,
-                        max_tokens: int = RECON_DEFAULT_MAX_TOKENS) -> None:
+                        max_tokens: int = RECON_DEFAULT_MAX_TOKENS,
+                        deadline_seconds: int = RECON_DEFAULT_DEADLINE_SECONDS) -> None:
         recon_dir = self.recons_dir / recon_id
 
         lanes = normalize_recon_agents(agents)
@@ -929,7 +932,8 @@ class ReconManager:
         # Persist each lane as it finishes. A recon interrupted while another
         # provider is still running must not lose completed answers/traces.
         self._save_results(recon_dir, results)
-        with ThreadPoolExecutor(max_workers=min(len(resolved_lanes), 4)) as executor:
+        executor = ThreadPoolExecutor(max_workers=min(len(resolved_lanes), 4))
+        try:
             futures = {}
             for agent_label, models in resolved_lanes:
                 future = executor.submit(
@@ -939,20 +943,43 @@ class ReconManager:
                 )
                 futures[future] = agent_label
 
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                except Exception as e:
+            pending = set(futures)
+            deadlines = {future: time.monotonic() + deadline_seconds for future in futures}
+            while pending:
+                expired = [future for future in pending if time.monotonic() >= deadlines[future]]
+                for future in expired:
+                    future.cancel()
                     agent_label = futures[future]
-                    result = ReconResult(
-                        agent=agent_label,
-                        model="",
-                        result="",
-                        error=str(e),
-                        trace={"ended": "error"},
-                    )
-                results.append(result)
-                self._save_results(recon_dir, results)
+                    results.append(ReconResult(
+                        agent=agent_label, model="", result="",
+                        error=f"Agent deadline exceeded ({deadline_seconds} seconds).",
+                        trace={"ended": "deadline_exceeded", "deadline_seconds": deadline_seconds},
+                    ))
+                    pending.remove(future)
+                    self._save_results(recon_dir, results)
+                if not pending:
+                    break
+                done = {future for future in pending if future.done()}
+                if not done:
+                    time.sleep(min(0.05, max(0.001, min(deadlines[f] for f in pending) - time.monotonic())))
+                    continue
+                for future in done:
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        agent_label = futures[future]
+                        result = ReconResult(
+                            agent=agent_label,
+                            model="",
+                            result="",
+                            error=str(e),
+                            trace={"ended": "error"},
+                        )
+                    results.append(result)
+                    self._save_results(recon_dir, results)
+                    pending.remove(future)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
         state = self._load_state(recon_dir)
         succeeded = sum(1 for r in results if isinstance(r, ReconResult) and not r.error)
@@ -964,7 +991,8 @@ class ReconManager:
     def submit(self, query: str, paths: list[str],
                agents: Optional[list] = None,
                max_tool_turns: int = RECON_DEFAULT_MAX_TOOL_TURNS,
-               max_tokens: int = RECON_DEFAULT_MAX_TOKENS) -> str:
+               max_tokens: int = RECON_DEFAULT_MAX_TOKENS,
+               deadline_seconds: int = RECON_DEFAULT_DEADLINE_SECONDS) -> str:
         """Submit a recon query — returns immediately with a recon_id.
 
         Args:
@@ -1013,7 +1041,8 @@ class ReconManager:
         thread = Thread(
             target=self._run_recon,
             args=(recon_id, query, paths, lanes),
-            kwargs={"max_tool_turns": max_tool_turns, "max_tokens": max_tokens},
+            kwargs={"max_tool_turns": max_tool_turns, "max_tokens": max_tokens,
+                    "deadline_seconds": deadline_seconds},
         )
         thread.start()
         _threads.append(thread)

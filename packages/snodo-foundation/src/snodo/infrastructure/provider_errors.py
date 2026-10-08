@@ -25,6 +25,11 @@ def is_transient_provider_error(error: Exception | str) -> bool:
     """Recognize retryable throttling, server, and transport failures."""
     status = getattr(error, "status_code", None)
     text = str(error).lower()
+    if any(term in text for term in (
+        "credit balance exhausted", "credits exhausted", "credit exhausted",
+        "billing", "insufficient_quota", "payment required",
+    )):
+        return False
     if status == 429 or (isinstance(status, int) and status >= 500):
         return True
     if any(term in text for term in (

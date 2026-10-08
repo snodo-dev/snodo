@@ -34,6 +34,7 @@ class ReconToolHandler:
         from snodo.recon import (
             RECON_DEFAULT_MAX_TOKENS,
             RECON_DEFAULT_MAX_TOOL_TURNS,
+            RECON_DEFAULT_DEADLINE_SECONDS,
             ReconManager,
             ReconError,
             resolve_recon_agents_with_notice,
@@ -46,6 +47,7 @@ class ReconToolHandler:
         recon_default_n = recon_cfg.get("num_agents", 1)
         max_tool_turns = recon_cfg.get("max_tool_turns", RECON_DEFAULT_MAX_TOOL_TURNS)
         max_tokens = recon_cfg.get("max_tokens", RECON_DEFAULT_MAX_TOKENS)
+        deadline_seconds = recon_cfg.get("deadline_seconds", RECON_DEFAULT_DEADLINE_SECONDS)
 
         agents, agent_count_notice = resolve_recon_agents_with_notice(
             requested_n=num_agents,
@@ -59,6 +61,7 @@ class ReconToolHandler:
             recon_id = mgr.submit(
                 query, paths, agents,
                 max_tool_turns=max_tool_turns, max_tokens=max_tokens,
+                deadline_seconds=deadline_seconds,
             )
         except ReconError as e:
             raise MCPError(str(e)) from e

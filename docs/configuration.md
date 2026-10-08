@@ -175,6 +175,7 @@ validator's own `model` setting takes precedence over the configured role model.
 | `llm.recon.models` | `[]` | Ordered model priority list for recon. Empty uses the configured default model. |
 | `llm.recon.max_tokens` | `16000` | Maximum completion tokens per recon model call; minimum 1. The model's own output limit may be lower. |
 | `llm.recon.max_tool_turns` | `40` | Recon read-tool turn limit (1–200). |
+| `llm.recon.deadline_seconds` | `300` | Wall-clock limit per recon agent, including provider calls and retries; minimum 1. |
 | `llm.wave.max_age_days` | `14` | Hard expiry age for a wave; minimum 1. |
 | `llm.wave.max_idle_days` | `5` | Idle timeout before a wave closes; minimum 1. |
 

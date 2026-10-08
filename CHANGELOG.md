@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Bound each recon agent by configurable `llm.recon.deadline_seconds` (default
+  300 seconds), and treat exhausted credit/billing errors as permanent so other
+  agents can finish the recon. (Fixes #773)
 - Force a tool-disabled final-answer call when recon exhausts its reading budget
   mid-tool loop, preserving gathered findings as a truncated answer if the model
   continues returning tool calls. (Fixes #771)
