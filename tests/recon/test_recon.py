@@ -253,7 +253,7 @@ def test_recon_truncated_batch_keeps_cutoff_file_and_next_line_correct(tmp_path)
     assert "large.py continues at line" in notice
     assert f"{next_line}: line {next_line:05d}" not in result
     assert f"{next_line - 1}: line {next_line - 1:05d}" in result
-    assert f"read_file_lines(path, start, end)" in result
+    assert "read_file_lines(path, start, end)" in result
 
 
 def test_non_recon_read_file_output_remains_unnumbered(tmp_path):
