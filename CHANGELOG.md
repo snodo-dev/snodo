@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Never expose gathered tool output as a recon answer when forced final-answer
+  retries return tool calls; return only earlier model prose or an empty result
+  with a clear error, preserving the execution trace. (Fixes #775)
 - Include persisted agent answers and pending lane names in recon status while
   other agents are still running; terminal `get_recon_results` is unchanged.
   (Fixes #774)

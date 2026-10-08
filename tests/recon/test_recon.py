@@ -891,7 +891,7 @@ def _prose_response(text):
 
 
 class TestTerminalAnswer:
-    def test_tool_calling_budget_forces_answer_then_returns_gathered_findings(self, project_with_snodo):
+    def test_tool_calling_budget_never_returns_raw_tool_output(self, project_with_snodo):
         from types import SimpleNamespace
         from snodo.recon import call_agent
 
@@ -903,23 +903,43 @@ class TestTerminalAnswer:
                 message=SimpleNamespace(content="", tool_calls=[tc]), finish_reason="tool_calls",
             )])
 
-        # A read turn followed by forced and retry calls that both ignore the
-        # forced submit tool. The gathered read result must survive as a partial.
+        tool_output = "RAW_TOOL_FIXTURE: repository dump must not become an answer"
         responses = [
             tool_response("read_file", {"path": "facts.txt"}),
             tool_response("read_file", {"path": "facts.txt"}),
             tool_response("read_file", {"path": "facts.txt"}),
         ]
-        with patch("snodo.recon._execute_recon_read", return_value="The answer is 42.") as read, \
+        with patch("snodo.recon._execute_recon_read", return_value=tool_output) as read, \
              patch("litellm.completion", side_effect=responses) as completion:
             result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
 
         assert completion.call_count == 3
         assert completion.call_args_list[1].kwargs["tools"][0]["function"]["name"] == "submit_answer"
         assert completion.call_args_list[1].kwargs["tool_choice"]["function"]["name"] == "submit_answer"
-        assert result.result.startswith("The answer is 42.")
-        assert "truncated" in result.error
+        assert result.result == ""
+        assert "returned tool calls instead of an answer after" in result.error
+        assert result.trace["turns_used"] == 2
+        assert result.trace["tools_called"] == ["read_file"]
+        assert result.trace["ended"] == "truncated:tool_calls"
+        assert tool_output not in result.result
         assert read.call_count == 1
+
+    def test_tool_call_retry_falls_back_to_earlier_model_prose(self, project_with_snodo):
+        from snodo.recon import call_agent
+
+        tool_output = "RAW_TOOL_FIXTURE: never returned"
+        responses = [
+            _reading_response("Earlier useful model-authored analysis.", "facts.txt"),
+            _reading_response("", "other.txt"),
+            _reading_response("", "third.txt"),
+        ]
+        with patch("snodo.recon._execute_recon_read", return_value=tool_output), \
+             patch("litellm.completion", side_effect=responses):
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+
+        assert result.result.startswith("Earlier useful model-authored analysis.")
+        assert "truncated" in result.error
+        assert tool_output not in result.result
 
     def test_out_of_turns_agent_asked_once_without_tools(self, project_with_snodo):
         """An agent still calling tools on its last budgeted turn is asked

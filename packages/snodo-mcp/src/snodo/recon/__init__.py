@@ -603,7 +603,7 @@ def call_agent(
             nonlocal truncated
             truncated = True
             trace["ended"] = "truncated:tool_calls"
-            retry_answer = "\n\n".join(gathered_findings or earlier_prose)
+            retry_answer = "\n\n".join(earlier_prose)
         return retry_answer, retry_finish
 
     turns_used = 0
@@ -661,7 +661,7 @@ def call_agent(
 
         if is_final_turn:
             final_answer, finish_reason = _retry_forced_answer(response)
-            if not final_answer.strip():
+            if not final_answer.strip() and trace["ended"] != "truncated:tool_calls":
                 trace["ended"] = f"empty_final:{finish_reason or 'no_answer'}"
             break
 
@@ -741,11 +741,11 @@ def call_agent(
         if finish_reason in {"length", "max_tokens", "content_filter"}:
             truncated = True
         final_answer, finish_reason = _retry_forced_answer(response)
-        if not final_answer.strip():
+        if not final_answer.strip() and trace["ended"] != "truncated:tool_calls":
             trace["ended"] = f"empty_final:{finish_reason or 'no_answer'}"
         trace["turns_used"] = raw_turn + 1
 
-    if truncated:
+    if truncated and final_answer.strip():
         truncation_note = f"Output was truncated (finish_reason={finish_reason})."
         final_answer = (final_answer.rstrip() + "\n\n" + truncation_note).strip()
         trace["ended"] = f"truncated:{finish_reason}"
@@ -761,7 +761,11 @@ def call_agent(
         return ReconResult(
             agent=agent_label, model=model,
             result="",
-            error=f"Final answer unavailable; run ended with {trace['ended']}.",
+            error=(
+                f"Model returned tool calls instead of an answer after {trace['turns_used']} turns."
+                if trace["ended"] == "truncated:tool_calls"
+                else f"Final answer unavailable; run ended with {trace['ended']}."
+            ),
             served_model=served_model,
             usage=[_usage_record("failed")],
             trace=trace,
