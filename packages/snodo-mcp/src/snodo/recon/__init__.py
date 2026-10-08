@@ -1058,15 +1058,21 @@ class ReconManager:
     def get_status(self, recon_id: str) -> dict:
         """Get the current status of a recon.
 
-        A recon that has stopped — complete or failed — carries whatever was
-        recorded about it, including the reason a failed one stopped. A recon
-        still running has nothing to report yet.
+        Include answers persisted so far and identify lanes that have not
+        produced a result yet. A stopped recon carries its full recorded output.
         """
         recon_dir = self._recon_dir(recon_id)
         state = self._load_state(recon_dir)
-        status = state.get("status")
-        results = self._load_results(recon_dir) if status in _TERMINAL_STATUSES else []
-        return {**state, "results": results}
+        results = self._load_results(recon_dir)
+        completed_agents = {
+            result.get("agent") for result in results if isinstance(result, dict)
+        }
+        pending_agents = [
+            lane[0] if isinstance(lane, list) else lane
+            for lane in state.get("agents", [])
+            if (lane[0] if isinstance(lane, list) else lane) not in completed_agents
+        ]
+        return {**state, "results": results, "pending_agents": pending_agents}
 
     def get_results(self, recon_id: str) -> dict:
         """Get the raw results of a terminal recon.

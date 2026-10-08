@@ -208,9 +208,13 @@ class TestHandleGetReconStatus:
                 "status": "running",
                 "recon_id": "recon-001",
                 "agents": 2,
+                "results": [{"agent": "finished", "result": "answer"}],
+                "pending_agents": ["pending"],
             }
             result = handler.handle_get_recon_status({"recon_id": "recon-001"})
         assert result["status"] == "running"
+        assert result["results"][0]["result"] == "answer"
+        assert result["pending_agents"] == ["pending"]
         MockRM.return_value.get_status.assert_called_once_with("recon-001")
 
     def test_recon_error_wrapped(self):

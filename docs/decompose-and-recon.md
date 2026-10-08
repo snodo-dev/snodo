@@ -91,14 +91,16 @@ turn a majority answer into an unverified requirement.
 
 `recon` returns immediately with a `recon_id` and `status: "running"`; that
 response means the work was dispatched, not completed. Save the id, then poll
-`get_recon_status` until its status is `complete` or `failed`. While it is
-running, status reports no completed answer to consume. Once terminal, call
-`get_recon_results` with the same id to retrieve the raw result for each agent.
+`get_recon_status` to inspect progress. Its `results` contains every agent
+answer already persisted, even while the recon is running; `pending_agents`
+names lanes that have not yet produced a result. Continue polling until its
+status is `complete` or `failed`, then call `get_recon_results` with the same id
+to retrieve the final raw result for each agent.
 
 ```text
 recon(query, paths, num_agents) -> recon_id
 repeat:
-  get_recon_status(recon_id)
+  get_recon_status(recon_id) -> current results and pending_agents
 get_recon_results(recon_id) -> one raw result per agent
 ```
 

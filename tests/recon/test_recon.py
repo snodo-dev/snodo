@@ -571,10 +571,19 @@ class TestFailedReconCarriesItsReason:
         assert out["results"] == _failed_results()
         assert _FAILURE_REASON in out["results"][0]["error"]
 
-    def test_running_recon_still_has_nothing_to_report(self, recon_mgr):
+    def test_running_recon_reports_persisted_results_and_pending_agents(self, recon_mgr):
         recon_id = recon_mgr.submit("query", ["./"])
+        recon_dir = recon_mgr._recon_dir(recon_id)
+        state = recon_mgr._load_state(recon_dir)
+        state["agents"] = [["done"], ["pending"]]
+        recon_mgr._save_state(recon_dir, state)
+        results = [{"agent": "done", "result": "finished answer", "error": None}]
+        recon_mgr._save_results(recon_dir, results)
 
-        assert recon_mgr.get_status(recon_id)["results"] == []
+        status = recon_mgr.get_status(recon_id)
+        assert status["status"] == "running"
+        assert status["results"] == results
+        assert status["pending_agents"] == ["pending"]
         with pytest.raises(ReconError, match="not complete"):
             recon_mgr.get_results(recon_id)
 
@@ -588,7 +597,9 @@ class TestFailedReconCarriesItsReason:
         }]
         recon_id, state = _record_recon(recon_mgr, "complete", results)
 
-        assert recon_mgr.get_status(recon_id) == {**state, "results": results}
+        assert recon_mgr.get_status(recon_id) == {
+            **state, "results": results, "pending_agents": [],
+        }
         assert recon_mgr.get_results(recon_id) == {
             "recon_id": recon_id,
             "status": "complete",

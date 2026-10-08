@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Include persisted agent answers and pending lane names in recon status while
+  other agents are still running; terminal `get_recon_results` is unchanged.
+  (Fixes #774)
 - Bound each recon agent by configurable `llm.recon.deadline_seconds` (default
   300 seconds), and treat exhausted credit/billing errors as permanent so other
   agents can finish the recon. (Fixes #773)
