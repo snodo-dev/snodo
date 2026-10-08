@@ -348,6 +348,32 @@ def test_task_list_is_recent_first_with_age_and_date(tmp_path, monkeypatch, caps
     assert out.index("new") < out.index("old")
 
 
+def test_task_list_table_snapshot_is_unchanged(tmp_path, monkeypatch, capsys):
+    """Keep the operator-facing table and follow-up text stable."""
+    tasks = {
+        "sample": {
+            "task_id": "sample", "branch": "task/sample", "attempt": 2,
+            "status": "completed", "timestamp": None,
+        },
+    }
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    monkeypatch.setattr("snodo.cli.commands.task_cmd._get_all_task_branches", lambda _: tasks)
+    monkeypatch.setattr("snodo.cli.commands.task_cmd._task_is_running", lambda *_: False)
+
+    assert task_list_command(SimpleNamespace()) == 0
+    output = capsys.readouterr().out
+    assert output == (
+        "                           Tasks                            \n"
+        "┏━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━┳━━━━━┳━━━━━━┓\n"
+        "┃ TASK ID ┃ BRANCH      ┃ ATTEMPT ┃ STATUS    ┃ AGE ┃ DATE ┃\n"
+        "┡━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━╇━━━━━╇━━━━━━┩\n"
+        "│ sample  │ task/sample │ 2       │ completed │ ?   │ ?    │\n"
+        "└─────────┴─────────────┴─────────┴───────────┴─────┴──────┘\n"
+        "   inspect: snodo task show sample\n\n"
+        "Use snodo task abandon <task_id> to delete a task branch.\n"
+    )
+
+
 def test_task_list_shows_all_tasks_and_honest_statuses(tmp_path, monkeypatch, capsys):
     """task_list_command displays all tasks from session records and git branches with honest status."""
     monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
