@@ -1,6 +1,11 @@
 """Contract tests for the reusable CLI wave indicator (Fixes #780)."""
 
 import io
+import os
+import pty
+import select
+import subprocess
+import sys
 import time
 
 import pytest
@@ -231,3 +236,65 @@ def test_wave_while_silent_restores_global_output_state_on_exception(monkeypatch
     assert sys.__stdout__ is original_stdout
     assert sys.__stderr__ is original_stderr
     assert Console.print is original_print
+
+
+def test_wave_output_completes_under_a_real_pty(monkeypatch) -> None:
+    """A real terminal must not deadlock while output stops the animation."""
+    for name in (
+        "CI",
+        "NO_COLOR",
+        "SNODO_NO_SPINNER",
+        "SNODO_MCP_SERVER",
+        "SNODO_JOB_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("TERM", "xterm")
+    master, slave = pty.openpty()
+    code = "\n".join(
+        (
+            "import time",
+            "from snodo.cli.spinner import wave_while_silent",
+            "with wave_while_silent('loading tasks'):",
+            "    time.sleep(.35)",
+            "    print('task table')",
+        )
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-c", code],
+        stdin=subprocess.DEVNULL,
+        stdout=slave,
+        stderr=slave,
+        close_fds=True,
+        env=os.environ.copy(),
+    )
+    os.close(slave)
+    output = bytearray()
+    deadline = time.monotonic() + 4
+    try:
+        while process.poll() is None and time.monotonic() < deadline:
+            ready, _, _ = select.select([master], [], [], 0.1)
+            if ready:
+                try:
+                    output.extend(os.read(master, 4096))
+                except OSError:
+                    break
+        assert process.poll() is not None, "CLI remained blocked under a PTY"
+        while True:
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output.extend(chunk)
+        assert process.returncode == 0
+        assert b"task table" in output
+        assert b"\x1b[2K" in output
+        assert output.rstrip().endswith(b"task table\r") or output.rstrip().endswith(
+            b"task table"
+        )
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        os.close(master)

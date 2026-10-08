@@ -16,6 +16,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Stop and clear the CLI wave on the first command output, including output from
   Rich consoles created before the spinner, and never restart it afterward.
   (Fixes #784)
+- Bound spinner thread shutdown waits and isolate non-spinner tests from outer
+  terminal state, with a real-PTY regression for output during the wave.
+  (Fixes #784)
 - Show the delayed wave by default for silent CLI commands, with explicit
   exclusions for terminal-owning commands and command-specific activity labels.
   (Fixes #783)

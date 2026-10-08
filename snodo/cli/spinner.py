@@ -13,6 +13,7 @@ from typing import Iterator, TextIO
 
 _CYCLE = "▁▂▃▄▅▆▇█▇▆▅▄▃▂"
 _ASCII_FRAMES = ("[-]", "[\\]", "[|]", "[/]")
+_THREAD_JOIN_TIMEOUT = 0.25
 
 
 def wave_frame(index: int) -> str:
@@ -108,7 +109,7 @@ class WaveSpinner:
         self._output_seen.set()
         if self._thread is not None:
             self._stop.set()
-            self._thread.join()
+            self._thread.join(_THREAD_JOIN_TIMEOUT)
         self._clear()
 
     def stop_for_output(self) -> None:
@@ -116,8 +117,12 @@ class WaveSpinner:
         self._output_seen.set()
         self._stop.set()
         if self._thread is not None and self._thread is not threading.current_thread():
-            self._thread.join()
+            self._thread.join(_THREAD_JOIN_TIMEOUT)
         self._clear()
+
+    def _is_animation_write(self) -> bool:
+        """Distinguish the spinner's own redirected writes from CLI output."""
+        return self._thread is threading.current_thread()
 
     def _clear(self) -> None:
         with self._lock:
@@ -138,7 +143,7 @@ class _OutputBoundary:
         self._spinner = spinner
 
     def write(self, value: str) -> int:
-        if value:
+        if value and not self._spinner._is_animation_write():
             self._spinner.stop_for_output()
         return self._stream.write(value)
 
