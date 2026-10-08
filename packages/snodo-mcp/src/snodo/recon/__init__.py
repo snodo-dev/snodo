@@ -149,17 +149,46 @@ _READ_ONLY_TOOLS = _read_only_tools()
 
 
 def _execute_recon_read(name: str, args: dict, workspace) -> str:
-    """Execute a shared read tool, adding explicit file:line evidence for ranges."""
+    """Execute a shared read tool, adding explicit file:line evidence."""
     from snodo.coders.litellm import LiteLLMAdapter
 
     result = LiteLLMAdapter._execute_tool(name, args, workspace)
-    if name == "read_file_lines" and not result.startswith("Tool error:"):
-        first = int(args["start"])
-        return "\n".join(
-            f"{line}: {content}"
-            for line, content in enumerate(result.splitlines(), start=first)
-        )
+    if result.startswith("Tool error:"):
+        return result
+    if name == "read_file_lines":
+        return _number_lines(result, int(args["start"]))
+    if name == "read_file":
+        return _number_lines(result)
+    if name == "read_files":
+        return _number_batch_files(result)
     return result
+
+
+def _number_lines(content: str, start: int = 1) -> str:
+    """Prefix each source line with its 1-based file line number."""
+    return "\n".join(
+        f"{line}: {text}"
+        for line, text in enumerate(content.splitlines(), start=start)
+    )
+
+
+def _number_batch_files(output: str) -> str:
+    """Number each read_files section independently, leaving notices intact."""
+    import re
+
+    sections = re.split(r"(?m)(^=== .*? ===\n)", output)
+    for index in range(2, len(sections), 2):
+        lines = sections[index].splitlines()
+        numbered = []
+        source_line = 1
+        for line in lines:
+            if line.startswith(("[TRUNCATED:", "[OMITTED:")):
+                numbered.append(line)
+            else:
+                numbered.append(f"{source_line}: {line}")
+                source_line += 1
+        sections[index] = "\n".join(numbered)
+    return "".join(sections)
 
 # The instruction that closes the reading window — the recon analogue of the
 # validator's _VERDICT_ONLY_INSTRUCTION (snodo/validators/llm_validator.py).

@@ -214,6 +214,60 @@ def test_recon_read_tools_reject_path_traversal(tmp_path):
     assert "secret" not in result
 
 
+def test_recon_read_file_numbers_lines_through_recon_path(tmp_path):
+    from snodo.recon import _execute_recon_read
+    from snodo.tools.workspace import WorkspaceMCP
+
+    (tmp_path / "sample.py").write_text("alpha\nbeta\ngamma\n")
+    result = _execute_recon_read("read_file", {"path": "sample.py"}, WorkspaceMCP(str(tmp_path)))
+
+    assert result == "1: alpha\n2: beta\n3: gamma"
+
+
+def test_recon_read_files_numbers_each_file_from_one(tmp_path):
+    from snodo.recon import _execute_recon_read
+    from snodo.tools.workspace import WorkspaceMCP
+
+    (tmp_path / "a.py").write_text("alpha\nbeta\n")
+    (tmp_path / "b.py").write_text("gamma\ndelta\n")
+    result = _execute_recon_read(
+        "read_files", {"paths": ["a.py", "b.py"]}, WorkspaceMCP(str(tmp_path)),
+    )
+
+    assert "=== a.py ===\n1: alpha\n2: beta" in result
+    assert "=== b.py ===\n1: gamma\n2: delta" in result
+
+
+def test_recon_truncated_batch_keeps_cutoff_file_and_next_line_correct(tmp_path):
+    from snodo.recon import _execute_recon_read
+    from snodo.tools.workspace import WorkspaceMCP
+
+    content = "".join(f"line {number:05d} {'x' * 80}\n" for number in range(1, 500))
+    (tmp_path / "large.py").write_text(content)
+    result = _execute_recon_read(
+        "read_files", {"paths": ["large.py"]}, WorkspaceMCP(str(tmp_path)),
+    )
+
+    notice = next(line for line in result.splitlines() if line.startswith("[TRUNCATED:"))
+    next_line = int(notice.split("continues at line ", 1)[1].split()[0])
+    assert "large.py continues at line" in notice
+    assert f"{next_line}: line {next_line:05d}" not in result
+    assert f"{next_line - 1}: line {next_line - 1:05d}" in result
+    assert f"read_file_lines(path, start, end)" in result
+
+
+def test_non_recon_read_file_output_remains_unnumbered(tmp_path):
+    from snodo.coders.litellm import LiteLLMAdapter
+    from snodo.tools.workspace import WorkspaceMCP
+
+    (tmp_path / "sample.py").write_text("alpha\nbeta\n")
+    result = LiteLLMAdapter._execute_tool(
+        "read_file", {"path": "sample.py"}, WorkspaceMCP(str(tmp_path)),
+    )
+
+    assert result == "alpha\nbeta\n"
+
+
 def test_recon_agent_default_budgets_are_sized_for_exploration():
     from snodo.infrastructure.config import ValidatorConfig, ReconConfig
 

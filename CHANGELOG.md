@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Number whole-file and batch reads in recon with 1-based source line prefixes,
+  preserving accurate batch truncation continuation ranges. (Fixes #779)
 - Keep recon stall detection limited to fully covered repeat reads, allowing
   additional line ranges in an already-read file to count as progress; preserve
   `stalled` in the trace after a forced answer. (Fixes #778)
