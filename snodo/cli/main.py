@@ -131,6 +131,11 @@ for _command_info in app.registered_commands:
 del _pkgutil, _importlib, _cli_commands, _mod_name, _mod, _sub_app, _cmd_name, _reg
 
 
+from snodo.cli.slow_commands import add_slow_command_indicators
+
+add_slow_command_indicators(app)
+
+
 # init is now registered in snodo/cli/commands/init_cmd.py via register(app).
 
 

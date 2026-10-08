@@ -6,8 +6,9 @@ import os
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from types import TracebackType
-from typing import TextIO
+from typing import Iterator, TextIO
 
 _CYCLE = "▁▂▃▄▅▆▇█▇▆▅▄▃▂"
 _ASCII_FRAMES = ("[-]", "[\\]", "[|]", "[/]")
@@ -38,6 +39,7 @@ class WaveSpinner:
         self._thread: threading.Thread | None = None
         self._started_at = 0.0
         self._drawn = False
+        self._closed = False
 
     def _enabled(self) -> bool:
         stream = self.stream if self.stream is not None else sys.stderr
@@ -88,6 +90,9 @@ class WaveSpinner:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        if self._closed:
+            return
+        self._closed = True
         if self._thread is not None:
             self._stop.set()
             self._thread.join()
@@ -97,3 +102,42 @@ class WaveSpinner:
                     self.stream.flush()
                 except (OSError, UnicodeError):
                     pass
+
+
+class _OutputBoundary:
+    """Stop the spinner before forwarding a command's first real output."""
+
+    def __init__(self, stream: TextIO, spinner: WaveSpinner) -> None:
+        self._stream = stream
+        self._spinner = spinner
+
+    def write(self, value: str) -> int:
+        if value:
+            self._spinner.__exit__(None, None, None)
+        return self._stream.write(value)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def __getattr__(self, name: str):
+        return getattr(self._stream, name)
+
+
+@contextmanager
+def wave_while_silent(label: str) -> Iterator[None]:
+    """Show a delayed wave only until the CLI is ready to print anything.
+
+    Wrapping both output streams, rather than clearing only when a callback
+    returns, keeps long commands responsive while guaranteeing the animation
+    cannot overwrite JSON, progress output, or an interactive prompt.
+    """
+    spinner = WaveSpinner(label)
+    stdout, stderr = sys.stdout, sys.stderr
+    spinner.__enter__()
+    sys.stdout = _OutputBoundary(stdout, spinner)  # type: ignore[assignment]
+    sys.stderr = _OutputBoundary(stderr, spinner)  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        sys.stdout, sys.stderr = stdout, stderr
+        spinner.__exit__(None, None, None)

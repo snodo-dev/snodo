@@ -137,6 +137,41 @@ def test_ready_cmd_json_output(git_project: Path, capsys):
     }
 
 
+def test_ready_json_stdout_is_identical_with_tty_stderr(git_project: Path, monkeypatch):
+    """The interactive indicator never changes machine-readable stdout."""
+    import io
+    import sys
+    from snodo.cli.spinner import wave_while_silent
+
+    class TTY(io.StringIO):
+        encoding = "utf-8"
+
+        def isatty(self):
+            return True
+
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("SNODO_NO_SPINNER", raising=False)
+    monkeypatch.setenv("TERM", "xterm")
+    monkeypatch.setattr("snodo.project.get_project_id", lambda _root: ("test-project", None))
+    monkeypatch.setattr("snodo.project.scope_for_project_id", lambda _project_id: "local")
+    # Warm project identity/plugin discovery so the compared runs exercise only
+    # the stream mode and not first-use initialization.
+    ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=True))
+    outputs = []
+    for stderr in (TTY(), io.StringIO()):
+        stdout = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", stdout)
+        monkeypatch.setattr(sys, "stderr", stderr)
+        with wave_while_silent("checking readiness"):
+            assert ready_command(SimpleNamespace(
+                mode=None, protocol=".snodo/protocol.yml", json=True,
+            )) == 0
+        outputs.append(stdout.getvalue().encode())
+    assert outputs[0] == outputs[1]
+    assert json.loads(outputs[0])["ok"] is True
+
+
 @pytest.mark.parametrize("load_error, expected_status", [(None, "installed"), (ImportError("missing dependency"), "failed")])
 def test_ready_reports_validator_extension_status(git_project: Path, capsys, monkeypatch, load_error, expected_status):
     from snodo.validators.context import ValidatorBase

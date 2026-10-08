@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Show the delayed wave indicator while readiness, validation, configuration
+  checks and protocol/model checks work silently; clear it before any output.
+  (Fixes #781)
 - Add a reusable delayed Snodo wave loading indicator for interactive CLI stderr,
   with quiet-output gating and terminal-safe cleanup. (Fixes #780)
 - Number whole-file and batch reads in recon with 1-based source line prefixes,

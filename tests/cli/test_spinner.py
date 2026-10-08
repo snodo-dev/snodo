@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from snodo.cli.spinner import WaveSpinner, wave_frame
+from snodo.cli.spinner import WaveSpinner, wave_frame, wave_while_silent
 
 
 class Terminal(io.StringIO):
@@ -80,3 +80,37 @@ def test_non_utf8_terminal_uses_ascii_frame() -> None:
     with WaveSpinner("working", delay=0, interval=0.005, stream=stream):
         time.sleep(0.01)
     assert "[-]" in stream.getvalue()
+
+
+def test_wave_is_cleared_before_first_prompt_or_output(monkeypatch) -> None:
+    import sys
+
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("SNODO_NO_SPINNER", raising=False)
+    monkeypatch.delenv("SNODO_MCP_SERVER", raising=False)
+    monkeypatch.delenv("SNODO_JOB_ID", raising=False)
+    monkeypatch.setenv("TERM", "xterm")
+    stdout = io.StringIO()
+    stderr = Terminal()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    with wave_while_silent("checking readiness"):
+        time.sleep(0.35)
+        sys.stdout.write("Question? ")
+        sys.stdout.flush()
+        assert stderr.getvalue().endswith("\r\033[2K")
+        sys.stdout.write("answer\n")
+    assert stdout.getvalue() == "Question? answer\n"
+    assert stderr.getvalue().count("\r\033[2K") >= 2
+
+
+def test_wave_while_silent_never_draws_when_stderr_is_not_tty(monkeypatch) -> None:
+    import sys
+
+    stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr)
+    with wave_while_silent("testing providers"):
+        time.sleep(0.02)
+        sys.stdout.write("provider output\n")
+    assert stderr.getvalue() == ""
