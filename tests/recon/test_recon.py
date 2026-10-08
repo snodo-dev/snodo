@@ -857,6 +857,36 @@ def _prose_response(text):
 
 
 class TestTerminalAnswer:
+    def test_tool_calling_budget_forces_answer_then_returns_gathered_findings(self, project_with_snodo):
+        from types import SimpleNamespace
+        from snodo.recon import call_agent
+
+        def tool_response(name, arguments):
+            tc = SimpleNamespace(id="read", function=SimpleNamespace(
+                name=name, arguments=json.dumps(arguments),
+            ))
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content="", tool_calls=[tc]), finish_reason="tool_calls",
+            )])
+
+        # A read turn followed by forced and retry calls that both ignore the
+        # forced submit tool. The gathered read result must survive as a partial.
+        responses = [
+            tool_response("read_file", {"path": "facts.txt"}),
+            tool_response("read_file", {"path": "facts.txt"}),
+            tool_response("read_file", {"path": "facts.txt"}),
+        ]
+        with patch("snodo.recon._execute_recon_read", return_value="The answer is 42.") as read, \
+             patch("litellm.completion", side_effect=responses) as completion:
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+
+        assert completion.call_count == 3
+        assert completion.call_args_list[1].kwargs["tools"][0]["function"]["name"] == "submit_answer"
+        assert completion.call_args_list[1].kwargs["tool_choice"]["function"]["name"] == "submit_answer"
+        assert result.result.startswith("The answer is 42.")
+        assert "truncated" in result.error
+        assert read.call_count == 1
+
     def test_out_of_turns_agent_asked_once_without_tools(self, project_with_snodo):
         """An agent still calling tools on its last budgeted turn is asked
         once more with the read tools withdrawn, and that answer — not the

@@ -598,6 +598,11 @@ def call_agent(
         retry = _complete(with_read_tools=False, force_answer=True)
         _record_response(retry)
         retry_answer, retry_finish = _forced_answer(retry)
+        if not retry_answer.strip() and getattr(retry.choices[0].message, "tool_calls", None):
+            nonlocal truncated
+            truncated = True
+            trace["ended"] = "truncated:tool_calls"
+            retry_answer = "\n\n".join(gathered_findings or earlier_prose)
         return retry_answer, retry_finish
 
     turns_used = 0
@@ -605,6 +610,7 @@ def call_agent(
     raw_turn = 0
     trace = {"turns_used": 0, "tools_called": [], "ended": "unknown"}
     earlier_prose: list[str] = []
+    gathered_findings: list[str] = []
     truncated = False
     max_raw_turns = max_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 2
     while raw_turn < max_raw_turns:
@@ -687,6 +693,8 @@ def call_agent(
                     result = _execute_recon_read(name, args, workspace)
                     read_tracker.record_read(name, args, raw_turn + 1)
                     turn_progressed = True
+                    if result.strip() and not result.startswith("Tool error:"):
+                        gathered_findings.append(result.strip())
 
             messages.append({
                 "role": "tool",
