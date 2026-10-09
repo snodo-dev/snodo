@@ -2,6 +2,28 @@
 
 Four extension points. Each maps to an interface or registry in the codebase. You implement the interface, register your implementation, and reference it from `protocol.yml`.
 
+## Try it in a minute
+
+From the Snodo repository root, install the runnable [`snodo-hello-validator` example](../examples/snodo-hello-validator/):
+
+```sh
+uv pip install -e ./examples/snodo-hello-validator
+snodo ready --json
+```
+
+Confirm `extensions` → `snodo.validators` lists `hello_acceptance` as installed. Add this validator to `.snodo/protocol.yml`:
+
+```yaml
+validators:
+  - validator_id: hello_acceptance_check
+    validator_type: hello_acceptance
+    evaluation_phase: pre_execute
+    criteria:
+      - Task specification includes an ACCEPTANCE section
+```
+
+Then run `snodo validate <task-id>` and uninstall with `uv pip uninstall snodo-hello-validator`. See the example README for details.
+
 ## 1. Custom validators
 
 ### Interface
@@ -273,7 +295,7 @@ The entry-point name is the provider name referenced by `metadata.provider`. The
 
 ### Verify your plugin
 
-After packaging and installing the distribution in the same environment as Snodo, run `snodo ready` in a project that uses it. The readiness report lists installed code-host plugins (and plugins that failed to load), then reports which provider the project resolves to and why. For remote auto-detection, use a project whose `origin` URL your `claims_remote(url)` recognizes; the report should say it was detected from that remote host. For explicit selection, set `metadata.provider` in the protocol and readiness reports that it was selected by `metadata.provider`. A plugin listed as installed confirms entry-point loading, while a failed status includes the load error; provider construction failures are also reported. If multiple plugins claim the remote, readiness reports the selected one.
+After packaging and installing the distribution in the same environment as Snodo, run `snodo ready` in a project that uses it. The readiness report lists installed code-host plugins (and plugins that failed to load), then reports which provider the project resolves to and why. For remote auto-detection, use a project whose `origin` URL your `claims_remote(url)` recognizes; the report should say it was detected from that remote host. For explicit selection, set `metadata.provider` in the protocol and readiness reports that it was selected by `metadata.provider`. A plugin listed as installed confirms entry-point loading, while a failed status includes the load error; provider construction failures are also reported. If multiple plugins claim the remote, readiness reports the selected one. For the runnable validator check, follow [Try it in a minute](#try-it-in-a-minute): `snodo ready --json` should list `hello_acceptance` under `extensions` → `snodo.validators` as installed.
 
 Two working code-host plugins are available as examples to copy. Both implement this neutral contract and register in the `snodo.providers` entry-point group; plugins should ship their own top-level import package rather than adding modules beneath Snodo's `snodo.providers` package:
 
