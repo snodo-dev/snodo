@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import builtins
+from contextlib import contextmanager
+from functools import wraps
 import os
+import subprocess
 import sys
 import threading
 import time
-from functools import wraps
-from contextlib import contextmanager
 from types import TracebackType
 from typing import Iterator, TextIO
 
 _CYCLE = "▁▂▃▄▅▆▇█▇▆▅▄▃▂"
 _ASCII_FRAMES = ("[-]", "[\\]", "[|]", "[/]")
 _THREAD_JOIN_TIMEOUT = 0.25
+_active_spinner: WaveSpinner | None = None
 
 
 def wave_frame(index: int) -> str:
@@ -24,6 +27,13 @@ def wave_frame(index: int) -> str:
         + "".join(_CYCLE[(index + offset) % size] for offset in (0, 2, 4, 6, 8))
         + "]"
     )
+
+
+def stop_wave_for_terminal_handoff() -> None:
+    """Stop the active wave before yielding the terminal to another process."""
+    spinner = _active_spinner
+    if spinner is not None:
+        spinner.stop_for_output()
 
 
 class WaveSpinner:
@@ -67,7 +77,9 @@ class WaveSpinner:
         )
 
     def __enter__(self) -> WaveSpinner:
+        global _active_spinner
         if self._enabled():
+            _active_spinner = self
             self._started_at = time.monotonic()
             self._thread = threading.Thread(target=self._animate, daemon=True)
             self._thread.start()
@@ -103,8 +115,11 @@ class WaveSpinner:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        global _active_spinner
         if self._closed:
             return
+        if _active_spinner is self:
+            _active_spinner = None
         self._closed = True
         self._output_seen.set()
         if self._thread is not None:
@@ -171,8 +186,12 @@ def wave_while_silent(label: str) -> Iterator[None]:
     except ImportError:  # pragma: no cover - Rich is a required CLI dependency
         Console = None  # type: ignore[assignment,misc]
     original_print = Console.print if Console is not None else None
+    original_pager = Console.pager if Console is not None else None
+    original_input = Console.input if Console is not None else None
     original_sys_stdout = getattr(sys, "__stdout__", None)
     original_sys_stderr = getattr(sys, "__stderr__", None)
+    original_input_builtin = builtins.input
+    original_popen = subprocess.Popen
     if Console is not None and original_print is not None:
 
         @wraps(original_print)
@@ -188,6 +207,43 @@ def wave_while_silent(label: str) -> Iterator[None]:
             return original_print(console, *args, **kwargs)
 
         Console.print = observed_print
+
+        @wraps(original_pager)
+        @contextmanager
+        def observed_pager(console, *args, **kwargs):
+            spinner.stop_for_output()
+            with original_pager(console, *args, **kwargs) as pager:
+                yield pager
+
+        @wraps(original_input)
+        def observed_input(console, *args, **kwargs):
+            spinner.stop_for_output()
+            return original_input(console, *args, **kwargs)
+
+        Console.pager = observed_pager
+        Console.input = observed_input
+
+    @wraps(original_input_builtin)
+    def observed_builtin_input(*args, **kwargs):
+        spinner.stop_for_output()
+        return original_input_builtin(*args, **kwargs)
+
+    builtins.input = observed_builtin_input
+
+    @wraps(original_popen)
+    def observed_popen(*args, **kwargs):
+        if any(
+            kwargs.get(name) is None and _stream_is_tty(stream)
+            for name, stream in (
+                ("stdin", sys.stdin),
+                ("stdout", sys.stdout),
+                ("stderr", sys.stderr),
+            )
+        ):
+            spinner.stop_for_output()
+        return original_popen(*args, **kwargs)
+
+    subprocess.Popen = observed_popen
     spinner.__enter__()
     sys.stdout = _OutputBoundary(stdout, spinner)  # type: ignore[assignment]
     sys.stderr = _OutputBoundary(stderr, spinner)  # type: ignore[assignment]
@@ -205,4 +261,15 @@ def wave_while_silent(label: str) -> Iterator[None]:
             sys.__stderr__ = original_sys_stderr  # type: ignore[assignment]
         if Console is not None and original_print is not None:
             Console.print = original_print
+            Console.pager = original_pager
+            Console.input = original_input
+        builtins.input = original_input_builtin
+        subprocess.Popen = original_popen
         spinner.__exit__(None, None, None)
+
+
+def _stream_is_tty(stream: TextIO) -> bool:
+    try:
+        return stream.isatty()
+    except (AttributeError, OSError):
+        return False

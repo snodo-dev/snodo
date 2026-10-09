@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Stop and clear the CLI wave before Rich pagers and interactive prompts take
+  control, with a reusable terminal-handoff hook for subprocesses. (Fixes #790)
 - Bound each `make gate` pytest test to 60 seconds so hangs fail with the test
   traceback before exhausting the remote gate budget. (Fixes #789)
 - Avoid per-task Git ancestry checks when listing task branches by using the

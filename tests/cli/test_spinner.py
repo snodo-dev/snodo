@@ -181,6 +181,54 @@ def test_preexisting_rich_console_output_stops_wave(monkeypatch) -> None:
     assert "table from old console" in stdout.getvalue()
 
 
+def test_rich_pager_entry_stops_wave_before_pager_starts(monkeypatch) -> None:
+    import sys
+
+    _enable_wave(monkeypatch)
+    stdout, stderr = Terminal(), Terminal()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    pager_started = []
+    original_pager = Console.pager
+
+    def observe_pager(console, *args, **kwargs):
+        assert stderr.getvalue().endswith("\r\033[2K")
+        pager_started.append(True)
+        return original_pager(console, *args, **kwargs)
+
+    monkeypatch.setattr(Console, "pager", observe_pager)
+    with wave_while_silent("loading tasks"):
+        time.sleep(0.35)
+        console = Console(file=sys.stdout, force_terminal=False)
+        with console.pager():
+            console.print("paged task output")
+        stopped = stderr.getvalue()
+        time.sleep(0.04)
+        assert stderr.getvalue() == stopped
+    assert pager_started == [True]
+    assert "paged task output" in stdout.getvalue()
+    assert "loading tasks" not in stdout.getvalue()
+
+
+def test_builtin_prompt_stops_wave_before_waiting(monkeypatch) -> None:
+    import builtins
+    import sys
+
+    _enable_wave(monkeypatch)
+    stdout, stderr = Terminal(), Terminal()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    monkeypatch.setattr(builtins, "input", lambda prompt="": prompt)
+    with wave_while_silent("waiting"):
+        time.sleep(0.35)
+        answer = input("Continue? ")
+        assert answer == "Continue? "
+        assert stderr.getvalue().endswith("\r\033[2K")
+        stopped = stderr.getvalue()
+        time.sleep(0.04)
+        assert stderr.getvalue() == stopped
+
+
 def test_output_keeps_wave_stopped_during_later_silence(monkeypatch) -> None:
     import sys
 
