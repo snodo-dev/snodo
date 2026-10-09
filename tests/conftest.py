@@ -43,6 +43,13 @@ def _suite_repo_root() -> Path | None:
     return Path(root) if root else None
 
 
+@pytest.fixture(autouse=True)
+def disable_wave_for_non_spinner_tests(monkeypatch, request):
+    """Keep terminal-sensitive suite tests independent of the outer TTY."""
+    if request.path.name != "test_spinner.py":
+        monkeypatch.setenv("SNODO_NO_SPINNER", "1")
+
+
 def _head_state(repo_root: Path) -> tuple:
     """Return (branch, commit) of *repo_root*'s HEAD."""
     branch = subprocess.run(
