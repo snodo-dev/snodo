@@ -210,6 +210,42 @@ def test_rich_pager_entry_stops_wave_before_pager_starts(monkeypatch) -> None:
     assert "loading tasks" not in stdout.getvalue()
 
 
+def test_captured_subprocess_does_not_stop_wave(monkeypatch) -> None:
+    import sys
+
+    _enable_wave(monkeypatch)
+    stdout, stderr = Terminal(), Terminal()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    with wave_while_silent("loading tasks"):
+        subprocess.run([sys.executable, "-c", "pass"], capture_output=True, check=True)
+        time.sleep(0.35)
+    assert "loading tasks" in stderr.getvalue()
+
+
+def test_terminal_stdout_subprocess_stops_wave_before_launch(monkeypatch) -> None:
+    import sys
+
+    _enable_wave(monkeypatch)
+    stdout, stderr = Terminal(), Terminal()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    launched_after_clear = []
+
+    class Child:
+        pass
+
+    def fake_popen(*args, **kwargs):
+        launched_after_clear.append(stderr.getvalue().endswith("\r\033[2K"))
+        return Child()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    with wave_while_silent("loading tasks"):
+        time.sleep(0.35)
+        subprocess.Popen(["interactive-child"])
+    assert launched_after_clear == [True]
+
+
 def test_builtin_prompt_stops_wave_before_waiting(monkeypatch) -> None:
     import builtins
     import sys

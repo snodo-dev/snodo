@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Keep the delayed CLI wave visible during captured/background subprocesses, and
+  stop it only when a child inherits terminal stdout; pager handoff stays intact.
+  (Fixes #791)
 - Stop and clear the CLI wave before Rich pagers and interactive prompts take
   control, with a reusable terminal-handoff hook for subprocesses. (Fixes #790)
 - Bound each `make gate` pytest test to 60 seconds so hangs fail with the test

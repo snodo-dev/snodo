@@ -232,14 +232,12 @@ def wave_while_silent(label: str) -> Iterator[None]:
 
     @wraps(original_popen)
     def observed_popen(*args, **kwargs):
-        if any(
-            kwargs.get(name) is None and _stream_is_tty(stream)
-            for name, stream in (
-                ("stdin", sys.stdin),
-                ("stdout", sys.stdout),
-                ("stderr", sys.stderr),
-            )
-        ):
+        # Only inherited terminal stdout is a terminal handoff: stdin alone
+        # does not give a child a visible terminal surface, and stderr-only
+        # inheritance can carry a warning without taking over the display.
+        # Keep the wave for captured/background children; pager entry is hooked
+        # separately above, including pagers that inherit stderr.
+        if kwargs.get("stdout") is None and _stream_is_tty(sys.stdout):
             spinner.stop_for_output()
         return original_popen(*args, **kwargs)
 

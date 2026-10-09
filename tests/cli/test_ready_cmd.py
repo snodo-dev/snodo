@@ -13,6 +13,7 @@ PROVES:
 
 import json
 import subprocess
+import time
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
@@ -159,17 +160,22 @@ def test_ready_json_stdout_is_identical_with_tty_stderr(git_project: Path, monke
     # the stream mode and not first-use initialization.
     ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=True))
     outputs = []
+    stderr_outputs = []
     for stderr in (TTY(), io.StringIO()):
         stdout = io.StringIO()
         monkeypatch.setattr(sys, "stdout", stdout)
         monkeypatch.setattr(sys, "stderr", stderr)
         with wave_while_silent("checking readiness"):
+            if stderr.isatty():
+                time.sleep(0.35)
             assert ready_command(SimpleNamespace(
                 mode=None, protocol=".snodo/protocol.yml", json=True,
             )) == 0
         outputs.append(stdout.getvalue().encode())
+        stderr_outputs.append(stderr.getvalue())
     assert outputs[0] == outputs[1]
     assert json.loads(outputs[0])["ok"] is True
+    assert "checking readiness" in stderr_outputs[0]
 
 
 @pytest.mark.parametrize("load_error, expected_status", [(None, "installed"), (ImportError("missing dependency"), "failed")])
