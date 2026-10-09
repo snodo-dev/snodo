@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snodo-hello-validator"
+version = "0.1.0"
+description = "A minimal third-party validator plugin for Snodo"
+requires-python = ">=3.12"
+dependencies = ["snodo>=0.20.3"]
+
+[project.entry-points."snodo.validators"]
+hello_acceptance = "snodo_hello_validator:HelloAcceptanceValidator"
+
+[tool.setuptools]
+py-modules = ["snodo_hello_validator"]

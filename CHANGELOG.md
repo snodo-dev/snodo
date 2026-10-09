@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add an installable third-party validator example with entry-point registration
+  and readiness/validation coverage. (Fixes #792)
 - Keep the delayed CLI wave visible during captured/background subprocesses, and
   stop it only when a child inherits terminal stdout; pager handoff stays intact.
   (Fixes #791)
