@@ -70,7 +70,7 @@ def test_builtin_validators_remain_registered():
 
 
 def test_plugin_is_discovered_when_registry_is_imported_first(tmp_path):
-    """A fresh ready invocation reports discovered and broken plugins."""
+    """A fresh ready invocation reports plugins regardless of import order."""
     import os
     import subprocess
     import sys
@@ -80,18 +80,14 @@ import importlib.metadata
 import io
 import json
 from contextlib import redirect_stdout
-from snodo.validators.context import ValidatorBase
-
-class PluginValidator(ValidatorBase):
-    @classmethod
-    def registered_type(cls):
-        return "startup_plugin"
-    def evaluate(self, context):
-        raise NotImplementedError
-
 class EntryPoint:
     name = "startup_plugin"
     def load(self):
+        from snodo.validators.context import ValidatorBase
+        class PluginValidator(ValidatorBase):
+            @classmethod
+            def registered_type(cls): return "startup_plugin"
+            def evaluate(self, context): raise NotImplementedError
         return PluginValidator
 
 class BrokenEntryPoint:
@@ -102,6 +98,10 @@ class BrokenEntryPoint:
 import sys
 from types import SimpleNamespace
 importlib.metadata.entry_points = lambda **kwargs: [EntryPoint(), BrokenEntryPoint()]
+if sys.argv[1] == "registry":
+    import snodo.validators.registry
+else:
+    import snodo.validators
 from snodo.cli.commands.ready_cmd import ready_command
 output = io.StringIO()
 with redirect_stdout(output):
@@ -123,4 +123,10 @@ assert "ImportError: plugin dependency missing" == broken["error"]
     )
     environment = os.environ.copy()
     environment["PYTHONPATH"] = os.pathsep.join(sys.path)
-    subprocess.run([sys.executable, "-c", script], check=True, env=environment, cwd=tmp_path)
+    for import_first in ("registry", "package"):
+        subprocess.run(
+            [sys.executable, "-c", script, import_first],
+            check=True,
+            env=environment,
+            cwd=tmp_path,
+        )
