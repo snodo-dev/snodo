@@ -1,6 +1,6 @@
-"""Validator package — all modules self-register on import."""
+"""Validator package — built-ins register after the registry is initialized.
 
-import snodo.validators.llm_validator      # noqa: F401
-import snodo.validators.quality            # noqa: F401
-import snodo.validators.protocol_adherence  # noqa: F401
-import snodo.validators.acceptance         # noqa: F401
+Keep package import side-effect free: importing ``snodo.validators.registry``
+first must not eagerly import built-ins that re-enter the partially initialized
+registry module.
+"""

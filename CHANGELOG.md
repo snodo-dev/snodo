@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Fix validator plugin discovery during registry initialization so installed
+  entry points are reported by `snodo ready`. (Fixes #794)
 - Add a one-minute install, discovery, protocol, validation and uninstall path
   for the `snodo-hello-validator` example in the extension guide. (Fixes #793)
 - Add an installable third-party validator example with entry-point registration
