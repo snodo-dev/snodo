@@ -336,16 +336,17 @@ def test_wave_output_completes_under_a_real_pty(monkeypatch) -> None:
     master, slave = pty.openpty()
     code = "\n".join(
         (
+            "import os",
             "import time",
             "from snodo.cli.spinner import wave_while_silent",
             "with wave_while_silent('loading tasks'):",
-            "    time.sleep(.35)",
+            "    os.read(0, 1)",
             "    print('task table')",
         )
     )
     process = subprocess.Popen(
         [sys.executable, "-c", code],
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.PIPE,
         stdout=slave,
         stderr=slave,
         close_fds=True,
@@ -353,8 +354,25 @@ def test_wave_output_completes_under_a_real_pty(monkeypatch) -> None:
     )
     os.close(slave)
     output = bytearray()
-    deadline = time.monotonic() + 4
+    deadline = time.monotonic() + 55
     try:
+        # Keep the child silent until the real-PTY animation has drawn. Reading
+        # stdin does not cross an output boundary, so the wave remains active.
+        while process.poll() is None and time.monotonic() < deadline:
+            ready, _, _ = select.select([master], [], [], 0.1)
+            if ready:
+                try:
+                    output.extend(os.read(master, 4096))
+                except OSError:
+                    break
+                if b"\x1b[2K" in output:
+                    break
+        assert b"\x1b[2K" in output, "wave did not draw under a PTY"
+        assert process.poll() is None, "CLI exited before output stopped the wave"
+        assert process.stdin is not None
+        process.stdin.write(b"continue\n")
+        process.stdin.flush()
+        # Drain until clean process exit, using the remaining per-test budget.
         while process.poll() is None and time.monotonic() < deadline:
             ready, _, _ = select.select([master], [], [], 0.1)
             if ready:

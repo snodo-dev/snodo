@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Make the real-PTY wave completion test synchronize on terminal output and use
+  a generous deadline, avoiding scheduling-sensitive failures under gate load.
+  (Fixes #802)
 - Update the supported security version series to 0.21.x and align its cutoff
   with the current release. (Fixes #800)
 
