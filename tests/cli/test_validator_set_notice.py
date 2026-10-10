@@ -82,8 +82,9 @@ class TestOutOfDateNotice:
 
         _print_missing_template_validators(old_solo)
         out = capsys.readouterr().out
-        assert "out of date" in out
+        assert "template drift" in out
         assert "acceptance" in out
+        assert "snodo protocol diff" in out
 
     def test_no_notice_for_current_validator_set(self, capsys):
         from snodo.protocols import template_protocol

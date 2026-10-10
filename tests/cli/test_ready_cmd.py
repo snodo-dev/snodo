@@ -165,6 +165,37 @@ def test_ready_cmd_json_output(git_project: Path, capsys):
     }
 
 
+def test_ready_reports_template_drift_and_json_finding(git_project: Path, capsys):
+    from snodo.protocols import template_protocol
+
+    protocol = template_protocol("solo")
+    data = protocol.model_dump(mode="json")
+    data["validators"] = [v for v in data["validators"] if v["validator_id"] != "acceptance"]
+    (git_project / ".snodo" / "protocol.yml").write_text(yaml.safe_dump(data))
+
+    result = ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=True))
+    output = json.loads(capsys.readouterr().out)
+    finding = next(f for f in output["findings"] if f["id"] == "protocol_template_drift")
+    assert result == 0
+    assert finding["severity"] == "info"
+    assert "validators: 1" in finding["finding"]
+    assert "snodo protocol diff" in finding["remediation"]
+
+
+def test_ready_omits_template_drift_for_matching_and_bespoke_protocols(git_project: Path, capsys):
+    from snodo.protocols import template_protocol
+
+    path = git_project / ".snodo" / "protocol.yml"
+    for protocol in (
+        template_protocol("solo"),
+        template_protocol("solo").model_copy(update={"protocol_id": "bespoke", "metadata": {}}),
+    ):
+        path.write_text(yaml.safe_dump(protocol.model_dump(mode="json")))
+        assert ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=True)) == 0
+        output = json.loads(capsys.readouterr().out)
+        assert not any(f["id"] == "protocol_template_drift" for f in output["findings"])
+
+
 def test_ready_json_stdout_is_identical_with_tty_stderr(git_project: Path, monkeypatch):
     """The interactive indicator never changes machine-readable stdout."""
     import io

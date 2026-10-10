@@ -117,6 +117,7 @@ def ready_command(args) -> int:
 
     # Run assessment across the whole protocol
     assessment = assess_readiness(project_root, protocol, protocol_errors=protocol_errors)
+    _append_template_drift_finding(assessment, protocol)
     _append_mcp_install_findings(assessment)
     _append_provider_findings(assessment, project_root, protocol)
     extension_status = _extension_plugin_status()
@@ -239,6 +240,39 @@ def ready_command(args) -> int:
         print("  ✓ All workstation requirements satisfied.")
 
     return EXIT_PASS
+
+
+def _append_template_drift_finding(assessment, protocol) -> None:
+    """Add an unscored advisory when a protocol differs from its source template."""
+    try:
+        from snodo.protocols import resolve_protocol_template, template_protocol
+        from snodo.protocols.diff import diff_protocols
+
+        template_name = resolve_protocol_template(protocol)
+        if template_name is None:
+            return
+        drift = diff_protocols(protocol, template_protocol(template_name))
+        if drift.is_empty:
+            return
+    except Exception:
+        return
+
+    from snodo.readiness.models import FindingSeverity, ReadinessFinding, ReadinessKind
+
+    groups = (
+        ("validators", len(drift.validators_only_in_template) + len(drift.validators_only_in_project) + len(drift.changed_validators)),
+        ("modes", len(drift.modes_added) + len(drift.modes_removed) + len(drift.changed_modes)),
+        ("settings", len(drift.settings)),
+        ("project-local settings", len(drift.project_local)),
+    )
+    summary = ", ".join(f"{name}: {count}" for name, count in groups if count)
+    assessment.workstation_findings.append(ReadinessFinding(
+        id="protocol_template_drift", kind=ReadinessKind.WORKSTATION,
+        severity=FindingSeverity.INFO, modes=["all"],
+        description=f"Protocol differs from the '{template_name}' template ({summary}).",
+        remediation="Run 'snodo protocol diff' to inspect the full comparison and decide which changes to adopt.",
+        fix_cost=1,
+    ))
 
 
 def _append_mcp_install_findings(assessment) -> None:

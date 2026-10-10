@@ -279,10 +279,10 @@ def _print_missing_template_validators(protocol) -> None:
     if not missing:
         return
     print(
-        f"  ⚠ Validator set is out of date: this project's protocol predates "
-        f"{', '.join(missing)}. "
-        f"Regenerate .snodo/protocol.yml (snodo init --force) or add them "
-        f"manually to run the current validator set."
+        f"  ⚠ Protocol template drift: this project's validator set is missing "
+        f"{', '.join(missing)}. Run 'snodo protocol diff' to inspect the full "
+        f"comparison; regenerate with 'snodo init --force' or update the "
+        f"protocol manually."
     )
 
 
