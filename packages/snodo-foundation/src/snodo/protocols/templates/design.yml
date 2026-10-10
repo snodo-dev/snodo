@@ -1,0 +1,74 @@
+# Design work ships as reviewable Markdown artifacts in the repository, not
+# code. Keep the workflow focused on the brief, UX specification, UI copy, or
+# component specification while a human reviews each delivered change request.
+
+protocol_id: "design"
+name: "Design Protocol"
+version: "1.0.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Design Producer"
+    tools:
+      - "edit"
+      - "test"
+      - "validate"
+      - "commit"
+    validators:
+      - "design_quality"
+      - "quality"
+      - "acceptance"
+      - "protocol"
+    transitions: {}
+
+validators:
+  - validator_id: "design_quality"
+    validator_type: "conventions"
+    evaluation_phase: "post_execute"
+    criteria:
+      - "State the user's goal and relevant context clearly in the design deliverable."
+      - "Cover every applicable user-interface state: empty, loading, error, and success. Explicitly explain a state when it does not apply."
+      - "Address accessibility with WCAG-related notes, contrast considerations, and keyboard use."
+      - "Keep the work consistent with the project's existing design system, terminology, and conventions; inspect the repository for them when available."
+      - "Write UI copy in plain, kind, concise language that is understandable and respectful."
+
+  - validator_id: "quality"
+    validator_type: "quality"
+    evaluation_phase: "post_execute"
+    # The default is harmless on a fresh project without optional documentation
+    # tools. Configure the suggested checks when they are installed.
+    tooling:
+      test_command: "echo 'snodo: no test_command configured; no tests executed'"
+      # Suggested documentation checks:
+      #   test_command: "markdownlint docs/design && lychee docs/design"
+
+  - validator_id: "acceptance"
+    validator_type: "acceptance"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_file"
+      - "read_file_lines"
+      - "list_files"
+      - "git_show"
+      - "git_log"
+      - "read_diff_between_refs"
+    criteria:
+      - "Judge the produced design artifacts against the task spec's ACCEPTANCE criteria. A verifiable unmet criterion is a warn; a criterion that cannot be verified from the repository is uncheckable and never a finding."
+
+  - validator_id: "protocol"
+    validator_type: "protocol"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    criteria:
+      - "Confirm the requested work is a design deliverable such as a design brief, UX specification, UI copy, or component specification, rather than implementation code."
+      - "Confirm the task specifies the intended Markdown artifact under the project's docs/design tree and that a person can review it before merge."
+
+disagreement_policy: "unanimous"
+initial_mode: "producer"
+
+execution:
+  max_recovery_depth: 3
+  delivery: change_request
+
+global_constraints: []

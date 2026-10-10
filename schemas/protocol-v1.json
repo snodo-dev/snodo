@@ -706,6 +706,7 @@
       "templates": [
         "2+n",
         "bugfix-surgeon",
+        "design",
         "feature-warden",
         "greenfield",
         "intent",
