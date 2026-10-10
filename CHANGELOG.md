@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add read-only `snodo protocol diff` with human-readable and JSON template drift
+  reports, explicit template selection, and CI exit codes. (Fixes #807)
 - Compare loaded project protocols with templates and report structured validator,
   mode, setting and project-local test-command differences. (Fixes #806)
 - Record each initialized protocol's template name and snodo version in metadata,

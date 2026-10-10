@@ -132,6 +132,18 @@ protocol, audit log, session, or merge authority. See
 
 ## Who changes the protocol
 
+To inspect how a project protocol has diverged from its shipped starting point,
+run `snodo protocol diff`. It uses the template recorded during initialization,
+falling back to `protocol_id` for older protocols. Use
+`snodo protocol diff --template NAME` to compare against another shipped
+template. The report separates missing template validators/modes, project
+changes and additions, general settings, and project-local settings such as a
+test command. `--json` provides the same comparison for automation. Exit code
+1 signals drift; code 0 means no drift or that the protocol is bespoke and has
+no inferred template. The command never edits the protocol. Adopt a desired
+change by editing `.snodo/protocol.yml`, or deliberately regenerate from a
+template with `snodo init --force` and review the result.
+
 The orchestrator frames tasks, observes signals, and proposes a protocol
 change with evidence. A human decides whether the governance rule should
 change and edits `.snodo/protocol.yml`. The orchestrator does not silently

@@ -43,6 +43,7 @@ walkthrough.
 | `snodo cloud schema` | `--json` |
 | `snodo protocol schema` | `--json` |
 | `snodo protocol validate` | `[PATH]`, `--json` |
+| `snodo protocol diff` | `[PATH]`, `--template NAME`, `--json` |
 | `snodo install` | `--protocol` |
 | `snodo uninstall` | `--mode`, `--all`, `--purge`, `--orphans`, `--yes`/`-y` |
 
@@ -55,6 +56,14 @@ prints the generated cloud interface schema. `snodo config --notify-test` sends
 a test to every valid notification target.
 `snodo protocol schema --json` prints the generated, versioned JSON Schema for
 protocol authoring without reading the project's protocol file.
+`snodo protocol diff` compares `.snodo/protocol.yml` with its recorded shipped
+template (or inferred `protocol_id`); `--template NAME` selects a comparison
+explicitly. Human-readable output and `--json` separate template/project
+validator and mode changes, general settings, and project-local settings. Exit
+code 0 means no drift (or a bespoke protocol with no inferred template); code 1
+means drift, and code 2 means the protocol/template could not be loaded or
+selected. The command is read-only: review the report and adopt changes by
+editing `.snodo/protocol.yml` or, when appropriate, running `snodo init --force`.
 
 All CLI commands show a delayed wave when silent on an interactive terminal,
 for example `[▁▃▅▇▅] testing providers… 1.2s`. It is written only to stderr,
