@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add read-only per-plan-run and time-window outcome statistics, including
+  first-pass rate, delivery, token/duration totals, and cost provenance. (Fixes #810)
 - Add read-only per-validator verdict and blocker-rate statistics by validation
   phase, separating reused verdicts and tolerating malformed audit events. (Fixes #809)
 - Report shipped protocol template drift as an advisory in `snodo ready` and
