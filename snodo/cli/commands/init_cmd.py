@@ -258,6 +258,31 @@ def _configure_delivery(args, template_raw: str) -> str:
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 
 
+def _record_template_provenance(template_raw: str, template_name: str) -> str:
+    """Add init provenance to YAML without re-serializing template comments."""
+    from snodo.version import __version__
+
+    data = yaml.safe_load(template_raw)
+    metadata = data.get("metadata") or {}
+    metadata["template_name"] = template_name
+    metadata["snodo_version"] = __version__
+
+    lines = template_raw.splitlines(keepends=True)
+    metadata_line = next(
+        (index for index, line in enumerate(lines) if line.startswith("metadata:") or line.startswith("metadata: ")),
+        None,
+    )
+    if metadata_line is None:
+        suffix = "" if not template_raw or template_raw.endswith("\n") else "\n"
+        return f"{template_raw}{suffix}metadata:\n  template_name: {template_name}\n  snodo_version: {__version__}\n"
+
+    lines[metadata_line + 1:metadata_line + 1] = [
+        f"  template_name: {template_name}\n",
+        f"  snodo_version: {__version__}\n",
+    ]
+    return "".join(lines)
+
+
 def _is_existing_codebase(project_dir: Path) -> bool:
     """Whether the checkout already contains project files beyond git/snodo state."""
     return any(
@@ -567,6 +592,9 @@ def init_command(args) -> int:
     # leave the directory as it found it.  This also surfaces an unknown
     # --template (or a broken shipped template) before touching disk.
     template = _select_template(args)
+    template_name = getattr(args, "template", None)
+    if template_name is None:
+        template_name = next(name for name, raw in PROTOCOL_TEMPLATES.items() if raw == template)
     try:
         from snodo.compiler.models import Protocol
         from snodo.compiler.verifier import verify_protocol, ProtocolWellFormednessError
@@ -587,6 +615,7 @@ def init_command(args) -> int:
 
     template = _configure_test_command(args, template, Path.cwd())
     template = _configure_delivery(args, template)
+    template = _record_template_provenance(template, template_name)
 
     try:
         snodo_dir.mkdir(exist_ok=True)

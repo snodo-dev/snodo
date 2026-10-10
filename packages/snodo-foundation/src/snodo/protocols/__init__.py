@@ -109,6 +109,21 @@ def template_protocol(name: str) -> Protocol:
     return _TEMPLATE_PROTOCOLS[name]
 
 
+def resolve_protocol_template(protocol: Protocol) -> Optional[str]:
+    """Resolve a protocol's shipped template name, or ``None`` if bespoke.
+
+    Recorded init metadata takes precedence over ``protocol_id`` so customized
+    protocols continue to identify their source template.
+    """
+    template_name = protocol.metadata.get("template_name")
+    if isinstance(template_name, str) and template_name in PROTOCOL_TEMPLATES:
+        return template_name
+    for name in list_templates():
+        if template_protocol(name).protocol_id == protocol.protocol_id:
+            return name
+    return None
+
+
 def load_protocol(protocol_path: Path) -> Optional[Protocol]:
     """Load, parse, and verify protocol from YAML file.
 

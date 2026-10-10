@@ -173,6 +173,11 @@ def test_init_command_with_all_shipped_templates(template_name, git_project_dir,
 
     data = yaml.safe_load(protocol_file.read_text())
     assert isinstance(data, dict)
+    from snodo.version import __version__
+    from snodo.protocols import load_protocol
+    assert data["metadata"]["template_name"] == template_name
+    assert data["metadata"]["snodo_version"] == __version__
+    assert load_protocol(protocol_file) is not None
 
     out = capsys.readouterr().out
     assert "Snodo initialized successfully!" in out

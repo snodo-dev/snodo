@@ -11,6 +11,24 @@ from snodo.cli.commands.run_cmd import _print_missing_template_validators
 
 
 class TestMissingTemplateValidators:
+    def test_resolve_protocol_template_prefers_metadata_then_protocol_id(self):
+        from snodo.compiler.models import Protocol
+        from snodo.protocols import resolve_protocol_template, template_protocol
+
+        team = template_protocol("team")
+        renamed = Protocol(**{
+            **team.model_dump(),
+            "protocol_id": "renamed",
+            "metadata": {"template_name": "team"},
+        })
+        assert resolve_protocol_template(renamed) == "team"
+
+        legacy = template_protocol("solo")
+        assert resolve_protocol_template(legacy) == "solo"
+
+        bespoke = Protocol(**{**legacy.model_dump(), "protocol_id": "bespoke", "metadata": {}})
+        assert resolve_protocol_template(bespoke) is None
+
     def test_missing_validators_returns_acceptance_for_old_solo(self):
         """A pre-ADR-028 solo protocol is missing 'acceptance'."""
         from snodo.protocols import missing_template_validators, template_protocol

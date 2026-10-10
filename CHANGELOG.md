@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Record each initialized protocol's template name and snodo version in metadata,
+  and provide template resolution that prefers this provenance. (Fixes #805)
 - Explain policy-unmerged task outcomes with the branch merge command and delivery
   configuration location. (Fixes #804)
 - Let `snodo init` select verified-work delivery interactively or with
