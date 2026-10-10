@@ -141,7 +141,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
   (Fixes #749)
 - Add `snodo task show <task_id> --diff` to inspect a preserved task branch's
   stat and bounded patch beside grouped validator verdicts, with matching JSON
-  output. (Fixes #761)
+  output. (Fixes #761, #758)
 - Preserve truncated forced-submit answer text and mark truncation; retry an
   unusable final answer once, accept content-only answers, and fail with the run
   trace rather than returning narration. (Fixes #736)
