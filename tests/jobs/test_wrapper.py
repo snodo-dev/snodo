@@ -79,6 +79,33 @@ class TestMain:
         _save_state(str(tmp_path), initial_state)
         return str(tmp_path)
 
+    @pytest.mark.parametrize(
+        ("task_data", "plan_job"),
+        [
+            ({"queue_run": True, "task_id": "j_queue", "description": "Run queue"}, True),
+            ({"task_id": "task_one", "description": "A single task"}, False),
+        ],
+    )
+    def test_job_marker_preserves_inline_queue_tasks_only(
+        self, tmp_path, task_data, plan_job, monkeypatch
+    ):
+        """Queue task runs avoid adopting the enclosing job identity."""
+        job_dir = self._prepare_job_dir(tmp_path)
+        (tmp_path / "task.json").write_text(json.dumps(task_data))
+        if plan_job:
+            monkeypatch.setenv("SNODO_PLAN_JOB", "1")
+        else:
+            monkeypatch.delenv("SNODO_PLAN_JOB", raising=False)
+
+        def capture_environment(*_args, **_kwargs):
+            assert os.environ.get("SNODO_PLAN_JOB") == ("1" if plan_job else None)
+            return type("Proc", (), {"returncode": 0})()
+
+        with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
+            with patch("snodo.jobs.wrapper.subprocess.run", side_effect=capture_environment):
+                with pytest.raises(SystemExit):
+                    main()
+
     def test_too_few_args_exits_with_code_2(self, capsys):
         """main() prints usage and exits 2 when fewer than 3 args."""
         with patch.object(sys, "argv", ["wrapper"]):

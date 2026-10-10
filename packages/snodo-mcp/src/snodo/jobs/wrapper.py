@@ -65,7 +65,9 @@ def main():
             wt = task_data.get("worktree_path")
             if wt:
                 os.environ["SNODO_WORKTREE_PATH"] = wt
-            if task_data.get("plan_name"):
+            # Queue jobs run their plans inline just like plan-run jobs: the
+            # enclosing job id must not replace each wave task's identity.
+            if task_data.get("plan_name") or task_data.get("queue_run"):
                 os.environ["SNODO_PLAN_JOB"] = "1"
             else:
                 os.environ.pop("SNODO_PLAN_JOB", None)
