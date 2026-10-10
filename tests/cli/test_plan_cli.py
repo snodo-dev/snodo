@@ -668,7 +668,7 @@ def test_plan_status_run_summary_human_and_json(plan_env, capsys):
     planner = _planner(plan_env)
     planner.generate_spec("p_summary", "1.1_ok", "spec")
     planner.generate_spec("p_summary", "1.2_halt", "spec")
-    run_dir = _write_job(plan_env, "j_summary", {"plan_name": "p_summary"}, {"status": "completed", "job_type": "plan"})
+    _write_job(plan_env, "j_summary", {"plan_name": "p_summary"}, {"status": "completed", "job_type": "plan"})
     _write_job(plan_env, "j_ok", {"task_id": "1.1_ok", "parent_job": "j_summary"}, {"status": "completed", "cost": {"cost_usd": 0.25}, "usage": [{"total_tokens": 120}], "duration_seconds": 4, "delivered_branch": "main"})
     _write_job(plan_env, "j_halt", {"task_id": "1.2_halt", "parent_job": "j_summary"}, {"status": "blocked", "halt": {"halt_type": "validator_block", "final_decision": "blocked", "attempts": {"total": 2}}, "duration_seconds": 8})
 
