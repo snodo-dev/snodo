@@ -7,6 +7,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
 ## [0.22.0] — 2026-10-10
 
 - Add a guide to reading overnight plan summaries and window reports, including
