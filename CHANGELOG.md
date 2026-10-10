@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document product, design, documentation, and research templates, including
+  their deliverables, validation, documentation checks, and human review flow.
+  (Fixes #823)
 - Add a technical documentation protocol template with role-specific validation
   and change-request delivery. (Fixes #819)
 - Add a product protocol template for reviewable Markdown product documents with

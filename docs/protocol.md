@@ -597,5 +597,10 @@ The template registry is derived from the YAML files in `snodo/protocols/templat
 | `bugfix-surgeon` | producer | Bug-fix flow with post-execute review gate |
 | `feature-warden` | producer | Feature flow with scope guard |
 | `greenfield` | decide → scaffold → build | Phased greenfield build with per-phase exit gates |
+| `product` | producer | Product Markdown with role-specific validation and change-request delivery |
+| `design` | producer | Design briefs, UX specifications, UI copy, and component specifications |
+| `docs` | producer | Technical documentation with accuracy, example, and link checks |
+| `research` | producer | Evidence-led Markdown reports and decision memos |
 
 Use `snodo init --template <name>` to start from a template, or run `snodo init` to choose from the interactive menu.
+See [templates for product, design, docs, and research](non-engineering-roles.md) for their deliverables and review flow.
