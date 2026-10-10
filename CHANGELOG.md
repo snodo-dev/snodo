@@ -11,6 +11,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Document plugin install and uninstall commands for uv-tool and virtualenv/pip
   Snodo installations, targeting the Python used by the `snodo` command. (Fixes #795)
+- Fix validator plugin discovery in either package-first or registry-first
+  imports, preserving package-level validator imports and reporting installed
+  entry points in `snodo ready`. (Fixes #794)
 - Add a one-minute install, discovery, protocol, validation and uninstall path
   for the `snodo-hello-validator` example in the extension guide. (Fixes #793)
 - Add an installable third-party validator example with entry-point registration

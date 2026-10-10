@@ -109,6 +109,15 @@ class ValidatorRegistry:
 
 # Module-level default registry — populated on import by each validator module
 _default_registry = ValidatorRegistry()
+
+# Import built-ins only after the default registry exists. Their modules
+# self-register and import this registry, so doing this from package
+# ``__init__`` would expose a partially initialized module to plugin imports.
+import snodo.validators.llm_validator  # noqa: E402, F401
+import snodo.validators.quality  # noqa: E402, F401
+import snodo.validators.protocol_adherence  # noqa: E402, F401
+import snodo.validators.acceptance  # noqa: E402, F401
+
 _default_registry.discover_plugins()
 
 
