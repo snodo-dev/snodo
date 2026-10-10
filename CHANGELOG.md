@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Explain policy-unmerged task outcomes with the branch merge command and delivery
+  configuration location. (Fixes #804)
 - Let `snodo init` select verified-work delivery interactively or with
   `--delivery`, while retaining each template's default when omitted. (Fixes #803)
 - Make `make release` promote pending notes into the dated release section and

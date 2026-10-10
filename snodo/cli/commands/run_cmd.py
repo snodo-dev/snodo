@@ -1174,7 +1174,12 @@ def _report_unmerged_branch(project_root, task, protocol, mode, closure_tree, wo
     else:
         print(f"  Branch holding the work: {branch}", file=sys.stderr)
         print(
-            f"  main has NOT moved. Merge it with: git merge {branch}",
+            f"  This is the configured behavior. Merge it now with: git merge {branch}",
+            file=sys.stderr,
+        )
+        print(
+            "  Change delivery in .snodo/protocol.yml under execution.delivery "
+            "or the active mode's delivery setting.",
             file=sys.stderr,
         )
     if audit_log:

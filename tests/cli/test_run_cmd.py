@@ -1313,7 +1313,10 @@ class TestAutoMerge:
         err = capsys.readouterr().err
         assert branch in err
         assert "auto-merge not enabled" in err
-        assert "main has NOT moved" in err
+        assert "configured behavior" in err
+        assert f"git merge {branch}" in err
+        assert ".snodo/protocol.yml" in err
+        assert "execution.delivery" in err
 
         events = audit_log.get_history("task_unmerged")
         assert len(events) == 1
