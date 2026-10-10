@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Mark coder child processes with `SNODO_CODER_SUBPROCESS=1` while continuing to
+  scrub project and job context, allowing Snodo subprocesses to recognize their
+  execution boundary. (Fixes #796)
 - Document plugin install and uninstall commands for uv-tool and virtualenv/pip
   Snodo installations, targeting the Python used by the `snodo` command. (Fixes #795)
 - Fix validator plugin discovery in either package-first or registry-first

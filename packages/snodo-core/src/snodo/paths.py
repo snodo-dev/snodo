@@ -25,6 +25,19 @@ JOB_CONTEXT_ENV_VARS = (
     "SNODO_PLAN_TRIGGER",
     "SNODO_PLAN_QUEUE",
 )
+CODER_SUBPROCESS_ENV_VAR = "SNODO_CODER_SUBPROCESS"
+
+
+def is_coder_subprocess() -> bool:
+    """Return whether this process was started as a coder subprocess."""
+    return os.environ.get(CODER_SUBPROCESS_ENV_VAR) == "1"
+
+
+def subprocess_env_for_coder() -> dict[str, str]:
+    """Return a job-context-free environment marked for a coder child."""
+    env = subprocess_env_without_job_context()
+    env[CODER_SUBPROCESS_ENV_VAR] = "1"
+    return env
 
 
 def subprocess_env_without_job_context() -> dict[str, str]:

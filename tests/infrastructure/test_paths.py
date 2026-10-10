@@ -3,6 +3,7 @@
 FILE: tests/infrastructure/test_paths.py
 """
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -14,8 +15,11 @@ from snodo.infrastructure.paths import (
     resolve_project_root,
 )
 from snodo.paths import (
+    CODER_SUBPROCESS_ENV_VAR,
     JOB_CONTEXT_ENV_VARS,
     derive_task_id,
+    is_coder_subprocess,
+    subprocess_env_for_coder,
     subprocess_env_without_job_context,
 )
 
@@ -31,6 +35,30 @@ def test_subprocess_environment_drops_job_context_and_keeps_other_values(monkeyp
     assert all(key not in env for key in JOB_CONTEXT_ENV_VARS)
     assert env["PATH"] == "/usr/bin"
     assert env["SNODO_HOME"] == "/tmp/snodo-home"
+
+
+def test_subprocess_env_for_coder_marks_child_and_scrubs_job_context(monkeypatch):
+    for key in JOB_CONTEXT_ENV_VARS:
+        monkeypatch.setenv(key, "job-context")
+    monkeypatch.setenv(CODER_SUBPROCESS_ENV_VAR, "0")
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    env = subprocess_env_for_coder()
+
+    assert env[CODER_SUBPROCESS_ENV_VAR] == "1"
+    assert all(key not in env for key in JOB_CONTEXT_ENV_VARS)
+    assert env["PATH"] == "/usr/bin"
+    assert os.environ[CODER_SUBPROCESS_ENV_VAR] == "0"
+    assert all(os.environ[key] == "job-context" for key in JOB_CONTEXT_ENV_VARS)
+
+
+@pytest.mark.parametrize("value,expected", [("1", True), ("0", False), (None, False)])
+def test_is_coder_subprocess(monkeypatch, value, expected):
+    if value is None:
+        monkeypatch.delenv(CODER_SUBPROCESS_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(CODER_SUBPROCESS_ENV_VAR, value)
+    assert is_coder_subprocess() is expected
 
 
 class TestResolveHome:

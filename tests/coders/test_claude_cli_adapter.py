@@ -56,13 +56,15 @@ def test_fake_claude_executable_runs_in_workspace_and_scrubs_job_context(tmp_pat
     fake_cli.write_text(
         "#!/usr/bin/env python3\n"
         "import json, os\n"
-        "print(json.dumps({'type':'assistant','message':{'content':[{'type':'text','text':os.getcwd()+' '+str(bool(os.getenv('SNODO_JOB_ID')))}]}}))\n"
+        "print(json.dumps({'type':'assistant','message':{'content':[{'type':'text','text':os.getcwd()+' '+str(bool(os.getenv('SNODO_JOB_ID')))+' '+str(os.getenv('SNODO_PROJECT_ROOT'))+' '+str(os.getenv('SNODO_CODER_SUBPROCESS'))}]}}))\n"
         "print(json.dumps({'type':'result','result':'ok','usage':{'input_tokens':2}}))\n"
         ""
     )
     fake_cli.chmod(0o755)
     monkeypatch.setenv("PATH", f"{executable_dir}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setenv("SNODO_JOB_ID", "j_private")
+    monkeypatch.setenv("SNODO_PROJECT_ROOT", str(tmp_path / "real-project"))
+    monkeypatch.delenv("SNODO_CODER_SUBPROCESS", raising=False)
     adapter = ClaudeCLIAdapter(workspace=tmp_path)
     seen = []
     adapter.progress_callback = seen.append
@@ -70,7 +72,9 @@ def test_fake_claude_executable_runs_in_workspace_and_scrubs_job_context(tmp_pat
         adapter._build_argv("prompt", str(tmp_path), ""), str(tmp_path)
     )
     assert proc.returncode == 0
-    assert f"{tmp_path} False" in seen[0]
+    assert f"{tmp_path} False None 1" in seen[0]
     assert os.environ["SNODO_JOB_ID"] == "j_private"  # parent remains untouched
+    assert os.environ["SNODO_PROJECT_ROOT"] == str(tmp_path / "real-project")
+    assert "SNODO_CODER_SUBPROCESS" not in os.environ
     assert adapter.last_usage["input_tokens"] == 2
     assert adapter._resolve_binary_path() == str(fake_cli)
