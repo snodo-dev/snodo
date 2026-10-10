@@ -1,0 +1,16 @@
+intent: Verified work reaches main reliably. A missing changelog line no longer blocks
+  a feature, and parallel tasks no longer collide on CHANGELOG.md. A task that passed
+  its validators merges from the branch it actually committed on. The acceptance validator
+  stops passing criteria it cannot check.
+name: plan-delivery-integrity
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_changelog_fragments
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_merge_actual_task_branch
+  - 2.2_acceptance_no_uncheckable_pass

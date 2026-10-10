@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_agent_failure_isolation": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3c61486b0651b32d"
+    },
+    "2.1_transient_provider_retry": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9796061455099c9f"
+    }
+  },
+  "integration": {
+    "branch": "plan/recon-reliability/integration",
+    "base_sha": "c9ad79f1a118ca717b22ae9d7995ace4639405d6"
+  }
+}

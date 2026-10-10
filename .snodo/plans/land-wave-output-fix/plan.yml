@@ -1,0 +1,14 @@
+intent: 'Land the wave "stops on any output" fix (#784). It passed everything except
+  one test from #788, the halted-coder cleanup, which failed during its gate. First
+  make that test reliable, then deliver the wave fix.'
+name: land-wave-output-fix
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_descendant_cleanup_test_reliable
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_land_wave_output_fix

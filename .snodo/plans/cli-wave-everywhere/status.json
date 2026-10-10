@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_wave_on_all_silent_commands": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a905b3a8a049847d"
+    }
+  },
+  "integration": {
+    "branch": "plan/cli-wave-everywhere/integration",
+    "base_sha": "e3456fcff08d2151ec42d80423dd2aaba1c8c062"
+  }
+}

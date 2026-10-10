@@ -1,0 +1,22 @@
+intent: 'Recon agents read enough of the codebase to answer with verified file:line
+  facts, and always return an answer. The reading budget is configurable like the
+  validator''s. Recon reuses the validator and coder read tools: ranged reads, search,
+  and repeat reads that cost no turn. Its final answer is delivered through a structured
+  tool call, the same way validators submit a verdict, so an empty final message no
+  longer loses the work.'
+name: recon-reads-what-it-needs
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_recon_budget_config
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_recon_reuses_read_tools
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_recon_structured_answer

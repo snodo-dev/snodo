@@ -1,0 +1,13 @@
+intent: Every healthy piece of a plan reaches main as soon as it passes, and an unfinished
+  plan keeps the orchestrator's attention until all of it lands. Each wave whose tasks
+  all pass the gate is delivered to main without waiting for later waves. A blocked
+  plan is reported as unfinished work, and the orchestrator is told to fix it forward
+  inside that plan before starting anything new.
+name: deliver-every-healthy-wave
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_deliver_each_wave
+  - 1.2_finish_blocked_plans_guidance
+  - 1.3_plan_reports_unfinished

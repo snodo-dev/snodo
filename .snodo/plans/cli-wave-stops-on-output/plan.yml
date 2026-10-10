@@ -1,0 +1,11 @@
+intent: The wave indicator only ever shows while the operator is waiting with nothing
+  on screen. Once a command has printed anything, through any output path, the wave
+  is gone for good. Separately, `snodo task list` should not keep running for many
+  seconds after showing its table.
+name: cli-wave-stops-on-output
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_wave_stops_on_any_output
+  - 1.2_task_list_finishes_after_table

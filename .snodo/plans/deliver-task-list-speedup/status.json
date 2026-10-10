@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_merge_task_list_speedup": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b6edba3f0891b998"
+    }
+  },
+  "integration": {
+    "branch": "plan/deliver-task-list-speedup/integration",
+    "base_sha": "9434972186e6835a9c752720f98a399cbbed4270"
+  }
+}

@@ -1,0 +1,17 @@
+intent: When a task is blocked, the developer sees in one place what changed, what
+  each validator said, and what to do next. snodo task show gains a diff view alongside
+  the verdicts grouped by validator. A shared next-action helper maps every halt outcome
+  to the right action (authorize, retry with appended spec, record complete, fix the
+  environment). The docs describe the review loop.
+name: blocked-task-review
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_task_show_diff
+  - 1.2_next_action_helper
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_surface_next_actions

@@ -1,0 +1,10 @@
+intent: Several snodo tasks can run `make gate` at the same time in sibling worktrees
+  of the same repository without tripping each other. The test-suite guard keeps catching
+  a test that really mutates the repository it runs in, but it no longer fails a gate
+  because a concurrent snodo job in another worktree created, moved or deleted a branch.
+name: gate-guard-concurrent-worktrees
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_guard_ignores_sibling_worktree_refs

@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_timeout_keeps_gate_output": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d794724ff9e999d2"
+    },
+    "1.2_gate_script_reports_waits": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9bf5a6777c67d7a6"
+    },
+    "1.3_halted_coder_leaves_no_processes": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6065fa324b90a7db"
+    }
+  },
+  "integration": {
+    "branch": "plan/gate-timeout-visibility/integration",
+    "base_sha": "9434972186e6835a9c752720f98a399cbbed4270"
+  }
+}

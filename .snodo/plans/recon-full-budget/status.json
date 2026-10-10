@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_stall_limit_ends_recon_early": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b649686c7abdfd0f"
+    },
+    "2.1_citations_match_file_lines": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0f9013e1854c132c"
+    }
+  },
+  "integration": {
+    "branch": "plan/recon-full-budget/integration",
+    "base_sha": "c9305d08cf5f70957c12156ef1573a87609d50ee"
+  }
+}

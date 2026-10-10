@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_plugin_reporting": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8f7cd26786a2b10d"
+    },
+    "1.2_uv_tool_install_docs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "cf58f4ffcef22029"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-plugin-discovery/integration",
+    "base_sha": "45236c99675779fd71d499360ae53e513a84e664"
+  }
+}

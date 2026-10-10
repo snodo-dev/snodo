@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_recon_budget_config": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0c5c60b569ea10fd"
+    },
+    "2.1_recon_reuses_read_tools": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "796cc4f3ad6607a5"
+    },
+    "3.1_recon_structured_answer": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0e6c89fec2a60155"
+    }
+  },
+  "integration": {
+    "branch": "plan/recon-reads-what-it-needs/integration",
+    "base_sha": "2d6be3e49bb7b8f95ee09ba147190a60d750ec6b"
+  }
+}

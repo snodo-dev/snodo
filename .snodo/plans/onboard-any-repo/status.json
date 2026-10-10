@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_init_detects_language_tests": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "73c5405db4d3f487"
+    },
+    "1.2_mock_fixtures_more_languages": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4d69097f7029d795"
+    },
+    "2.1_init_guides_existing_repo": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d2886967ab9ef88b"
+    },
+    "2.2_quickstart_per_language": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9ed7a75cfdcc6d00"
+    }
+  },
+  "integration": {
+    "branch": "plan/onboard-any-repo/integration",
+    "base_sha": "f8d1024f111dd77d0d7620ba313db3496470113c"
+  }
+}

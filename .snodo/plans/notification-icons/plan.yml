@@ -1,0 +1,10 @@
+intent: 'Every job notification starts with an icon that tells its type at a glance
+  in Slack or on a phone, so the stall alert (no log activity) is easy to tell apart
+  from completions and failures. Presentation only: the set of notification types
+  stays as it is.'
+name: notification-icons
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_icon_per_notification_type

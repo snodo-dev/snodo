@@ -1,0 +1,14 @@
+intent: One hung or slow recon agent never holds back the others. Each agent has a
+  wall-clock deadline, and the answers of agents that have finished can be read while
+  the rest are still running.
+name: recon-stuck-agent-deadline
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_per_agent_deadline
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_partial_results_while_running

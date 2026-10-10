@@ -9,8 +9,6 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.21.0] — 2026-10-10
-
 - Mark coder child processes with `SNODO_CODER_SUBPROCESS=1` while continuing to
   scrub project and job context, allowing Snodo subprocesses to recognize their
   execution boundary. (Fixes #796)

@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_icon_per_notification_type": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "89a0f67b800d1d9b"
+    }
+  },
+  "integration": {
+    "branch": "plan/notification-icons/integration",
+    "base_sha": "47ab5bee797ade57c0d7da74467a18e2dc0b9464"
+  }
+}

@@ -1,0 +1,17 @@
+intent: "Recon agents should use their reading budget to finish the question rather\
+  \ than being pushed into an early, half-finished final answer, and their file:line\
+  \ citations should match the file. Test recon rec_83a958 (after #777) still ended\
+  \ both agents at 7\u20139 productive turns of 40 with no deadline hit; one submitted\
+  \ a half-finished answer, the other returned nothing; citations were off by 24\u2013\
+  120 lines."
+name: recon-full-budget
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_stall_limit_ends_recon_early
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_citations_match_file_lines

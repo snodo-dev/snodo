@@ -1,0 +1,9 @@
+intent: Deliver the completed `snodo task list` speed-up (#785). It passed its gate
+  and merged into the cli-wave-stops-on-output integration branch, but was never delivered
+  to main because its sibling task was blocked.
+name: deliver-task-list-speedup
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_merge_task_list_speedup

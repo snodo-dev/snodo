@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_echoed_tool_output_not_an_answer": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "afdcfabdc24ec607"
+    },
+    "2.1_keep_reading_after_truncated_batch": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "44ae88d42025f080"
+    }
+  },
+  "integration": {
+    "branch": "plan/recon-answer-quality/integration",
+    "base_sha": "5400dc7aac9fc5503cdb8eabe61ecb3a872e2eaf"
+  }
+}

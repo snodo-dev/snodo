@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_wave_fix_passes_under_tty": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "93d3a331743494aa"
+    },
+    "1.2_gate_hangs_fail_fast": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fd5296b6b9a0f8e5"
+    }
+  },
+  "integration": {
+    "branch": "plan/cli-wave-tty-gate/integration",
+    "base_sha": "d6eb9ddd5925679e760b36cf7f26f1229e022dea"
+  }
+}

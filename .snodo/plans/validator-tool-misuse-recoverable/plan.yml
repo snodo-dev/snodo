@@ -1,0 +1,11 @@
+intent: A validator that calls one of its read tools with a bad argument (for example
+  list_files on a file, or read_file on a missing path) gets the error back as the
+  tool result and can correct itself, instead of the whole task halting as validator_error
+  before the coder runs. Real infrastructure failures (provider errors, crashes, budget
+  exhaustion without a verdict) still fail closed.
+name: validator-tool-misuse-recoverable
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_tool_argument_errors_return_to_model

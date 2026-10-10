@@ -1,0 +1,15 @@
+intent: A multi-agent recon returns every answer its agents produce. One agent failing,
+  whether from a provider error, a quota limit or a crash, never takes the other agents'
+  work with it. Transient provider errors are retried once with the provider's suggested
+  delay before the agent is reported as failed.
+name: recon-reliability
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_agent_failure_isolation
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_transient_provider_retry

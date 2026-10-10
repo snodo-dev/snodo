@@ -1,0 +1,16 @@
+intent: Recon answers large, cross-cutting questions as well as small ones. The default
+  reading budget is big enough to trace a flow across a codebase. A long final answer
+  is kept, marked as truncated, instead of failing. The narration-only "partial answer"
+  fallback is replaced by a retry of the forced submit, then an honest failure that
+  includes the trace.
+name: recon-answers-big-questions
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_recon_budget_defaults
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_recon_final_answer_honest

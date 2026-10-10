@@ -1,0 +1,14 @@
+intent: Recon agents return real answers. Text that only repeats tool output is never
+  passed off as an answer, and agents keep reading until they can answer, instead
+  of stopping early with "content was truncated".
+name: recon-answer-quality
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_echoed_tool_output_not_an_answer
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_keep_reading_after_truncated_batch

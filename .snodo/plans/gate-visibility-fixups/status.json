@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_land_timeout_output_tail": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "445dd1df0e5413bc"
+    },
+    "1.2_land_gate_script_narration": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a75cca88022aadbe"
+    },
+    "1.3_land_halt_reaping": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2e546ede3adbcea3"
+    }
+  },
+  "integration": {
+    "branch": "plan/gate-visibility-fixups/integration",
+    "base_sha": "9434972186e6835a9c752720f98a399cbbed4270"
+  }
+}

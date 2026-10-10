@@ -1,0 +1,9 @@
+intent: A recon agent's result text is always something the model wrote. When a model
+  refuses to answer, the result is empty and the error says so plainly. What it read
+  stays in the trace and is never passed off as an answer.
+name: recon-no-raw-dump-answers
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_refused_answer_not_tool_dump

@@ -1,0 +1,12 @@
+intent: When snodo's quality gate times out, the record should show where the time
+  went, and a coder that snodo halts must not leave gate or test processes running.
+  Three gates on 2026-10-08 timed out at 600s, recording only "Timeout after 600.0s",
+  while `make gate` on the same main finished in 76s when run by hand.
+name: gate-timeout-visibility
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_timeout_keeps_gate_output
+  - 1.2_gate_script_reports_waits
+  - 1.3_halted_coder_leaves_no_processes

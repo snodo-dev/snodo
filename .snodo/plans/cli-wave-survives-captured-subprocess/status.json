@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_only_terminal_handoff_stops_wave": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ed627f8668405df5"
+    }
+  },
+  "integration": {
+    "branch": "plan/cli-wave-survives-captured-subprocess/integration",
+    "base_sha": "912c8fd21593208602bf0ae7b5a86c066256f92e"
+  }
+}

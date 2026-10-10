@@ -1,0 +1,13 @@
+intent: Verified work reaches main reliably. A missing CHANGELOG line warns at task-gate
+  time and is enforced at release, so it no longer blocks a feature. A task that passed
+  its validators merges from the branch it actually committed on. The acceptance validator
+  stops passing criteria it cannot check. CHANGELOG.md stays a single file merged
+  with merge=union (ADR 037).
+name: delivery-integrity
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_changelog_check_warns_at_gate
+  - 1.2_merge_actual_task_branch
+  - 1.3_acceptance_no_uncheckable_pass

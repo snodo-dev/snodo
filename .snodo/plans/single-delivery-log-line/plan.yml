@@ -1,0 +1,9 @@
+intent: "A plan's delivery to the base branch is reported once. Today the final delivery\
+  \ line \"\u2713 Merged plan/<name>/integration into the base branch\" sometimes\
+  \ prints twice for one merge, which reads like two deliveries."
+name: single-delivery-log-line
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_report_delivery_once

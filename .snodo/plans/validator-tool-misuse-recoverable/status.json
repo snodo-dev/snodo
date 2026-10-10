@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_tool_argument_errors_return_to_model": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9aebb9590d2e30b0"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-tool-misuse-recoverable/integration",
+    "base_sha": "f8d1024f111dd77d0d7620ba313db3496470113c"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_deliver_each_wave": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5789189229edff2d"
+    },
+    "1.2_finish_blocked_plans_guidance": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "45a251859103e9fa"
+    },
+    "1.3_plan_reports_unfinished": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b538142a9049b94c"
+    }
+  },
+  "integration": {
+    "branch": "plan/deliver-every-healthy-wave/integration",
+    "base_sha": "2d6be3e49bb7b8f95ee09ba147190a60d750ec6b"
+  }
+}

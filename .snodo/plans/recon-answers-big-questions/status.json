@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_recon_budget_defaults": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "61c142abadd277b4"
+    },
+    "2.1_recon_final_answer_honest": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "861dda55b4a5bdde"
+    }
+  },
+  "integration": {
+    "branch": "plan/recon-answers-big-questions/integration",
+    "base_sha": "30c8e233d24cd967216d25245410636c90185baf"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_wave_yields_terminal_to_pager": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f81d2401adaa4ceb"
+    }
+  },
+  "integration": {
+    "branch": "plan/cli-wave-stops-for-pager/integration",
+    "base_sha": "298a06a45bfb34a60083c639d36170f6d5899e3c"
+  }
+}

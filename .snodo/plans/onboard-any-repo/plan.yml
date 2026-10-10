@@ -1,0 +1,19 @@
+intent: A developer can bring snodo to their existing repository in any mainstream
+  language and get a passing first run. snodo init detects the language and test command
+  for Python, Node/TypeScript, Go and Rust. The mock coder writes a fixture that passes
+  in that language. The interactive init on an existing repo walks through survey,
+  decision-record intake and readiness, with no new top-level command. The docs give
+  a per-language quickstart.
+name: onboard-any-repo
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_init_detects_language_tests
+  - 1.2_mock_fixtures_more_languages
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_init_guides_existing_repo
+  - 2.2_quickstart_per_language

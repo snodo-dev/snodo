@@ -1,0 +1,17 @@
+intent: 'A developer can configure snodo entirely from the CLI and check that the
+  configuration is valid. `snodo config validate` checks ~/.snodo/config.yml against
+  the strict config models and names the bad key and section. `snodo config set` and
+  `config get` cover the typed keys that today need hand-editing: provider endpoints
+  (base_url, litellm_provider, api_key_env), cloud settings and notifications.'
+name: config-without-hand-editing
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_config_validate
+  - 1.2_typed_config_key_paths
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_config_set_get_all_keys

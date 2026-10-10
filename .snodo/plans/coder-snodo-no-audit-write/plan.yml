@@ -1,0 +1,12 @@
+intent: 'When a coder runs the snodo CLI inside its task worktree, that run appends
+  to the worktree''s .snodo/audit.log. The after-the-fact .snodo/ snapshot guard then
+  blocks an otherwise good task. Stop the write up front: the coder subprocess carries
+  a coder-context marker, and the audit writer won''t write into .snodo/ when it sees
+  it. The snapshot guard stays as the backstop.'
+name: coder-snodo-no-audit-write
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_coder_context_marker
+  - 1.2_audit_skips_coder_context

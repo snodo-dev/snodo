@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_wave_stops_on_any_output": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0b68349c8bb5a82c"
+    },
+    "1.2_task_list_finishes_after_table": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1c11059cc72fbc64"
+    }
+  },
+  "integration": {
+    "branch": "plan/cli-wave-stops-on-output/integration",
+    "base_sha": "9434972186e6835a9c752720f98a399cbbed4270"
+  }
+}

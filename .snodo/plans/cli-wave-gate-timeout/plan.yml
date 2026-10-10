@@ -1,0 +1,10 @@
+intent: Land the wave "stops on any output" fix (#784). Its work is done on a branch,
+  but with that change `make gate` runs past 600s, which blocked the task. Find and
+  fix whatever makes the suite stall or slow down, so the fix merges with a passing
+  gate.
+name: cli-wave-gate-timeout
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_land_wave_output_fix

@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_noop_check_uses_merge_target": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "482bd27e7135896c"
+    }
+  },
+  "integration": {
+    "branch": "plan/task-merge-reported-again/integration",
+    "base_sha": "a3adef9ccb847242898c329bfc0b241f57b84781"
+  }
+}

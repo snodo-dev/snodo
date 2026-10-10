@@ -1,0 +1,9 @@
+intent: Every snodo CLI command that leaves the operator waiting in silence shows
+  the wave indicator, without anyone having to maintain a hand-picked list of "slow"
+  commands.
+name: cli-wave-everywhere
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_wave_on_all_silent_commands

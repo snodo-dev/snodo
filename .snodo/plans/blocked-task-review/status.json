@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_task_show_diff": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "498a10c2e33e6b12"
+    },
+    "1.2_next_action_helper": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1edba630c71fcde8"
+    },
+    "2.1_surface_next_actions": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "dd0530a33320521f"
+    }
+  },
+  "integration": {
+    "branch": "plan/blocked-task-review/integration",
+    "base_sha": "f8d1024f111dd77d0d7620ba313db3496470113c"
+  }
+}

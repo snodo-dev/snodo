@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_refused_answer_not_tool_dump": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b1f17e4bd1b6a023"
+    }
+  },
+  "integration": {
+    "branch": "plan/recon-no-raw-dump-answers/integration",
+    "base_sha": "af3d478951cd8d419d6beada83ca0847fc733b61"
+  }
+}

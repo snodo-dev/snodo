@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_land_wave_output_fix": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0b121dfc03d0c9b1"
+    }
+  },
+  "integration": {
+    "branch": "plan/cli-wave-gate-timeout/integration",
+    "base_sha": "9434972186e6835a9c752720f98a399cbbed4270"
+  }
+}

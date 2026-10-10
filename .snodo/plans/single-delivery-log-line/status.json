@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_report_delivery_once": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "256bd69427c4e79b"
+    }
+  },
+  "integration": {
+    "branch": "plan/single-delivery-log-line/integration",
+    "base_sha": "4be3ae93f6a241b77ddeba59d2c852557f2d599c"
+  }
+}

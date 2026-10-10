@@ -1,0 +1,12 @@
+intent: Land the wave "stops on any output" fix (#784). With that change the remote
+  gate times out at 600s twice. The gate runs pytest over `ssh -tt`, so the remote
+  process has a real terminal, which local runs don't, and the change most likely
+  behaves differently or hangs when a real TTY is present. Separately, make gate hangs
+  fail fast with a traceback instead of silently using the whole 600s.
+name: cli-wave-tty-gate
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_wave_fix_passes_under_tty
+  - 1.2_gate_hangs_fail_fast

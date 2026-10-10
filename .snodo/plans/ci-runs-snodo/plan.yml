@@ -1,0 +1,17 @@
+intent: A team can adopt snodo where its process already runs, which is CI. Snodo
+  ships a container image of itself. A project's own protocol validators can judge
+  a pull request's changes from the CLI. A GitHub Action wraps both. A docs page shows
+  how to run snodo in GitHub Actions and GitLab CI.
+name: ci-runs-snodo
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_snodo_container_image
+  - 1.2_validate_pr_with_project_protocol
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_github_action
+  - 2.2_ci_docs_page

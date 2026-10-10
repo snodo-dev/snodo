@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_snodo_container_image": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b7e87a16fb089e29"
+    },
+    "1.2_validate_pr_with_project_protocol": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "936991e2628288d6"
+    },
+    "2.1_github_action": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8fb13394ee429e28"
+    },
+    "2.2_ci_docs_page": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ed9937292fe4a817"
+    }
+  },
+  "integration": {
+    "branch": "plan/ci-runs-snodo/integration",
+    "base_sha": "f8d1024f111dd77d0d7620ba313db3496470113c"
+  }
+}

@@ -1,0 +1,9 @@
+intent: Bring the wave back for slow commands. After the pager fix, the wave never
+  appears, even on `snodo ready --json`, which waits several seconds. It most likely
+  stops at the first background subprocess, such as a captured git call.
+name: cli-wave-survives-captured-subprocess
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_only_terminal_handoff_stops_wave

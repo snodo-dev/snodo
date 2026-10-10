@@ -1,0 +1,16 @@
+intent: When a snodo CLI command works for a while with nothing on screen (e.g. `snodo
+  ready --json` takes several seconds), the terminal shows a small snodo "wave" loading
+  indicator so the operator knows it is alive. It never pollutes stdout or machine-readable
+  output, and never appears in CI, pipes, or the MCP server.
+name: cli-wave-spinner
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_wave_spinner_component
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_show_wave_on_slow_commands
+  - 2.2_document_wave_indicator

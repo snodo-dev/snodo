@@ -1,0 +1,9 @@
+intent: Every real merge of a task branch into its plan's integration branch is printed
+  and records its task_merged audit event again. Only a truly no-op merge into the
+  same target is skipped.
+name: task-merge-reported-again
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_noop_check_uses_merge_target

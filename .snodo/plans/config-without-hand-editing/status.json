@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_config_validate": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8ebe7c4ed78824a9"
+    },
+    "1.2_typed_config_key_paths": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "502f4feb3b5cca89"
+    },
+    "2.1_config_set_get_all_keys": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7b9ab3823de2ddc4"
+    }
+  },
+  "integration": {
+    "branch": "plan/config-without-hand-editing/integration",
+    "base_sha": "f8d1024f111dd77d0d7620ba313db3496470113c"
+  }
+}

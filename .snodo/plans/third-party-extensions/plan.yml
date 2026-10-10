@@ -1,0 +1,18 @@
+intent: A third-party validator, predicate or coder can be published as a pip-installable
+  package and used just by installing it, the same way code-host providers already
+  work through the snodo.providers entry-point group. snodo ready shows which extensions
+  loaded and which failed, and docs/extending.md describes the install-and-reference
+  path.
+name: third-party-extensions
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_validator_entry_points
+  - 1.2_predicate_entry_points
+  - 1.3_coder_entry_points
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_ready_reports_extensions

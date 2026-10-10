@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_coder_context_marker": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "64ea5bb5b4924d19"
+    },
+    "1.2_audit_skips_coder_context": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "94bac3b1459ad596"
+    }
+  },
+  "integration": {
+    "branch": "plan/coder-snodo-no-audit-write/integration",
+    "base_sha": "1057206ba44ee6ee64151bf321f735ee5a4285bf"
+  }
+}

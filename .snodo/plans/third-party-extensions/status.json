@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_validator_entry_points": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5682a78adbd43efa"
+    },
+    "1.2_predicate_entry_points": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9f68f4934b04e668"
+    },
+    "1.3_coder_entry_points": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6ccebf1f08a43b98"
+    },
+    "2.1_ready_reports_extensions": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6435ce3bf8fe406a"
+    }
+  },
+  "integration": {
+    "branch": "plan/third-party-extensions/integration",
+    "base_sha": "f8d1024f111dd77d0d7620ba313db3496470113c"
+  }
+}

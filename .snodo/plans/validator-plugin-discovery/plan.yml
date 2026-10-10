@@ -1,0 +1,11 @@
+intent: 'An installed third-party validator plugin (examples/snodo-hello-validator)
+  is visible to importlib in snodo''s own interpreter but `snodo ready` reports snodo.validators
+  as empty: neither installed nor failed. Make installed validator plugins load and
+  report, and make the example''s install instructions work for a uv-tool snodo install.'
+name: validator-plugin-discovery
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_plugin_reporting
+  - 1.2_uv_tool_install_docs

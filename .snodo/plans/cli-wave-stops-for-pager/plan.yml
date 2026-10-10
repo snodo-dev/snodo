@@ -1,0 +1,10 @@
+intent: The wave indicator must never draw while a command has handed the terminal
+  to a pager or is waiting on the keyboard. `snodo task list` shows its table in a
+  pager (arrows to navigate, q to quit), and the wave keeps drawing over the pager's
+  prompt line.
+name: cli-wave-stops-for-pager
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_wave_yields_terminal_to_pager

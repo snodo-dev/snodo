@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_guard_ignores_sibling_worktree_refs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f0062fac8e02dfab"
+    }
+  },
+  "integration": {
+    "branch": "plan/gate-guard-concurrent-worktrees/integration",
+    "base_sha": "c352bb781b9598795cfaccd1edce156a741305df"
+  }
+}

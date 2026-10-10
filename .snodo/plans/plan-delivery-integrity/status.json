@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_changelog_fragments": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "802f52e4a4b72fdc"
+    },
+    "2.1_merge_actual_task_branch": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "41fba1742f8264c2"
+    },
+    "2.2_acceptance_no_uncheckable_pass": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a1062c4a48f9f8ad"
+    }
+  },
+  "integration": {
+    "branch": "plan/plan-delivery-integrity/integration",
+    "base_sha": "3a960c78fead9ee093c49f352dc31018062be3b7"
+  }
+}

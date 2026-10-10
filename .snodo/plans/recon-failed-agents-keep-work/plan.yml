@@ -1,0 +1,14 @@
+intent: 'A recon agent that fails still hands back what it found: its trace, and any
+  findings it had before the failure. An agent that runs out of turns while still
+  calling tools is pushed to a final answer instead of ending empty.'
+name: recon-failed-agents-keep-work
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_failed_agent_trace_kept
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_force_final_answer_on_tool_loop_end

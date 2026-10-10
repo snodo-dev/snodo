@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_wave_spinner_component": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "42d1becb5fb81c1e"
+    },
+    "2.1_show_wave_on_slow_commands": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fd12a7a2b69bfea2"
+    },
+    "2.2_document_wave_indicator": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "dd78b874b4e6ce47"
+    }
+  },
+  "integration": {
+    "branch": "plan/cli-wave-spinner/integration",
+    "base_sha": "a79312b1081ce6ce9b5906cd7a45a70b5fad383a"
+  }
+}

@@ -1,0 +1,10 @@
+intent: 'An adopter can see third-party extensions work end to end in under a minute.
+  A tiny example validator plugin ships in the repo: install it, and `snodo ready`
+  lists it and a protocol can use it. A test proves that path keeps working.'
+name: example-validator-plugin
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_hello_validator_example
+  - 1.2_extending_docs_try_it

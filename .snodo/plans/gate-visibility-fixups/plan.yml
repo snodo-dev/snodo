@@ -1,0 +1,11 @@
+intent: Land the two blocked gate-timeout-visibility tasks by fixing the existing
+  tests their changes broke. Gate timeouts should keep their output, and the gate
+  script should narrate its waits, without breaking existing behaviour.
+name: gate-visibility-fixups
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_land_timeout_output_tail
+  - 1.2_land_gate_script_narration
+  - 1.3_land_halt_reaping

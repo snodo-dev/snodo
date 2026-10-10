@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_hello_validator_example": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6917a951f294d8c4"
+    },
+    "1.2_extending_docs_try_it": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7baa80513adfef78"
+    }
+  },
+  "integration": {
+    "branch": "plan/example-validator-plugin/integration",
+    "base_sha": "783419e3de8852f7b5715c9d641d723a8de78e18"
+  }
+}
