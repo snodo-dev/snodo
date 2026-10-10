@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Update the supported security version series to 0.21.x and align its cutoff
+  with the current release. (Fixes #800)
+
 ## [0.21.0] — 2026-10-10
 
 - Mark coder child processes with `SNODO_CODER_SUBPROCESS=1` while continuing to
