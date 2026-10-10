@@ -17,6 +17,7 @@ from datetime import datetime, UTC
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 import os
+import tempfile
 from pathlib import Path
 
 try:
@@ -630,6 +631,17 @@ def get_audit_log(log_path: Optional[str] = None, project_id: str = "") -> Audit
             log_path = override
         else:
             log_path = _resolve_default_audit_path()
+
+    # Coder subprocesses may run self-check commands in a task worktree. Keep
+    # their audit activity process-local to a temporary log so neither the
+    # governed project chain nor any worktree .snodo/ directory is mutated.
+    # A stable path within this process preserves normal get/read history
+    # behavior for callers that inspect the log after appending.
+    if os.environ.get("SNODO_CODER_SUBPROCESS") == "1":
+        original_path = Path(log_path).expanduser().resolve()
+        if ".snodo" in original_path.parts:
+            token = hashlib.sha256(str(original_path).encode("utf-8")).hexdigest()[:16]
+            log_path = str(Path(tempfile.gettempdir()) / "snodo-coder-audit" / f"{os.getpid()}-{token}.log")
 
     resolved_path = str(Path(log_path).expanduser().resolve())
     resolved_project_id = project_id or _resolve_project_id_for_log(Path(resolved_path))

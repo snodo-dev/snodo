@@ -19,9 +19,10 @@ from types import SimpleNamespace
 import pytest
 import typer
 import yaml
+from typer.testing import CliRunner
 
 from snodo.cli.commands.ready_cmd import ready_command, register
-from snodo.infrastructure.audit import AuditLog
+from snodo.infrastructure.audit import AuditLog, reset_global_audit_log
 
 
 @pytest.fixture
@@ -101,6 +102,32 @@ def test_ready_cmd_human_output(git_project: Path, capsys):
     assert "Workstation Readiness (Reported" in captured.out
     assert "architecture" in captured.out.lower()
     assert "docs/decisions" in captured.out
+
+
+@pytest.mark.parametrize("coder_subprocess", [True, False])
+def test_ready_audit_path_in_coder_subprocess(git_project, monkeypatch, coder_subprocess):
+    """Coder self-checks keep audit activity out of the project .snodo tree."""
+    audit_path = git_project / ".snodo" / "audit.log"
+    monkeypatch.setenv("SNODO_AUDIT_LOG", str(audit_path))
+    if coder_subprocess:
+        monkeypatch.setenv("SNODO_CODER_SUBPROCESS", "1")
+    else:
+        monkeypatch.delenv("SNODO_CODER_SUBPROCESS", raising=False)
+    reset_global_audit_log()
+    try:
+        app = typer.Typer()
+        register(app)
+        result = CliRunner().invoke(app, ["ready", "--json"])
+        assert result.exit_code == 0, result.output
+        output = result.output
+        assert '"ok": true' in output
+        if coder_subprocess:
+            assert not audit_path.exists()
+        else:
+            events = AuditLog(str(audit_path)).get_history()
+            assert [event.event_type for event in events] == ["readiness_checked"]
+    finally:
+        reset_global_audit_log()
 
 
 def test_ready_cmd_mode_filtering(git_project: Path, capsys):
