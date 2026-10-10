@@ -49,6 +49,9 @@ def register(app: typer.Typer) -> None:
         test_command: Optional[str] = typer.Option(
             None, "--test-command", "-c", help="Test command for quality validation (e.g. 'pytest', 'npm test')",
         ),
+        delivery: Optional[str] = typer.Option(
+            None, "--delivery", help="Verified-work delivery: local_merge, push_branch, change_request, or leave_unmerged",
+        ),
     ):
         """Initialize Snodo project structure."""
         args = SimpleNamespace(
@@ -60,6 +63,7 @@ def register(app: typer.Typer) -> None:
             yes=yes,
             no_input=no_input,
             test_command=test_command,
+            delivery=delivery,
         )
         return init_command(args)
 
@@ -201,6 +205,57 @@ def _configure_test_command(args, template_raw: str, project_dir: Path) -> str:
         _logger.debug("Could not inject test command into template: %s", e)
 
     return template_raw
+
+
+_DELIVERY_CHOICES = ("local_merge", "push_branch", "change_request", "leave_unmerged")
+
+
+def _configure_delivery(args, template_raw: str) -> str:
+    """Apply an explicit or interactive delivery preference to the template."""
+    data = yaml.safe_load(template_raw)
+    modes = data.get("modes", []) if isinstance(data, dict) else []
+    producer = next((mode for mode in modes if mode.get("mode_id") == "producer"), None)
+    default = (producer or {}).get("delivery") or data.get("delivery") or data.get("execution", {}).get("delivery")
+    selected = getattr(args, "delivery", None)
+    if selected is not None and selected not in _DELIVERY_CHOICES:
+        choices = ", ".join(_DELIVERY_CHOICES)
+        print(f"Error: Invalid delivery '{selected}'. Choose one of: {choices}.", file=sys.stderr)
+        raise SystemExit(1)
+
+    interactive = (
+        selected is None
+        and sys.stdin.isatty()
+        and not getattr(args, "yes", False)
+        and not getattr(args, "no_input", False)
+    )
+    if interactive:
+        default_text = default or "leave_unmerged"
+        reason = (
+            "the template keeps producer work separate for human review"
+            if default_text == "leave_unmerged"
+            else f"the template selects {default_text} for verified producer work"
+        )
+        print(f"Template default: {default_text}; {reason}.")
+        print("Choose what happens to verified producer work:")
+        for choice in _DELIVERY_CHOICES:
+            print(f"  {choice}" + (" [default]" if choice == default_text else ""))
+        answer = input(f"Delivery [{default_text}]: ").strip()
+        selected = answer or default_text
+        if selected not in _DELIVERY_CHOICES:
+            choices = ", ".join(_DELIVERY_CHOICES)
+            print(f"Error: Invalid delivery '{selected}'. Choose one of: {choices}.", file=sys.stderr)
+            raise SystemExit(1)
+
+    if selected is None:
+        return template_raw
+    if producer is None:
+        print("Error: Selected template has no producer mode for delivery configuration.", file=sys.stderr)
+        raise SystemExit(1)
+    if selected == "leave_unmerged":
+        producer.pop("delivery", None)
+    else:
+        producer["delivery"] = selected
+    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 
 
 def _is_existing_codebase(project_dir: Path) -> bool:
@@ -531,6 +586,7 @@ def init_command(args) -> int:
         return 1
 
     template = _configure_test_command(args, template, Path.cwd())
+    template = _configure_delivery(args, template)
 
     try:
         snodo_dir.mkdir(exist_ok=True)

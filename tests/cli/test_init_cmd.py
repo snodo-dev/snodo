@@ -13,6 +13,7 @@ import yaml
 
 from snodo.cli.commands import PROTOCOL_TEMPLATES, list_templates
 from snodo.cli.commands.init_cmd import (
+    _configure_delivery,
     _configure_test_command,
     _detect_test_command,
     _select_template,
@@ -20,6 +21,39 @@ from snodo.cli.commands.init_cmd import (
     register,
     _run_interactive_onboarding,
 )
+
+
+@pytest.mark.parametrize("choice", ["local_merge", "push_branch", "change_request", "leave_unmerged"])
+def test_configure_delivery_choices_resolve_through_protocol(choice):
+    from snodo.compiler.models import Protocol
+
+    configured = _configure_delivery(SimpleNamespace(delivery=choice, yes=True), PROTOCOL_TEMPLATES["team"])
+    data = yaml.safe_load(configured)
+    protocol = Protocol(**data)
+    expected = "leave_unmerged" if choice == "leave_unmerged" else choice
+    assert protocol.delivery_for("producer") == expected
+
+
+def test_configure_delivery_omission_preserves_template_default():
+    from snodo.compiler.models import Protocol
+
+    template = PROTOCOL_TEMPLATES["team"]
+    configured = _configure_delivery(SimpleNamespace(yes=True), template)
+    assert yaml.safe_load(configured) == yaml.safe_load(template)
+    assert Protocol(**yaml.safe_load(configured)).delivery_for("producer") == "leave_unmerged"
+
+
+def test_configure_delivery_rejects_invalid_value(capsys):
+    with pytest.raises(SystemExit):
+        _configure_delivery(SimpleNamespace(delivery="merge_now", yes=True), PROTOCOL_TEMPLATES["team"])
+    assert "local_merge, push_branch, change_request, leave_unmerged" in capsys.readouterr().err
+
+
+def test_configure_delivery_does_not_prompt_with_yes(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("unexpected prompt"))
+    template = PROTOCOL_TEMPLATES["team"]
+    assert _configure_delivery(SimpleNamespace(yes=True), template) == template
 
 
 @pytest.fixture

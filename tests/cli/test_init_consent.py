@@ -71,7 +71,7 @@ def test_init_declines_when_prompt_answered_no(temp_project_dir, no_keygen, caps
 def test_init_proceeds_when_prompt_answered_yes(temp_project_dir, no_keygen):
     """Answering 'yes' to the consent prompt proceeds normally."""
     with patch("sys.stdin.isatty", return_value=True), \
-         patch("builtins.input", return_value="y"):
+         patch("builtins.input", side_effect=["y", "pytest", "local_merge"]):
         with patch("sys.argv", ["snodo", "init", "--template", "solo"]):
             result = main()
 
@@ -309,7 +309,7 @@ def test_init_unknown_stack_keeps_template_default(temp_project_dir, no_keygen, 
 def test_init_interactive_test_command_prompt(temp_project_dir, no_keygen):
     """Interactive init prompts for test command if none inferred."""
     with patch("sys.stdin.isatty", return_value=True), \
-         patch("builtins.input", side_effect=["y", "cargo test"]):
+         patch("builtins.input", side_effect=["y", "cargo test", "local_merge"]):
         with patch("sys.argv", ["snodo", "init", "--template", "solo"]):
             result = main()
 

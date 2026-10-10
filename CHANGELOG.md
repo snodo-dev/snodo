@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Let `snodo init` select verified-work delivery interactively or with
+  `--delivery`, while retaining each template's default when omitted. (Fixes #803)
 - Make `make release` promote pending notes into the dated release section and
   update supported security versions after a minor or major bump. (Fixes #799)
 - Upgrade locked `multidict` to 6.9.1 and `fsspec` to 2026.6.0 to resolve

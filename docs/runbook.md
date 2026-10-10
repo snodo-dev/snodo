@@ -392,20 +392,15 @@ and gives the exact command to merge it manually (`git merge <branch>`); the
 base branch has not moved. This is the expected result, not a failed run, for
 all four stacks.
 
-If you want Snodo to merge producer work automatically after verification,
-edit `.snodo/protocol.yml` and set `delivery: local_merge` on the `producer`
-mode. For example:
-
-```yaml
-modes:
-  - mode_id: "producer"
-    delivery: local_merge
-```
-
-Keep the existing producer mode fields when adding this setting. A local merge
-is attempted only when the task resolves and the verification gate has a
-passing quality-verification record for that task's branch commit; otherwise
-the work remains on its task branch.
+Choose delivery during interactive `snodo init`, or pass `--delivery` to select
+it without a prompt. The choices are `local_merge` (merge locally after
+verification), `push_branch` (push the verified branch), `change_request` (push
+and open a change request), and `leave_unmerged` (leave the work for a human to
+merge). Omitting the choice keeps the template default. In particular, the
+`team` template defaults to leaving producer work unmerged to preserve its
+separate producer/reviewer roles. `--yes`, `--no-input`, and non-interactive
+init never prompt for delivery. Automated delivery still requires a resolved
+task and passing verification for its branch commit.
 
 For provider-backed coding, configure a provider (for example,
 `snodo config add anthropic <key>` or `ANTHROPIC_API_KEY`) and run the same task

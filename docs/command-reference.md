@@ -16,7 +16,7 @@ walkthrough.
 
 | Command | Arguments and options |
 |---|---|
-| `snodo init` | `--template`/`-t`, `--force`/`-f`, `--mode`/`-m`, `--project-id`, `--force-keygen`, `--yes`/`-y`, `--no-input`, `--test-command`/`-c` |
+| `snodo init` | `--template`/`-t`, `--force`/`-f`, `--mode`/`-m`, `--project-id`, `--force-keygen`, `--yes`/`-y`, `--no-input`, `--test-command`/`-c`, `--delivery` |
 | `snodo config show` | — |
 | `snodo config add` | `<provider> [key]`, `--ref env:NAME\|command:COMMAND` (choose key or reference) |
 | `snodo config remove` | `<provider>` |
@@ -107,6 +107,10 @@ regenerates the RS256 signing keypair; `--force` permits overwriting an existing
 `.snodo/` directory or initializing within a Snodo project. `--yes` and
 `--no-input` acknowledge the trusted-repository warning without prompting,
 including in non-interactive use.
+`--delivery` accepts `local_merge`, `push_branch`, `change_request`, or
+`leave_unmerged` (the latter leaves delivery unset for a human to merge). In
+interactive init, omitting it prompts with the selected template's delivery
+default; `--yes`, `--no-input`, and non-interactive init keep that default.
 
 ## Work and planning
 
