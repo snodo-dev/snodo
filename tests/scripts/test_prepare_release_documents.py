@@ -20,14 +20,14 @@ def _files(tmp_path: Path, notes: str = "- Release note.\n") -> tuple[Path, Path
 
 
 def test_promotion_preserves_notes_and_passes_release_version_check(tmp_path: Path) -> None:
-    changelog, security = _files(tmp_path)
-    original_note = "- Release note.\n"
+    original_note = "- Release note.\n  Continued detail.\n\n"
+    changelog, security = _files(tmp_path, original_note)
 
     module.prepare(changelog, security, "0.21.0", "minor", "2026-10-10")
 
     output = changelog.read_text(encoding="utf-8")
-    assert f"## [0.21.0] — 2026-10-10\n\n{original_note}" in output
-    assert "## [Unreleased]" not in output
+    assert f"## [Unreleased]\n\n## [0.21.0] — 2026-10-10\n\n{original_note}" in output
+    assert output.count("## [Unreleased]") == 1
     assert "## [0.20.0]" in output
 
     release_check_path = ROOT / "scripts" / "check_release_version.py"

@@ -20,7 +20,7 @@ def prepare(changelog_path: Path, security_path: Path, version: str, part: str, 
     body = changelog[match.end():end]
     if not body.strip():
         raise ValueError("CHANGELOG.md [Unreleased] section is empty; refusing release")
-    promoted = f"## [{version}] — {released}\n" + body
+    promoted = f"## [Unreleased]\n\n## [{version}] — {released}\n" + body
     changelog_path.write_text(changelog[:match.start()] + promoted + changelog[end:], encoding="utf-8")
 
     if part != "patch":
