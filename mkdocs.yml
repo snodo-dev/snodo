@@ -30,6 +30,7 @@ nav:
       - User configuration: configuration.md
       - Command reference: command-reference.md
       - Coder backends: coders.md
+      - Non-engineering role templates: non-engineering-roles.md
       - Authoring a plan: authoring-a-plan.md
       - Following a run: following-a-run.md
       - Following a plan run: following-a-plan-run.md

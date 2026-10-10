@@ -21,6 +21,13 @@ full schema and examples.
 | `bugfix-surgeon.yml` | Bugfix Surgeon | `--template bugfix-surgeon` | Bug-fix flow with a post-execute review gate |
 | `feature-warden.yml` | Feature Warden | `--template feature-warden` | Feature flow with a scope guard |
 | `greenfield.yml` | Greenfield | `--template greenfield` | Phased decide → scaffold → build workflow with per-phase exit gates |
+| `product.yml` | Product | `--template product` | Product Markdown documents with role-specific validation and change-request delivery |
+| `design.yml` | Design | `--template design` | Design briefs, UX specifications, UI copy, and component specifications in Markdown |
+| `docs.yml` | Documentation | `--template docs` | Technical documentation with accuracy, example, and link validation |
+| `research.yml` | Research Analyst | `--template research` | Evidence-led Markdown reports and decision memos |
+
+See the [non-engineering role templates guide](../../../../../../docs/non-engineering-roles.md)
+for deliverables, validator checks, documentation quality setup, and human review.
 
 ## Usage
 
@@ -33,6 +40,10 @@ snodo init --template intent
 snodo init --template bugfix-surgeon
 snodo init --template feature-warden
 snodo init --template greenfield
+snodo init --template product
+snodo init --template design
+snodo init --template docs
+snodo init --template research
 
 # Or with the interactive prompt
 snodo init

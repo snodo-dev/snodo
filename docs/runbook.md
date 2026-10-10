@@ -431,8 +431,13 @@ The template list is derived from `snodo/protocols/templates/` — drop in a YAM
 | `bugfix-surgeon` | producer | Bug-fix flow with a post-execute review gate |
 | `feature-warden` | producer | Feature flow with a scope guard |
 | `greenfield` | plan, decide, scaffold, build | Phased build of a new project with per-phase exit gates |
+| `product` | producer | Product documents in Markdown with role-specific validation and change-request delivery |
+| `design` | producer | Design briefs, UX specifications, UI copy, and component specifications in Markdown |
+| `docs` | producer | Technical documentation with accuracy, example, and link checks |
+| `research` | producer | Evidence-led Markdown reports and decision memos |
 
 Run `snodo init --template <name>` to pick one directly, or `snodo init` to choose from the menu.
+See [templates for product, design, docs, and research](non-engineering-roles.md) for deliverables, checks, and human review.
 
 ### Coders
 

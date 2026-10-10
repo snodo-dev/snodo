@@ -105,8 +105,10 @@ entries are preserved, and output identifies updated and undetected clients.
 protocol template. `--template` selects a shipped protocol by name: `solo`
 (Solo Developer), `team` (Default Snodo), `2+n` (2+N Reference), `intent`
 (Intent-Driven), `greenfield` (Greenfield Project), `bugfix-surgeon` (Bug-Fix
-Surgeon), or `feature-warden` (Feature-Development Warden); omit it for the
-interactive picker.
+Surgeon), `feature-warden` (Feature-Development Warden), `product`, `design`,
+`docs`, or `research`; omit it for the interactive picker. See the
+[non-engineering role templates](non-engineering-roles.md) guide for deliverables,
+validation, and human review.
 `--test-command` sets the quality validator's test command when the template
 value is empty or a placeholder; otherwise init tries detection from project
 marker files and may prompt on an interactive terminal. `--project-id`
