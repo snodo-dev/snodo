@@ -659,6 +659,42 @@ def test_plan_status_blocked_row_carries_the_command_that_reaches_its_logs(plan_
     assert "snodo logs j_planrun --watch" in out
 
 
+def test_plan_status_run_summary_human_and_json(plan_env, capsys):
+    import json
+    from typer.testing import CliRunner
+    from snodo.cli.commands.plan_cmd import app
+
+    _create_plan(plan_env, "p_summary")
+    planner = _planner(plan_env)
+    planner.generate_spec("p_summary", "1.1_ok", "spec")
+    planner.generate_spec("p_summary", "1.2_halt", "spec")
+    _write_job(plan_env, "j_summary", {"plan_name": "p_summary"}, {"status": "completed", "job_type": "plan"})
+    _write_job(plan_env, "j_ok", {"task_id": "1.1_ok", "parent_job": "j_summary"}, {"status": "completed", "cost": {"cost_usd": 0.25}, "usage": [{"total_tokens": 120}], "duration_seconds": 4, "delivered_branch": "main"})
+    _write_job(plan_env, "j_halt", {"task_id": "1.2_halt", "parent_job": "j_summary"}, {"status": "blocked", "halt": {"halt_type": "validator_block", "final_decision": "blocked", "attempts": {"total": 2}}, "duration_seconds": 8})
+
+    runner = CliRunner()
+    human = runner.invoke(app, ["status", "p_summary", "--run-summary"])
+    assert human.exit_code == 0, human.output
+    assert "1.1_ok: outcome=completed" in human.output
+    assert "cost=$0.2500" in human.output and "delivered=yes" in human.output
+    assert "1.2_halt: outcome=blocked" in human.output and "cost=unknown" in human.output
+    assert "Totals: tasks=2, attempts=2, tokens=120" in human.output
+
+    machine = runner.invoke(app, ["status", "p_summary", "--run-summary", "--json"])
+    assert machine.exit_code == 0, machine.output
+    payload = json.loads(machine.output)
+    assert payload["run_job_id"] == "j_summary"
+    assert payload["task_count"] == 2
+    assert payload["tasks"][0]["cost_usd"] == 0.25
+    assert payload["tasks"][1]["halt_type"] == "validator_block"
+    assert payload["tasks"][1]["cost_usd"] is None
+    assert payload["totals"]["unknown_cost_runs"] == 1
+
+    default = runner.invoke(app, ["status", "p_summary"])
+    assert default.exit_code == 0
+    assert "Totals: tasks=" not in default.output
+
+
 def test_plan_and_logs_views_share_engine_status_markers(plan_env, capsys):
     """Every engine task status has the same marker in both plan views."""
     _create_plan(plan_env, "marker_plan")

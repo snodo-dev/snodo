@@ -55,9 +55,13 @@ def plan_list(
 
 
 @app.command("status")
-def plan_status(name: str = typer.Argument(..., help="Plan name")):
+def plan_status(
+    name: str = typer.Argument(..., help="Plan name"),
+    run_summary: bool = typer.Option(False, "--run-summary", help="Summarize the latest run"),
+    json_output: bool = typer.Option(False, "--json", help="Emit run summary as JSON (requires --run-summary)"),
+):
     """Show plan progress."""
-    args = SimpleNamespace(plan_action="status", name=name)
+    args = SimpleNamespace(plan_action="status", name=name, run_summary=run_summary, json_output=json_output)
     return plan_command(args)
 
 
@@ -200,7 +204,8 @@ def plan_command(args) -> int:
     if args.plan_action == "list":
         return _plan_list(planner, args)
     elif args.plan_action == "status":
-        return _plan_status(planner, args.name)
+        return _plan_status(planner, args.name, run_summary=getattr(args, "run_summary", False),
+                            json_output=getattr(args, "json_output", False))
     elif args.plan_action == "create":
         return _plan_create(planner, args)
     elif args.plan_action == "validate":
@@ -415,7 +420,7 @@ def _plan_list(planner, args=None) -> int:
     return 0
 
 
-def _plan_status(planner, name: str) -> int:
+def _plan_status(planner, name: str, run_summary: bool = False, json_output: bool = False) -> int:
     """Show plan progress."""
     from snodo.mcp.planner import PlannerError
 
@@ -425,6 +430,9 @@ def _plan_status(planner, name: str) -> int:
     except PlannerError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    if run_summary:
+        return _plan_run_summary(planner, name, plan_data, json_output)
 
     tasks = status_data.get("tasks", {})
     print(f"Plan: {plan_data.get('name', name)}")
@@ -440,6 +448,59 @@ def _plan_status(planner, name: str) -> int:
     if plan_job_id:
         print()
         print(f"Follow this plan live: snodo logs {plan_job_id} --watch")
+    return 0
+
+
+def _plan_run_summary(planner, name: str, plan_data: Any, json_output: bool) -> int:
+    """Report metrics from the latest persisted run for a plan."""
+    from snodo.cli.json_output import emit_json, schema_name
+    from snodo.jobs import JobManager, index_plan_jobs
+    from snodo.run_statistics import summarize_task
+
+    project_root = Path(planner.project_root)
+    plan_job_id, task_jobs = index_plan_jobs(str(project_root), name)
+    if not plan_job_id:
+        payload = {"schema": schema_name("plan_run_summary"), "plan": name, "run_job_id": None,
+                   "tasks": [], "task_count": 0, "totals": {"attempts": 0, "tokens": 0,
+                   "duration_seconds": 0, "cost_usd": None, "delivered": 0}}
+        return emit_json(payload) if json_output else (print(f"No run found for plan '{name}'.") or 0)
+
+    manager = JobManager(str(project_root))
+    task_ids = [task for wave in plan_data.get("waves", []) for task in wave.get("tasks", [])]
+    summaries = []
+    for task_id in task_ids:
+        job = task_jobs.get(task_id)
+        state = {}
+        if job:
+            try:
+                state = manager._load_state(manager.jobs_dir / job["id"])
+            except Exception:
+                state = {}
+        summaries.append(summarize_task(task_id, state).__dict__)
+    costs = [item["cost_usd"] for item in summaries if item["cost_usd"] is not None]
+    totals = {
+        "attempts": sum(item["attempts"] for item in summaries),
+        "tokens": sum(item["tokens"] or 0 for item in summaries),
+        "duration_seconds": sum(item["duration_seconds"] or 0 for item in summaries),
+        "cost_usd": sum(costs) if costs else None,
+        "unknown_cost_runs": sum(item["cost_usd"] is None for item in summaries),
+        "delivered": sum(item["delivered"] for item in summaries),
+    }
+    payload = {"schema": schema_name("plan_run_summary"), "plan": name, "run_job_id": plan_job_id,
+               "tasks": summaries, "task_count": len(summaries), "totals": totals}
+    if json_output:
+        return emit_json(payload)
+    print(f"Run: {plan_job_id}")
+    for item in summaries:
+        cost = f"${item['cost_usd']:.4f}" if item["cost_usd"] is not None else "unknown"
+        duration = item["duration_seconds"] if item["duration_seconds"] is not None else "unknown"
+        tokens = item["tokens"] if item["tokens"] is not None else "unknown"
+        print(f"{item['task_id']}: outcome={item['outcome'] or 'unknown'}, halt={item['halt_type'] or 'unknown'}, "
+              f"attempts={item['attempts']}, duration={duration}s, tokens={tokens}, cost={cost}, "
+              f"delivered={'yes' if item['delivered'] else 'no'}")
+    cost_total = f"${totals['cost_usd']:.4f}" if totals["cost_usd"] is not None else "unknown"
+    print(f"Totals: tasks={len(summaries)}, attempts={totals['attempts']}, tokens={totals['tokens']}, "
+          f"duration={totals['duration_seconds']}s, cost={cost_total}, delivered={totals['delivered']}")
     return 0
 
 
