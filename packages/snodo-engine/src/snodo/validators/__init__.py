@@ -1,6 +1,9 @@
-"""Validator package — built-ins register after the registry is initialized.
+"""Validator package — initialize the registry and built-ins on import.
 
-Keep package import side-effect free: importing ``snodo.validators.registry``
-first must not eagerly import built-ins that re-enter the partially initialized
-registry module.
+Import the registry as the package's sole initializer dependency. The registry
+creates its singleton before importing built-in validators, preserving the
+historical ``import snodo.validators`` registration behavior without having
+the package initializer import validators ahead of registry initialization.
 """
+
+from snodo.validators import registry as _registry  # noqa: F401
