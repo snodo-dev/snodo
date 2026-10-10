@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add opt-in `snodo plan status --run-summary` reporting per-task run outcomes,
+  attempts, usage, cost, delivery, and totals in human-readable or JSON form.
+  (Fixes #812)
 - Add read-only per-plan-run and time-window outcome statistics, including
   first-pass rate, delivery, token/duration totals, and cost provenance. (Fixes #810)
 - Add read-only per-validator verdict and blocker-rate statistics by validation
