@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a technical documentation protocol template with role-specific validation
+  and change-request delivery. (Fixes #819)
 - Add a product protocol template for reviewable Markdown product documents with
   change-request delivery and role-specific validation. (Fixes #821)
 - Add a design protocol template for Markdown deliverables with role-specific
