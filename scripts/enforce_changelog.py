@@ -119,6 +119,19 @@ def check(repo_root: Path, base: str, changelog_path: Path) -> list[str]:
     return failures
 
 
+def _release_section_failure(changelog: str, last_tag: str) -> str | None:
+    """Refuse a release when there are no pending changelog entries."""
+    matches = list(SECTION.finditer(changelog))
+    for index, match in enumerate(matches):
+        if not PENDING_SECTION.fullmatch(match.group(1).strip()):
+            continue
+        body_end = matches[index + 1].start() if index + 1 < len(matches) else len(changelog)
+        if changelog[match.end() : body_end].strip():
+            return None
+        break
+    return f"Nothing to release since {last_tag}: CHANGELOG.md [Unreleased] has no entries."
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Require issue-closing commits in a branch range to be documented."
@@ -141,6 +154,13 @@ def main(argv: list[str] | None = None) -> int:
     changelog_path = repo_root / args.changelog
 
     try:
+        if args.mode == "release":
+            failure = _release_section_failure(
+                changelog_path.read_text(encoding="utf-8"), args.base
+            )
+            if failure:
+                print(f"FAIL: {failure}")
+                return 1
         failures = check(repo_root, args.base, changelog_path)
     except (ChangelogCheckError, OSError) as exc:
         print(f"Changelog check failed: {exc}")

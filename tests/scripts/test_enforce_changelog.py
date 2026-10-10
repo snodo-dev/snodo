@@ -69,6 +69,34 @@ def test_present_entry_passes_both_modes(tmp_path: Path) -> None:
     assert changelog_check.main(["--repo", str(repo), "--base", base, "--mode", "release"]) == 0
 
 
+def test_release_rejects_missing_unreleased_section(tmp_path: Path, capsys) -> None:
+    repo, base = _repo(tmp_path, "chore: prepare release", "# Changelog\n")
+
+    assert changelog_check.main(["--repo", str(repo), "--base", base, "--mode", "release"]) == 1
+    assert "Nothing to release since" in capsys.readouterr().out
+
+
+def test_release_rejects_empty_unreleased_and_names_last_tag(tmp_path: Path, capsys) -> None:
+    repo, _ = _repo(tmp_path, "chore: prepare release", "# Changelog\n\n## [Unreleased]\n\n")
+    _git(repo, "tag", "v0.22.0", "HEAD~1")
+
+    assert changelog_check.main(
+        ["--repo", str(repo), "--base", "v0.22.0", "--mode", "release"]
+    ) == 1
+    output = capsys.readouterr().out
+    assert "Nothing to release since v0.22.0" in output
+    assert "[Unreleased] has no entries" in output
+
+
+def test_gate_allows_empty_unreleased_section_quietly(tmp_path: Path, capsys) -> None:
+    repo, base = _repo(tmp_path, "chore: prepare release", "# Changelog\n\n## [Unreleased]\n\n")
+
+    assert changelog_check.main(["--repo", str(repo), "--base", base, "--mode", "gate"]) == 0
+    output = capsys.readouterr().out
+    assert "WARNING" not in output
+    assert "Nothing to release" not in output
+
+
 def test_chore_commit_closing_nothing_passes(tmp_path: Path) -> None:
     repo, base = _repo(tmp_path, "chore: tidy the test fixture")
 
