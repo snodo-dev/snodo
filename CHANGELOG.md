@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Extend `snodo task report` with validator verdict/block rates, run outcome and
+  first-pass statistics, usage totals, and matching JSON output. (Fixes #811)
 - Add read-only per-plan-run and time-window outcome statistics, including
   first-pass rate, delivery, token/duration totals, and cost provenance. (Fixes #810)
 - Add read-only per-validator verdict and blocker-rate statistics by validation

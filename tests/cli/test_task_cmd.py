@@ -170,6 +170,47 @@ def test_task_report_text_formatting(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Human Review Acceptance Rate (Last 7 days)" in out
     assert "Completed tasks (task_complete): 0" in out
+    assert "Validator Outcomes" in out
+    assert "No validator verdict data in this window." in out
+    assert "Run Outcomes and Usage" in out
+    assert "runs with no measured cost" in out
+
+    assert task_report_command(SimpleNamespace(days=7, json=True)) == 0
+    empty = json.loads(capsys.readouterr().out)
+    assert empty["validator_outcomes"]["validators"] == {}
+    assert empty["run_statistics"]["task_count"] == 0
+    assert empty["run_statistics"]["first_pass_rate"] is None
+    assert empty["run_statistics"]["totals"]["unknown_cost_runs"] == 0
+
+
+def test_task_report_json_includes_validator_and_run_statistics(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    audit_log = AuditLog(str(tmp_path / "audit.log"))
+    monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
+    now = datetime.now(timezone.utc)
+    audit_log.append_event("validate", {
+        "op": "validate", "phase": "post", "validators_invoked": ["quality"],
+        "results": [{"validator_id": "quality", "severity": "blocker"}],
+        "timestamp": now.isoformat(),
+    })
+    job = tmp_path / ".snodo" / "jobs" / "job-with-unknown-cost"
+    job.mkdir(parents=True)
+    (job / "state.json").write_text(json.dumps({
+        "started_at": now.timestamp(),
+        "halt": {"final_decision": "blocked", "halt_type": "validator"},
+        "usage": [{"total_tokens": 23}],
+        "duration_seconds": 4.5,
+    }))
+
+    assert task_report_command(SimpleNamespace(days=30, json=True)) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["validator_outcomes"]["validators"]["quality"]["post"]["severity_counts"] == {"blocker": 1}
+    assert data["validator_outcomes"]["validators"]["quality"]["post"]["block_rate"] == 1.0
+    assert data["run_statistics"]["first_pass_rate"] is None
+    assert data["run_statistics"]["halt_types"] == {"validator": 1}
+    assert data["run_statistics"]["totals"]["unknown_cost_runs"] == 1
+    assert data["run_statistics"]["totals"]["tokens"] == 23
+    assert data["run_statistics"]["totals"]["duration_seconds"] == 4.5
 
 
 # ============================================================================

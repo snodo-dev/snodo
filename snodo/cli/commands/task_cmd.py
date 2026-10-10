@@ -920,7 +920,7 @@ def _merge_identity(data: dict) -> str:
 
 
 def task_report_command(args) -> int:
-    """Report operator human review acceptance statistics over a window."""
+    """Report human review, validator, and run statistics over a window."""
     from datetime import datetime, timezone, timedelta
     from snodo.infrastructure.audit import get_audit_log
 
@@ -995,6 +995,40 @@ def task_report_command(args) -> int:
     # rather than asserting a misleading 0% acceptance.
     rate_pct = (accepted_count / reviewed_count * 100.0) if reviewed_count > 0 else None
 
+    from snodo.infrastructure.validator_outcomes import aggregate_validator_outcomes
+    from snodo.run_statistics import summarize_window
+
+    validator_stats = aggregate_validator_outcomes(events, days=days)
+    validator_data = {
+        "validators": {
+            validator: {
+                phase: {
+                    "verdict_count": stats.verdict_count,
+                    "severity_counts": dict(stats.severity_counts),
+                    "reused_count": stats.reused_count,
+                    "reused_severity_counts": dict(stats.reused_severity_counts),
+                    "block_rate": stats.block_rate,
+                }
+                for phase, stats in phases.items()
+            }
+            for validator, phases in validator_stats.validators.items()
+        },
+        "skipped_events": validator_stats.skipped_events,
+    }
+    now = datetime.now(timezone.utc)
+    run_stats = summarize_window(
+        Path(project_root) / ".snodo" / "jobs",
+        now - timedelta(days=days),
+        now + timedelta(microseconds=1),
+    )
+    run_data = {
+        "task_count": run_stats["task_count"],
+        "first_pass_rate": run_stats["first_pass_rate"],
+        "outcomes": run_stats["outcomes"],
+        "halt_types": run_stats["halt_types"],
+        "totals": run_stats["totals"],
+    }
+
     if json_out:
         from snodo.cli.json_output import emit_json, schema_name
         return emit_json({
@@ -1009,6 +1043,8 @@ def task_report_command(args) -> int:
             "discarded": discarded_count,
             "unreviewed": unreviewed_count,
             "acceptance_rate_pct": round(rate_pct, 1) if rate_pct is not None else None,
+            "validator_outcomes": validator_data,
+            "run_statistics": run_data,
         })
 
     print(f"Human Review Acceptance Rate (Last {days} days)")
@@ -1026,6 +1062,31 @@ def task_report_command(args) -> int:
         print(f"  - Unreviewed:            {unreviewed_count}")
     print()
     print(f"Unchanged Acceptance Rate: {rate_pct_str} ({accepted_count}/{reviewed_count} reviewed tasks accepted unchanged)")
+    print()
+    print("Validator Outcomes")
+    print("------------------")
+    if not validator_data["validators"]:
+        print("No validator verdict data in this window.")
+    else:
+        for validator, phases in sorted(validator_data["validators"].items()):
+            for phase, stats in sorted(phases.items()):
+                counts = ", ".join(
+                    f"{verdict}={count}" for verdict, count in sorted(stats["severity_counts"].items())
+                ) or "no verdicts"
+                block_rate = f"{stats['block_rate']:.1%}" if stats["block_rate"] is not None else "n/a"
+                print(f"{validator} ({phase}): {counts}; block rate {block_rate}")
+    print()
+    print("Run Outcomes and Usage")
+    print("----------------------")
+    print(f"Runs: {run_data['task_count']}")
+    first_pass = run_data["first_pass_rate"]
+    print(f"First-pass rate: {first_pass:.1%}" if first_pass is not None else "First-pass rate: n/a")
+    print(f"Outcomes: {run_data['outcomes'] or 'none'}")
+    print(f"Halt types: {run_data['halt_types'] or 'none'}")
+    totals = run_data["totals"]
+    print(f"Cost: ${totals['cost_usd']:.4f} ({totals['unknown_cost_runs']} runs with no measured cost)")
+    print(f"Tokens: {totals['tokens']}")
+    print(f"Duration: {totals['duration_seconds']:.1f}s")
     return 0
 
 

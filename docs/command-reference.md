@@ -224,6 +224,12 @@ not execute command credential references, make model calls, or contact remotes.
 completed task-run records; `--send` sends those records to Snodo Cloud.
 `snodo task list` lists recorded tasks for inspection and management.
 
+`snodo task report --days N` reports human-review acceptance, validator verdict
+counts and block rates by phase, and run first-pass/outcome statistics for the
+window. Run totals include cost, tokens, duration, and the count of runs without
+measured cost. Add `--json` for the same report data in machine-readable form;
+empty sections are reported as no data or null rates.
+
 `snodo meta <composite_id>` summarizes a job or task. Job IDs conventionally
 start with `j_` and task IDs with `task_`; other values are resolved by checking
 the project's job and task record directories.
