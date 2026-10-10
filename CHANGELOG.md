@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Upgrade locked `multidict` to 6.9.1 and `fsspec` to 2026.6.0 to resolve
+  known vulnerabilities. (Fixes #801)
 - Make the real-PTY wave completion test synchronize on terminal output and use
   a generous deadline, avoiding scheduling-sensitive failures under gate load.
   (Fixes #802)
