@@ -1,0 +1,80 @@
+# Product work produces reviewable Markdown artifacts rather than code. Keep
+# quality's default harmless in repositories without optional documentation
+# tooling, and use change requests so a person approves before documents merge.
+
+protocol_id: "product"
+name: "Product Protocol"
+version: "1.0.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Product Producer"
+    tools:
+      - "edit"
+      - "dispatch"
+      - "test"
+      - "validate"
+    validators:
+      - "product-quality"
+      - "quality"
+      - "acceptance"
+      - "protocol-adherence"
+    transitions: {}
+
+validators:
+  - validator_id: "product-quality"
+    validator_type: "conventions"
+    evaluation_phase: "post_execute"
+    criteria:
+      - "Produce product documents as Markdown files under the project's docs/product/ tree."
+      - "State the user problem and the evidence supporting it."
+      - "Define measurable outcomes that make success observable."
+      - "Make scope and non-goals explicit."
+      - "Write user stories that follow INVEST: independent, negotiable, valuable, estimable, small, and testable."
+      - "Give every user story testable acceptance criteria."
+      - "Describe user needs and desired outcomes; do not prescribe a technical solution."
+      - "Release notes should clearly describe user-visible changes."
+
+  - validator_id: "quality"
+    validator_type: "quality"
+    evaluation_phase: "post_execute"
+    tooling:
+      test_command: "echo 'snodo: no test_command configured; no tests executed'"
+      # Optional documentation checks when installed in the project:
+      # test_command: "markdownlint 'docs/product/**/*.md' && lychee 'docs/product/**/*.md'"
+
+  - validator_id: "protocol-adherence"
+    validator_type: "protocol"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Check that the requested work is product management documentation, not implementation or design work."
+
+  - validator_id: "acceptance"
+    validator_type: "acceptance"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_file"
+      - "read_file_lines"
+      - "list_files"
+      - "git_show"
+      - "git_log"
+      - "read_diff_between_refs"
+    criteria:
+      - "Judge the produced artifacts against the acceptance criteria in the task spec. A criterion verifiable from the tree and unmet is a warn; a criterion that cannot be verified from the tree is uncheckable and never a finding."
+
+initial_mode: "producer"
+disagreement_policy: "unanimous"
+
+execution:
+  max_recovery_depth: 3
+  delivery: change_request
+
+queue:
+  non_blocking: false
+  parallel_runs: 1
+
+write_allowed_prefixes:
+  - ".snodo/"
+
+global_constraints: []

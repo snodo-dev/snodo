@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a product protocol template for reviewable Markdown product documents with
+  change-request delivery and role-specific validation. (Fixes #821)
 - Preserve plan task identities when MCP queue jobs execute plans inline. (Fixes #817)
 - Reopen the [Unreleased] changelog section after promoting notes for a release. (Fixes #815)
 - Refuse releases early when the [Unreleased] section has no entries. (Fixes #816)
