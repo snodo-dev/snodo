@@ -1,0 +1,44 @@
+{
+  "tasks": {
+    "1.1_validator_outcome_stats": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3f3be5a2b594e6a7"
+    },
+    "1.2_run_outcome_stats": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8b37883761e4269c"
+    },
+    "2.1_task_report_window_stats": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c47ff97c5f3e819c"
+    },
+    "2.2_plan_status_run_summary": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "85daa522b18d54f3"
+    },
+    "3.1_get_plan_run_summary": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "02a19b72c3a9c405"
+    },
+    "3.2_reporting_guide": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "83df7cb21cc936c5"
+    }
+  },
+  "integration": {
+    "branch": "plan/run-report/integration",
+    "base_sha": "7a1f42b7b4f3fddaafa61e5f37bcf3687ca859f2"
+  }
+}

@@ -1,0 +1,25 @@
+intent: 'After an overnight run, the operator can see in one place how it went: per
+  task outcome, attempts, cost and time for a plan run, and over a time window per-validator
+  block rates, first-pass rate, outcome mix and cost. All the data is already recorded
+  (job/task state.json usage and cost, halt payloads, audit validate events); nothing
+  aggregates it. No new top-level command: extend `snodo task report` (window) and
+  `snodo plan status` (one run), and expose the plan summary over MCP.'
+name: run-report
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_validator_outcome_stats
+  - 1.2_run_outcome_stats
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_task_report_window_stats
+  - 2.2_plan_status_run_summary
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_get_plan_run_summary
+  - 3.2_reporting_guide

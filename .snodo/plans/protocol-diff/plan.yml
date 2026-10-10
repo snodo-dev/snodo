@@ -1,0 +1,19 @@
+intent: 'A project can see how its .snodo/protocol.yml differs from the shipped template
+  it came from: validators, modes and settings added, removed or changed. Today the
+  only comparison is missing_template_validators() (validators present in the template
+  but absent in the project, matched by protocol_id), printed as a warning by `snodo
+  run` only, and nothing records which template a protocol came from. Diff only: applying
+  template changes is out of scope.'
+name: protocol-diff
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_init_records_template
+  - 1.2_protocol_template_diff_core
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_protocol_diff_command
+  - 2.2_ready_reports_template_drift

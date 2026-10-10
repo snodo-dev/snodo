@@ -1,0 +1,13 @@
+intent: 'A first-time user knows, and chooses, what happens to finished work. Today
+  the documented quickstart (init --template team) ends every run with "Task resolved
+  but its work was NOT merged" and no init option to change it: delivery can only
+  be set by hand-editing protocol.yml. Make delivery an explicit choice at init, and
+  make the unmerged ending tell the user exactly what to do next. Do not flip team''s
+  default to auto-merge; separation of duties stays.'
+name: first-run-delivery-choice
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_init_delivery_choice
+  - 1.2_unmerged_ending_next_steps

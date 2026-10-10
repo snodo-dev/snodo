@@ -1,0 +1,16 @@
+intent: 'CI on main is green again after the v0.21.0 push (the lint and security jobs
+  both fail), and the next release goes out with no manual CHANGELOG surgery: make
+  release writes the version''s CHANGELOG section itself.'
+name: ci-green-for-release
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_ci_lint_green
+  - 1.4_pty_wave_test_not_flaky
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_ci_security_green
+  - 2.2_release_writes_changelog_section

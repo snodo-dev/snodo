@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_init_records_template": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5de7a441477a334d"
+    },
+    "1.2_protocol_template_diff_core": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "bea319d3b72e2fc7"
+    },
+    "2.1_protocol_diff_command": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "93645aeb879dd0ea"
+    },
+    "2.2_ready_reports_template_drift": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8036740b234f0cd2"
+    }
+  },
+  "integration": {
+    "branch": "plan/protocol-diff/integration",
+    "base_sha": "438522d0051a09fdb1cc1414b496b0dbafe3807c"
+  }
+}

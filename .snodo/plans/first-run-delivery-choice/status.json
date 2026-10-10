@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_init_delivery_choice": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2caf94fc3d2b8335"
+    },
+    "1.2_unmerged_ending_next_steps": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a716d35349c194fe"
+    }
+  },
+  "integration": {
+    "branch": "plan/first-run-delivery-choice/integration",
+    "base_sha": "d9e7114f1b8f08009f78759d307a389b3d0bfa50"
+  }
+}

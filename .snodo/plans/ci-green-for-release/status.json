@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_ci_lint_green": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7f3c39cfad4bceb9"
+    },
+    "1.4_pty_wave_test_not_flaky": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0a09fe77fbcd48f8"
+    },
+    "2.1_ci_security_green": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2621a49bbd301ccf"
+    },
+    "2.2_release_writes_changelog_section": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9b239d4d1b2ffbd9"
+    }
+  },
+  "integration": {
+    "branch": "plan/ci-green-for-release/integration",
+    "base_sha": "dd268265fd78935dccad98679598ffeb76c1908d"
+  }
+}
