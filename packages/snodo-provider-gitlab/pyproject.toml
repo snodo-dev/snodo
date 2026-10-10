@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-provider-gitlab"
-version = "0.20.3"
+version = "0.21.0"
 description = "GitLab code-host provider plugin for Snodo"
 requires-python = ">=3.12"
-dependencies = ["snodo-tools==0.20.3", "python-gitlab>=4.0.0"]
+dependencies = ["snodo-tools==0.21.0", "python-gitlab>=4.0.0"]
 
 [project.entry-points."snodo.providers"]
 gitlab = "snodo_provider_gitlab:GitLabProvider"
