@@ -33,6 +33,7 @@ nav:
       - Authoring a plan: authoring-a-plan.md
       - Following a run: following-a-run.md
       - Following a plan run: following-a-plan-run.md
+      - Reading overnight results: reading-overnight-results.md
       - MCP queue tools: mcp-queues.md
       - Machine interface: machine-interface.md
       - Protocol reference: protocol.md

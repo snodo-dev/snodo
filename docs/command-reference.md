@@ -229,6 +229,7 @@ counts and block rates by phase, and run first-pass/outcome statistics for the
 window. Run totals include cost, tokens, duration, and the count of runs without
 measured cost. Add `--json` for the same report data in machine-readable form;
 empty sections are reported as no data or null rates.
+For interpreting these metrics, see [Reading overnight run results](reading-overnight-results.md).
 
 `snodo meta <composite_id>` summarizes a job or task. Job IDs conventionally
 start with `j_` and task IDs with `task_`; other values are resolved by checking

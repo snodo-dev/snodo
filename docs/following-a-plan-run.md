@@ -76,6 +76,7 @@ run: per-task outcome, halt type, attempts, duration, cost, and delivery, plus
 run totals. It contains no justifications or logs. For detailed reporting,
 including tokens and cost provenance, use `snodo plan status <name>
 --run-summary`; add `--json` for machine-readable output.
+For metric definitions and reading a time-window report, see [Reading overnight run results](reading-overnight-results.md).
 
 After the plan job reaches a terminal status:
 

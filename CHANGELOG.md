@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a guide to reading overnight plan summaries and window reports, including
+  metric definitions and checks for unexpected validator block rates. (Fixes #814)
 - Include a bounded latest plan-run outcome, halt, attempts, duration, cost,
   delivery, and totals summary in MCP `get_plan`. (Fixes #813)
 - Extend `snodo task report` with validator verdict/block rates, run outcome and

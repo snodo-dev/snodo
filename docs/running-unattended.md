@@ -209,6 +209,10 @@ change.
 
 ## Leave a trail for the returning human
 
+When you return to inspect an overnight run, use the [guide to reading run
+results](reading-overnight-results.md) for the plan summary, time-window report,
+metric definitions, and validator block-rate checks.
+
 At each intent boundary, leave a concise record that answers:
 
 - What intent, plan, and job were processed?
