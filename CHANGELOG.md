@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add read-only per-validator verdict and blocker-rate statistics by validation
+  phase, separating reused verdicts and tolerating malformed audit events. (Fixes #809)
 - Report shipped protocol template drift as an advisory in `snodo ready` and
   direct both ready and run users to `snodo protocol diff`. (Fixes #808)
 - Add read-only `snodo protocol diff` with human-readable and JSON template drift
