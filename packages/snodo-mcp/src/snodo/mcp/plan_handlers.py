@@ -187,6 +187,46 @@ class PlanToolHandler:
             for task_id, job in task_jobs.items()
         }
 
+    def _run_summary(self, plan_name: str, plan_data: dict) -> dict:
+        """Return the compact persisted summary for the latest plan run."""
+        from snodo.jobs import JobManager, index_plan_jobs
+        from snodo.run_statistics import summarize_task
+
+        run_job_id, task_jobs = index_plan_jobs(str(self._planner.project_root), plan_name)
+        task_ids = [task for wave in plan_data.get("waves", [])
+                    for task in wave.get("tasks", [])]
+        manager = JobManager(str(self._planner.project_root))
+        tasks = []
+        for task_id in task_ids:
+            state = {}
+            job = task_jobs.get(task_id)
+            if job:
+                try:
+                    state = manager._load_state(manager.jobs_dir / job["id"])
+                except Exception:
+                    state = {}
+            outcome = summarize_task(task_id, state)
+            tasks.append({
+                "task_id": outcome.task_id,
+                "outcome": outcome.outcome,
+                "halt_type": outcome.halt_type,
+                "attempts": outcome.attempts,
+                "duration_seconds": outcome.duration_seconds,
+                "cost_usd": outcome.cost_usd,
+                "delivered": outcome.delivered,
+            })
+
+        known_costs = [task["cost_usd"] for task in tasks if task["cost_usd"] is not None]
+        totals = {
+            "task_count": len(tasks),
+            "attempts": sum(task["attempts"] for task in tasks),
+            "duration_seconds": sum(task["duration_seconds"] or 0 for task in tasks),
+            "cost_usd": sum(known_costs) if known_costs else None,
+            "unknown_cost_runs": sum(task["cost_usd"] is None for task in tasks),
+            "delivered": sum(task["delivered"] for task in tasks),
+        }
+        return {"run_job_id": run_job_id, "tasks": tasks, "totals": totals}
+
     # ------------------------------------------------------------------
     # Tools
     # ------------------------------------------------------------------
@@ -240,6 +280,7 @@ class PlanToolHandler:
             "tasks": statuses,
             "task_modules": self._task_modules(plan_name),
             "task_runs": self._task_runs(plan_name),
+            "run_summary": self._run_summary(plan_name, plan_data),
             "validation": self._validation(plan_dir),
         }
         instruction = self._blocked_plan_instruction(plan_name, plan_data, statuses)

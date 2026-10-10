@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Include a bounded latest plan-run outcome, halt, attempts, duration, cost,
+  delivery, and totals summary in MCP `get_plan`. (Fixes #813)
 - Extend `snodo task report` with validator verdict/block rates, run outcome and
   first-pass statistics, usage totals, and matching JSON output. (Fixes #811)
 - Add opt-in `snodo plan status --run-summary` reporting per-task run outcomes,

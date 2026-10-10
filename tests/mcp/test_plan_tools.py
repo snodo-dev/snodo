@@ -223,6 +223,44 @@ def test_get_plan_completed_response_has_no_extra_guidance(server):
     assert result["tasks"] == {"1.1_done": "pending"}
 
 
+def test_get_plan_includes_bounded_latest_run_summary(server, project_dir):
+    _propose(server, name="summarized")
+    _add_task(server, "summarized", "1.1_done", "INTENT: Done.\nCONSTRAINTS: None.")
+    job_dir = Path(project_dir) / ".snodo" / "jobs" / "j_task_fixture"
+    job_dir.mkdir(parents=True)
+    (job_dir / "state.json").write_text(json.dumps({
+        "status": "completed",
+        "halt": {"final_decision": "resolved", "halt_type": "complete",
+                 "attempts": {"total": 2}},
+        "duration_seconds": 12.5,
+        "cost": {"cost_usd": 0.25},
+        "delivered_branch": "task-branch",
+        "justification": "must not be exposed",
+    }))
+    with patch("snodo.jobs.index_plan_jobs", return_value=("j_plan_fixture", {
+        "1.1_done": {"id": "j_task_fixture"},
+    })):
+        result = server.call_tool("get_plan", {"plan_name": "summarized"})
+
+    summary = result["run_summary"]
+    assert summary == {
+        "run_job_id": "j_plan_fixture",
+        "tasks": [{
+            "task_id": "1.1_done", "outcome": "resolved", "halt_type": "complete",
+            "attempts": 2, "duration_seconds": 12.5, "cost_usd": 0.25,
+            "delivered": True,
+        }],
+        "totals": {
+            "task_count": 1, "attempts": 2, "duration_seconds": 12.5,
+            "cost_usd": 0.25, "unknown_cost_runs": 0, "delivered": 1,
+        },
+    }
+    assert "justification" not in json.dumps(summary)
+    assert set(summary["tasks"][0]) == {
+        "task_id", "outcome", "halt_type", "attempts", "duration_seconds", "cost_usd", "delivered",
+    }
+
+
 # === Validate without spend ===
 
 class TestValidateWithoutExecution:

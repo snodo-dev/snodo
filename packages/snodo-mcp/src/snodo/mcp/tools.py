@@ -332,7 +332,10 @@ TOOL_REGISTRY = {
     "get_plan": {
         "description": (
             "Retrieve a plan by name: name, intent, waves (ids, depends_on, "
-            "tasks), per-task status, and validation state. Read from the "
+            "tasks), per-task status, validation state, and a compact "
+            "latest-run summary (outcome, halt type, attempts, duration, cost, "
+            "delivery, and totals). Use `snodo plan status <name> --run-summary` "
+            "for the detailed CLI report. Read from the "
             "plan files on disk, which are the source of truth; callable any "
             "time, including while a run is in progress."
         ),

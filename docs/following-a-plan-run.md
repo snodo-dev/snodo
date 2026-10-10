@@ -71,11 +71,11 @@ task outcomes. Do not translate these into new halt types or status values.
 
 ## Read the final outcome
 
-For a compact report of the latest persisted run, use
-`snodo plan status <name> --run-summary`. It lists each task's outcome, halt
-type, attempts, duration, tokens, cost, and delivery status, followed by run
-totals. Costs are shown as unknown when no cost was recorded. Add `--json` to
-emit the same task and totals data as machine-readable JSON.
+The final `get_plan` response includes `run_summary` for the latest persisted
+run: per-task outcome, halt type, attempts, duration, cost, and delivery, plus
+run totals. It contains no justifications or logs. For detailed reporting,
+including tokens and cost provenance, use `snodo plan status <name>
+--run-summary`; add `--json` for machine-readable output.
 
 After the plan job reaches a terminal status:
 
