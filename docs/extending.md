@@ -4,10 +4,27 @@ Four extension points. Each maps to an interface or registry in the codebase. Yo
 
 ## Try it in a minute
 
-From the Snodo repository root, install the runnable [`snodo-hello-validator` example](../examples/snodo-hello-validator/):
+From the Snodo repository root, check which Python the `snodo` command uses:
 
 ```sh
-uv pip install -e ./examples/snodo-hello-validator
+sed -n '1p' "$(command -v snodo)"
+```
+
+For Snodo installed with `uv tool install`, install the runnable [`snodo-hello-validator` example](../examples/snodo-hello-validator/) into Snodo's tool environment:
+
+```sh
+uv pip install --python ~/.local/share/uv/tools/snodo/bin/python -e ./examples/snodo-hello-validator
+```
+
+For Snodo installed in an activated virtualenv or with pip:
+
+```sh
+python -m pip install -e ./examples/snodo-hello-validator
+```
+
+Confirm discovery:
+
+```sh
 snodo ready --json
 ```
 
@@ -22,7 +39,21 @@ validators:
       - Task specification includes an ACCEPTANCE section
 ```
 
-Then run `snodo validate <task-id>` and uninstall with `uv pip uninstall snodo-hello-validator`. See the example README for details.
+Then run `snodo validate <task-id>`. Uninstall from the same environment where Snodo is installed.
+
+For a uv-tool installation:
+
+```sh
+uv pip uninstall --python ~/.local/share/uv/tools/snodo/bin/python snodo-hello-validator
+```
+
+For an activated virtualenv or pip installation:
+
+```sh
+python -m pip uninstall snodo-hello-validator
+```
+
+See the [example README](../examples/snodo-hello-validator/) for details.
 
 ## 1. Custom validators
 
