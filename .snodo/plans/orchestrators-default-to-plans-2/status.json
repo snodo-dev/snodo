@@ -25,10 +25,13 @@
       "spec_hash": "6e994e4672bad662"
     },
     "5.1_consistency_guard": {
-      "status": "unmerged",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "dd7d50ee4d87ab02"
+      "spec_hash": "dd7d50ee4d87ab02",
+      "completed_by": "ylli",
+      "completed_at": "2026-10-05T18:09:00.148507+00:00",
+      "judged": false
     }
   },
   "integration": {
