@@ -15,6 +15,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   change-request delivery and role-specific validation. (Fixes #821)
 - Add a design protocol template for Markdown deliverables with role-specific
   validation and human-reviewed change-request delivery. (Fixes #818)
+- Add a research analyst protocol template for evidence-led Markdown reports and
+  decision memos, with change-request delivery and role-specific validation. (Fixes #820)
 - Preserve plan task identities when MCP queue jobs execute plans inline. (Fixes #817)
 - Reopen the [Unreleased] changelog section after promoting notes for a release. (Fixes #815)
 - Refuse releases early when the [Unreleased] section has no entries. (Fixes #816)
