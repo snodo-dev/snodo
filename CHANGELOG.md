@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Preserve JSON-shaped tool results as text in validator and coder provider messages, preventing Gemini from treating schema references as function-response fields. (Fixes #822)
 - Preserve plan task identities when MCP queue jobs execute plans inline. (Fixes #817)
 - Reopen the [Unreleased] changelog section after promoting notes for a release. (Fixes #815)
 - Refuse releases early when the [Unreleased] section has no entries. (Fixes #816)
