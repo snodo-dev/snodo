@@ -1,0 +1,22 @@
+intent: snodo init offers templates for non-engineering roles (product, design, docs,
+  research). Each one lets a coder produce that role's Markdown deliverables in the
+  repo, judged by role-specific validators and delivered as a change request for human
+  sign-off, and the docs explain how to use them.
+name: persona-templates
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_product_template
+  - 1.2_design_template
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_docs_template
+  - 2.2_research_template
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_role_templates_docs

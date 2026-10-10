@@ -1,0 +1,9 @@
+intent: LLM validators and coders running on Gemini can read any repository file,
+  including JSON Schema files with $ref keys, without the provider rejecting the tool
+  result and halting the task as a validator error.
+name: gemini-tool-result-ref
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_gemini_tool_result_ref

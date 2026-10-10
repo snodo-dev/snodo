@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_queue_run_tasks_keep_their_ids": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "45745c20dc1d4ae2"
+    }
+  },
+  "integration": {
+    "branch": "plan/queue-run-task-identity/integration",
+    "base_sha": "619e8a7f5d6092e5395bb13546a0c5bd657a040e"
+  }
+}

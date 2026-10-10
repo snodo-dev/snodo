@@ -1,0 +1,8 @@
+intent: Plans run through the MCP queue_run tool give every task its own task id,
+  worktree and branch, exactly as run_plan does, so queue_run is safe to use again.
+name: queue-run-task-identity
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_queue_run_tasks_keep_their_ids

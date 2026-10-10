@@ -1,0 +1,38 @@
+{
+  "tasks": {
+    "1.1_product_template": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9fccbd0fe72cc039"
+    },
+    "1.2_design_template": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "44504bd7cedede61"
+    },
+    "2.1_docs_template": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f7d764afc468f8c1"
+    },
+    "2.2_research_template": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "497df890712dfb8b"
+    },
+    "3.1_role_templates_docs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b7fc58ce47ed3579"
+    }
+  },
+  "integration": {
+    "branch": "plan/persona-templates/integration",
+    "base_sha": "94975c4df7286f36bee3daaf61fd3d721a2e3fed"
+  }
+}

@@ -1,0 +1,11 @@
+intent: 'After a release, main is immediately ready for the next ticket and the next
+  release: the CHANGELOG keeps an empty [Unreleased] heading, and running make release
+  with nothing new stops before the gate with a clear message instead of bumping the
+  version and failing at the end.'
+name: release-after-release
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_release_reopens_unreleased
+  - 1.2_release_refuses_early_when_nothing_new

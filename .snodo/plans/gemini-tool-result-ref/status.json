@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_gemini_tool_result_ref": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1f268997e5360ff4"
+    }
+  },
+  "integration": {
+    "branch": "plan/gemini-tool-result-ref/integration",
+    "base_sha": "94975c4df7286f36bee3daaf61fd3d721a2e3fed"
+  }
+}

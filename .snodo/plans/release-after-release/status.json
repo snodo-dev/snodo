@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_release_reopens_unreleased": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e55ffcbb6fde8492"
+    },
+    "1.2_release_refuses_early_when_nothing_new": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "075d5af666068f18"
+    }
+  },
+  "integration": {
+    "branch": "plan/release-after-release/integration",
+    "base_sha": "b3aecdc36e66d2489fb625f2794b7978756e71b1"
+  }
+}
