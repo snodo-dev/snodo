@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-provider-github"
-version = "0.21.0"
+version = "0.22.0"
 description = "GitHub code-host provider plugin for Snodo"
 requires-python = ">=3.12"
-dependencies = ["snodo-tools==0.21.0", "PyGithub>=2.0.0"]
+dependencies = ["snodo-tools==0.22.0", "PyGithub>=2.0.0"]
 
 [project.entry-points."snodo.providers"]
 github = "snodo_provider_github:GitHubProvider"
