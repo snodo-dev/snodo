@@ -1,0 +1,71 @@
+# Documentation work produces reviewable Markdown in the repository's existing
+# docs tree. A human reviews each change request before it is merged.
+
+protocol_id: "docs"
+name: "Documentation Protocol"
+version: "1.0.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Technical Writer"
+    tools:
+      - "edit"
+      - "test"
+      - "validate"
+      - "commit"
+    validators:
+      - "docs_quality"
+      - "quality"
+      - "acceptance"
+      - "protocol"
+    transitions: {}
+
+validators:
+  - validator_id: "docs_quality"
+    validator_type: "conventions"
+    evaluation_phase: "post_execute"
+    criteria:
+      - "Statements are accurate against the code and behavior in the repository; inspect the relevant code when needed."
+      - "Pages are task-oriented and help readers accomplish the task described by the documentation."
+      - "Examples are runnable as written in the project's documented environment."
+      - "Links resolve to existing pages, files, or working external destinations; there are no dead links."
+
+  - validator_id: "quality"
+    validator_type: "quality"
+    evaluation_phase: "post_execute"
+    # Harmless where optional documentation tooling is not installed.
+    tooling:
+      test_command: "echo 'snodo: no test_command configured; no tests executed'"
+      # Suggested strict documentation check for projects using MkDocs:
+      # test_command: "mkdocs build --strict"
+
+  - validator_id: "acceptance"
+    validator_type: "acceptance"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_file"
+      - "read_file_lines"
+      - "list_files"
+      - "git_show"
+      - "git_log"
+      - "read_diff_between_refs"
+    criteria:
+      - "Judge the documentation against the task spec's ACCEPTANCE criteria. A verifiable unmet criterion is a warn; a criterion that cannot be verified from the repository is uncheckable and never a finding."
+
+  - validator_id: "protocol"
+    validator_type: "protocol"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    criteria:
+      - "Confirm the requested work is technical documentation such as a guide, reference page, or runbook, rather than implementation code."
+      - "Confirm the task identifies the intended Markdown file in the project's existing docs tree and allows a person to review the change request before merge."
+
+disagreement_policy: "unanimous"
+initial_mode: "producer"
+
+execution:
+  max_recovery_depth: 3
+  delivery: change_request
+
+global_constraints: []

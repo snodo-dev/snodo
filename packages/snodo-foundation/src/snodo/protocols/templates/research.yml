@@ -1,0 +1,76 @@
+# Research analyst protocol — evidence-led reports and decision memos.
+#
+# Research deliverables are Markdown files under the project's docs/research
+# tree. The coder owns repository writes so reports arrive as ordinary diffs;
+# role-specific judges review evidence and reasoning before a human approves the
+# change request. The harmless quality command avoids requiring optional tools
+# in a newly initialized project; configure a link checker when one is available.
+
+protocol_id: "research"
+name: "Research Analyst Protocol"
+version: "1.0.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Research Producer"
+    tools:
+      - "edit"
+      - "dispatch"
+      - "test"
+      - "validate"
+    validators:
+      - "research_quality"
+      - "quality"
+      - "protocol_adherence"
+      - "acceptance"
+    transitions: {}
+
+validators:
+  - validator_id: "research_quality"
+    validator_type: "llm"
+    evaluation_phase: "post_execute"
+    criteria:
+      - "Every factual claim in the research report or decision memo is supported by an identifiable source; citations are specific enough for a reader to verify the claim."
+      - "Clearly distinguish sourced facts from analysis, assumptions, and inference; do not present interpretation as established fact."
+      - "Consider relevant counter-evidence, limitations, and credible alternative explanations, and explain their effect on the conclusion."
+      - "Ensure the recommendation follows logically from the evidence presented, addresses the stated decision, and acknowledges material uncertainty."
+
+  - validator_id: "quality"
+    validator_type: "quality"
+    evaluation_phase: "post_execute"
+    # A fresh project may not have optional documentation tooling installed.
+    # This harmless default records no tests executed; replace it with a link
+    # checker when the project has one, for example:
+    #   test_command: "lychee docs/research/**/*.md"
+    tooling:
+      test_command: "echo 'snodo: no test_command configured; no tests executed'"
+
+  - validator_id: "protocol_adherence"
+    validator_type: "protocol"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    criteria:
+      - "Confirm the task produces research or a decision memo as Markdown beneath the project's docs/research tree, and that the scope fits research analyst work."
+
+  - validator_id: "acceptance"
+    validator_type: "acceptance"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_file"
+      - "read_file_lines"
+      - "list_files"
+      - "git_show"
+      - "git_log"
+      - "read_diff_between_refs"
+    criteria:
+      - "Judge the produced artifacts against the acceptance criteria in the task spec. A criterion that is verifiable from the tree and unmet is a warn; a criterion that cannot be verified from the tree (device behaviour, human judgement) is uncheckable and never a finding."
+
+initial_mode: "producer"
+disagreement_policy: "unanimous"
+
+execution:
+  max_recovery_depth: 3
+  delivery: "change_request"
+
+global_constraints: []
