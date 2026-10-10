@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Make `make release` promote pending notes into the dated release section and
+  update supported security versions after a minor or major bump. (Fixes #799)
 - Upgrade locked `multidict` to 6.9.1 and `fsspec` to 2026.6.0 to resolve
   known vulnerabilities. (Fixes #801)
 - Make the real-PTY wave completion test synchronize on terminal output and use

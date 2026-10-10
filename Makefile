@@ -84,6 +84,10 @@ release:
 		exit 1; \
 	}
 	$(MAKE) bump PART=$(PART)
+	@V=$$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml) && \
+	  uv run python scripts/prepare_release_documents.py --version "$$V" --part "$(PART)" || { \
+		echo "Release document preparation failed; refusing to commit or tag."; exit 1; \
+	  }
 	@# Read the version in the SHELL, after bump has run. A make-level eval here
 	@# would be expanded when make expands this recipe — before any line of it runs —
 	@# and would capture the pre-bump version, tagging the release with the
