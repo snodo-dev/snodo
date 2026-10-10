@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Compare loaded project protocols with templates and report structured validator,
+  mode, setting and project-local test-command differences. (Fixes #806)
 - Record each initialized protocol's template name and snodo version in metadata,
   and provide template resolution that prefers this provenance. (Fixes #805)
 - Explain policy-unmerged task outcomes with the branch merge command and delivery
