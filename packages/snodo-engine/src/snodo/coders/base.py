@@ -538,6 +538,7 @@ class InPlaceCoderAdapter(Coder, ABC):
         output_text = body
         if report is not None:
             output_text += "\n" + str(report)
+        output_text += "\n" + (getattr(self, "last_output_tail", "") or "")
         output_numbers = _issue_numbers(output_text)
         numbers = spec_numbers if spec_numbers else output_numbers
         trailer = f"Fixes #{next(iter(numbers))}" if len(numbers) == 1 else ""

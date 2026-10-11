@@ -152,6 +152,24 @@ def test_commit_message_uses_issue_reference_from_coder_findings(git_project_wit
     assert message.endswith("\n\nFixes #825")
 
 
+def test_fallback_commit_uses_issue_reference_from_coder_output_tail(git_project_with_local_home):
+    repo_dir, local_home = git_project_with_local_home
+    for path in local_home.iterdir():
+        path.unlink()
+    local_home.rmdir()
+    coder = _DummyInPlaceCoder(repo_dir)
+    coder.last_output_tail = "Issue #831 is open."
+    (repo_dir / "src" / "app.py").write_text("print('updated')\n")
+
+    coder._commit_changes(TaskSpec(
+        description="Fixes #<that issue number>", constraints=[]
+    ))
+
+    with Repo(str(repo_dir)) as repo:
+        message = repo.head.commit.message
+    assert message.rstrip().endswith("\n\nFixes #831")
+
+
 @pytest.mark.parametrize(
     ("description", "findings"),
     [("Investigate empty result", None),

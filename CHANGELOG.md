@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Include subprocess coder output tails when identifying the issue for fallback
+  commits, so an issue named only in the coder's final output is closed on merge.
+  (Fixes #835)
 - Commit only the delivered plan's record directory after successful local plan
   delivery, preserving unrelated staged and untracked files. (Fixes #834)
 - Exit stdio `snodo serve` processes when their transport ends, even if
