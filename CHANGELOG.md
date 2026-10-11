@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Append a confident, unambiguous task issue reference to fallback coder commits,
+  so merging the commit closes its GitHub issue. (Fixes #828)
 - List and prune only worktrees registered to the current project, including
   nested plan task and integration worktrees, without scanning shared worktree
   directories. (Fixes #827)

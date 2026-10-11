@@ -136,6 +136,44 @@ def test_commit_message_identifies_task_without_findings(git_project_with_local_
         assert repo.head.commit.message == "coder: Investigate empty result\n"
 
 
+@pytest.mark.parametrize("reference", ["Issue #818 already exists", "Fixes #818"])
+def test_commit_message_uses_issue_reference_from_spec(git_project_with_local_home, reference):
+    repo_dir, _ = git_project_with_local_home
+    coder = _DummyInPlaceCoder(repo_dir)
+    message = coder._commit_message(TaskSpec(description=f"Investigate issue\n{reference}", constraints=[]))
+    assert message.endswith("\n\nFixes #818")
+
+
+def test_commit_message_uses_issue_reference_from_coder_findings(git_project_with_local_home):
+    repo_dir, _ = git_project_with_local_home
+    coder = _DummyInPlaceCoder(repo_dir)
+    coder.last_report = SimpleNamespace(findings="Issue #825 is open")
+    message = coder._commit_message(TaskSpec(description="Investigate the runner failure", constraints=[]))
+    assert message.endswith("\n\nFixes #825")
+
+
+@pytest.mark.parametrize(
+    ("description", "findings"),
+    [("Investigate empty result", None),
+     ("Issue #818 and Fixes #819", None),
+     ("Investigate empty result", "Issue #818 and Issue #819")],
+)
+def test_commit_message_omits_ambiguous_issue_references(
+    git_project_with_local_home, description, findings,
+):
+    repo_dir, _ = git_project_with_local_home
+    coder = _DummyInPlaceCoder(repo_dir)
+    if findings:
+        coder.last_report = SimpleNamespace(findings=findings)
+    message = coder._commit_message(TaskSpec(description=description, constraints=[]))
+    assert not message.endswith("\n\nFixes #818")
+    assert not message.endswith("\n\nFixes #819")
+    if findings:
+        assert "Findings:\nIssue #818 and Issue #819" in message
+    else:
+        assert message.startswith("coder:")
+
+
 def test_clean_index_after_coder_commit_is_reported_as_information(git_project_with_local_home, caplog):
     repo_dir, local_home = git_project_with_local_home
     for path in local_home.iterdir():

@@ -9,6 +9,7 @@ directly (opencode and similar) instead of through WorkspaceMCP.
 
 import json
 import logging
+import re
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -18,6 +19,21 @@ from snodo.core.interfaces import Coder, CodeArtifact, TaskSpec
 from snodo.paths import get_project_local_home_rel, is_protected_workspace_path
 
 _logger = logging.getLogger(__name__)
+
+_ISSUE_REFERENCE = re.compile(
+    r"(?:\b(?:fix(?:es|ed)?|close[sd]?|resolve[sd]?|issue)\s*#(\d+)"
+    r"|https?://github\.com/[^/\s]+/[^/\s]+/issues/(\d+))",
+    re.IGNORECASE,
+)
+
+
+def _issue_numbers(text: str) -> set[str]:
+    return {
+        number
+        for match in _ISSUE_REFERENCE.finditer(text)
+        for number in match.groups()
+        if number
+    }
 
 
 # CoderAdapter is the canonical name for the coder interface.
@@ -504,17 +520,29 @@ class InPlaceCoderAdapter(Coder, ABC):
                     break
         subject = f"coder: {title}" if title else "coder: task"
 
-        findings = getattr(getattr(self, "last_report", None), "findings", None)
-        if not findings:
-            return subject
+        report = getattr(self, "last_report", None)
+        findings = getattr(report, "findings", None)
         if isinstance(findings, str):
             body = findings.strip()
-        else:
+        elif findings:
             try:
                 body = json.dumps(findings, ensure_ascii=True, indent=2, default=str)
             except (TypeError, ValueError):
                 body = str(findings).strip()
-        return f"{subject}\n\nFindings:\n{body}" if body else subject
+        else:
+            body = ""
+
+        # An explicit task-spec reference wins over coder output. Only use a
+        # reference when that source identifies exactly one distinct issue.
+        spec_numbers = _issue_numbers(description)
+        output_text = body
+        if report is not None:
+            output_text += "\n" + str(report)
+        output_numbers = _issue_numbers(output_text)
+        numbers = spec_numbers if spec_numbers else output_numbers
+        trailer = f"Fixes #{next(iter(numbers))}" if len(numbers) == 1 else ""
+        message = f"{subject}\n\nFindings:\n{body}" if body else subject
+        return f"{message}\n\n{trailer}" if trailer else message
 
     def _snapshot_snodo(self) -> Dict[str, object]:
         """Snapshot the .snodo/ directory contents under the workspace.
