@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Make spinner tests independent of CI environment variables while retaining
+  explicit coverage that CI suppresses drawing. (Fixes #824)
+
 ## [0.23.0] — 2026-10-10
 
 - Preserve JSON-shaped tool results as text in validator and coder provider messages, preventing Gemini from treating schema references as function-response fields. (Fixes #822)

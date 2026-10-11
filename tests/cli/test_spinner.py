@@ -15,6 +15,20 @@ from rich.table import Table
 from snodo.cli.spinner import WaveSpinner, wave_frame, wave_while_silent
 
 
+@pytest.fixture(autouse=True)
+def isolate_spinner_environment(monkeypatch) -> None:
+    """Keep spinner behavior tests independent of the runner environment."""
+    for name in (
+        "CI",
+        "NO_COLOR",
+        "SNODO_NO_SPINNER",
+        "SNODO_MCP_SERVER",
+        "SNODO_JOB_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("TERM", "xterm")
+
+
 class Terminal(io.StringIO):
     """In-memory terminal stream with UTF-8 encoding."""
 
