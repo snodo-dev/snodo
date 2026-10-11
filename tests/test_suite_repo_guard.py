@@ -51,3 +51,10 @@ def test_own_head_move_changes_guard_state(tmp_path):
     _git(repo, "checkout", "--detach")
 
     assert _head_state(repo) != before
+
+
+def test_remote_gate_runs_pytest_with_ci_environment():
+    script = Path(__file__).parents[1] / "scripts" / "gate_remote.sh"
+    content = script.read_text()
+
+    assert 'CI=true uv run pytest "${pytest_args[@]}"' in content

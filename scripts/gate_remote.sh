@@ -46,7 +46,7 @@ gate_run() {
       ;;
   esac
   uv sync --all-extras -q \
-    && uv run pytest "${pytest_args[@]}" \
+    && CI=true uv run pytest "${pytest_args[@]}" \
     && uv run ruff check . \
     && uv run lint-imports \
     && uv run python scripts/enforce_file_length.py \

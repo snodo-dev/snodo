@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Run the remote gate's pytest checks with `CI=true`, matching the GitHub Actions
+  test environment. (Fixes #830)
 - Always show stored sessions before listing audit-cited session IDs missing from
   the current store. (Fixes #829)
 - Append a confident, unambiguous task issue reference to fallback coder commits,
