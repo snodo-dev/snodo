@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Always show stored sessions before listing audit-cited session IDs missing from
+  the current store. (Fixes #829)
 - Append a confident, unambiguous task issue reference to fallback coder commits,
   so merging the commit closes its GitHub issue. (Fixes #828)
 - List and prune only worktrees registered to the current project, including

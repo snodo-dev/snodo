@@ -4,6 +4,7 @@ FILE: tests/cli/test_session_cmd.py
 """
 
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -70,6 +71,39 @@ class TestSessionList:
         out = capsys.readouterr().out
         assert "producer" in out
         assert "reviewer" not in out
+
+    def test_list_shows_sessions_before_audited_missing_ids(
+        self, mgr, project_root, capsys,
+    ):
+        from snodo.infrastructure.audit import AuditLog
+
+        stored = mgr.create_session("producer", project_root)
+        audit_path = f"{project_root}/.snodo/audit.log"
+        os.makedirs(f"{project_root}/.snodo", exist_ok=True)
+        audit = AuditLog(audit_path)
+        audit.append_event("session_started", {
+            "op": "session_started",
+            "session_id": "sess_20260101_prod_missing1",
+            "mode": "producer",
+            "project_root": project_root,
+        })
+        args = SimpleNamespace(
+            session_action="list", mode=None, project=None,
+            sessions_dir=mgr.sessions_dir,
+        )
+
+        with patch(
+            "snodo.infrastructure.paths.require_project_root",
+            return_value=project_root,
+        ):
+            result = session_command(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Sessions:" in out
+        assert stored.session_id in out
+        assert "Audited but not in this store" in out
+        assert out.index("Sessions:") < out.index("Audited but not in this store")
 
 
 # ========== SHOW ==========

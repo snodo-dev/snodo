@@ -138,22 +138,20 @@ def _session_list(mgr: SessionManager, args) -> int:
         missing = mgr.audited_missing_ids(project_root)
     except SystemExit:
         missing = []
+    if sessions:
+        sessions.sort(key=lambda s: s.updated_at, reverse=True)
+        print("Sessions:")
+        for s in sessions:
+            task = s.checkpoint.current_task or "-"
+            print(f"  {s.session_id}  {s.mode:<10}  updated={s.updated_at[:19]}  task={task}")
+            print(f"    inspect: snodo session show {s.session_id}")
+
     if missing:
         if sessions:
             print()
         print("Audited but not in this store (created under another SNODO_HOME?):")
         for sid in missing:
             print(f"  {sid}  (audit log cites this id; no file found)")
-        return 0
-    if not sessions:
-        return 0
-
-    sessions.sort(key=lambda s: s.updated_at, reverse=True)
-    print("Sessions:")
-    for s in sessions:
-        task = s.checkpoint.current_task or "-"
-        print(f"  {s.session_id}  {s.mode:<10}  updated={s.updated_at[:19]}  task={task}")
-        print(f"    inspect: snodo session show {s.session_id}")
     return 0
 
 
@@ -366,4 +364,3 @@ def _session_new(mgr: SessionManager, args) -> int:
     session = mgr.create_session(mode, project_root)
     print(f"Created new session: {session.session_id} (mode={mode})")
     return 0
-
