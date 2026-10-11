@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Name the spec-replacement actions that reset an exhausted plan task's retry
+  budget in MCP and CLI blocked-task guidance. (Fixes #832)
 - Put file-length ratchet failures after the summary so bounded gate output tails
   retain the offending file, measured length, allowed length, and violation count.
   (Fixes #831)

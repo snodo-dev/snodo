@@ -148,7 +148,10 @@ class PlanToolHandler:
         return (
             f"Plan unfinished: blocked task(s) {', '.join(blocked)}. Completed waves "
             f"delivered to the base branch: {delivered_text}; not delivered: {pending_text}. "
-            "Fix the blocked task forward within this plan: replace its spec, then run that wave."
+            "Fix the blocked task forward within this plan: call "
+            "generate_spec with replace=true for the task, then run that wave. "
+            "This gives the task a fresh retry budget; editing the spec file "
+            "by hand does not reset the counter."
         )
 
     def _task_modules(self, plan_name: str) -> Dict[str, str]:

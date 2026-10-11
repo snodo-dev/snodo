@@ -210,7 +210,9 @@ def test_get_plan_explains_blocked_plan_and_fix_forward(server, project_dir):
     assert "2.1_stuck" in instruction
     assert "delivered to the base branch" in instruction
     assert "not delivered" in instruction
-    assert "replace its spec, then run that wave" in instruction
+    assert "generate_spec with replace=true" in instruction
+    assert "fresh retry budget" in instruction
+    assert "editing the spec file by hand does not reset the counter" in instruction
 
 
 def test_get_plan_completed_response_has_no_extra_guidance(server):

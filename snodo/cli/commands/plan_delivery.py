@@ -84,7 +84,10 @@ def print_blocked_plan_outcome(project_root, plan_name, plan_data, statuses,
         f"Plan unfinished: blocked task(s) {', '.join(blocked)}. "
         f"Completed waves delivered to the base branch: {delivered_waves}; "
         f"not delivered: {undelivered_waves}. Fix the blocked task forward "
-        "within this plan: replace its spec, then run that wave."
+        "within this plan: replace the task spec through "
+        "snodo plan add-task <plan> <task> --spec-file <path> --replace, "
+        "then run that wave. This gives the task a fresh retry budget; "
+        "editing the spec file by hand does not reset the counter."
     )
 
 

@@ -40,7 +40,14 @@ def next_actions_for_halt(
         )
     if outcome == "blocker":
         if in_plan:
-            return (NextAction("Fix the task forward within the same plan; replace its spec and rerun the wave if the specification is wrong."),)
+            return (NextAction(
+                "Fix the task forward within the same plan: replace its spec "
+                "through generate_spec with replace=true (or use "
+                "snodo plan add-task <plan> <task> --spec-file <path> "
+                "--replace), then rerun the wave. This gives the task a fresh "
+                "retry budget; editing the spec file by hand does not reset "
+                "the counter."
+            ),)
         return (
             NextAction("Fix the specification or code, then retry the task.", f"snodo run --retry {task_id} --append-spec '<guidance>'"),
         )

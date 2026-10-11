@@ -19,6 +19,9 @@ def test_blocker_non_plan_includes_append_spec_retry():
 def test_blocker_plan_fixes_forward_without_one_off_command():
     actions = next_actions_for_halt(halt("blocker"), in_plan=True)
     assert "same plan" in actions[0].instruction
+    assert "generate_spec with replace=true" in actions[0].instruction
+    assert "snodo plan add-task <plan> <task> --spec-file <path> --replace" in actions[0].instruction
+    assert "editing the spec file by hand does not reset the counter" in actions[0].instruction
     assert actions[0].command is None
 
 

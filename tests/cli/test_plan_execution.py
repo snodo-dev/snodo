@@ -24,6 +24,23 @@ from snodo.cli.commands.run_merge import _deliver_plan_integration
 from snodo.cli.main import main
 
 
+def test_blocked_plan_guidance_names_retry_budget_reset(tmp_path, capsys):
+    from snodo.cli.commands.plan_delivery import print_blocked_plan_outcome
+
+    print_blocked_plan_outcome(
+        tmp_path,
+        "blocked",
+        {"waves": []},
+        {"1.1_stuck": "blocked"},
+        None,
+    )
+
+    guidance = capsys.readouterr().out
+    assert "snodo plan add-task <plan> <task> --spec-file <path> --replace" in guidance
+    assert "fresh retry budget" in guidance
+    assert "editing the spec file by hand does not reset the counter" in guidance
+
+
 def test_remote_branch_matches_only_when_remote_points_at_delivered_commit():
     from snodo.cli.commands.plan_run import _remote_branch_matches
 
