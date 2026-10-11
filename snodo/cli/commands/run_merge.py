@@ -6,6 +6,7 @@ FILE: snodo/cli/commands/run_merge.py
 import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
@@ -161,6 +162,36 @@ def _plan_task_ids(project_root: str, plan_name: str) -> set[str]:
         }
     except (OSError, ValueError, TypeError, AttributeError):
         return set()
+
+
+def _commit_plan_record(project_root: str, plan_name: str) -> None:
+    """Commit only this plan's changed record directory without touching the index."""
+    from git import Repo
+
+    record_path = Path(".snodo") / "plans" / plan_name
+    try:
+        with Repo(project_root) as repo:
+            if not (Path(project_root) / record_path).is_dir():
+                return
+            with tempfile.NamedTemporaryFile(prefix="snodo-plan-index-") as index:
+                env = {**os.environ, "GIT_INDEX_FILE": index.name}
+                repo.git.read_tree("HEAD", env=env)
+                repo.git.add("--", record_path.as_posix(), env=env)
+                tree = repo.git.write_tree(env=env)
+                head = repo.head.commit.hexsha
+                if tree == repo.git.rev_parse(f"{head}^{{tree}}"):
+                    return
+                commit = repo.git.commit_tree(
+                    tree, "-p", head, m="chore: record plan " + plan_name,
+                    env=env,
+                ).strip()
+                repo.git.update_ref("HEAD", commit, head)
+                repo.git.reset("-q", "HEAD", "--", record_path.as_posix())
+    except Exception as exc:
+        print(
+            f"Could not commit records for plan {plan_name}: {exc}",
+            file=sys.stderr,
+        )
 
 
 def _merge_on_success(
@@ -549,6 +580,8 @@ def _deliver_plan_integration(
     )
     if result:
         return 2
+    if delivery == "local_merge":
+        _commit_plan_record(project_root, plan_name)
     if delivery == "local_merge" and not preserve and not keep_branch:
         from snodo.infrastructure.worktree import _name_component, worktree_dir
         from snodo.tools.git import open_repo

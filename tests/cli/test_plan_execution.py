@@ -311,6 +311,34 @@ def test_plan_delivery_failure_uses_unmerged_exit_code(plan_project_env):
             ) == 2
 
 
+def test_local_plan_delivery_records_only_changed_plan_directory(plan_project_env):
+    from git import Repo
+
+    from snodo.cli.commands.run_merge import _commit_plan_record
+
+    repo = Repo.init(plan_project_env)
+    repo.config_writer().set_value("user", "name", "Test").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    (plan_project_env / "base.txt").write_text("base\n")
+    repo.index.add(["base.txt"])
+    repo.index.commit("base")
+    record = plan_project_env / ".snodo" / "plans" / "demo"
+    record.mkdir(parents=True)
+    (record / "plan.yml").write_text("name: demo\n")
+    (plan_project_env / "unrelated.txt").write_text("leave me\n")
+
+    _commit_plan_record(str(plan_project_env), "demo")
+
+    assert repo.head.commit.message.strip() == "chore: record plan demo"
+    assert {item.path for item in repo.head.commit.tree.traverse() if item.type == "blob"} == {
+        "base.txt", ".snodo/plans/demo/plan.yml",
+    }
+    assert "unrelated.txt" in repo.untracked_files
+    first_commit = repo.head.commit.hexsha
+    _commit_plan_record(str(plan_project_env), "demo")
+    assert repo.head.commit.hexsha == first_commit
+
+
 def test_plan_local_delivery_cleans_directory_identity_not_authored_name(plan_project_env):
     from git import Repo
 

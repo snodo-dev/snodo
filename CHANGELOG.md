@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Commit only the delivered plan's record directory after successful local plan
+  delivery, preserving unrelated staged and untracked files. (Fixes #834)
 - Name the spec-replacement actions that reset an exhausted plan task's retry
   budget in MCP and CLI blocked-task guidance. (Fixes #832)
 - Put file-length ratchet failures after the summary so bounded gate output tails
