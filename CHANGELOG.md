@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.2] — 2026-10-11
+
 - Include subprocess coder output tails when identifying the issue for fallback
   commits, so an issue named only in the coder's final output is closed on merge.
   (Fixes #835)
