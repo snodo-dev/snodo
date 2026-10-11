@@ -1,0 +1,10 @@
+intent: The CI test job is green on GitHub runners again, so the release workflow's
+  test step passes and tagged releases reach PyPI. v0.21.0, v0.22.0 and v0.23.0 never
+  published because of four test failures that only happen in CI.
+name: ci-test-green
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_spinner_tests_independent_of_ci_env
+  - 1.2_rust_fixture_skips_without_toolchain
