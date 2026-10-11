@@ -93,6 +93,22 @@ class TestRatchet:
         assert "grown by 1" in out
         assert "may only fall" in out
 
+    def test_failure_details_and_count_are_at_end_after_summary(self, tmp_path):
+        baseline = _make_repo(
+            tmp_path,
+            {"big.py": _code_file(101), "shrunk.py": _code_file(90)},
+            baseline="110 shrunk.py\n",
+        )
+
+        code, out = run_check(tmp_path, baseline, *LIMIT_ARGS)
+
+        lines = out.splitlines()
+        assert code == 1
+        assert any("remove it from the baseline" in line for line in lines)
+        assert lines[-2].startswith("FAIL: big.py: 101 lines of code")
+        assert "100 limit" in lines[-2]
+        assert lines[-1] == "File-length check failed: 1 violation(s)."
+
     def test_baselined_file_that_shrank_passes_and_says_it_can_tighten(
         self, tmp_path
     ):

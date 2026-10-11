@@ -330,12 +330,12 @@ def main(argv: list[str] | None = None) -> int:
 
     report = check(repo_root, baseline, limit=args.limit)
 
-    for failure in report.failures:
-        print(f"FAIL: {failure}")
     for line in render_summary(report):
         print(line)
 
     if report.failures:
+        for failure in report.failures:
+            print(f"FAIL: {failure}")
         print(f"File-length check failed: {len(report.failures)} violation(s).")
         return 1
 

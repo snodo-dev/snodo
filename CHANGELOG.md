@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Put file-length ratchet failures after the summary so bounded gate output tails
+  retain the offending file, measured length, allowed length, and violation count.
+  (Fixes #831)
 - Run the remote gate's pytest checks with `CI=true`, matching the GitHub Actions
   test environment. (Fixes #830)
 - Always show stored sessions before listing audit-cited session IDs missing from
