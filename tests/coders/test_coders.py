@@ -298,6 +298,11 @@ def test_mock_adapter_compiled_language_fixture_smoke(tmp_path, language, comman
     executable = shutil.which(command)
     if executable is None:
         pytest.skip(f"{command} is not installed")
+    version = subprocess.run(
+        [executable, "--version"], capture_output=True, text=True, timeout=30
+    )
+    if version.returncode != 0:
+        pytest.skip(f"{command} toolchain is not usable: {version.stderr.strip()}")
 
     from snodo.coders import MockAdapter
 

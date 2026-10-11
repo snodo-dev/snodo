@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Skip compiled-language fixture smoke tests when the compiler is present but its
+  toolchain is unusable. (Fixes #825)
 - Make spinner tests independent of CI environment variables while retaining
   explicit coverage that CI suppresses drawing. (Fixes #824)
 
