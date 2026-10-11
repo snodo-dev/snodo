@@ -57,9 +57,8 @@ def _provision_with_auth(api_key: str, project_slug: str, mode: str,
     # work while the helper itself sends the explicit default to the API.
     if auth_methods == ["oauth"]:
         return _provision_tunnel(api_key, project_slug, mode, short_id, version, port)
-    return _provision_tunnel(
-        api_key, project_slug, mode, short_id, version, port, auth=auth_methods
-    )
+    return _provision_tunnel(api_key, project_slug, mode, short_id, version, port,
+                             auth=auth_methods)
 
 
 def register(app: typer.Typer) -> None:
@@ -385,7 +384,8 @@ def _run_server(args, protocol) -> int:
         raise
     finally:
         cloud_liveness.uninstall()
-    return 0
+    from snodo.cli.stdio_shutdown import exit_stdio_if_disconnected
+    return exit_stdio_if_disconnected(transport)
 
 
 def _handle_install(args, protocol, protocol_path) -> int:

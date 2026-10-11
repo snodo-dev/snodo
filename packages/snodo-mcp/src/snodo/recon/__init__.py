@@ -1114,6 +1114,7 @@ class ReconManager:
             args=(recon_id, query, paths, lanes),
             kwargs={"max_tool_turns": max_tool_turns, "max_tokens": max_tokens,
                     "deadline_seconds": deadline_seconds},
+            daemon=True,
         )
         thread.start()
         _threads.append(thread)

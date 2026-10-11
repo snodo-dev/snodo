@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Exit stdio `snodo serve` processes when their transport ends, even if
+  in-process recon or executor work is still active. (Fixes #833)
 - Name the spec-replacement actions that reset an exhausted plan task's retry
   budget in MCP and CLI blocked-task guidance. (Fixes #832)
 - Put file-length ratchet failures after the summary so bounded gate output tails

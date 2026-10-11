@@ -512,10 +512,11 @@ class TestReconManagerSubmit:
 
     def test_submit_starts_background_worker(self, project_with_snodo, monkeypatch):
         class FakeThread:
-            def __init__(self, target=None, args=(), kwargs=None):
+            def __init__(self, target=None, args=(), kwargs=None, daemon=None):
                 self.target = target
                 self.args = args
                 self.kwargs = kwargs or {}
+                self.daemon = daemon
                 self.started = False
 
             def start(self):
@@ -537,6 +538,7 @@ class TestReconManagerSubmit:
 
         assert len(fake_threads) == 1
         assert fake_threads[0].started is True
+        assert fake_threads[0].daemon is True
         assert fake_threads[0].args == (recon_id, "query", ["./"], [["default"]])
 
 
