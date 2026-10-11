@@ -476,6 +476,15 @@ def _plan_run_summary(planner, name: str, plan_data: Any, json_output: bool) -> 
                 state = manager._load_state(manager.jobs_dir / job["id"])
             except Exception:
                 state = {}
+        task_state_path = project_root / ".snodo" / "tasks" / task_id / "state.json"
+        try:
+            task_state = json.loads(task_state_path.read_text())
+            if isinstance(task_state, dict):
+                state = {**state, **task_state}
+        except (OSError, json.JSONDecodeError):
+            pass
+        if state.get("duration_seconds") is None and job:
+            state["duration_seconds"] = job.get("duration_seconds")
         summaries.append(summarize_task(task_id, state).__dict__)
     costs = [item["cost_usd"] for item in summaries if item["cost_usd"] is not None]
     totals = {

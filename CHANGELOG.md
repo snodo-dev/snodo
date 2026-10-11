@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Read persisted per-task state records when building plan run summaries, so
+  completed and delivered plan tasks retain their recorded outcomes and metrics.
+  (Fixes #826)
+
 ## [0.23.1] — 2026-10-10
 
 - Skip compiled-language fixture smoke tests when the compiler is present but its

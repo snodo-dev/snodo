@@ -261,6 +261,55 @@ def test_get_plan_includes_bounded_latest_run_summary(server, project_dir):
     }
 
 
+def test_get_plan_run_summary_reads_task_completion_records(server, project_dir):
+    _propose(server, name="delivered")
+    _add_task(server, "delivered", "1.1_first", "INTENT: First.\nCONSTRAINTS: None.")
+    _add_task(server, "delivered", "1.2_second", "INTENT: Second.\nCONSTRAINTS: None.")
+
+    jobs_dir = Path(project_dir) / ".snodo" / "jobs"
+    plan_id = "j_plan_delivered"
+    plan_dir = jobs_dir / plan_id
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "state.json").write_text(json.dumps({
+        "status": "completed", "created_at": 10, "started_at": 10,
+        "completed_at": 30,
+    }))
+    (plan_dir / "task.json").write_text(json.dumps({"plan_name": "delivered"}))
+
+    tasks_dir = Path(project_dir) / ".snodo" / "tasks"
+    for index, task_id in enumerate(("1.1_first", "1.2_second"), start=1):
+        job_id = f"j_task_{index}"
+        job_dir = jobs_dir / job_id
+        job_dir.mkdir()
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed", "created_at": 10 + index,
+            "started_at": 10 + index, "completed_at": 15 + index,
+        }))
+        (job_dir / "task.json").write_text(json.dumps({
+            "task_id": task_id, "task_plan": "delivered", "parent_job": plan_id,
+        }))
+        task_dir = tasks_dir / task_id
+        task_dir.mkdir(parents=True)
+        (task_dir / "state.json").write_text(json.dumps({
+            "status": "completed",
+            "halt": {"final_decision": "resolved", "halt_type": "complete",
+                     "attempts": {"total": 1}},
+            "delivered_branch": f"task/{task_id}",
+        }))
+
+    summary = server.call_tool("get_plan", {"plan_name": "delivered"})["run_summary"]
+
+    assert [task["outcome"] for task in summary["tasks"]] == ["resolved", "resolved"]
+    assert all(task["attempts"] >= 1 for task in summary["tasks"])
+    assert all(task["duration_seconds"] is not None for task in summary["tasks"])
+    assert all(task["delivered"] for task in summary["tasks"])
+    assert summary["totals"]["attempts"] == sum(t["attempts"] for t in summary["tasks"])
+    assert summary["totals"]["duration_seconds"] == sum(
+        t["duration_seconds"] for t in summary["tasks"]
+    )
+    assert summary["totals"]["delivered"] == 2
+
+
 # === Validate without spend ===
 
 class TestValidateWithoutExecution:

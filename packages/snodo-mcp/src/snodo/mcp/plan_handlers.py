@@ -205,6 +205,18 @@ class PlanToolHandler:
                     state = manager._load_state(manager.jobs_dir / job["id"])
                 except Exception:
                     state = {}
+            task_state_path = (
+                Path(self._planner.project_root) / ".snodo" / "tasks"
+                / task_id / "state.json"
+            )
+            try:
+                task_state = json.loads(task_state_path.read_text())
+                if isinstance(task_state, dict):
+                    state = {**state, **task_state}
+            except (OSError, json.JSONDecodeError):
+                pass
+            if state.get("duration_seconds") is None and job:
+                state["duration_seconds"] = job.get("duration_seconds")
             outcome = summarize_task(task_id, state)
             tasks.append({
                 "task_id": outcome.task_id,
