@@ -209,7 +209,24 @@ def main(argv=None):
     """
     try:
         result = app(args=argv, standalone_mode=False)
-        return result if isinstance(result, int) else 0
+        exit_code = result if isinstance(result, int) else 0
+        if argv is None:
+            from snodo.cli.stdio_shutdown import exit_stdio_if_disconnected
+
+            arguments = sys.argv[1:]
+            if "serve" in arguments:
+                serve_index = arguments.index("serve")
+                serve_arguments = arguments[serve_index + 1:]
+                transport = "stdio"
+                for index, argument in enumerate(serve_arguments):
+                    if argument == "--transport" and index + 1 < len(serve_arguments):
+                        transport = serve_arguments[index + 1]
+                        break
+                    if argument.startswith("--transport="):
+                        transport = argument.partition("=")[2]
+                        break
+                exit_stdio_if_disconnected(transport)
+        return exit_code
     except SystemExit:
         raise
     except UsageError as e:

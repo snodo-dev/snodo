@@ -384,8 +384,7 @@ def _run_server(args, protocol) -> int:
         raise
     finally:
         cloud_liveness.uninstall()
-    from snodo.cli.stdio_shutdown import exit_stdio_if_disconnected
-    return exit_stdio_if_disconnected(transport)
+    return 0
 
 
 def _handle_install(args, protocol, protocol_path) -> int:

@@ -4,10 +4,9 @@ import os
 import sys
 
 
-def exit_stdio_if_disconnected(transport: str) -> int:
-    """Exit without executor teardown once a stdio transport has ended."""
+def exit_stdio_if_disconnected(transport: str) -> None:
+    """Exit without executor teardown once a real stdio CLI run has ended."""
     if transport == "stdio":
         sys.stdout.flush()
         sys.stderr.flush()
         os._exit(0)
-    return 0

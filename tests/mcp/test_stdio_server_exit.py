@@ -31,8 +31,8 @@ def _start_stdio_server(tmp_path: Path, *, with_worker: bool = False):
             (
                 "import threading, time; "
                 "threading.Thread(target=lambda: time.sleep(300), daemon=True).start(); "
-                "from snodo.cli.main import main; "
-                "main(['serve', '--transport', 'stdio'])"
+                "import sys; sys.argv = ['snodo', 'serve', '--transport', 'stdio']; "
+                "from snodo.cli.main import main; main()"
             ),
             "serve",
             "--transport",
