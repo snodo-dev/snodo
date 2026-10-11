@@ -48,6 +48,35 @@ def _make_project(root):
 
 
 class TestWorktreeCommands:
+    def test_list_and_prune_cover_registered_plan_worktrees_only(self, git_project, tmp_path, capsys, monkeypatch):
+        from snodo.cli.commands.worktree_cmd import worktree_list_command, worktree_prune_command
+        from snodo.infrastructure.worktree import list_worktrees
+
+        create_worktree(str(git_project), "task_plain", "plain task")
+        plan_task = create_worktree(str(git_project), "1.1_docs", "plan task", plan_name="persona-templates")
+        integration = create_worktree(str(git_project), "integration", "integration", plan_name="ci-runs-snodo")
+        foreign_root = _make_project(git_project.parent / "foreign")
+        foreign = create_worktree(str(foreign_root), "task_foreign", "foreign task")
+
+        def no_root_walk(*args, **kwargs):
+            raise AssertionError("listing must not recurse through the shared worktree root")
+
+        monkeypatch.setattr(type(git_project), "rglob", no_root_walk)
+        names = list_worktrees(str(git_project))
+        assert set(names) == {"task_plain", "persona-templates/1.1_docs", "ci-runs-snodo/integration"}
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(git_project)):
+            assert worktree_list_command(SimpleNamespace(json=True)) == 0
+        listed = json.loads(capsys.readouterr().out)
+        assert {entry["task_id"] for entry in listed["worktrees"]} == set(names)
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(git_project)):
+            assert worktree_prune_command(SimpleNamespace(days=0, force=True)) == 0
+        assert not worktree_path(git_project, "task_plain").exists()
+        assert not plan_task.exists()
+        assert not integration.exists()
+        assert foreign.exists()
+
     def test_shared_container_is_scoped_to_project(self, tmp_path, capsys):
         from snodo.cli.commands.worktree_cmd import worktree_list_command, worktree_remove_command
 

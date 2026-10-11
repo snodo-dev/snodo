@@ -195,6 +195,10 @@ def worktree_is_owned(
 ) -> bool:
     """Return whether Git records *task_id* as a worktree of this repository."""
     registered = _project_worktree_paths(project_root)
+    container = worktree_dir(project_root).resolve()
+    requested = (container / task_id).resolve()
+    if requested in registered and requested.is_relative_to(container):
+        return True
     return any(
         path.resolve() in registered
         for path in _task_worktree_candidates(project_root, task_id, plan_name)
@@ -719,8 +723,13 @@ def remove_worktree(
     project_root: str, task_id: str, plan_name: Optional[str] = None
 ) -> None:
     """Remove the worktree for *task_id* (force, best-effort)."""
-    candidates = _task_worktree_candidates(project_root, task_id, plan_name)
     registered = _project_worktree_paths(project_root)
+    container = worktree_dir(project_root).resolve()
+    requested = (container / task_id).resolve()
+    if requested.is_relative_to(container) and requested in registered:
+        candidates = (requested,)
+    else:
+        candidates = _task_worktree_candidates(project_root, task_id, plan_name)
     wt_path = next(
         (path for path in candidates if path.resolve() in registered), candidates[0]
     )
@@ -978,23 +987,25 @@ def teardown_task_worktree(
 
 
 def list_worktrees(project_root: str) -> list:
-    """Return the retained worktree directory names, newest last.
+    """Return identifiers for this repository's retained worktrees, oldest first.
 
-    A retained worktree is a sibling directory under ``.snodo-worktrees/`` that
-    was left behind for inspection (a task that did not complete, or one run
-    with ``--retain-worktree``). Names are the task ids the worktrees were
-    created for.
+    Identifiers are paths relative to the shared ``.snodo-worktrees`` root.
+    Legacy task worktrees therefore retain their task id, while plan task and
+    integration worktrees include their plan directory. Git's registry scopes
+    the result to this project without walking the shared directory.
     """
-    d = worktree_dir(project_root)
-    if not d.is_dir():
-        return []
+    d = worktree_dir(project_root).resolve()
     owned = _project_worktree_paths(project_root)
-    entries = [
-        p for p in d.rglob("*")
-        if p.is_dir() and not p.name.startswith(".") and p.resolve() in owned
-    ]
-    entries.sort(key=lambda p: p.stat().st_mtime)
-    return [p.name for p in entries]
+    entries = []
+    for path in owned:
+        try:
+            relative = path.relative_to(d)
+        except ValueError:
+            continue
+        if relative.parts and not any(part.startswith(".") for part in relative.parts):
+            entries.append((path, relative.as_posix()))
+    entries.sort(key=lambda item: item[0].stat().st_mtime if item[0].exists() else 0)
+    return [identifier for _, identifier in entries]
 
 
 def list_task_branches(project_root: str) -> Tuple[bool, dict]:

@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- List and prune only worktrees registered to the current project, including
+  nested plan task and integration worktrees, without scanning shared worktree
+  directories. (Fixes #827)
 - Read persisted per-task state records when building plan run summaries, so
   completed and delivered plan tasks retain their recorded outcomes and metrics.
   (Fixes #826)
