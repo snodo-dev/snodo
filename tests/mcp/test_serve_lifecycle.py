@@ -244,7 +244,8 @@ def test_run_server_preflight_ignores_stdio():
                 "snodo.cli.commands.serve_cmd._port_holder_pid",
                 side_effect=AssertionError("stdio must not probe a port"),
             ):
-                assert serve_cmd._run_server(args, mock_protocol) == 0
+                with patch("snodo.cli.commands.serve_cmd.os._exit"):
+                    assert serve_cmd._run_server(args, mock_protocol) == 0
 
 
 # === A server with no --port finds its own (Fixes #309) ===

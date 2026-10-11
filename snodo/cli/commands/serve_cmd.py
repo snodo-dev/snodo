@@ -57,9 +57,8 @@ def _provision_with_auth(api_key: str, project_slug: str, mode: str,
     # work while the helper itself sends the explicit default to the API.
     if auth_methods == ["oauth"]:
         return _provision_tunnel(api_key, project_slug, mode, short_id, version, port)
-    return _provision_tunnel(
-        api_key, project_slug, mode, short_id, version, port, auth=auth_methods
-    )
+    return _provision_tunnel(api_key, project_slug, mode, short_id, version, port,
+                             auth=auth_methods)
 
 
 def register(app: typer.Typer) -> None:
