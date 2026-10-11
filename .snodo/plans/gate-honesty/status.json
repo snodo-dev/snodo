@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_gate_runs_like_ci": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "413d1f8129755083"
+    },
+    "1.2_file_length_failures_last": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c2404d13a9e54029"
+    },
+    "1.3_blocked_guidance_names_the_reset": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d6b95cb46a0f7b5d"
+    }
+  },
+  "integration": {
+    "branch": "plan/gate-honesty/integration",
+    "base_sha": "9e004d327d83111e520f861d30c1b8205792535a"
+  }
+}

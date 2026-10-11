@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_serve_exits_with_its_client": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "49cdc35fdd147bf3"
+    },
+    "1.2_delivery_commits_plan_records": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c6258508457ca64f"
+    },
+    "2.1_fallback_commit_reads_coder_output": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e9af1b47677cca59"
+    }
+  },
+  "integration": {
+    "branch": "plan/tidy-lifecycles/integration",
+    "base_sha": "b40966c18b2c334ac4cbf44f5e183218a0801627"
+  }
+}

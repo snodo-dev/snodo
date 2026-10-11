@@ -1,0 +1,11 @@
+intent: The local gate catches what CI catches, a gate failure names its cause in
+  the lines the orchestrator sees, and blocked-task guidance names the action that
+  actually resets the retry counter.
+name: gate-honesty
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_gate_runs_like_ci
+  - 1.2_file_length_failures_last
+  - 1.3_blocked_guidance_names_the_reset

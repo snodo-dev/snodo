@@ -1,0 +1,15 @@
+intent: 'snodo leaves nothing behind that the maintainer has to clean up by hand:
+  a stdio `snodo serve` exits when its client goes away, and a delivered plan''s own
+  records are committed alongside its work.'
+name: tidy-lifecycles
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_serve_exits_with_its_client
+  - 1.2_delivery_commits_plan_records
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_fallback_commit_reads_coder_output

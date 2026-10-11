@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_run_summary_reads_the_run": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fa2e9d53ec08579d"
+    },
+    "1.2_worktree_list_sees_plan_worktrees": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fe9035e06792aeaf"
+    },
+    "1.3_fallback_commit_closes_its_issue": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "bb5a5f72ff6dccd5"
+    },
+    "1.4_session_list_always_lists": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3e4a5563a3a872ee"
+    }
+  },
+  "integration": {
+    "branch": "plan/housekeeping-bugs/integration",
+    "base_sha": "cd66d0b630eb46fe429e1b1c6cb51d1fa8734a02"
+  }
+}

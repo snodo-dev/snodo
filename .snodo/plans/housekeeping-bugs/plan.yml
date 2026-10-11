@@ -1,0 +1,13 @@
+intent: Four bugs found while releasing and cleaning up are fixed. get_plan's run
+  summary reflects what the run actually did. Worktree list and prune see and remove
+  a project's plan worktrees, quickly. Fallback coder commits close their issue. And
+  session list always shows the sessions it found.
+name: housekeeping-bugs
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_run_summary_reads_the_run
+  - 1.2_worktree_list_sees_plan_worktrees
+  - 1.3_fallback_commit_closes_its_issue
+  - 1.4_session_list_always_lists
