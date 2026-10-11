@@ -58,13 +58,13 @@ Issues = "https://github.com/snodo-dev/snodo/issues"
 
 [project.optional-dependencies]
 dev = [
-    "pytest==9.0.3",
+    "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "pytest-timeout==2.4.0",
-    "hypothesis==6.155.2",
-    "ruff==0.15.16",
+    "hypothesis==6.168.3",
+    "ruff==0.16.10",
     "radon>=6.0.0",
-    "import-linter==2.12",
+    "import-linter==2.15",
 ]
 studies = [
     "marimo>=0.9.0",
@@ -114,11 +114,11 @@ dev = [
     "snodo-provider-gitlab==0.23.1",
     "datasets==5.0.1",  # 5.0.0 and earlier: PYSEC-2026-3716, path traversal in folder-based builders
     "genbadge[coverage]==1.1.3",
-    "grimp==3.14",
+    "grimp==3.17",
     "httpx2>=2.4.0",
-    "hypothesis==6.155.2",
-    "import-linter==2.12",
-    "pytest==9.0.3",
+    "hypothesis==6.168.3",
+    "import-linter==2.15",
+    "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "pytest-timeout==2.4.0",
     "pytest-xdist==3.8.0",
