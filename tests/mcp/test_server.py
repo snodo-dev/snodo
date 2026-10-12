@@ -1105,7 +1105,11 @@ class TestServePortAndProxy:
                 # Clear the env var before test
                 os.environ.pop("FORWARDED_ALLOW_IPS", None)
                 _run_server(args, mock_protocol)
-                assert os.environ.get("FORWARDED_ALLOW_IPS") == "*"
+                assert os.environ.get("FORWARDED_ALLOW_IPS") == ""
+                assert mock_mcp.settings.transport_security.enable_dns_rebinding_protection is True
+                assert mock_mcp.settings.transport_security.allowed_hosts == [
+                    "localhost:8080", "127.0.0.1:8080", "[::1]:8080",
+                ]
 
     def test_forwarded_allow_ips_set_for_streamable_http(self):
         """FORWARDED_ALLOW_IPS is set for streamable-http transport."""
@@ -1135,7 +1139,8 @@ class TestServePortAndProxy:
 
                 os.environ.pop("FORWARDED_ALLOW_IPS", None)
                 _run_server(args, mock_protocol)
-                assert os.environ.get("FORWARDED_ALLOW_IPS") == "*"
+                assert os.environ.get("FORWARDED_ALLOW_IPS") == ""
+                assert mock_mcp.settings.transport_security.enable_dns_rebinding_protection is True
 
     def test_no_forwarded_allow_ips_for_stdio(self):
         """FORWARDED_ALLOW_IPS is NOT set for stdio transport."""

@@ -6,7 +6,6 @@ FILE: snodo/cli/commands/serve_cmd.py
 import collections
 import hashlib
 import io
-import json
 import logging
 import os
 import random
@@ -36,6 +35,14 @@ from snodo.cli.commands.serve_tunnel_config import (  # noqa: F401 - re-exported
     _save_tunnel_config,
     _select_tunnel_credential,
 )
+from snodo.cli.commands.serve_security import (
+    configure_http_transport,
+    check_cloudflared as _check_cloudflared,
+    derive_project_root as _derive_project_root,
+    extract_existing_hostname as _extract_existing_hostname,
+    is_loopback_host,
+    provision_with_auth as _provision_with_auth,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -46,19 +53,6 @@ DEFAULT_PORT = 55441
 
 #: How many consecutive ports a no---port server will try before giving up.
 _PORT_SCAN_ATTEMPTS = 64
-
-
-def _provision_with_auth(api_key: str, project_slug: str, mode: str,
-                         short_id: str, version: str, port: int,
-                         auth_methods: list[str]) -> dict:
-    """Provision with an explicit auth set, tolerating legacy test doubles."""
-    # OAuth is the historical default. Keeping its call shape unchanged also
-    # lets older integrations that wrap the provisioning helper continue to
-    # work while the helper itself sends the explicit default to the API.
-    if auth_methods == ["oauth"]:
-        return _provision_tunnel(api_key, project_slug, mode, short_id, version, port)
-    return _provision_tunnel(api_key, project_slug, mode, short_id, version, port,
-                             auth=auth_methods)
 
 
 def register(app: typer.Typer) -> None:
@@ -78,6 +72,11 @@ def register(app: typer.Typer) -> None:
         port: Optional[int] = typer.Option(
             None, "--port",
             help="Port for SSE/streamable-http transport (default: find a free one)",
+        ),
+        host: str = typer.Option("127.0.0.1", "--host", help="Address for HTTP transports"),
+        allow_unauthenticated_remote: bool = typer.Option(
+            False, "--allow-unauthenticated-remote",
+            help="Allow an unauthenticated HTTP server to bind a non-loopback address",
         ),
         tunnel: bool = typer.Option(
             False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
@@ -139,7 +138,8 @@ def register(app: typer.Typer) -> None:
     ):
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
-            protocol=protocol, mode=mode, transport=transport, port=port,
+            protocol=protocol, mode=mode, transport=transport, port=port, host=host,
+            allow_unauthenticated_remote=allow_unauthenticated_remote,
             tunnel=tunnel, verbose=verbose, auth=auth, rotate=rotate, credential=credential,
             delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
@@ -151,24 +151,6 @@ def register(app: typer.Typer) -> None:
         return serve_command(args)
 
 
-
-
-def _derive_project_root(protocol_path: str) -> str:
-    """Derive project root from the protocol file path.
-
-    If the protocol lives at <project>/.snodo/protocol.yml, the project
-    root is <project>. Otherwise, the parent directory of the protocol file.
-
-    Args:
-        protocol_path: Path to protocol YAML file (absolute or relative)
-
-    Returns:
-        Absolute path to project root directory
-    """
-    path = Path(protocol_path).resolve()
-    if path.parent.name == ".snodo":
-        return str(path.parent.parent)
-    return str(path.parent)
 
 
 def serve_command(args) -> int:
@@ -245,6 +227,9 @@ def _run_server(args, protocol) -> int:
     project_root = _derive_project_root(args.protocol)
     mode_id = args.mode
     transport = args.transport
+    host = getattr(args, "host", "127.0.0.1")
+    allow_remote = bool(getattr(args, "allow_unauthenticated_remote", False))
+    is_loopback = is_loopback_host(host)
 
     if mode_id and not protocol.get_mode(mode_id):
         available = ", ".join(m.mode_id for m in protocol.modes)
@@ -267,6 +252,15 @@ def _run_server(args, protocol) -> int:
     auth_methods = _auth_methods(
         getattr(args, "auth", None) or tunnel_config.get("auth")
     )
+    authenticated = bool(tunnel_hostname and auth_methods)
+    if transport != "stdio" and not is_loopback and not authenticated and not allow_remote:
+        print(
+            "Error: refusing to bind an unauthenticated MCP server to a non-loopback "
+            "address. Configure tunnel authentication or pass "
+            "--allow-unauthenticated-remote to opt in.",
+            file=sys.stderr,
+        )
+        return 2
     extra_kwargs = {}
     if tunnel_hostname and "oauth" in auth_methods:
         from snodo.infrastructure.jwks import JwksClient
@@ -342,15 +336,15 @@ def _run_server(args, protocol) -> int:
         if explicit_port is None and tunnel_port is not None:
             print(f"Using recorded tunnel port {port}", file=sys.stderr)
         mcp.settings.port = port
+        mcp.settings.host = host
     else:
         port = explicit_port
         if port is not None:
             mcp.settings.port = port
 
-    # Accept proxied requests when not using stdio
+    # Trust only local tunnel proxies, while FastMCP validates request Host values.
     if transport != "stdio":
-        os.environ["FORWARDED_ALLOW_IPS"] = "*"
-        mcp.settings.transport_security.enable_dns_rebinding_protection = False
+        configure_http_transport(mcp, port, tunnel_hostname)
 
     print(
         f"Snodo MCP [{protocol.protocol_id}] mode={mode_label} "
@@ -473,26 +467,6 @@ class TunnelAPIError(RuntimeError):
 # a character). The 409 body may carry it as JSON or inside free-form error
 # text. Embedded dots are deliberately NOT matched: a hostname carrying one
 # is the broken shape (issue #308), never a name to act on as valid.
-_TUNNEL_HOSTNAME_RE = re.compile(
-    r"\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.tunnel\.snodo\.dev\b",
-    re.IGNORECASE,
-)
-
-
-def _extract_existing_hostname(body: str) -> Optional[str]:
-    """Pull the blocking tunnel hostname out of a 409 provisioning body."""
-    try:
-        data = json.loads(body)
-    except (json.JSONDecodeError, TypeError):
-        data = None
-    if isinstance(data, dict):
-        host = data.get("hostname")
-        if isinstance(host, str) and host.strip():
-            return host.strip()
-    match = _TUNNEL_HOSTNAME_RE.search(body)
-    return match.group(0) if match else None
-
-
 # The cloud's tunnel hostnames sit directly under tunnel.snodo.dev: the
 # wildcard certificate covers exactly the one label there. A leading portion
 # with an embedded dot (provisioned before the slug was constrained to one
@@ -528,17 +502,6 @@ def _warn_if_unservable_hostname(hostname: str) -> bool:
     print(f"    snodo serve --tunnel --delete --hostname {host}", file=sys.stderr)
     print("    snodo serve --tunnel", file=sys.stderr)
     return True
-
-
-def _check_cloudflared() -> bool:
-    """Return True if cloudflared is on PATH."""
-    try:
-        subprocess.run(
-            ["which", "cloudflared"], capture_output=True, text=True, timeout=5,  # noqa: S607 - bare command name resolved from PATH by design; argv list, no shell
-        )
-        return True
-    except (subprocess.SubprocessError, FileNotFoundError):
-        return False
 
 
 def _get_cloud_tunnel_api_url() -> str:
