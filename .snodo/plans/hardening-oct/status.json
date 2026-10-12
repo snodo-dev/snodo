@@ -55,10 +55,10 @@
       "spec_hash": "3539aeed249be9bd"
     },
     "3.1_tunnel_secrets_stay_put": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "d2e7a77ef67a8a9f"
+      "spec_hash": "b59a8462ac046117"
     }
   },
   "integration": {
