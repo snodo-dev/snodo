@@ -3,7 +3,7 @@
 The optional `snodo-validator-tool-jev` package adds TypeSafe Jev's `decide`
 function to LLM validators that opt into it. Jev evaluates typed questions and
 returns answers with probabilities. The LLM validator remains responsible for
-the final `pass`, `warn`, or `block` verdict and its written justification.
+the final `pass`, `warn`, or `blocker` verdict and its written justification.
 
 ## Install and configure the API key
 
@@ -26,14 +26,14 @@ Snodo process.
 
 ## Opt a validator in
 
-Add `decide` to the `tools` list for an LLM validator. Tool options are scoped to
+Add `decide` to the `validator_tools` list for an LLM validator. Tool options are scoped to
 that validator:
 
 ```yaml
 validators:
   - validator_id: acceptance_review
-    validator_type: quality
-    tools:
+    validator_type: acceptance
+    validator_tools:
       - name: decide
         options:
           model: jev-latest
