@@ -18,6 +18,7 @@ Tests cover:
 import json
 import subprocess
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -256,10 +257,26 @@ class TestGenerateSpec:
         planner.decompose("Intent", "plan_a")
         planner.generate_spec("plan_a", "1.1_models", "spec v1")
         planner.generate_spec("plan_a", "1.1_models", "spec v2", replace=True)
+        planner.generate_spec("plan_a", "1.1_models", "spec v3", replace=True)
 
         with open(planner.plans_dir / "plan_a" / "plan.yml") as f:
             data = yaml.safe_load(f)
         assert data["waves"][0]["tasks"].count("1.1_models") == 1
+
+    def test_concurrent_status_update_survives_spec_replacement(self, planner):
+        planner.decompose("Intent", "plan_a")
+        planner.generate_spec("plan_a", "1.1_models", "original")
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            status = pool.submit(planner.update_status, "plan_a", "1.1_models", "in_progress")
+            replacement = pool.submit(
+                planner.generate_spec, "plan_a", "1.1_models", "replacement", replace=True
+            )
+            status.result()
+            replacement.result()
+
+        state = json.loads((planner.plans_dir / "plan_a" / "status.json").read_text())
+        assert state["tasks"]["1.1_models"]["status"] == "in_progress"
 
     def test_plan_not_found_raises(self, planner):
         with pytest.raises(PlannerError, match="Plan not found"):

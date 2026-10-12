@@ -17,11 +17,14 @@ Plans live in .snodo/plans/<plan_name>/ with:
 import hashlib
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from filelock import FileLock
 
 from snodo.compiler.models import Plan
 from snodo.compiler.verifier import (
@@ -32,6 +35,27 @@ from snodo.core.interfaces import AuditError
 from snodo.mcp.status import TASK_STATUSES
 
 _logger = logging.getLogger(__name__)
+
+
+def _atomic_write_yaml(plan_dir: Path, data: dict) -> None:
+    """Write plan.yml atomically while serializing planner replacements."""
+    with FileLock(str(plan_dir / ".plan.yml.lock")):
+        _atomic_write_yaml_unlocked(plan_dir, data)
+
+
+def _atomic_write_yaml_unlocked(plan_dir: Path, data: dict) -> None:
+    target = plan_dir / "plan.yml"
+    fd, temporary = tempfile.mkstemp(dir=plan_dir, prefix="plan.yml_", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            yaml.dump(data, stream, default_flow_style=False)
+        os.replace(temporary, target)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
 
 #: The audit event for a task an operator recorded as completed outside the
 #: loop. `snodo task complete` has written this event since #287 and the MCP
@@ -322,14 +346,12 @@ class PlannerMCP:
             "waves": waves_list,
         }
 
-        plan_file = plan_dir / "plan.yml"
-        with open(plan_file, "w") as f:
-            yaml.dump(plan_data, f, default_flow_style=False)
+        _atomic_write_yaml(plan_dir, plan_data)
 
         status_data: dict = {"tasks": {}}
-        status_file = plan_dir / "status.json"
-        with open(status_file, "w") as f:
-            json.dump(status_data, f, indent=2)
+        from snodo.infrastructure.state import atomic_update_json
+
+        atomic_update_json(plan_dir, "status.json", lambda data: data.update(status_data), strict=True)
 
         return plan_data
 
@@ -556,14 +578,15 @@ class PlannerMCP:
         spec_file.write_text(spec)
 
         plan_file = plan_dir / "plan.yml"
-        with open(plan_file) as f:
-            plan_data = yaml.safe_load(f) or {}
-        waves = plan_data.setdefault("waves", [])
-        wave_entry = self._find_or_create_wave(waves, wave_num)
-        if task_id not in wave_entry["tasks"]:
-            wave_entry["tasks"].append(task_id)
-        with open(plan_file, "w") as f:
-            yaml.dump(plan_data, f, default_flow_style=False)
+        with FileLock(str(plan_dir / ".plan.yml.lock")):
+            with open(plan_file, encoding="utf-8") as stream:
+                plan_data = yaml.safe_load(stream) or {}
+            waves = plan_data.setdefault("waves", [])
+            wave_entry = self._find_or_create_wave(waves, wave_num)
+            wave_entry["tasks"] = list(dict.fromkeys(wave_entry.get("tasks", [])))
+            if task_id not in wave_entry["tasks"]:
+                wave_entry["tasks"].append(task_id)
+            _atomic_write_yaml_unlocked(plan_dir, plan_data)
 
         tasks[task_id] = {
             "status": "pending",
@@ -572,8 +595,20 @@ class PlannerMCP:
             "spec_hash": spec_hash,
             **({"module_id": module_id} if module_id is not None else {}),
         }
-        with open(status_file, "w") as f:
-            json.dump(status_data, f, indent=2)
+        from snodo.infrastructure.state import atomic_update_json
+
+        def _update_status(data: dict) -> None:
+            current_tasks = data.setdefault("tasks", {})
+            current = current_tasks.get(task_id)
+            replacement = tasks[task_id].copy()
+            if isinstance(current, dict):
+                replacement["status"] = current.get("status", replacement["status"])
+                replacement.update(
+                    {key: value for key, value in current.items() if key not in replacement}
+                )
+            current_tasks[task_id] = replacement
+
+        atomic_update_json(plan_dir, "status.json", _update_status, strict=True)
 
         return spec_file
 
@@ -1025,8 +1060,18 @@ class PlannerMCP:
         for tid, entry in normalized.items():
             tasks[tid] = entry
 
-        with open(status_file, "w") as f:
-            json.dump(status_data, f, indent=2)
+        from snodo.infrastructure.state import atomic_update_json
+
+        def _update_depths(data: dict) -> None:
+            current_tasks = data.setdefault("tasks", {})
+            for tid, entry in normalized.items():
+                existing = current_tasks.get(tid)
+                if isinstance(existing, dict):
+                    existing["depth"] = entry["depth"]
+                else:
+                    current_tasks[tid] = entry
+
+        atomic_update_json(plan_dir, "status.json", _update_depths, strict=True)
 
         return {tid: entry["depth"] for tid, entry in normalized.items()}
 

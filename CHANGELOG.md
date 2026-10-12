@@ -17,6 +17,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   leaving interrupted delivery recoverable from its running record. (Fixes #851)
 - Write job `task.json` records atomically, including locked persistence of the
   resolved task ID for retry lookup. (Fixes #850)
+- Write planner status and plan files atomically and prevent duplicate task IDs
+  when replacing specifications. (Fixes #849)
 - Serialize cloud sync state updates, keep cursors monotonic, and record delivered
   session and project progress together. (Fixes #848)
 - Update hand-completed task state through the locked atomic JSON writer and
