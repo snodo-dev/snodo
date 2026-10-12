@@ -145,6 +145,62 @@ def test_task_complete_refuses_unknown_plan_task(tmp_path, monkeypatch):
     assert missing_plan == 1
 
 
+def test_task_complete_updates_existing_task_state_atomically(tmp_path, monkeypatch):
+    """Task completion uses the shared locked updater and retains other fields."""
+    _setup_project(tmp_path, monkeypatch)
+    task_dir = tmp_path / ".snodo" / "tasks" / "atomic_task"
+    task_dir.mkdir(parents=True)
+    state_path = task_dir / "state.json"
+    state_path.write_text(json.dumps({"status": "in_progress", "custom": "preserved"}))
+
+    from snodo.infrastructure import state
+
+    original_update = state.atomic_update_json
+    calls = []
+
+    def tracking_update(target_dir, filename, updater_fn, **kwargs):
+        calls.append((target_dir, filename, kwargs))
+        return original_update(target_dir, filename, updater_fn, **kwargs)
+
+    monkeypatch.setattr(state, "atomic_update_json", tracking_update)
+    result = task_complete_command(SimpleNamespace(
+        task_id="atomic_task", plan=None, who="operator", notes=None, json=False,
+    ))
+
+    assert result == 0
+    assert len(calls) == 1
+    assert calls[0][0] == task_dir
+    assert calls[0][1] == "state.json"
+    assert calls[0][2] == {"strict": True}
+    updated = json.loads(state_path.read_text())
+    assert updated["custom"] == "preserved"
+    assert updated["status"] == "completed"
+    assert updated["completed_by"] == "operator"
+    assert updated["judged"] is False
+    assert updated["completed_at"]
+
+
+def test_task_complete_surfaces_task_state_write_failure(tmp_path, monkeypatch, capsys):
+    """A failed atomic state update is reported as a command failure."""
+    _setup_project(tmp_path, monkeypatch)
+    task_dir = tmp_path / ".snodo" / "tasks" / "failed_task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text(json.dumps({"status": "in_progress"}))
+
+    from snodo.infrastructure import state
+
+    def fail_update(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(state, "atomic_update_json", fail_update)
+    result = task_complete_command(SimpleNamespace(
+        task_id="failed_task", plan=None, who="operator", notes=None, json=False,
+    ))
+
+    assert result == 1
+    assert "Could not update task state file for failed_task: disk full" in capsys.readouterr().err
+
+
 def test_no_new_status_value_introduced(tmp_path, monkeypatch):
     """No new task status, halt type, or severity is introduced (respecting ADR 045)."""
     mgr, session, audit_log = _setup_project(tmp_path, monkeypatch)

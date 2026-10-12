@@ -211,15 +211,21 @@ def task_complete_command(args: Any) -> int:
     task_state_file = Path(project_root) / ".snodo" / "tasks" / task_id / "state.json"
     if task_state_file.is_file():
         try:
-            ts_data = json.loads(task_state_file.read_text())
-            if isinstance(ts_data, dict):
+            from snodo.infrastructure.state import atomic_update_json
+
+            def _mark_task_completed(ts_data: dict[str, Any]) -> None:
                 ts_data["status"] = "completed"
                 ts_data["completed_by"] = who
                 ts_data["completed_at"] = recorded_at
                 ts_data["judged"] = False
-                task_state_file.write_text(json.dumps(ts_data, indent=2))
+
+            atomic_update_json(task_state_file.parent, "state.json", _mark_task_completed, strict=True)
         except Exception as e:
-            _logger.debug("Could not update task state file for %s: %s", task_id, e)
+            msg = f"Could not update task state file for {task_id}: {e}"
+            if json_out:
+                return emit_error("task_complete", msg, 1)
+            print(f"Error: {msg}", file=sys.stderr)
+            return 1
 
     if json_out:
         return emit_json({
