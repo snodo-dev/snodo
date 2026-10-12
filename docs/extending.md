@@ -326,6 +326,10 @@ Snodo discovers installed tools through entry points and indexes them by the fun
 
 ### Wiring into the protocol
 
+For an installable decision-model tool, see [TypeSafe Jev `decide`](typesafe-decide.md)
+for installation, API key setup, per-validator configuration, and an
+acceptance-check example.
+
 Select the registered tool for an individual LLM validator with `tools`; per-tool `options` are passed through as `context.tool_options`:
 
 ```yaml

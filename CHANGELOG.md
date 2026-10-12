@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document how to install and configure the TypeSafe Jev `decide` validator
+  tool, including acceptance-check usage, cost, and input limits. (Fixes #841)
 - Add the installable TypeSafe Jev `decide` validator tool plugin for typed
   questions over task diffs, specs, and workspace files. (Fixes #840)
 - Document validator-tool plugins and add a runnable diff line-count example with
