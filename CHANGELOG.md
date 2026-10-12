@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document validator-tool plugins and add a runnable diff line-count example with
+  entry-point discovery coverage. (Fixes #839)
 - Offer opted-in validator plugin tools to LLM validators and return their
   handler results to the model without failing the run on plugin errors. (Fixes #838)
 - Allow protocol authors to opt LLM validators into plugin-provided tools with

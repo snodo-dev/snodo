@@ -1,6 +1,6 @@
 # Extending Snodo
 
-Four extension points. Each maps to an interface or registry in the codebase. You implement the interface, register your implementation, and reference it from `protocol.yml`.
+Five extension points. Each maps to an interface or registry in the codebase. You implement the interface, register your implementation, and reference it from `protocol.yml`.
 
 ## Try it in a minute
 
@@ -279,7 +279,70 @@ The engine resolves `coder` to an adapter class at graph build time. The `--mock
 
 ---
 
-## 4. Code-host providers
+## 4. Validator tools
+
+### Interface
+
+Validator tools let an external decision model answer yes/no questions over a large input while the LLM keeps writing the verdict.
+
+Expose a `ValidatorTool` from `snodo.validators.tool_registry`. Its `definition` is the model-facing function definition, and its `handler` receives parsed arguments and a `ValidatorToolContext`, then returns text for the model:
+
+```python
+from snodo.validators.tool_registry import ValidatorTool, ValidatorToolContext
+
+tool = ValidatorTool(
+    definition={
+        "type": "function",
+        "function": {
+            "name": "count_diff_lines",
+            "description": "Count diff lines in a path glob.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path_glob": {"type": "string"}},
+                "required": ["path_glob"],
+            },
+        },
+    },
+    handler=handle_count,
+)
+
+def handle_count(arguments: dict, context: ValidatorToolContext) -> str:
+    # Read the diff and context.workspace_root as needed; return text.
+    ...
+```
+
+`ValidatorToolContext` provides `workspace_root`, `spec_text`, `validator_id`, configured `tool_options`, and optional `diff_refs` and `diff_accessor`. Treat workspace inputs as read-only; handlers must not modify the workspace or `.snodo/`. Built-in validator tool names are reserved. See the [diff-line counter example](../examples/snodo-diff-line-tool/) for a complete local implementation.
+
+### Registration
+
+Register a `ValidatorTool` instance or a zero-argument factory returning one in the `snodo.validator_tools` entry-point group:
+
+```toml
+[project.entry-points."snodo.validator_tools"]
+count_diff_lines = "snodo_diff_line_tool:tool"
+```
+
+Snodo discovers installed tools through entry points and indexes them by the function name in `definition`. The callable handler returns text that is supplied back to the model. Tool handlers should be read-only and complete within the validator's bounded execution time.
+
+### Wiring into the protocol
+
+Select the registered tool for an individual LLM validator with `tools`; per-tool `options` are passed through as `context.tool_options`:
+
+```yaml
+validators:
+  - validator_id: "diff_review"
+    validator_type: "quality"
+    validator_tools:
+      - name: "count_diff_lines"
+        options:
+          max_lines: 2000
+```
+
+The LLM validator offers configured, discovered tools to the model. The model can call the handler and use its returned text while preparing its usual verdict. Install the example package in Snodo's Python environment and see its README for the registry test and a sample protocol entry.
+
+---
+
+## 5. Code-host providers
 
 ### Interface
 

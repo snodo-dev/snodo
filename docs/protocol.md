@@ -317,7 +317,7 @@ Each logical tool maps to one or more MCP operations:
 | `approve` | `stage_files`, `commit` |
 | `commit` | `stage_files`, `commit` |
 | `merge` | `create_branch`, `stage_files`, `commit`, `merge_branch`, `delete_branch` |
-| `pr` | `create_change_request`, `read_change_request_diff`, `post_change_request_comment`, `approve_change_request`, `request_change_request_changes`, `merge_change_request`, `read_change_request_discussion`; deprecated aliases: `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr` (provider operations use the neutral change-request contract described in [Code-host providers](extending.md#4-code-host-providers)) |
+| `pr` | `create_change_request`, `read_change_request_diff`, `post_change_request_comment`, `approve_change_request`, `request_change_request_changes`, `merge_change_request`, `read_change_request_discussion`; deprecated aliases: `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr` (provider operations use the neutral change-request contract described in [Code-host providers](extending.md#5-code-host-providers)) |
 | `plan` | `decompose`, `generate_spec`, `validate_plan`, `propose_plan`, `get_plan`, `run_plan`, `record_task_status`, `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
 | `queue` | `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
 | `read` | `read_file`, `list_files` |
