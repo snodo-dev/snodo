@@ -13,13 +13,13 @@
       "spec_hash": "0d64ecca92ff25f9"
     },
     "2.1_llm_validator_offers_plugin_tools": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "08f6f1a7e0a07002"
     },
     "2.2_document_validator_tools": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "922165534be736fc"
