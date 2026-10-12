@@ -718,6 +718,99 @@ class TestPostExecuteToolLoop:
             phase="post_execute",
         )
 
+    def test_configured_plugin_tool_is_offered_dispatched_and_returns_text(self, security_validator, monkeypatch):
+        from snodo.validators.tool_registry import ValidatorTool, _default_registry
+
+        seen = []
+        tool = ValidatorTool(
+            definition={"type": "function", "function": {"name": "plugin_probe", "parameters": {"type": "object"}}},
+            handler=lambda args, ctx: seen.append((args, ctx)) or "plugin answer",
+        )
+        _default_registry.register(tool)
+        validator_spec = Validator(
+            validator_id="plugin-judge", validator_type="security", validator_tools=[{"name": "plugin_probe", "options": {"mode": "strict"}}]
+        )
+        calls = []
+
+        def scripted(**kwargs):
+            calls.append(kwargs)
+            response = MagicMock()
+            response.choices = [MagicMock()]
+            tc = MagicMock()
+            tc.id = f"tc{len(calls)}"
+            if len(calls) == 1:
+                tc.function.name = "plugin_probe"
+                tc.function.arguments = '{"question":"check"}'
+                response.choices[0].message.tool_calls = [tc]
+            else:
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = '{"severity":"pass","justification":"checked"}'
+                response.choices[0].message.tool_calls = [tc]
+            response.choices[0].message.content = None
+            return response
+
+        completion = MagicMock(side_effect=scripted)
+        workspace = MagicMock()
+        validator = LLMValidator(validator_spec, completion)
+        result = validator.evaluate(self._make_post_context(completion, workspace, MagicMock()))
+        assert "plugin_probe" in {d["function"]["name"] for d in calls[0]["tools"]}
+        assert calls[1]["messages"][-1]["content"] == "plugin answer"
+        assert seen[0][1].validator_id == "plugin-judge"
+        assert seen[0][1].spec_text == "Add user authentication"
+        assert seen[0][1].tool_options == {"mode": "strict"}
+        assert result.severity == "pass"
+        _default_registry._tools.pop("plugin_probe", None)
+
+    def test_missing_and_raising_plugin_tools_are_model_visible(self, monkeypatch):
+        from snodo.validators.tool_registry import ValidatorTool, _default_registry
+
+        broken = ValidatorTool(
+            definition={"type": "function", "function": {"name": "plugin_broken", "parameters": {"type": "object"}}},
+            handler=lambda args, ctx: (_ for _ in ()).throw(RuntimeError("plugin exploded")),
+        )
+        _default_registry.register(broken)
+        spec = Validator(validator_id="plugins", validator_type="security", validator_tools=["plugin_broken", "plugin_missing"])
+        outputs = []
+
+        def scripted(**kwargs):
+            outputs.append(kwargs)
+            response = MagicMock()
+            response.choices = [MagicMock()]
+            tc = MagicMock()
+            tc.id = f"tc{len(outputs)}"
+            if len(outputs) == 1:
+                tc.function.name = "plugin_broken"
+                tc.function.arguments = "{}"
+            else:
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = '{"severity":"warn","justification":"plugin unavailable"}'
+            response.choices[0].message.tool_calls = [tc]
+            response.choices[0].message.content = None
+            return response
+
+        completion = MagicMock(side_effect=scripted)
+        validator = LLMValidator(spec, completion)
+        result = validator.evaluate(self._make_post_context(completion, MagicMock(), MagicMock()))
+        assert result.severity == "warn"
+        assert "plugin_missing" in outputs[0]["messages"][0]["content"]
+        assert "plugin exploded" in outputs[1]["messages"][-1]["content"]
+        _default_registry._tools.pop("plugin_broken", None)
+
+    def test_unlisted_plugin_is_never_offered(self):
+        from snodo.validators.tool_registry import ValidatorTool, _default_registry
+
+        tool = ValidatorTool(
+            definition={"type": "function", "function": {"name": "unlisted_probe", "parameters": {"type": "object"}}},
+            handler=lambda args, ctx: "unused",
+        )
+        _default_registry.register(tool)
+        completion = _make_completion_fn()
+        validator = LLMValidator(Validator(validator_id="plain", validator_type="security"), completion)
+        validator.evaluate(self._make_post_context(completion, MagicMock(), MagicMock()))
+        assert completion.call_count == 1
+        assert "tools" not in completion.call_args.kwargs
+        _default_registry._tools.pop("unlisted_probe", None)
+
     def _make_post_validator(self, security_validator):
         """Clone the fixture validator with tools for the tool-loop."""
         return Validator(

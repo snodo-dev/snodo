@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snodo-diff-line-tool"
+version = "0.1.0"
+description = "A minimal read-only validator tool plugin for Snodo"
+requires-python = ">=3.12"
+dependencies = ["snodo>=0.23.2"]
+
+[project.entry-points."snodo.validator_tools"]
+count_diff_lines = "snodo_diff_line_tool:tool"
+
+[tool.setuptools]
+py-modules = ["snodo_diff_line_tool"]

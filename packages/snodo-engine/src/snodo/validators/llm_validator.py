@@ -49,6 +49,12 @@ from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.validators.change import change_block_for, ensure_change_context
 from snodo.validators.context import ValidatorContext, ValidatorBase
+from snodo.validators.plugin_tool_support import (
+    configured_tools, offer_definitions, execute_plugin_tool, is_tool_argument_error,
+    tool_access_instruction,
+    execute_builtin_tool,
+    workspace_root,
+)
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.coders.litellm import ReadMemoryTracker, _normalize_path_arg, format_repeat_read_response
@@ -271,7 +277,8 @@ class LLMValidator(ValidatorBase):
         from snodo.validators.runner import enrich_result_with_criteria
 
         declared_tools = getattr(self.validator_spec, "tools", None) or []
-        if declared_tools:
+        plugin_config = configured_tools(self.validator_spec)
+        if declared_tools or plugin_config:
             workspace_tools = {"read_file", "read_file_lines", "list_files", "summarize_directory"}
             git_tools = {"read_diff_between_refs", "git_show", "git_log"}
             missing_dependencies = []
@@ -389,7 +396,10 @@ class LLMValidator(ValidatorBase):
         if phase != "post_execute":
             active_names -= _POST_EXECUTE_ONLY_TOOLS
 
-        tools = self._build_tool_definitions(active_names)
+        plugin_definitions, plugin_tools, missing_plugins = offer_definitions(
+            configured_tools(self.validator_spec)
+        )
+        tools = self._build_tool_definitions(active_names) + plugin_definitions
         tools.append(self._SUBMIT_VERDICT_DEF)
 
         # The produced change reaches the judge through its PHASE, not through
@@ -403,6 +413,12 @@ class LLMValidator(ValidatorBase):
         system_prompt = self._build_tool_loop_prompt(
             context, active_names, total_turns=tool_turns,
         )
+        if missing_plugins:
+            system_prompt += (
+                "\nUnavailable configured validator plugin tools (not installed): "
+                + ", ".join(sorted(missing_plugins))
+                + ". They were not offered; account for this in your verdict.\n"
+            )
 
         messages: List[Dict[str, Any]] = [
             {"role": "user", "content": system_prompt},
@@ -462,7 +478,7 @@ class LLMValidator(ValidatorBase):
                     "content": _VERDICT_ONLY_INSTRUCTION,
                 })
             else:
-                offered_names = active_names
+                offered_names = active_names | set(plugin_tools)
                 turn_tools = tools
 
             turn_start = time.monotonic()
@@ -640,13 +656,23 @@ class LLMValidator(ValidatorBase):
                             result = format_repeat_read_response(tool_name, args, prev_turn)
                         else:
                             try:
-                                result = self._execute_tool(tool_name, args, workspace, git)
+                                if tool_name in plugin_tools:
+                                    result = execute_plugin_tool(
+                                        plugin_tools[tool_name], args,
+                                        workspace_root=workspace_root(workspace),
+                                        spec_text=context.task.spec,
+                                        validator_id=self.validator_spec.validator_id,
+                                        options=configured_tools(self.validator_spec)[tool_name],
+                                        diff_refs=(context.base_ref, "HEAD") if context.base_ref else None,
+                                    )
+                                else:
+                                    result = execute_builtin_tool(tool_name, args, workspace, git)
                             except Exception as e:
-                                # A refused path or a missing requested file is
-                                # an ordinary inspection result, not a broken
-                                # tool transport. Preserve the existing
-                                # reasoned-refusal / model-evaluation contract.
-                                if self._is_tool_argument_error(e):
+                                if is_tool_argument_error(e):
+                                    # A refused path or a missing requested file is
+                                    # an ordinary inspection result, not a broken
+                                    # tool transport. Preserve the existing
+                                    # reasoned-refusal / model-evaluation contract.
                                     result = f"Tool error: {e}"
                                 else:
                                     _logger.warning(
@@ -804,23 +830,12 @@ class LLMValidator(ValidatorBase):
             "## Instructions\n",
             "Evaluate against EACH criterion.\n",
             "Use tools to read files if needed.\n",
-            self._tool_access_instruction(),
+            tool_access_instruction(self.validator_spec),
             "Then call submit_verdict with severity in [\"pass\", \"warn\", \"blocker\"]\n",
             "and a concise justification.\n",
         ])
 
         return "".join(prompt_parts)
-
-    def _tool_access_instruction(self) -> str:
-        if not getattr(self.validator_spec, "check_tool_access", False):
-            return ""
-        return (
-            "This validator has check_tool_access enabled. If any criterion asks "
-            "for verification requiring a capability not in this validator's "
-            f"declared tools ({', '.join(getattr(self.validator_spec, 'tools', []) or []) or '(none)'}), "
-            "do not pass it. Submit a blocker and include a tool_access_missing "
-            "object with the exact criterion and missing capability.\n"
-        )
 
     @staticmethod
     def _build_tool_definitions(tool_names: Set[str]) -> List[Dict[str, Any]]:
@@ -1035,49 +1050,6 @@ class LLMValidator(ValidatorBase):
             "Call submit_verdict(severity, justification) with a valid "
             "severity."
         )
-
-    @staticmethod
-    def _execute_tool(
-        name: str,
-        args: Dict[str, Any],
-        workspace: Any,
-        git: Any,
-    ) -> str:
-        """Execute a read-only tool call and return the result as a string."""
-        if name == "read_diff_between_refs":
-            return git.diff_between_refs(args["ref1"], args["ref2"])
-        elif name == "git_show":
-            return git.show(args["ref"], args["path"])
-        elif name == "git_log":
-            return git.log(args.get("n", 5))
-        elif name == "read_file":
-            return workspace.read_file(args["path"])
-        elif name == "read_file_lines":
-            return workspace.read_file_lines(args["path"], args["start"], args["end"])
-        elif name == "list_files":
-            return "\n".join(workspace.list_files(args.get("directory", ".")))
-        elif name == "summarize_directory":
-            return workspace.summarize_directory(args.get("directory", "."))
-        else:
-            return f"Unknown tool: {name}"
-
-    @staticmethod
-    def _is_tool_argument_error(error: Exception) -> bool:
-        """Return whether a read-tool exception describes invalid call input.
-
-        Keep this classification deliberately narrow: arbitrary exceptions
-        raised by a tool implementation remain operational failures.
-        """
-        from snodo.tools.workspace import PathValidationError
-
-        if isinstance(error, (PathValidationError, FileNotFoundError, KeyError, TypeError)):
-            return True
-        # Restrict ValueError recovery to known workspace input validations.
-        message = str(error).lower()
-        return isinstance(error, ValueError) and any(marker in message for marker in (
-            "path is not a ", "directory not found:", "file not found:",
-            "start must be", "end must be", "invalid path",
-        ))
 
     # ------------------------------------------------------------------
     # Single-completion path (pre-execute, unchanged)
