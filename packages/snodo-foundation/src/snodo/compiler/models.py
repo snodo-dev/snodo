@@ -5,7 +5,7 @@ All models are immutable and include validation logic.
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set, Union
 from pydantic import BaseModel, Field, field_validator, field_serializer, model_validator, ConfigDict
 
 
@@ -154,6 +154,25 @@ class Constraint(BaseModel):
         return v
 
 
+class ValidatorToolConfig(BaseModel):
+    """Plugin-provided validator tool declaration with optional settings."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(..., min_length=1, description="Registered validator tool name")
+    options: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Options passed to this validator tool",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("validator tool name cannot be empty")
+        return value
+
+
 class Validator(BaseModel):
     """Evaluation criteria and judging scope for a validator."""
 
@@ -221,6 +240,13 @@ class Validator(BaseModel):
                     "validator. Falls back to the configured llm.validator "
                     "max_tool_turns if not set."
     )
+    validator_tools: List[Union[str, ValidatorToolConfig]] = Field(
+        default_factory=list,
+        description=(
+            "Optional plugin-provided tools available to this LLM validator. "
+            "Entries are tool names or mappings with name and options."
+        ),
+    )
 
     @field_validator('validator_id')
     @classmethod
@@ -265,6 +291,17 @@ class Validator(BaseModel):
                     f"Validators may never use write/exec/mutating tools."
                 )
         return v
+
+    @field_validator("validator_tools")
+    @classmethod
+    def validate_validator_tools(
+        cls, entries: List[Union[str, ValidatorToolConfig]]
+    ) -> List[Union[str, ValidatorToolConfig]]:
+        """Validate the structural shape of plugin-tool declarations."""
+        for entry in entries:
+            if isinstance(entry, str) and not entry.strip():
+                raise ValueError("validator_tools entries must have a non-empty tool name")
+        return entries
 
 
 class Role(BaseModel):

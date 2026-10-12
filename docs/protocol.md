@@ -397,6 +397,7 @@ validators:
 | `check_tool_access` | bool | no | When true, refuse rather than pass criteria requiring a capability outside the validator's declared tools (default `false`) |
 | `model` | string or null | no | Validator-specific LLM model override; otherwise falls back to coder model / `default_model` |
 | `max_tool_turns` | int or null | no | Read-tool-loop turn budget override (1–200); otherwise uses configured `llm.validator.max_tool_turns` |
+| `validator_tools` | list | no | Opt this LLM validator into plugin-provided tools by name, optionally `{name: ..., options: {...}}`; absent or empty preserves current behavior. Tool availability is resolved at runtime. |
 | `judges_spec` | bool | no | Whether critique is about spec wording and may feed the spec-authoring rewriter (default `false`) |
 
 Security note: `tooling.test_command` (used by the `quality` validator) is

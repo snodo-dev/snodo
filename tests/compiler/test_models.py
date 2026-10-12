@@ -301,6 +301,26 @@ def test_validator_scope_defaults_to_task_and_accepts_wave():
     assert wave_validator.scope == "wave"
 
 
+def test_validator_plugin_tools_accept_names_and_options():
+    validator = Validator(
+        validator_id="judge",
+        validator_type="security",
+        validator_tools=["scan", {"name": "score", "options": {"threshold": 0.8}}],
+    )
+    assert validator.validator_tools[0] == "scan"
+    assert validator.validator_tools[1].name == "score"
+    assert validator.validator_tools[1].options == {"threshold": 0.8}
+
+
+@pytest.mark.parametrize(
+    "tools",
+    [["  "], [{"name": " "}], [{"name": "scan", "options": []}], [42], [{"name": "scan", "other": 1}]],
+)
+def test_validator_plugin_tools_reject_malformed_entries(tools):
+    with pytest.raises(ValidationError, match="validator_tools"):
+        Validator(validator_id="judge", validator_type="security", validator_tools=tools)
+
+
 def test_constraint_invalid_id():
     """Test constraint with invalid ID."""
     with pytest.raises(ValidationError, match="constraint_id must be alphanumeric"):

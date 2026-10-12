@@ -554,6 +554,21 @@
             "title": "Validator Id",
             "type": "string"
           },
+          "validator_tools": {
+            "description": "Optional plugin-provided tools available to this LLM validator. Entries are tool names or mappings with name and options.",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/ValidatorToolConfig"
+                }
+              ]
+            },
+            "title": "Validator Tools",
+            "type": "array"
+          },
           "validator_type": {
             "description": "Type of validation (e.g., security, architecture) Valid choices are the values in this enum.",
             "enum": [
@@ -577,6 +592,29 @@
           "validator_type"
         ],
         "title": "Validator",
+        "type": "object"
+      },
+      "ValidatorToolConfig": {
+        "additionalProperties": false,
+        "description": "Plugin-provided validator tool declaration with optional settings.",
+        "properties": {
+          "name": {
+            "description": "Registered validator tool name",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": true,
+            "description": "Options passed to this validator tool",
+            "title": "Options",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ValidatorToolConfig",
         "type": "object"
       }
     },
