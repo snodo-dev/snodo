@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Keep managed tunnel tokens out of cloudflared process arguments by passing
+  them through its environment. (Fixes #853)
 - Protect credential-bearing `.snodo/tunnel.json` from workspace reads and writes,
   while confining `.snodo/` writes to explicitly configured prefixes. (Fixes #845)
 - Serialize job state updates so cancellation and reconciled terminal results

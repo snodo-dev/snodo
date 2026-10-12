@@ -1292,12 +1292,12 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         print()
 
     # 6. Start cloudflared
-    cf_cmd = [
-        "cloudflared", "tunnel", "run",
-        "--token", tunnel_config["tunnel_token"],
-    ]
-    cf_process = subprocess.Popen(  # noqa: S603 - argv list (no shell); the tunnel token is one argv element to cloudflared, never shell-interpreted
+    cf_cmd = ["cloudflared", "tunnel", "run"]
+    cf_env = os.environ.copy()
+    cf_env["TUNNEL_TOKEN"] = tunnel_config["tunnel_token"]
+    cf_process = subprocess.Popen(  # noqa: S603 - argv list (no shell)
         cf_cmd,
+        env=cf_env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
