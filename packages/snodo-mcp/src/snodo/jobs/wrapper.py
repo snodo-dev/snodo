@@ -19,14 +19,26 @@ import time
 from pathlib import Path
 
 from snodo.infrastructure.atomic_json import atomic_write_json
+from snodo.infrastructure.state import atomic_update_json
 
 _logger = logging.getLogger(__name__)
 
 
 def _save_state(job_dir: str, state: dict) -> None:
-    """Atomically write state.json (write tmp + os.replace)."""
-    state_path = os.path.join(job_dir, "state.json")
-    atomic_write_json(state_path, state)
+    """Atomically write state.json for fixtures and initialization."""
+    atomic_write_json(os.path.join(job_dir, "state.json"), state)
+
+
+def _update_state(job_dir: str, updater) -> dict:
+    """Apply a serialized read-modify-write to state.json."""
+    updated = {}
+
+    def apply(state: dict) -> None:
+        updater(state)
+        updated.update(state)
+
+    atomic_update_json(job_dir, "state.json", apply, strict=True)
+    return updated
 
 
 def _load_state(job_dir: str) -> dict:
@@ -96,11 +108,13 @@ def main():
         _logger.debug("Failed to set SNODO_WORKTREE_PATH from task.json: %s", e)
 
     # Load current state and mark as running
-    state = _load_state(job_dir)
-    state["status"] = "running"
-    state["pid"] = os.getpid()
-    state["started_at"] = time.time()
-    _save_state(job_dir, state)
+    def mark_running(state: dict) -> None:
+        if state.get("status") not in {"completed", "failed", "cancelled", "unmerged"}:
+            state["status"] = "running"
+            state["pid"] = os.getpid()
+            state["started_at"] = time.time()
+
+    _update_state(job_dir, mark_running)
 
     exit_code = 1
     wrapper_error = None
@@ -131,22 +145,22 @@ def main():
                     _logger.debug("Failed to tear down worktree for completed job %s: %s", job_id, e)
 
     # Write final state
-    state = _load_state(job_dir)
     if exit_code == 0:
         status = "completed"
     elif exit_code == 2:
         status = "unmerged"
     else:
         status = "failed"
-    # Don't overwrite if already cancelled
-    if state.get("status") != "cancelled":
+    def write_final(state: dict) -> None:
+        if state.get("status") in {"completed", "failed", "cancelled", "unmerged"}:
+            return
         state["status"] = status
-    state["exit_code"] = exit_code
-    state["completed_at"] = time.time()
-    if wrapper_error:
-        state["error"] = f"Job wrapper error: {wrapper_error}"
+        state["exit_code"] = exit_code
+        state["completed_at"] = time.time()
+        if wrapper_error:
+            state["error"] = f"Job wrapper error: {wrapper_error}"
 
-    _save_state(job_dir, state)
+    _update_state(job_dir, write_final)
 
     sys.exit(exit_code)
 

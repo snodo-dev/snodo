@@ -11,6 +11,7 @@ import sys
 from unittest.mock import patch
 
 import pytest
+from snodo.jobs import JobManager
 from snodo.jobs.wrapper import _load_state, _save_state, main
 
 # === _save_state / _load_state Tests ===
@@ -257,37 +258,57 @@ class TestMain:
 
     @patch("snodo.jobs.wrapper.time")
     def test_cancelled_status_preserved(self, mock_time, tmp_path):
-        """main() does not overwrite status=cancelled with failed/completed."""
+        """A real cancel() remains terminal through the wrapper finalizer."""
         mock_time.time.return_value = 1700000000.0
-        job_dir = self._prepare_job_dir(tmp_path, {"status": "queued", "pid": None})
+        project_root = tmp_path / "project"
+        jobs_dir = project_root / ".snodo" / "jobs"
+        jobs_dir.mkdir(parents=True)
+        job_path = jobs_dir / "j_cancel"
+        job_path.mkdir()
+        job_dir = str(job_path)
+        self._prepare_job_dir(job_path, {"status": "running", "pid": 12345})
 
-        call_count = [0]
-        original_load = _load_state
-
-        def patched_load(d):
-            """On second _load_state call, simulate external cancellation."""
-            call_count[0] += 1
-            state = original_load(d)
-            if call_count[0] == 2:
-                # Simulate: between first and second load, job was cancelled externally
-                state["status"] = "cancelled"
-                _save_state(d, state)
-                return _load_state.__wrapped__(d) if hasattr(_load_state, "__wrapped__") else original_load(d)
-            return state
+        def cancel_during_run(*_args, **_kwargs):
+            """Simulate cancellation while the child command is running."""
+            with patch("snodo.jobs.os.kill"):
+                JobManager(str(project_root)).cancel("j_cancel")
+            return type("Proc", (), {"returncode": 0})()
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.jobs.wrapper.subprocess.run") as mock_run:
-                mock_run.return_value.returncode = 0
-                with patch("snodo.jobs.wrapper._load_state", side_effect=patched_load):
-                    with pytest.raises(SystemExit) as exc_info:
-                        main()
+            with patch("snodo.jobs.wrapper.subprocess.run", side_effect=cancel_during_run):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
 
         assert exc_info.value.code == 0
 
         state = _load_state(job_dir)
         assert state["status"] == "cancelled"
-        assert state["exit_code"] == 0
+        assert state.get("exit_code") is None
         assert "completed_at" in state
+
+    @patch("snodo.jobs.wrapper.time")
+    def test_reconciled_terminal_exit_code_is_preserved(self, mock_time, tmp_path):
+        """A reconcile failure and its exit code survive the wrapper finalizer."""
+        mock_time.time.return_value = 1700000000.0
+        job_dir = self._prepare_job_dir(tmp_path, {
+            "status": "running", "pid": None, "exit_code": None,
+        })
+
+        def reconcile_during_run(*_args, **_kwargs):
+            _save_state(job_dir, {
+                "status": "failed", "pid": os.getpid(), "exit_code": -1,
+                "completed_at": 1700000000.0,
+            })
+            return type("Proc", (), {"returncode": 0})()
+
+        with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
+            with patch("snodo.jobs.wrapper.subprocess.run", side_effect=reconcile_during_run):
+                with pytest.raises(SystemExit):
+                    main()
+
+        state = _load_state(job_dir)
+        assert state["status"] == "failed"
+        assert state["exit_code"] == -1
 
     @patch("snodo.jobs.wrapper.time")
     def test_running_state_set_with_pid(self, mock_time, tmp_path):

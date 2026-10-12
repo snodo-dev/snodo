@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from snodo.infrastructure.atomic_json import atomic_write_json
+from snodo.infrastructure.state import atomic_update_json
 
 try:  # a declared dependency, but a stale install can lack it
     import psutil
@@ -185,6 +186,17 @@ class JobManager:
         except json.JSONDecodeError as e:
             raise JobError(f"Invalid state.json in {job_dir.name}: {e.msg}") from e
 
+    def _update_state(self, job_dir: Path, updater) -> dict:
+        """Apply a serialized read-modify-write to a job's state."""
+        updated = {}
+
+        def apply(state: dict) -> None:
+            updater(state)
+            updated.update(state)
+
+        atomic_update_json(job_dir, "state.json", apply, strict=True)
+        return updated
+
     def _load_task(self, job_dir: Path) -> dict:
         """Load task.json from a job directory."""
         task_path = job_dir / "task.json"
@@ -252,20 +264,20 @@ class JobManager:
 
         if identity_error is not None:
             # Re-read state.json (wrapper may have updated it before exiting).
-            fresh_state = self._load_state(job_dir)
-            if fresh_state.get("status") in TERMINAL_STATUSES:
-                return fresh_state
-            fresh_state["status"] = "failed"
-            fresh_state["completed_at"] = time.time()
-            fresh_state["exit_code"] = -1
-            if "no longer running" in identity_error:
-                fresh_state["error"] = (
-                    "Process died unexpectedly (crashed without updating state)"
-                )
-            else:
-                fresh_state["error"] = identity_error
-            self._save_state(job_dir, fresh_state)
-            return fresh_state
+            def mark_failed(fresh_state: dict) -> None:
+                if fresh_state.get("status") in TERMINAL_STATUSES:
+                    return
+                fresh_state["status"] = "failed"
+                fresh_state["completed_at"] = time.time()
+                fresh_state["exit_code"] = -1
+                if "no longer running" in identity_error:
+                    fresh_state["error"] = (
+                        "Process died unexpectedly (crashed without updating state)"
+                    )
+                else:
+                    fresh_state["error"] = identity_error
+
+            return self._update_state(job_dir, mark_failed)
 
         return state
 
@@ -630,10 +642,8 @@ class JobManager:
         """
         job_dir = self._job_dir(job_id)
         state = self._load_state(job_dir)
-
         if state.get("status") in TERMINAL_STATUSES:
             raise JobError(f"Job {job_id} is already {state['status']}")
-
         pid = state.get("pid")
         if pid is not None:
             try:
@@ -641,9 +651,12 @@ class JobManager:
             except ProcessLookupError:
                 pass  # Already dead
 
-        state["status"] = "cancelled"
-        state["completed_at"] = time.time()
-        self._save_state(job_dir, state)
+        def mark_cancelled(current: dict) -> None:
+            if current.get("status") not in TERMINAL_STATUSES:
+                current["status"] = "cancelled"
+                current["completed_at"] = time.time()
+
+        state = self._update_state(job_dir, mark_cancelled)
 
         return {**state, "id": job_id}
 
@@ -682,9 +695,7 @@ class JobManager:
                 archived.append(job_dir.name)
                 continue
             archive_dir.mkdir(parents=True, exist_ok=True)
-            state = self._load_state(job_dir)
-            state["archived_at"] = time.time()
-            self._save_state(job_dir, state)
+            self._update_state(job_dir, lambda state: state.update(archived_at=time.time()))
             dest = archive_dir / job_dir.name
             shutil.move(str(job_dir), str(dest))
             archived.append(job_dir.name)

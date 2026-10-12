@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Serialize job state updates so cancellation and reconciled terminal results
+  cannot be overwritten by the wrapper finalizer. (Fixes #852)
 - Record task terminal status only after configured delivery succeeds or is refused,
   leaving interrupted delivery recoverable from its running record. (Fixes #851)
 - Write job `task.json` records atomically, including locked persistence of the
