@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Offer opted-in validator plugin tools to LLM validators and return their
+  handler results to the model without failing the run on plugin errors. (Fixes #838)
 - Allow protocol authors to opt LLM validators into plugin-provided tools with
   optional per-tool options. (Fixes #837)
 - Add a vendor-neutral `snodo.validator_tools` plugin registry with a documented
