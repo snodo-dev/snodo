@@ -1,0 +1,18 @@
+intent: A third-party plugin can add a tool to the LLM validator's tool loop, and
+  a protocol can opt a validator into it. That way, a validator can consult an external
+  service (for example a decision model that answers yes/no questions over a large
+  input) while the LLM still writes the verdict and its justification. Core stays
+  vendor-neutral.
+name: validator-tool-plugins
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_validator_tool_registry
+  - 1.2_validator_tools_protocol_field
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_llm_validator_offers_plugin_tools
+  - 2.2_document_validator_tools

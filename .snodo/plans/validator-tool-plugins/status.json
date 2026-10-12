@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_validator_tool_registry": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c45c7e2055f36bcf"
+    },
+    "1.2_validator_tools_protocol_field": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0d64ecca92ff25f9"
+    },
+    "2.1_llm_validator_offers_plugin_tools": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "08f6f1a7e0a07002"
+    },
+    "2.2_document_validator_tools": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "922165534be736fc"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-tool-plugins/integration",
+    "base_sha": "b11d6c58e32b87f59a6b1e73bd5683004dad2790"
+  }
+}
