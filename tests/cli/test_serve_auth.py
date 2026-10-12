@@ -92,23 +92,6 @@ def test_mcp_server_arms_and_disarms_liveness_when_transport_exits(monkeypatch):
     assert calls == ["install", "uninstall"]
 
 
-def test_remote_unauthenticated_bind_requires_explicit_opt_in(monkeypatch, capsys):
-    from types import SimpleNamespace
-
-    protocol = SimpleNamespace(protocol_id="test", get_mode=lambda _: True)
-    monkeypatch.setattr("snodo.mcp.server.ProtocolMCPServer", lambda **_: MagicMock())
-    monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
-    monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {})
-
-    result = serve_cmd._run_server(
-        SimpleNamespace(protocol="protocol.yml", mode=None, transport="streamable-http",
-                        port=8080, host="0.0.0.0"),
-        protocol,
-    )
-    assert result == 2
-    assert "refusing to bind" in capsys.readouterr().err
-
-
 def test_tunnel_hostname_is_added_to_http_host_allowlist(monkeypatch):
     from types import SimpleNamespace
 
@@ -131,7 +114,12 @@ def test_tunnel_hostname_is_added_to_http_host_allowlist(monkeypatch):
     serve_cmd._run_server(SimpleNamespace(
         protocol="protocol.yml", mode=None, transport="streamable-http", port=8080,
     ), protocol)
+    assert mcp.settings.host == "127.0.0.1"
     assert mcp.settings.transport_security.allowed_hosts == [
         "localhost:8080", "127.0.0.1:8080", "[::1]:8080",
         "safe.tunnel.snodo.dev", "safe.tunnel.snodo.dev:8080",
+    ]
+    assert mcp.settings.transport_security.allowed_origins == [
+        "http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080",
+        "https://safe.tunnel.snodo.dev",
     ]

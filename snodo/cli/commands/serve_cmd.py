@@ -36,11 +36,11 @@ from snodo.cli.commands.serve_tunnel_config import (  # noqa: F401 - re-exported
     _select_tunnel_credential,
 )
 from snodo.cli.commands.serve_security import (
+    _TUNNEL_HOSTNAME_RE,  # noqa: F401 - re-exported for callers and tests
     configure_http_transport,
     check_cloudflared as _check_cloudflared,
     derive_project_root as _derive_project_root,
     extract_existing_hostname as _extract_existing_hostname,
-    is_loopback_host,
     provision_with_auth as _provision_with_auth,
 )
 
@@ -72,11 +72,6 @@ def register(app: typer.Typer) -> None:
         port: Optional[int] = typer.Option(
             None, "--port",
             help="Port for SSE/streamable-http transport (default: find a free one)",
-        ),
-        host: str = typer.Option("127.0.0.1", "--host", help="Address for HTTP transports"),
-        allow_unauthenticated_remote: bool = typer.Option(
-            False, "--allow-unauthenticated-remote",
-            help="Allow an unauthenticated HTTP server to bind a non-loopback address",
         ),
         tunnel: bool = typer.Option(
             False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
@@ -138,8 +133,7 @@ def register(app: typer.Typer) -> None:
     ):
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
-            protocol=protocol, mode=mode, transport=transport, port=port, host=host,
-            allow_unauthenticated_remote=allow_unauthenticated_remote,
+            protocol=protocol, mode=mode, transport=transport, port=port,
             tunnel=tunnel, verbose=verbose, auth=auth, rotate=rotate, credential=credential,
             delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
@@ -227,9 +221,6 @@ def _run_server(args, protocol) -> int:
     project_root = _derive_project_root(args.protocol)
     mode_id = args.mode
     transport = args.transport
-    host = getattr(args, "host", "127.0.0.1")
-    allow_remote = bool(getattr(args, "allow_unauthenticated_remote", False))
-    is_loopback = is_loopback_host(host)
 
     if mode_id and not protocol.get_mode(mode_id):
         available = ", ".join(m.mode_id for m in protocol.modes)
@@ -252,15 +243,6 @@ def _run_server(args, protocol) -> int:
     auth_methods = _auth_methods(
         getattr(args, "auth", None) or tunnel_config.get("auth")
     )
-    authenticated = bool(tunnel_hostname and auth_methods)
-    if transport != "stdio" and not is_loopback and not authenticated and not allow_remote:
-        print(
-            "Error: refusing to bind an unauthenticated MCP server to a non-loopback "
-            "address. Configure tunnel authentication or pass "
-            "--allow-unauthenticated-remote to opt in.",
-            file=sys.stderr,
-        )
-        return 2
     extra_kwargs = {}
     if tunnel_hostname and "oauth" in auth_methods:
         from snodo.infrastructure.jwks import JwksClient
@@ -336,7 +318,7 @@ def _run_server(args, protocol) -> int:
         if explicit_port is None and tunnel_port is not None:
             print(f"Using recorded tunnel port {port}", file=sys.stderr)
         mcp.settings.port = port
-        mcp.settings.host = host
+        mcp.settings.host = "127.0.0.1"
     else:
         port = explicit_port
         if port is not None:

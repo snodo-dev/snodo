@@ -21,8 +21,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   report write failures. (Fixes #847)
 - Reject invalid or option-like branch names supplied to MCP git tools before
   invoking Git, while preserving valid nested branch names. (Fixes #846)
-- Harden HTTP MCP serving with DNS-rebinding host allowlists, loopback-only
-  forwarded-header trust, and an explicit opt-in for unauthenticated remote binds. (Fixes #843)
+- Enable DNS-rebinding host and origin protection for HTTP MCP transports,
+  retain loopback binding, and trust forwarded headers only from local tunnel proxies. (Fixes #843)
 
 ## [0.23.3] — 2026-10-12
 

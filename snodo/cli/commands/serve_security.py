@@ -66,7 +66,14 @@ def configure_http_transport(mcp, port: int, tunnel_hostname: str | None) -> Non
     """Enable Host protection and trust forwarded headers only from local proxies."""
     os.environ["FORWARDED_ALLOW_IPS"] = "127.0.0.1,::1" if tunnel_hostname else ""
     allowed_hosts = [f"localhost:{port}", f"127.0.0.1:{port}", f"[::1]:{port}"]
+    allowed_origins = [
+        f"http://localhost:{port}",
+        f"http://127.0.0.1:{port}",
+        f"http://[::1]:{port}",
+    ]
     if tunnel_hostname:
         allowed_hosts.extend((tunnel_hostname, f"{tunnel_hostname}:{port}"))
+        allowed_origins.append(f"https://{tunnel_hostname}")
     mcp.settings.transport_security.allowed_hosts = allowed_hosts
+    mcp.settings.transport_security.allowed_origins = allowed_origins
     mcp.settings.transport_security.enable_dns_rebinding_protection = True
