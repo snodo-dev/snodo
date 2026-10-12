@@ -89,7 +89,6 @@ def register(app: typer.Typer) -> None:
         credential: Optional[str] = typer.Option(
             None, "--credential", help="Credential name to rotate when a tunnel has more than one",
         ),
-        show_secret: bool = typer.Option(False, "--show-secret", help="Display a newly issued service-token secret once"),
         delete: bool = typer.Option(
             False, "--delete", help="Deprovision and remove the managed tunnel",
         ),
@@ -136,7 +135,6 @@ def register(app: typer.Typer) -> None:
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
             tunnel=tunnel, verbose=verbose, auth=auth, rotate=rotate, credential=credential,
-            show_secret=show_secret,
             delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
             mcp_uninstall_all=mcp_uninstall_all, mcp_list=mcp_list,
@@ -1054,7 +1052,6 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     mode = resolve_serve_mode(project_root, protocol, requested_mode)
     transport = getattr(args, "transport", "streamable-http")
     rotate = getattr(args, "rotate", False)
-    show_secret = getattr(args, "show_secret", False)
     delete = getattr(args, "delete", False)
     delete_hostname = getattr(args, "hostname", None) or None
     requested_auth = getattr(args, "auth", None)
@@ -1121,11 +1118,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         _save_tunnel_config(project_root, tunnel_config)
         print(f"Rotated tunnel credential: {credential_name}")
         print(f"  Client ID: {new_client_id}")
-        if show_secret:
-            print(f"  Client secret: {new_secret}")
-            print("  Save the client secret now; it will not be shown again.")
-        else:
-            print("  Client secret is held by Cloudflare and shown only once; use --show-secret to display the new value during rotation.")
+        print(f"  Client secret: {new_secret}")
+        print("  Save the client secret now; it will not be shown again.")
         return 0
 
     # 4. Decide the port before anything is provisioned. The tunnel is told the
@@ -1291,7 +1285,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # is its URL handed to the operator.
     _warn_if_unservable_hostname(tunnel_config["hostname"])
     if newly_provisioned:
-        _print_first_run_info(tunnel_config["hostname"], auth_methods, provisioned, show_secret)
+        _print_first_run_info(tunnel_config["hostname"], auth_methods, provisioned)
     else:
         print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
         print(f"  Authentication: {', '.join(auth_methods)} (any accepted mechanism)")
@@ -1399,8 +1393,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
 
 def _print_first_run_info(hostname: str, auth_methods: Optional[list[str]] = None,
-                          credentials: Optional[dict] = None,
-                          show_secret: bool = False) -> None:
+                          credentials: Optional[dict] = None) -> None:
     """Print the first-run tunnel configuration block."""
     print()
     print("✓ Snodo MCP tunnel active")
@@ -1414,10 +1407,7 @@ def _print_first_run_info(hostname: str, auth_methods: Optional[list[str]] = Non
         print("  OAuth auth server: https://mcp-auth.snodo.dev")
     if "service-token" in auth_methods:
         print(f"  CF-Access-Client-Id: {credentials.get('client_id', '(not returned)')}")
-        if show_secret and credentials.get("client_secret"):
-            print(f"  CF-Access-Client-Secret: {credentials['client_secret']}")
-            print("  Save the service-token secret; it cannot be retrieved again.")
-        else:
-            print("  Service-token secret is held by Cloudflare and shown only once; use --show-secret during first-run setup to display it.")
+        print(f"  CF-Access-Client-Secret: {credentials.get('client_secret', '(not returned)')}")
+        print("  Save the service-token secret; it cannot be retrieved again.")
     print()
     print()
