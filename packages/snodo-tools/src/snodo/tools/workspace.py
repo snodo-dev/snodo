@@ -21,9 +21,10 @@ import threading
 # its path parts spell ``.GIT``.
 _VCS_INTERNAL_NAMES = frozenset({".git"})
 
-# The tooling's own directory stays readable even though every project
-# gitignores it (ADR 026): the protocol is context a judge is entitled to.
-_READABLE_IGNORED_DIRS = frozenset({".snodo"})
+# Protocol and plan context in .snodo remains readable (ADR 026), but runtime
+# credentials written there must never cross the workspace tool boundary.
+_READABLE_SNODO_FILES = frozenset({"protocol.yml"})
+_SNODO_CREDENTIAL_FILES = frozenset({"tunnel.json"})
 
 # Snodo's own state directory is not source a text search or symbol search
 # should scan, so a walk does not descend it.  This is snodo's own knowledge —
@@ -175,6 +176,11 @@ class WorkspaceMCP:
             ) from e
 
         self._refuse_vcs_internals(rel, path, resolved)
+        if rel.parts and rel.parts[0] == ".snodo" and rel.parts[-1] in _SNODO_CREDENTIAL_FILES:
+            operation = "written" if for_mutation else "read"
+            raise PathValidationError(
+                f"Credential file is protected .snodo state and cannot be {operation}: {path} -> {resolved}"
+            )
         if not for_mutation:
             self._refuse_derived_output(rel, path, resolved)
 
@@ -214,10 +220,15 @@ class WorkspaceMCP:
         tracks source inside an ignored-looking directory keeps it readable; a
         project that does not use git simply declares nothing.
         """
-        # .snodo/ is gitignored by every governed project but stays readable:
-        # the protocol is context a judge is entitled to (ADR 026).
-        if rel.parts and rel.parts[0] in _READABLE_IGNORED_DIRS:
-            return
+        if rel.parts and rel.parts[0] == ".snodo":
+            plan_context = len(rel.parts) > 2 and rel.parts[1] == "plans"
+            if (resolved.is_dir() or
+                    (len(rel.parts) == 2 and rel.parts[1] in _READABLE_SNODO_FILES) or
+                    (plan_context and Path(rel.parts[-1]).suffix.lower() in {".md", ".yml", ".yaml"})):
+                return
+            raise PathValidationError(
+                f"Path is protected .snodo state and is not readable: {path} -> {resolved}"
+            )
         if not self._is_git_ignored(rel):
             return
         raise PathValidationError(
@@ -469,7 +480,20 @@ class WorkspaceMCP:
                 f"Write path {path!r} escapes project root; allowed prefixes: {displayed}"
             ) from exc
 
-        if not any(relative.parts[:len(prefix)] == prefix for prefix in prefixes):
+        matching_prefixes = [
+            prefix for prefix in prefixes
+            if relative.parts[:len(prefix)] == prefix
+        ]
+        if relative.parts and relative.parts[0] == ".snodo":
+            matching_prefixes = [
+                prefix for prefix in matching_prefixes
+                if prefix and prefix[0] == ".snodo"
+            ]
+            if relative.parts[-1] in _SNODO_CREDENTIAL_FILES:
+                raise PathValidationError(
+                    f"Write path {path!r} targets protected credential file state"
+                )
+        if not matching_prefixes:
             raise PathValidationError(
                 f"Write path {path!r} is outside allowed prefixes: {displayed}"
             )

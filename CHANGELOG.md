@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Protect credential-bearing `.snodo/tunnel.json` from workspace reads and writes,
+  while confining `.snodo/` writes to explicitly configured prefixes. (Fixes #845)
 - Serialize job state updates so cancellation and reconciled terminal results
   cannot be overwritten by the wrapper finalizer. (Fixes #852)
 - Record task terminal status only after configured delivery succeeds or is refused,
