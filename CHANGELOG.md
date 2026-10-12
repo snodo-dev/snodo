@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Record task terminal status only after configured delivery succeeds or is refused,
+  leaving interrupted delivery recoverable from its running record. (Fixes #851)
 - Write job `task.json` records atomically, including locked persistence of the
   resolved task ID for retry lookup. (Fixes #850)
 - Serialize cloud sync state updates, keep cursors monotonic, and record delivered

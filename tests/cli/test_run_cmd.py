@@ -2394,6 +2394,87 @@ class TestUnmergedTaskHandling:
         task_state = json.loads(state_file.read_text())
         assert task_state["status"] == "unmerged"
 
+    @pytest.mark.parametrize(
+        ("deliver", "merge_result", "expected"),
+        [(True, (0, False, "task/branch"), "completed"), (True, (1, True, None), "unmerged"),
+         (False, None, "completed")],
+    )
+    def test_terminal_task_status_follows_delivery_outcome(
+        self, temp_project, deliver, merge_result, expected,
+    ):
+        import json
+        from snodo.cli.commands.run_cmd import _execute_task
+        from snodo.compiler.models import Mode, Protocol, Validator
+        from snodo.core.interfaces import Task
+        from snodo.engine.closure import ClosureNode
+
+        protocol = Protocol(
+            protocol_id="test", name="Test", version="1.0.0",
+            initial_mode="producer",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"])],
+            validators=[Validator(validator_id="v1", validator_type="security")],
+        )
+        task = Task(id="delivery_status", spec="Do some work")
+        args = SimpleNamespace(
+            model="mock", protocol=str(temp_project / ".snodo" / "protocol.yml"),
+            no_isolation=True, retain_worktree=False,
+        )
+        state_file = temp_project / ".snodo" / "tasks" / task.id / "state.json"
+        observed = []
+
+        def merge(*_args, **_kwargs):
+            observed.append(json.loads(state_file.read_text())["status"])
+            return merge_result
+
+        with patch("snodo.engine.closure.run_to_closure", return_value=({}, ClosureNode(
+            task_id=task.id, depth=0, outcome="resolved",
+        ))), patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)), \
+             patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")), \
+             patch("snodo.infrastructure.worktree.setup_for_task", return_value="/fake/wt"), \
+             patch("snodo.cli.commands.run_cmd._build_graph", return_value=(MagicMock(), None)), \
+             patch("snodo.cli.commands.run_cmd._report_closure", return_value=0), \
+             patch("snodo.cli.commands.run_cmd.cloud_liveness.install"), \
+             patch("snodo.cli.commands.run_cmd.cloud_liveness.uninstall"), \
+             patch("snodo.cli.commands.run_cmd._should_auto_merge", return_value=deliver), \
+             patch("snodo.cli.commands.run_cmd._merge_on_success", side_effect=merge):
+            result = _execute_task(args, protocol, task, "mock")
+
+        assert (observed == ["running"]) if deliver else not observed
+        assert json.loads(state_file.read_text())["status"] == expected
+        assert result == (2 if expected == "unmerged" else 0)
+
+    def test_crash_during_delivery_leaves_task_nonterminal(self, temp_project):
+        import json
+        from snodo.cli.commands.run_cmd import _execute_task
+        from snodo.compiler.models import Mode, Protocol, Validator
+        from snodo.core.interfaces import Task
+        from snodo.engine.closure import ClosureNode
+
+        protocol = Protocol(
+            protocol_id="test", name="Test", version="1.0.0", initial_mode="producer",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"])],
+            validators=[Validator(validator_id="v1", validator_type="security")],
+        )
+        task = Task(id="delivery_crash", spec="Do some work")
+        args = SimpleNamespace(model="mock", protocol="protocol.yml", no_isolation=True)
+        state_file = temp_project / ".snodo" / "tasks" / task.id / "state.json"
+
+        with patch("snodo.engine.closure.run_to_closure", return_value=({}, ClosureNode(
+            task_id=task.id, depth=0, outcome="resolved",
+        ))), patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)), \
+             patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")), \
+             patch("snodo.infrastructure.worktree.setup_for_task", return_value="/fake/wt"), \
+             patch("snodo.cli.commands.run_cmd._build_graph", return_value=(MagicMock(), None)), \
+             patch("snodo.cli.commands.run_cmd._report_closure", return_value=0), \
+             patch("snodo.cli.commands.run_cmd.cloud_liveness.install"), \
+             patch("snodo.cli.commands.run_cmd.cloud_liveness.uninstall"), \
+             patch("snodo.cli.commands.run_cmd._should_auto_merge", return_value=True), \
+             patch("snodo.cli.commands.run_cmd._merge_on_success", side_effect=RuntimeError("crash")):
+            with pytest.raises(RuntimeError, match="crash"):
+                _execute_task(args, protocol, task, "mock")
+
+        assert json.loads(state_file.read_text())["status"] == "running"
+
     def test_try_merge_unmerged_task_success(self, temp_project):
         """_try_merge_unmerged_task merges verified branch, removes worktree and deletes branch."""
         from git import Repo

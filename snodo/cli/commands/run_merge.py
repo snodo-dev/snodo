@@ -436,23 +436,8 @@ def _deliver_on_success(
         protocol_metadata=protocol.metadata,
         protocol=protocol,
     )
-    from snodo.cli.commands.task_record import _record_task_completion
-
     if merge_result:
-        _record_task_completion(
-            project_root, task.id, "unmerged", halt_payload,
-            protocol=protocol, model=model,
-        )
         return 2, preserve, branch
-    change_request_reference = None
-    if isinstance(branch, tuple):
-        branch, change_request_reference = branch
-    if protocol.delivery_for(mode) in {"push_branch", "change_request"} and branch:
-        _record_task_completion(
-            project_root, task.id, "completed", halt_payload,
-            protocol=protocol, model=model, delivered_branch=branch,
-            change_request_reference=change_request_reference,
-        )
     return merge_result, preserve, branch
 
 

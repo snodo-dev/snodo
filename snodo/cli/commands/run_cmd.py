@@ -1008,22 +1008,39 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         result = _report_closure(closure_tree, final_state, session_id=session_id)
 
         halt_payload = _find_terminal_halt_payload(closure_tree, final_state)
-        _record_task_completion(
-            project_root, task.id, "completed" if resolved else "failed", halt_payload,
-            protocol=protocol, model=model,
-        )
-
-        # Auto-merge on genuine completion (closure outcome "resolved").
-        if _should_auto_merge(
+        should_deliver = _should_auto_merge(
             protocol, mode, closure_tree, worktree_path_val, worktree_degraded,
             project_root=project_root, task=task,
             plan_name=worktree.task_plan_name(args),
-        ):
+        )
+        if should_deliver:
             result, preserve_worktree, merged_branch = _deliver_on_success(
                 project_root, task, result, session_id, audit_log,
                 protocol, mode, halt_payload, model, worktree.task_plan_name(args),
                 _merge_on_success,
             )
+
+        # Record the terminal task state only after delivery has determined its
+        # outcome. A crash while merging therefore leaves the start record
+        # running, which the existing liveness/recovery paths can reconcile.
+        completion_status = (
+            "unmerged" if should_deliver and result == 2
+            else "completed" if resolved
+            else "failed"
+        )
+        delivered_branch = None
+        change_request_reference = None
+        if completion_status == "completed" and isinstance(merged_branch, tuple):
+            merged_branch, change_request_reference = merged_branch
+        if completion_status == "completed" and protocol.delivery_for(mode) in {
+            "push_branch", "change_request",
+        }:
+            delivered_branch = merged_branch
+        _record_task_completion(
+            project_root, task.id, completion_status, halt_payload,
+            protocol=protocol, model=model, delivered_branch=delivered_branch,
+            change_request_reference=change_request_reference,
+        )
 
         # Preserve the worktree on non-completion (so the evidence survives) or
         # when the retain flag is set. A cleanly completed task is torn down.
