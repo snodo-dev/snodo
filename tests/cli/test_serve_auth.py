@@ -35,7 +35,7 @@ def test_provision_request_always_names_auth_set():
     assert post.call_args.kwargs["json"]["auth"] == ["oauth"]
 
 
-def test_service_token_credential_is_reported_once(capsys):
+def test_service_token_secret_is_hidden_by_default(capsys):
     serve_cmd._print_first_run_info(
         "x.tunnel.snodo.dev",
         ["oauth", "service-token"],
@@ -43,7 +43,16 @@ def test_service_token_credential_is_reported_once(capsys):
     )
     output = capsys.readouterr().out
     assert "id.access" in output
-    assert output.count("CF-Access-Client-Secret: secret") == 1
+    assert "CF-Access-Client-Secret: secret" not in output
+    assert "--show-secret" in output
+
+
+def test_service_token_secret_requires_explicit_opt_in(capsys):
+    serve_cmd._print_first_run_info(
+        "x.tunnel.snodo.dev", ["service-token"],
+        {"client_id": "id.access", "client_secret": "secret"}, True,
+    )
+    assert "CF-Access-Client-Secret: secret" in capsys.readouterr().out
 
 
 def test_help_names_values_and_any_semantics():

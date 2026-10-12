@@ -507,6 +507,8 @@ def test_tunnel_targets_the_port_it_chose(tmp_path):
 
     def fake_popen(cmd, **kwargs):
         if cmd[0] == "cloudflared":
+            captured["cloudflared_cmd"] = cmd
+            captured["cloudflared_env"] = kwargs["env"]
             return cf
         captured["mcp_cmd"] = cmd
         mcp = MagicMock()
@@ -540,6 +542,9 @@ def test_tunnel_targets_the_port_it_chose(tmp_path):
     assert isinstance(chosen, int)
     assert captured["mcp_cmd"][captured["mcp_cmd"].index("--port") + 1] == str(chosen)
     assert "--verbose" in captured["mcp_cmd"]
+    assert "tok" not in captured["cloudflared_cmd"]
+    assert "--token" not in captured["cloudflared_cmd"]
+    assert captured["cloudflared_env"]["TUNNEL_TOKEN"] == "tok"
     assert f"using free port {chosen}" in err.getvalue()
 
 
