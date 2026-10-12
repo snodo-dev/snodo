@@ -1,0 +1,11 @@
+intent: A snodo user can install a TypeSafe plugin and opt an LLM validator into a
+  `decide` tool. Through it the validator asks Jev typed questions (yes/no, choice,
+  score) over the diff, the spec or named files, and gets calibrated probabilities
+  back to cite in its own justification.
+name: typesafe-decide-tool
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_typesafe_decide_tool_package
+  - 1.2_typesafe_decide_docs

@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_typesafe_decide_tool_package": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f35a362618b75f45"
+    },
+    "1.2_typesafe_decide_docs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8bbf3101f37fdd6e"
+    }
+  },
+  "integration": {
+    "branch": "plan/typesafe-decide-tool/integration",
+    "base_sha": "e50656e8400891b17e0179cf33a27779baf73fc8"
+  }
+}
