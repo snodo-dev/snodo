@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Write job `task.json` records atomically, including locked persistence of the
+  resolved task ID for retry lookup. (Fixes #850)
 - Serialize cloud sync state updates, keep cursors monotonic, and record delivered
   session and project progress together. (Fixes #848)
 - Update hand-completed task state through the locked atomic JSON writer and

@@ -251,6 +251,19 @@ class TestSubmit:
         assert task["description"] == "Test task description"
         assert task["mock"] is True
 
+    @patch("snodo.jobs.runner.spawn_background", return_value=99999)
+    def test_submit_writes_task_json_atomically(
+        self, _spawn, manager, sample_task_args,
+    ):
+        from snodo.infrastructure.atomic_json import atomic_write_json
+
+        with patch("snodo.jobs.atomic_write_json", wraps=atomic_write_json) as write_json:
+            manager.submit(sample_task_args)
+
+        task_calls = [call for call in write_json.call_args_list
+                      if call.args[0].name == "task.json"]
+        assert len(task_calls) == 2
+
     @patch("snodo.jobs.runner.spawn_background")
     def test_submit_state_is_running(self, mock_spawn, manager, sample_task_args):
         """After submit, state should be running with PID."""

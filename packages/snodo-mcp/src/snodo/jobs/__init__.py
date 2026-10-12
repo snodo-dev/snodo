@@ -305,8 +305,7 @@ class JobManager:
 
         # Write task.json
         task_path = job_dir / "task.json"
-        with open(task_path, "w") as f:
-            json.dump(task_args, f, indent=2)
+        atomic_write_json(task_path, task_args)
 
         # Write initial state.json
         state = {
@@ -343,8 +342,7 @@ class JobManager:
                     plan_name=task_args.get("task_plan"),
                 ))
                 task_args["worktree_path"] = wt_path
-                with open(task_path, "w") as f:
-                    json.dump(task_args, f, indent=2)
+                atomic_write_json(task_path, task_args)
             except Exception as e:
                 state["status"] = "failed"
                 state["exit_code"] = 1

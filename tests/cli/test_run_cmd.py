@@ -2327,6 +2327,25 @@ class TestResolveSessionProjectAnnounced:
         assert announced_events[0][1]["display_name"] == Path(temp_project).name
 
 
+def test_persist_job_task_id_uses_locked_atomic_update(tmp_path):
+    from snodo.cli.commands.run_cmd import _persist_job_task_id
+    from snodo.infrastructure.state import atomic_update_json
+
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    path = job_dir / "task.json"
+    path.write_text('{"description": "retryable"}\n')
+
+    with patch("snodo.infrastructure.state.atomic_update_json", wraps=atomic_update_json) as update:
+        _persist_job_task_id(job_dir, "task_retry")
+
+    update.assert_called_once()
+    assert update.call_args.args[:2] == (job_dir, "task.json")
+    assert json.loads(path.read_text()) == {
+        "description": "retryable", "task_id": "task_retry",
+    }
+
+
 class TestUnmergedTaskHandling:
     """Tests for distinguishing unmerged tasks from failures and fast-path merge retry (Fixes #228)."""
 
