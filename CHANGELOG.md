@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Reject invalid or option-like branch names supplied to MCP git tools before
+  invoking Git, while preserving valid nested branch names. (Fixes #846)
+
 ## [0.23.3] — 2026-10-12
 
 - Document how to install and configure the TypeSafe Jev `decide` validator

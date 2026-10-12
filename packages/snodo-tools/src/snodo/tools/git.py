@@ -291,6 +291,15 @@ class GitMCP:
 
         return resolved
 
+    def _validate_branch_name(self, name: str) -> None:
+        """Reject branch names that are options or invalid Git branch refs."""
+        if not name or name.startswith("-"):
+            raise GitError(f"Invalid branch name: {name!r}")
+        try:
+            self.repo.git.check_ref_format("--branch", name)
+        except GitCommandError as e:
+            raise GitError(f"Invalid branch name: {name!r}") from e
+
     def create_branch(self, name: str) -> str:
         """Create a new git branch.
 
@@ -300,6 +309,7 @@ class GitMCP:
         Returns:
             Command output
         """
+        self._validate_branch_name(name)
         try:
             return self.repo.git.checkout("-b", name)
         except GitCommandError as e:
@@ -317,6 +327,7 @@ class GitMCP:
         Raises:
             GitError: If branch does not exist or checkout fails
         """
+        self._validate_branch_name(name)
         try:
             return self.repo.git.checkout(name)
         except GitCommandError as e:
@@ -378,7 +389,9 @@ class GitMCP:
         Returns:
             Command output
         """
+        self._validate_branch_name(branch)
         base = base or resolve_base_branch(self.project_root)
+        self._validate_branch_name(base)
         merge_repo = self.repo
         # A branch checked out in a linked worktree cannot be checked out in
         # this repository's worktree. Locate the registered checkout via Git
@@ -413,7 +426,7 @@ class GitMCP:
                 raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
         try:
-            return merge_repo.git.merge(branch)
+            return merge_repo.git.merge("--", branch)
         except GitCommandError as e:
             stderr = e.stderr.strip() if e.stderr else str(e)
             if _has_merge_conflict(merge_repo):
@@ -466,8 +479,9 @@ class GitMCP:
         Returns:
             Command output
         """
+        self._validate_branch_name(branch)
         try:
-            return self.repo.git.branch("-d", branch)
+            return self.repo.git.branch("-d", "--", branch)
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 

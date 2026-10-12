@@ -187,6 +187,29 @@ def test_create_branch_already_exists_raises(temp_git_repo):
         git_mcp.create_branch("existing")
 
 
+@pytest.mark.parametrize("name", ["--upload-pack=x", "-d", "a..b"])
+@pytest.mark.parametrize("operation", ["create_branch", "merge_branch", "delete_branch"])
+def test_branch_operations_reject_invalid_names_before_git_mutation(temp_git_repo, name, operation):
+    git_mcp, _ = temp_git_repo
+    original_branch = git_mcp.repo.active_branch.name
+    original_branches = {head.name for head in git_mcp.repo.heads}
+
+    with pytest.raises(GitError, match="Invalid branch name"):
+        getattr(git_mcp, operation)(name)
+
+    assert git_mcp.repo.active_branch.name == original_branch
+    assert {head.name for head in git_mcp.repo.heads} == original_branches
+
+
+def test_create_nested_task_branch(temp_git_repo):
+    git_mcp, _ = temp_git_repo
+    name = "task/plan-1/task-2/implementation"
+
+    git_mcp.create_branch(name)
+
+    assert git_mcp.repo.active_branch.name == name
+
+
 # ========== STAGE FILES TESTS ==========
 
 def test_stage_files(temp_git_repo):
