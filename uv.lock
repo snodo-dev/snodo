@@ -23,6 +23,7 @@ members = [
     "snodo-provider-github",
     "snodo-provider-gitlab",
     "snodo-tools",
+    "snodo-validator-tool-jev",
 ]
 
 [[package]]
@@ -4210,6 +4211,7 @@ dev = [
     { name = "radon" },
     { name = "scipy" },
     { name = "snodo-provider-gitlab" },
+    { name = "snodo-validator-tool-jev" },
     { name = "swebench" },
 ]
 
@@ -4262,6 +4264,7 @@ dev = [
     { name = "radon", specifier = ">=6.0.1" },
     { name = "scipy", specifier = ">=1.13" },
     { name = "snodo-provider-gitlab", editable = "packages/snodo-provider-gitlab" },
+    { name = "snodo-validator-tool-jev", editable = "packages/snodo-validator-tool-jev" },
     { name = "swebench", specifier = ">=4.0.0" },
 ]
 
@@ -4412,6 +4415,21 @@ dependencies = [
 requires-dist = [
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "snodo-core", editable = "packages/snodo-core" },
+]
+
+[[package]]
+name = "snodo-validator-tool-jev"
+version = "0.23.2"
+source = { editable = "packages/snodo-validator-tool-jev" }
+dependencies = [
+    { name = "httpx" },
+    { name = "snodo-engine" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "snodo-engine", editable = "packages/snodo-engine" },
 ]
 
 [[package]]

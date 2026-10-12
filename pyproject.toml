@@ -13,6 +13,7 @@ snodo-engine = { workspace = true }
 snodo-mcp = { workspace = true }
 snodo-provider-github = { workspace = true }
 snodo-provider-gitlab = { workspace = true }
+snodo-validator-tool-jev = { workspace = true }
 
 [project]
 name = "snodo"
@@ -111,6 +112,7 @@ filterwarnings = [
 
 [dependency-groups]
 dev = [
+    "snodo-validator-tool-jev==0.23.2",
     "snodo-provider-gitlab==0.23.2",
     "datasets==5.0.1",  # 5.0.0 and earlier: PYSEC-2026-3716, path traversal in folder-based builders
     "genbadge[coverage]==1.1.3",

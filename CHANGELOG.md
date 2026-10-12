@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add the installable TypeSafe Jev `decide` validator tool plugin for typed
+  questions over task diffs, specs, and workspace files. (Fixes #840)
 - Document validator-tool plugins and add a runnable diff line-count example with
   entry-point discovery coverage. (Fixes #839)
 - Offer opted-in validator plugin tools to LLM validators and return their

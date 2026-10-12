@@ -44,6 +44,7 @@ CLI/TUI package.
 | **snodo-mcp** | MCP server surface for external agents | `server.py`, `decision_handlers.py`, planner, PR, recon, jobs |
 | **snodo-provider-github** | GitHub code-host integration | GitHub provider implementation |
 | **snodo-provider-gitlab** | GitLab code-host integration | GitLab provider implementation |
+| **snodo-validator-tool-jev** | Optional TypeSafe Jev decision-model tool for opted-in LLM validators | `decide` validator tool plugin |
 
 Two persistent stores, both user-global under `SNODO_HOME` (not per-project — task
 execution may run inside a git worktree, so project-relative state would fragment):
