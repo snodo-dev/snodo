@@ -242,6 +242,7 @@ class Validator(BaseModel):
     )
     validator_tools: List[Union[str, ValidatorToolConfig]] = Field(
         default_factory=list,
+        exclude_if=lambda value: not value,
         description=(
             "Optional plugin-provided tools available to this LLM validator. "
             "Entries are tool names or mappings with name and options."
