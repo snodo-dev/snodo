@@ -1,0 +1,35 @@
+intent: 'Close the concrete security and state-integrity gaps found by the hardening
+  recons (rec_f3ade8, rec_f8c7a8, rec_30f4e0):
+
+  - the HTTP transport is safe on a laptop;
+
+  - secrets under .snodo can''t be read or written through workspace tools;
+
+  - branch names can''t inject git options;
+
+  - state files are written atomically and under lock;
+
+  - a task''s completion is recorded only once its delivery outcome is known.'
+name: hardening-oct
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.3_branch_names_cannot_inject_git_options
+  - 1.4_task_complete_writes_atomically
+  - 1.5_cloud_sync_state_locked
+  - 1.7_job_task_json_atomic
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.2_completion_recorded_after_delivery
+  - 2.3_cancel_not_overwritten
+  - 2.4_http_transport_rebinding
+  - 2.5_snodo_credentials_not_readable
+  - 2.6_planner_writes_atomically
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_tunnel_secrets_stay_put

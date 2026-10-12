@@ -1,0 +1,68 @@
+{
+  "tasks": {
+    "1.3_branch_names_cannot_inject_git_options": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e166c44a9ec88c63"
+    },
+    "1.4_task_complete_writes_atomically": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0f8b06b2f2b1c98a"
+    },
+    "1.5_cloud_sync_state_locked": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "69fae3664d055b17"
+    },
+    "1.7_job_task_json_atomic": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a077e744756839a9"
+    },
+    "2.2_completion_recorded_after_delivery": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0b79383820a65719"
+    },
+    "2.3_cancel_not_overwritten": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "be42e7b78adbbf22"
+    },
+    "2.4_http_transport_rebinding": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0580afaf7a8e244b"
+    },
+    "2.5_snodo_credentials_not_readable": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c6c33f797508e7af"
+    },
+    "2.6_planner_writes_atomically": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3539aeed249be9bd"
+    },
+    "3.1_tunnel_secrets_stay_put": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d2e7a77ef67a8a9f"
+    }
+  },
+  "integration": {
+    "branch": "plan/hardening-oct/integration",
+    "base_sha": "7f0d7e254c61cdf56d95bd5d8d89f04134caa4fa"
+  }
+}
