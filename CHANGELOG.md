@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a vendor-neutral `snodo.validator_tools` plugin registry with a documented
+  schema, handler, and read-only validator context contract. (Fixes #836)
+
 ## [0.23.2] — 2026-10-11
 
 - Include subprocess coder output tails when identifying the issue for fallback
