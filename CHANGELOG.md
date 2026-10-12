@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Serialize cloud sync state updates, keep cursors monotonic, and record delivered
+  session and project progress together. (Fixes #848)
 - Update hand-completed task state through the locked atomic JSON writer and
   report write failures. (Fixes #847)
 - Reject invalid or option-like branch names supplied to MCP git tools before

@@ -456,6 +456,43 @@ class TestCloudSyncState:
         state.advance_cursor("sess_1", 25)
         assert state.get_cursor("sess_1") == 25
 
+        state.advance_cursor("sess_1", 12)
+        assert state.get_cursor("sess_1") == 25
+
+    def test_concurrent_cursor_advances_keep_highest_value(self, tmp_path):
+        from concurrent.futures import ThreadPoolExecutor
+        from snodo.infrastructure.cloud_sync import CloudSyncState
+
+        path = tmp_path / "cloud_sync.json"
+        state = CloudSyncState(path)
+        values = list(range(1, 101))
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            list(pool.map(lambda value: state.advance_cursor("session", value), values))
+
+        assert CloudSyncState(path).get_cursor("session") == max(values)
+
+    def test_delivery_state_is_updated_with_one_locked_write(self, tmp_path, monkeypatch):
+        from snodo.infrastructure import cloud_sync
+
+        state = cloud_sync.CloudSyncState(tmp_path / "cloud_sync.json")
+        calls = []
+        original = cloud_sync.atomic_update_json
+
+        def counted(*args, **kwargs):
+            calls.append(args[1])
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(cloud_sync, "atomic_update_json", counted)
+        state.record_refusal("session", "temporary", status_code=429)
+        calls.clear()
+        state.update_delivery("session", 17, "project-id")
+
+        assert calls == ["cloud_sync.json"]
+        summary = state.get_summary()
+        assert summary["session"]["last_synced_sequence"] == 17
+        assert summary["session"]["refused"] is False
+        assert summary["project:project-id"]["last_synced_sequence"] == 17
+
     def test_get_summary(self, tmp_path):
         from snodo.infrastructure.cloud_sync import CloudSyncState
         path = tmp_path / "cloud_sync.json"
@@ -790,7 +827,7 @@ class TestCloudSyncDispatcher:
             return "delivered", "HTTP 200", 200
 
         with patch.object(CloudSyncState, "get_cursor", return_value=0):
-            with patch.object(CloudSyncState, "advance_cursor") as advance:
+            with patch.object(CloudSyncState, "update_delivery") as advance:
                 with patch.object(dispatcher, "_post_batch", side_effect=response_for) as post:
                     result = dispatcher.sync(
                         "sess_413", "/proj", audit_log,
@@ -1224,7 +1261,7 @@ class TestCloudSyncDispatcher:
         dispatcher = CloudSyncDispatcher()
         with (
             patch.object(CloudSyncState, "get_cursor", return_value=0),
-            patch.object(CloudSyncState, "advance_cursor") as advance,
+            patch.object(CloudSyncState, "update_delivery") as advance,
             patch.object(CloudSyncState, "record_attempt"),
             patch("snodo.infrastructure.cloud_lease.get_admission_lease", return_value=lease),
             patch("httpx.post", side_effect=accepted) as post,
@@ -1241,7 +1278,7 @@ class TestCloudSyncDispatcher:
         assert captured[0]["previous_hash"] == events[0].previous_hash
         assert captured[0]["data"] == events[0].data
         assert post.call_count == 1
-        advance.assert_called_once_with("sess_v5", 1)
+        advance.assert_called_once_with("sess_v5", 1, "")
 
     def test_v5_payload_keeps_only_the_unchanged_compatible_prefix(self):
         from snodo.infrastructure.cloud_sync import _payload_for_events, _v5_payload
@@ -1331,7 +1368,7 @@ class TestCloudSyncDispatcher:
         cursor = {"value": 0}
         with (
             patch.object(CloudSyncState, "get_cursor", side_effect=lambda _sid: cursor["value"]),
-            patch.object(CloudSyncState, "advance_cursor", side_effect=lambda _sid, seq: cursor.update(value=seq)),
+            patch.object(CloudSyncState, "update_delivery", side_effect=lambda _sid, seq, *_: cursor.update(value=seq)),
             patch.object(CloudSyncState, "record_attempt"),
             patch("snodo.infrastructure.cloud_lease.get_admission_lease", side_effect=lease_for_request),
             patch("httpx.post", side_effect=accepted),

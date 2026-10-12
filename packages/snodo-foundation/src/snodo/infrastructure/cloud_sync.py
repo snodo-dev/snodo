@@ -24,7 +24,7 @@ from pydantic import (
     field_validator,
 )
 
-from snodo.infrastructure.atomic_json import atomic_write_json
+from snodo.infrastructure.state import atomic_update_json
 from snodo.infrastructure.cloud_delivery import cloud_delivery_skip_reason
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
@@ -611,8 +611,8 @@ class CloudSyncState:
         except (json.JSONDecodeError, OSError):
             return {}
 
-    def _save(self, data: dict) -> None:
-        atomic_write_json(self._path, data, trailing_newline=True)
+    def _update(self, updater: Any) -> None:
+        atomic_update_json(self._path.parent, self._path.name, updater, strict=True)
 
     def get_cursor(self, session_id: str) -> int:
         """Return last_synced_sequence for *session_id* (0 if never synced)."""
@@ -638,11 +638,14 @@ class CloudSyncState:
         recorded error, so ``cloud status`` reflects a healthy session
         (Fixes #141, #142).
         """
-        data = self._load()
+        self.update_delivery(session_id, sequence)
+
+    @staticmethod
+    def _advance_in_data(data: dict, session_id: str, sequence: int) -> None:
         if session_id not in data or not isinstance(data.get(session_id), dict):
             data[session_id] = {}
         sess = data[session_id]
-        sess["last_synced_sequence"] = sequence
+        sess["last_synced_sequence"] = max(sess.get("last_synced_sequence", 0), sequence)
         sess["last_synced_at"] = time.time()
         sess["refused"] = False
         sess.pop("refused_reason", None)
@@ -651,7 +654,17 @@ class CloudSyncState:
         sess.pop("refused_status_code", None)
         sess["pending_count"] = 0
         sess.pop("last_error", None)
-        self._save(data)
+
+    def update_delivery(
+        self, session_id: str, sequence: int, project_id: str = "",
+    ) -> None:
+        """Record a delivered batch and its project cursor in one locked update."""
+        def update(data: dict) -> None:
+            self._advance_in_data(data, session_id, sequence)
+            if project_id and not session_id.startswith("project:"):
+                self._advance_in_data(data, self.project_cursor_id(project_id), sequence)
+
+        self._update(update)
 
     def advance_project_cursor(self, project_id: str, sequence: int) -> None:
         """Advance the project-wide cursor after confirmed chain delivery."""
@@ -667,29 +680,29 @@ class CloudSyncState:
         what went wrong (if it failed) so ``cloud status`` can answer "is my
         audit trail actually reaching the cloud?".
         """
-        data = self._load()
-        if session_id not in data or not isinstance(data.get(session_id), dict):
-            data[session_id] = {}
-        data[session_id]["pending_count"] = pending
-        data[session_id]["last_attempt_at"] = time.time()
-        if error is not None:
-            data[session_id]["last_error"] = error
-        self._save(data)
+        def update(data: dict) -> None:
+            if session_id not in data or not isinstance(data.get(session_id), dict):
+                data[session_id] = {}
+            data[session_id]["pending_count"] = pending
+            data[session_id]["last_attempt_at"] = time.time()
+            if error is not None:
+                data[session_id]["last_error"] = error
+        self._update(update)
 
     def record_liveness_push(self, session_id: str, error: Optional[str] = None) -> None:
         """Record the most recent liveness attempt, independently of audit sync."""
-        data = self._load()
-        if session_id not in data or not isinstance(data.get(session_id), dict):
-            data[session_id] = {}
-        sess = data[session_id]
-        sess["last_liveness_push_at"] = time.time()
-        if error is None:
-            sess.pop("last_liveness_error", None)
-            sess.pop("liveness_failure_count", None)
-        else:
-            sess["last_liveness_error"] = error
-            sess["liveness_failure_count"] = sess.get("liveness_failure_count", 0) + 1
-        self._save(data)
+        def update(data: dict) -> None:
+            if session_id not in data or not isinstance(data.get(session_id), dict):
+                data[session_id] = {}
+            sess = data[session_id]
+            sess["last_liveness_push_at"] = time.time()
+            if error is None:
+                sess.pop("last_liveness_error", None)
+                sess.pop("liveness_failure_count", None)
+            else:
+                sess["last_liveness_error"] = error
+                sess["liveness_failure_count"] = sess.get("liveness_failure_count", 0) + 1
+        self._update(update)
 
     def record_refusal(
         self,
@@ -700,32 +713,32 @@ class CloudSyncState:
         status_code: Optional[int] = None,
     ) -> None:
         """Record that a batch or admission for *session_id* was refused by the cloud server."""
-        data = self._load()
-        if session_id not in data or not isinstance(data.get(session_id), dict):
-            data[session_id] = {}
-        sess = data[session_id]
-        sess["refused"] = True
-        sess["refused_reason"] = reason
-        if first_seq is not None and last_seq is not None:
-            sess["refused_range"] = [first_seq, last_seq]
-        else:
-            sess.pop("refused_range", None)
-        sess["refused_at"] = time.time()
-        if status_code is not None:
-            sess["refused_status_code"] = status_code
-        self._save(data)
+        def update(data: dict) -> None:
+            if session_id not in data or not isinstance(data.get(session_id), dict):
+                data[session_id] = {}
+            sess = data[session_id]
+            sess["refused"] = True
+            sess["refused_reason"] = reason
+            if first_seq is not None and last_seq is not None:
+                sess["refused_range"] = [first_seq, last_seq]
+            else:
+                sess.pop("refused_range", None)
+            sess["refused_at"] = time.time()
+            if status_code is not None:
+                sess["refused_status_code"] = status_code
+        self._update(update)
 
     def clear_refusal(self, session_id: str) -> None:
         """Clear refused status for *session_id*."""
-        data = self._load()
-        if session_id in data and isinstance(data[session_id], dict):
-            sess = data[session_id]
-            sess["refused"] = False
-            sess.pop("refused_reason", None)
-            sess.pop("refused_range", None)
-            sess.pop("refused_at", None)
-            sess.pop("refused_status_code", None)
-        self._save(data)
+        def update(data: dict) -> None:
+            if session_id in data and isinstance(data[session_id], dict):
+                sess = data[session_id]
+                sess["refused"] = False
+                sess.pop("refused_reason", None)
+                sess.pop("refused_range", None)
+                sess.pop("refused_at", None)
+                sess.pop("refused_status_code", None)
+        self._update(update)
 
     def is_refused(self, session_id: str) -> bool:
         """Return True only for a refusal under the current terminal rules.
@@ -891,10 +904,7 @@ class CloudSyncDispatcher:
             )
 
             if outcome == "delivered":
-                state.clear_refusal(session_id)
-                state.advance_cursor(session_id, max_seq)
-                if project_id and not session_id.startswith("project:"):
-                    state.advance_project_cursor(project_id, max_seq)
+                state.update_delivery(session_id, max_seq, project_id)
                 _logger.debug("Cursor advanced to sequence %d", max_seq)
                 synced += len(batch)
                 from snodo.infrastructure.cloud_sync_output import batch_progress
