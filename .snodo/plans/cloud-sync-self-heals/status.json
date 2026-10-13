@@ -19,7 +19,7 @@
       "spec_hash": "b4fc2df77496fb7e"
     },
     "2.1_backlog_drains_automatically": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "32fe74900a7e92a9"
