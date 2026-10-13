@@ -104,6 +104,25 @@ def test_ready_cmd_human_output(git_project: Path, capsys):
     assert "docs/decisions" in captured.out
 
 
+def test_ready_reports_local_cloud_sync_issue(git_project: Path, capsys, monkeypatch):
+    notice = "Cloud sync needs attention: session-a (1456 unsent, refused). Run `snodo cloud sync --all --force`."
+    monkeypatch.setattr("snodo.cli.commands.cloud_status.sync_issue_notice", lambda: notice)
+    assert ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=True)) == 0
+    data = json.loads(capsys.readouterr().out)
+    finding = next(f for f in data["findings"] if f["id"] == "cloud_sync_attention")
+    assert finding["severity"] == "warn"
+    assert "session-a" in finding["finding"]
+    assert "1456" in finding["finding"]
+    assert "snodo cloud sync --all --force" in finding["remediation"]
+
+
+def test_ready_omits_cloud_sync_finding_when_clean(git_project: Path, capsys, monkeypatch):
+    monkeypatch.setattr("snodo.cli.commands.cloud_status.sync_issue_notice", lambda: None)
+    assert ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=True)) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert not any(f["id"] == "cloud_sync_attention" for f in data["findings"])
+
+
 @pytest.mark.parametrize("coder_subprocess", [True, False])
 def test_ready_audit_path_in_coder_subprocess(git_project, monkeypatch, coder_subprocess):
     """Coder self-checks keep audit activity out of the project .snodo tree."""

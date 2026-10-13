@@ -335,6 +335,10 @@ def _run_server(args, protocol) -> int:
     )
     from snodo.version import __version__
     print(f"  snodo version: {__version__}", file=sys.stderr)
+    from snodo.cli.commands.cloud_status import sync_issue_notice
+    notice = sync_issue_notice()
+    if notice:
+        print(f"  ⚠ {notice}", file=sys.stderr)
 
     if transport != "stdio" and not tunnel_hostname:
         print()

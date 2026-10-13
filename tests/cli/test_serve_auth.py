@@ -92,6 +92,29 @@ def test_mcp_server_arms_and_disarms_liveness_when_transport_exits(monkeypatch):
     assert calls == ["install", "uninstall"]
 
 
+def test_serve_startup_prints_local_cloud_sync_notice(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    server = MagicMock()
+    server.get_tools.return_value = []
+    mcp = MagicMock()
+    mcp.settings = SimpleNamespace()
+    protocol = SimpleNamespace(protocol_id="test", get_mode=lambda _: True)
+    monkeypatch.setattr("snodo.mcp.server.ProtocolMCPServer", lambda **_: server)
+    monkeypatch.setattr("snodo.mcp.transport.build_fastmcp_server", lambda *_a, **_k: mcp)
+    monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
+    monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {})
+    monkeypatch.setattr("snodo.cli.commands.cloud_status.sync_issue_notice", lambda: "Cloud sync needs attention: old-session (1456 unsent, refused). Run `snodo cloud sync --all --force`.")
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.install", lambda: None)
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.uninstall", lambda: None)
+
+    serve_cmd._run_server(
+        SimpleNamespace(protocol="protocol.yml", mode=None, transport="stdio", port=None),
+        protocol,
+    )
+    assert "old-session (1456 unsent, refused)" in capsys.readouterr().err
+
+
 def test_tunnel_hostname_is_added_to_http_host_allowlist(monkeypatch):
     from types import SimpleNamespace
 

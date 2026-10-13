@@ -2,6 +2,48 @@
 
 from pathlib import Path
 
+UNSENT_NOTICE_THRESHOLD = 10
+
+
+def local_sync_issues() -> list[tuple[str, int, bool]]:
+    """Return locally known refused or substantially backlogged sessions.
+
+    Each entry is ``(session_id, unsent_count, refused)``. This is a local-only
+    check and intentionally avoids credential resolution and network access.
+    """
+    from snodo.config import ConfigManager
+    from snodo.infrastructure.cloud_sync import CloudSyncState
+
+    config = ConfigManager().load()
+    cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
+    if not cloud.get("sync_enabled", False):
+        return []
+
+    state = CloudSyncState()
+    summary = state.get_summary()
+    counts = local_unsent_counts(summary)
+    issues = []
+    for session_id, info in summary.items():
+        if not session_id or session_id.startswith("project:"):
+            continue
+        unsent = counts.get(session_id, (0, 0))[0]
+        refused = state.is_refused(session_id)
+        if refused or unsent > UNSENT_NOTICE_THRESHOLD:
+            issues.append((session_id, unsent, refused))
+    return issues
+
+
+def sync_issue_notice() -> str | None:
+    """Format the operator-facing notice for local sync issues."""
+    issues = local_sync_issues()
+    if not issues:
+        return None
+    sessions = ", ".join(
+        f"{session_id} ({count} unsent{', refused' if refused else ''})"
+        for session_id, count, refused in issues
+    )
+    return f"Cloud sync needs attention: {sessions}. Run `snodo cloud sync --all --force`."
+
 
 def local_unsent_counts(summary: dict) -> dict[str, tuple[int, int]]:
     """Return ``key -> (unsent event count, local chain head)`` for this project.

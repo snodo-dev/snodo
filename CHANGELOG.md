@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Surface refused cloud sessions and substantial local sync backlogs in `snodo ready`
+  and `snodo serve` startup, with a recovery command. (Fixes #856)
 - Keep single-event cloud size gaps visible without blocking later automatic audit
   syncs or liveness pushes. (Fixes #855)
 - Cap oversized audit string fields before hashing and persistence, keeping every

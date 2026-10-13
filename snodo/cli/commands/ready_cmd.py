@@ -120,6 +120,7 @@ def ready_command(args) -> int:
     _append_template_drift_finding(assessment, protocol)
     _append_mcp_install_findings(assessment)
     _append_provider_findings(assessment, project_root, protocol)
+    _append_cloud_sync_finding(assessment)
     extension_status = _extension_plugin_status()
     protocol_warnings = unknown_capability_warnings(protocol)
 
@@ -273,6 +274,21 @@ def _append_template_drift_finding(assessment, protocol) -> None:
         remediation="Run 'snodo protocol diff' to inspect the full comparison and decide which changes to adopt.",
         fix_cost=1,
     ))
+
+
+def _append_cloud_sync_finding(assessment) -> None:
+    """Add an unscored workstation finding for locally stuck cloud sync."""
+    from snodo.cli.commands.cloud_status import sync_issue_notice
+    from snodo.readiness.models import FindingSeverity, ReadinessFinding, ReadinessKind
+
+    notice = sync_issue_notice()
+    if notice:
+        assessment.workstation_findings.append(ReadinessFinding(
+            id="cloud_sync_attention", kind=ReadinessKind.WORKSTATION,
+            severity=FindingSeverity.WARN, modes=["all"],
+            description=notice, remediation="Run `snodo cloud sync --all --force`.",
+            fix_cost=1,
+        ))
 
 
 def _append_mcp_install_findings(assessment) -> None:
