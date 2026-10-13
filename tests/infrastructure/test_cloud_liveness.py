@@ -1190,11 +1190,11 @@ class TestTerminalRefusal:
         assert len(posts.calls) == 1
 
     def test_authentication_failure_stops_later_liveness_pushes(self, tmp_path):
-        """A terminal 401 is persisted and prevents a later POST."""
+        """A legacy 401 refusal no longer prevents a later liveness POST."""
         from snodo.infrastructure.cloud_sync import CloudSyncState
 
         snap = {"session_id": "sess_auth_1"}
-        refused = type("R", (), {"status_code": 401, "text": "revoked"})()
+        refused = type("R", (), {"status_code": 403, "text": "revoked"})()
 
         with patch.object(cloud_liveness, "resolve_home", lambda: tmp_path), \
                 patch("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path):
@@ -1202,7 +1202,7 @@ class TestTerminalRefusal:
                 cloud_liveness._post_snapshot(snap)
                 cloud_liveness._post_snapshot(snap)
 
-            assert put.call_count == 2
+            assert put.call_count == 1
             assert CloudSyncState(tmp_path / "cloud_sync.json").is_refused("sess_auth_1")
 
     def test_terminal_refusal_survives_restart(self, tmp_path):

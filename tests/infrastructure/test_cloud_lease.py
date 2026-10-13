@@ -34,6 +34,37 @@ def clean_lease_state(tmp_path):
 
 
 class TestCloudAdmission:
+    def test_failed_oauth_refresh_backs_off_and_later_credentials_recover(self, capsys):
+        from snodo.infrastructure.cloud_lease import get_admission_lease
+
+        response = MagicMock(spec=httpx.Response)
+        response.status_code = 401
+        response.text = "unauthorized"
+        success = MagicMock(spec=httpx.Response)
+        success.status_code = 200
+        success.json.return_value = {"jti": "recovered", "token": "lease-token"}
+        with patch("httpx.post", side_effect=[response, success]) as post, patch(
+            "snodo.infrastructure.cloud_credentials.safe_cloud_sync_credential",
+            return_value=(None, True),
+        ):
+            assert get_admission_lease(
+                "expired", "https://app.test", session_id="sess_oauth",
+                oauth=True, config={"cloud": {}},
+            ) is None
+            state = CloudSyncState()
+            assert not state.is_refused("sess_oauth")
+            post.assert_called_once()
+            assert "run `snodo cloud login` again" in capsys.readouterr().err
+
+            # After backoff, a newly available credential can mint normally.
+            from snodo.infrastructure import cloud_lease
+            with patch.object(cloud_lease.time, "monotonic", return_value=cloud_lease._quiet_until + 1):
+                lease = get_admission_lease(
+                    "working", "https://app.test", session_id="sess_oauth",
+                )
+            assert lease is not None and lease.lease_id == "recovered"
+            assert post.call_count == 2
+
     def test_session_mint_routes_do_not_reuse_another_sessions_lease(self):
         from snodo.infrastructure.cloud_lease import get_admission_lease
 
@@ -114,7 +145,7 @@ class TestCloudAdmission:
             "https://app.test/i/new",
         ]
 
-    def test_replacement_rejection_latches_and_stops(self, tmp_path):
+    def test_replacement_401_does_not_latch_session_refusal(self, tmp_path):
         exchanges = []
         sends = []
 
@@ -146,9 +177,9 @@ class TestCloudAdmission:
         with patch("httpx.post", side_effect=post):
             assert _post_snapshot(snapshot, config=config)[0] is False
             assert _post_snapshot(snapshot, config=config)[0] is False
-        assert len(exchanges) == 2
-        assert len(sends) == 2
-        assert CloudSyncState().is_refused("sess_stop")
+        assert len(exchanges) == 3
+        assert len(sends) == 4
+        assert not CloudSyncState().is_refused("sess_stop")
 
     def test_sending_without_lease_performs_exchange_first(self, tmp_path):
         """Sending without a lease performs the exchange first and uses the path containing lease_id."""
@@ -275,7 +306,7 @@ class TestCloudAdmission:
         def mock_post(url, **kwargs):
             calls.append(str(url))
             resp = MagicMock(spec=httpx.Response)
-            resp.status_code = 401
+            resp.status_code = 403
             resp.text = "Unauthorized: API key revoked"
             return resp
 

@@ -758,7 +758,7 @@ class CloudSyncState:
         if not isinstance(sess, dict) or not sess.get("refused"):
             return False
         status = sess.get("refused_status_code")
-        return status is None or isinstance(status, int) and 400 <= status < 500 and status not in (404, 413, 429)
+        return status is None or isinstance(status, int) and 400 <= status < 500 and status not in (401, 404, 413, 429)
 
     def get_summary(self) -> dict:
         """Return full per-session sync summary."""
