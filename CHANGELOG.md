@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a best-effort, one-day cached PyPI update check for interactive CLI use. (Fixes #861)
 - Add a one-command installer and updater for Snodo, and lead with it in the README and runbook.
   (Fixes #860)
 - Add a reusable, colour-aware CLI wordmark renderer. (Fixes #859)
