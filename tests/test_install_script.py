@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
+
+from snodo.cli.banner import plain_wordmark
 
 
 INSTALLER = Path(__file__).parents[1] / "docs" / "install.sh"
@@ -11,6 +14,16 @@ WORDMARK = (
     "╰─╮  │ │  │ │  │ │  │ │   │ │  ├─╯  ╰╮ ╭╯\n"
     "──╯  ╵ ╵  ╰─╯  ╰─╯  ╰─╯ ▪ ╰─╯  ╰──   ╰─╯"
 )
+
+
+def test_installer_wordmark_matches_cli() -> None:
+    source = INSTALLER.read_text()
+    match = re.search(r"<<'WORDMARK'\n(.*?)\nWORDMARK", source, re.DOTALL)
+    assert match is not None, "installer plain wordmark block was not found"
+    installer_rows = match.group(1).splitlines()
+    cli_rows = plain_wordmark().splitlines()[:3]
+    cli_rows[2] = re.sub(r"  \S+$", "", cli_rows[2])
+    assert installer_rows == cli_rows
 
 
 def run_installer(tmp_path: Path, *, present: bool) -> tuple[str, str]:
