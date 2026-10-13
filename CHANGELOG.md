@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Cap oversized audit string fields before hashing and persistence, keeping every
+  event within cloud ingest limits while preserving a verifiable chain. (Fixes #854)
 - Keep managed tunnel tokens out of cloudflared process arguments by passing
   them through its environment. (Fixes #853)
 - Protect credential-bearing `.snodo/tunnel.json` from workspace reads and writes,

@@ -17,6 +17,7 @@ from datetime import datetime, UTC
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 import os
+import copy
 import tempfile
 from pathlib import Path
 
@@ -58,6 +59,55 @@ _RECOVERY_GUIDANCE = (
 #: failing loudly. The audit log is the attestation; a writer that cannot get
 #: the lock must not silently proceed (Fixes #114).
 _LOCK_TIMEOUT = 10.0
+
+# Leave ample room below the cloud ingest's single-event ceiling.
+_AUDIT_EVENT_BYTE_BUDGET = 256 * 1024
+_TRUNCATION_MARKER = "… [truncated: {removed} bytes removed]"
+
+
+def _capped_event_data(data: Dict[str, Any], event_type: str, project_id: str) -> Dict[str, Any]:
+    """Return data fitting the audit-event budget, marking every trimmed string."""
+    capped = copy.deepcopy(data)
+
+    def encoded_size() -> int:
+        payload = {"event_type": event_type, "project_id": project_id, "data": capped}
+        return len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+
+    if encoded_size() <= _AUDIT_EVENT_BYTE_BUDGET:
+        return capped
+
+    strings: list[tuple[int, int, list[Any], Any, str]] = []
+
+    def collect(value: Any, path: list[Any]) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                collect(child, [*path, key])
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                collect(child, [*path, index])
+        elif isinstance(value, str):
+            strings.append((len(path), len(value.encode("utf-8")), path, None, value))
+
+    collect(capped, [])
+    strings.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    for _, _, path, _, original in strings:
+        parent = capped
+        for key in path[:-1]:
+            parent = parent[key]
+        key = path[-1]
+        original_bytes = original.encode("utf-8")
+        # Shrink this field by just enough, then continue with the next largest
+        # field if required. Byte slicing preserves valid UTF-8.
+        excess = encoded_size() - _AUDIT_EVENT_BYTE_BUDGET
+        marker = _TRUNCATION_MARKER.format(removed=0)
+        keep_bytes = max(
+            0,
+            len(original_bytes) - excess - len(marker.encode("utf-8")) - 1024,
+        )
+        prefix = original_bytes[:keep_bytes].decode("utf-8", errors="ignore")
+        removed = len(original_bytes) - len(prefix.encode("utf-8"))
+        parent[key] = prefix + _TRUNCATION_MARKER.format(removed=removed)
+    return capped
 
 #: Post-append observers, registered via ``register_event_listener``. Each is
 #: called with ``(event, audit_log)`` after a successful append, outside the
@@ -194,6 +244,7 @@ class AuditLog:
                 # loaded (Fixes #114).
                 sequence, previous_hash = self._read_tail_state()
                 timestamp = datetime.now(UTC).isoformat()
+                data = _capped_event_data(data, event_type, self._project_id)
 
                 event_hash = self._compute_hash(
                     sequence, timestamp, event_type, data, previous_hash, self._project_id

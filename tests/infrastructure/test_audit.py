@@ -39,6 +39,38 @@ def test_append_single_event(temp_audit_log):
     assert len(event.event_hash) == 64
 
 
+def test_oversized_event_is_capped_before_hashing(temp_audit_log):
+    from snodo.infrastructure.audit import _AUDIT_EVENT_BYTE_BUDGET
+
+    event = temp_audit_log.append_event("large", {"output": "x" * (3 * 1024 * 1024)})
+    stored = Path(temp_audit_log.log_path).read_bytes()
+    assert len(stored) < _AUDIT_EVENT_BYTE_BUDGET
+    assert "truncated:" in event.data["output"]
+    assert "bytes removed" in event.data["output"]
+    assert temp_audit_log.verify_chain()
+
+
+def test_small_event_is_unchanged(temp_audit_log):
+    data = {"nested": ["unchanged", {"value": 3}]}
+    event = temp_audit_log.append_event("small", data)
+    assert event.data == data
+    assert json.loads(Path(temp_audit_log.log_path).read_text())["data"] == data
+
+
+def test_capped_event_fits_cloud_single_event_payload(temp_audit_log):
+    from snodo.infrastructure.audit import _AUDIT_EVENT_BYTE_BUDGET
+    from snodo.infrastructure.cloud_sync import _encode_payload, _payload_for_events
+
+    events = [
+        temp_audit_log.append_event("large", {"output": "z" * (3 * 1024 * 1024)})
+        for _ in range(10)
+    ]
+    payload = _payload_for_events("session", "/project", events)
+    assert len(_encode_payload(payload)) < 5 * 1024 * 1024 - 256 * 1024
+    assert all(len(event.data["output"].encode("utf-8")) < _AUDIT_EVENT_BYTE_BUDGET
+               for event in events)
+
+
 def test_append_multiple_events(temp_audit_log):
     """Test appending multiple events forms a chain."""
     event1 = temp_audit_log.append_event("event1", {"data": 1})
