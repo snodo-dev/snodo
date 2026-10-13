@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a read-only renderer for the concise project home and next-step view.
+
 - Add a best-effort, one-day cached PyPI update check for interactive CLI use. (Fixes #861)
 - Add a one-command installer and updater for Snodo, and lead with it in the README and runbook.
   (Fixes #860)
