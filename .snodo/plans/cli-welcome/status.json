@@ -1,0 +1,38 @@
+{
+  "tasks": {
+    "1.1_wordmark_banner": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0
+    },
+    "1.2_one_line_installer": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0
+    },
+    "1.3_update_check": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0
+    },
+    "1.4_home_readiness_view": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0
+    },
+    "2.1_wire_greeting_help_version": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0
+    },
+    "2.2_installer_wordmark_matches_cli": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0
+    }
+  },
+  "integration": {
+    "branch": "plan/cli-welcome/integration",
+    "base_sha": "b0cdb2c477dda45e104b45128642f999b3eba75a"
+  }
+}
