@@ -24,6 +24,7 @@ warnings.filterwarnings(
 
 import typer
 import click.exceptions
+from typer.core import TyperGroup
 try:
     from typer._click.exceptions import UsageError  # typer vendors its own click
 except ImportError:
@@ -46,10 +47,23 @@ from snodo.cli.commands.run_cmd import (  # noqa: F401
 from snodo.cli.commands.plan_run import _run_plan  # noqa: F401
 
 
+class _SnodoGroup(TyperGroup):
+    """Keep top-level interactive help branded without changing subcommand help."""
+
+    def format_help(self, ctx, formatter):
+        if ctx.parent is None:
+            from snodo.cli.banner import colored_wordmark, should_show_wordmark
+
+            if should_show_wordmark():
+                print(colored_wordmark())
+        super().format_help(ctx, formatter)
+
+
 app = typer.Typer(
     name="snodo",
     help="Snodo - AI-SDLC Protocol Engine",
     invoke_without_command=True,
+    cls=_SnodoGroup,
 )
 
 HELP_PANELS = {
@@ -84,15 +98,27 @@ def _app_callback(
     if version:
         from snodo.version import __version__
         print(f"snodo {__version__}")
+        from snodo.cli.banner import should_show_wordmark
+        if should_show_wordmark():
+            from snodo.cli.update_check import get_newer_version
+
+            newer_version = get_newer_version(is_tty=True)
+            if newer_version:
+                print(
+                    f"{newer_version} is available. Update with: "
+                    "curl -fsSL https://snodo.dev/install | bash",
+                    file=sys.stderr,
+                )
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
-        print("Start here — your first governed task:")
-        print("  snodo init    Create project protocol and state")
-        print("  snodo ready   Check protocol readiness")
-        print("  snodo run     Run a governed task")
-        print("  snodo status  Inspect current project state")
-        print("  snodo logs    Follow task output")
-        print("\nUse 'snodo --help' to browse command groups and 'snodo <command> --help' for details.")
+        from snodo.cli.banner import colored_wordmark, should_show_wordmark
+
+        is_tty = should_show_wordmark()
+        if is_tty:
+            print(colored_wordmark())
+        from snodo.cli.home_view import render_home_view
+
+        print(render_home_view(color=is_tty), end="")
 
 
 # === Auto-discovery: mount command modules that expose `app` (group) or `register` (command) ===

@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Show the wordmark and project readiness view from bare `snodo`, brand top-level
+  help on terminals, and show a best-effort update hint on terminal `--version`.
+  (Fixes #863)
 - Add a read-only renderer for the concise project home and next-step view.
 
 - Add a best-effort, one-day cached PyPI update check for interactive CLI use. (Fixes #861)

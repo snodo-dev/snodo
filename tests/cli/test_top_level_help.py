@@ -32,12 +32,25 @@ def test_help_shows_all_five_panels():
         assert panel in result.stdout
 
 
-def test_bare_cli_prints_start_here_screen():
+def test_bare_cli_prints_readiness_view_without_wordmark():
     result = CliRunner().invoke(app, [])
 
     assert result.exit_code == 0
-    for line in (
-        "snodo init", "snodo ready", "snodo run", "snodo status", "snodo logs",
-        "snodo --help", "snodo <command> --help",
-    ):
-        assert line in result.stdout
+    assert "Snodo ·" in result.stdout
+    assert "Start here" not in result.stdout
+    assert "\x1b[" not in result.stdout
+
+
+def test_top_level_help_wordmark_is_tty_only(monkeypatch):
+    from snodo.cli import banner
+
+    monkeypatch.setattr(banner, "should_show_wordmark", lambda: True)
+    monkeypatch.setattr(banner, "colored_wordmark", lambda: "WORDMARK")
+    tty_result = CliRunner().invoke(app, ["--help"], terminal_width=120)
+    assert tty_result.exit_code == 0
+    assert tty_result.stdout.startswith("WORDMARK\n")
+
+    monkeypatch.setattr(banner, "should_show_wordmark", lambda: False)
+    plain_result = CliRunner().invoke(app, ["--help"], terminal_width=120)
+    assert plain_result.exit_code == 0
+    assert plain_result.stdout == tty_result.stdout.removeprefix("WORDMARK\n")
