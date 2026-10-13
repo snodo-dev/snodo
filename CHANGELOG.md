@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a reusable, colour-aware CLI wordmark renderer. (Fixes #859)
 - Support opencode 2.x as the opencode-cli coder: build the `opencode run` arguments for
   the installed CLI generation (`--standalone --auto` on 2.x) and render its `tool_use`
   and `error` events. (Fixes #858)
