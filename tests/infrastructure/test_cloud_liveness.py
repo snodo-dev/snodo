@@ -1173,6 +1173,22 @@ class TestLivenessUrlDerivation:
 
 
 class TestTerminalRefusal:
+    def test_audit_size_gap_does_not_block_liveness(self, project, tmp_path):
+        from snodo.infrastructure.cloud_sync import CloudSyncState
+
+        root, _ = project
+        with patch.object(cloud_liveness, "resolve_home", lambda: tmp_path):
+            CloudSyncState().record_refusal(
+                "sess_test_1", "payload_too_large; single event sequence 4 is 6000000 bytes",
+                4, 4, 413,
+            )
+            posts = _Posts()
+            with patch("httpx.post", posts):
+                assert cloud_liveness.request_liveness_push("sess_test_1", str(root))
+                cloud_liveness.wait_for_pushes()
+
+        assert len(posts.calls) == 1
+
     def test_authentication_failure_stops_later_liveness_pushes(self, tmp_path):
         """A terminal 401 is persisted and prevents a later POST."""
         from snodo.infrastructure.cloud_sync import CloudSyncState

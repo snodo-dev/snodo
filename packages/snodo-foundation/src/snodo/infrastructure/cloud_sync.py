@@ -647,11 +647,16 @@ class CloudSyncState:
         sess = data[session_id]
         sess["last_synced_sequence"] = max(sess.get("last_synced_sequence", 0), sequence)
         sess["last_synced_at"] = time.time()
-        sess["refused"] = False
-        sess.pop("refused_reason", None)
-        sess.pop("refused_range", None)
-        sess.pop("refused_at", None)
-        sess.pop("refused_status_code", None)
+        size_gap = (
+            sess.get("refused_status_code") == 413
+            and "single event sequence" in str(sess.get("refused_reason", ""))
+        )
+        if not size_gap:
+            sess["refused"] = False
+            sess.pop("refused_reason", None)
+            sess.pop("refused_range", None)
+            sess.pop("refused_at", None)
+            sess.pop("refused_status_code", None)
         sess["pending_count"] = 0
         sess.pop("last_error", None)
 
@@ -753,12 +758,7 @@ class CloudSyncState:
         if not isinstance(sess, dict) or not sess.get("refused"):
             return False
         status = sess.get("refused_status_code")
-        if status == 413:
-            return "single event sequence" in str(sess.get("refused_reason", ""))
-        return status is None or (
-            isinstance(status, int) and 400 <= status < 500
-            and status not in (404, 413, 429)
-        )
+        return status is None or isinstance(status, int) and 400 <= status < 500 and status not in (404, 413, 429)
 
     def get_summary(self) -> dict:
         """Return full per-session sync summary."""

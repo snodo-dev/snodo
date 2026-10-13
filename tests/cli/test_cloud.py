@@ -575,7 +575,7 @@ class TestCloudSyncState:
         assert result["failed"] is False
         assert CloudSyncState(path).is_refused("sess_20260916_prod_0e250d") is False
 
-    def test_legacy_413_batch_is_recheckable_but_single_oversize_is_terminal(self, tmp_path):
+    def test_413_size_gaps_remain_visible_but_do_not_block(self, tmp_path):
         from snodo.infrastructure.cloud_sync import CloudSyncState
 
         state = CloudSyncState(tmp_path / "cloud_sync.json")
@@ -584,7 +584,30 @@ class TestCloudSyncState:
         state.record_refusal(
             "sess_single", "single event sequence 1 is 6000000 bytes", 1, 1, 413,
         )
-        assert state.is_refused("sess_single") is True
+        assert state.is_refused("sess_single") is False
+        assert state.get_summary()["sess_single"]["refused_range"] == [1, 1]
+        assert "6000000 bytes" in state.get_summary()["sess_single"]["refused_reason"]
+
+    @pytest.mark.parametrize("status_code", [400, 403])
+    def test_terminal_refusals_still_block_automatic_sync(self, tmp_path, monkeypatch, status_code):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+        state = CloudSyncState()
+        state.record_refusal("sess_terminal", "request refused", status_code=status_code)
+        event = MagicMock(
+            sequence=1, timestamp="2026-01-01T00:00:00Z", event_type="transition",
+            project_id="", data={}, previous_hash="0" * 64, event_hash="e" * 64,
+        )
+        dispatcher = CloudSyncDispatcher()
+        with patch.object(dispatcher, "_post_batch") as post:
+            result = dispatcher.sync(
+                "sess_terminal", "/proj", MagicMock(events=[event]),
+                "key", "https://api.example.com",
+            )
+
+        post.assert_not_called()
+        assert result["refused"] is True
 
 
 # ------------------------------------------------------------------#
@@ -842,6 +865,30 @@ class TestCloudSyncDispatcher:
         assert 2 in sent and 3 in sent
         advance.assert_called()
         assert post.call_args_list[-1].kwargs["force"] is True
+
+    def test_later_nonforced_sync_delivers_new_events_and_keeps_size_gap(self, tmp_path, monkeypatch):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+        state = CloudSyncState()
+        state.record_refusal(
+            "sess_gap", "payload_too_large; single event sequence 1 is 6000000 bytes",
+            1, 1, 413,
+        )
+        event = self._make_events(1, start_seq=3)[0]
+        dispatcher = CloudSyncDispatcher()
+        with patch.object(dispatcher, "_post_batch", return_value=("delivered", "HTTP 200", 200)) as post:
+            result = dispatcher.sync(
+                "sess_gap", "/proj", MagicMock(events=[event]),
+                "key", "https://api.example.com",
+            )
+
+        assert result["synced"] == 1
+        assert post.call_args.kwargs["force"] is False
+        summary = state.get_summary()["sess_gap"]
+        assert summary["last_synced_sequence"] == 4
+        assert summary["refused_range"] == [1, 1]
+        assert "6000000 bytes" in summary["refused_reason"]
 
     def test_cursor_advances_only_on_200(self):
         """Cursor should not advance when post fails."""

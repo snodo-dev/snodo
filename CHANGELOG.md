@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Keep single-event cloud size gaps visible without blocking later automatic audit
+  syncs or liveness pushes. (Fixes #855)
 - Cap oversized audit string fields before hashing and persistence, keeping every
   event within cloud ingest limits while preserving a verifiable chain. (Fixes #854)
 - Keep managed tunnel tokens out of cloudflared process arguments by passing
