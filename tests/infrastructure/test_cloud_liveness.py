@@ -353,6 +353,51 @@ class TestTransitionDriven:
             assert posts.calls == []
 
 
+@pytest.mark.parametrize(
+    ("credential", "oauth", "api_key"),
+    [
+        ("oauth-access-token", True, ""),
+        ("sndo_live_testkey", False, "sndo_live_testkey"),
+        ("oauth-access-token", True, "sndo_live_testkey"),
+    ],
+)
+def test_liveness_uses_audit_sync_credential(project, monkeypatch, credential, oauth, api_key):
+    from snodo.infrastructure.cloud_lease import CloudLease
+
+    root, _ = project
+    config = {"cloud": {"api_key": api_key}}
+    lease = CloudLease("lease", "token", time.time() + 3600)
+    lease_calls = []
+    monkeypatch.setattr(
+        "snodo.infrastructure.cloud_credentials.safe_cloud_sync_credential",
+        lambda _config: (credential, oauth),
+    )
+    monkeypatch.setattr(
+        "snodo.infrastructure.cloud_lease.get_admission_lease",
+        lambda *args, **kwargs: lease_calls.append((args, kwargs)) or lease,
+    )
+    with patch("httpx.post", _Posts()):
+        cloud_liveness._post_snapshot(
+            {"session_id": "sess_test_1"}, config=config, project_root=str(root),
+        )
+
+    assert lease_calls[0][0][0] == credential
+    assert lease_calls[0][1]["oauth"] is oauth
+
+
+def test_liveness_without_credential_is_a_noop(project, monkeypatch):
+    root, _ = project
+    monkeypatch.setattr(
+        "snodo.infrastructure.cloud_credentials.safe_cloud_sync_credential",
+        lambda _config: (None, False),
+    )
+    with patch("snodo.infrastructure.cloud_lease.get_admission_lease") as get_lease:
+        assert cloud_liveness._post_snapshot(
+            {"session_id": "sess_test_1"}, config={"cloud": {}}, project_root=str(root),
+        ) == (False, None, False)
+    get_lease.assert_not_called()
+
+
 # ------------------------------------------------------------------ #
 # Throttle: a burst coalesces into one push carrying the later state
 # ------------------------------------------------------------------ #

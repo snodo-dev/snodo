@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Use the OAuth login for liveness pushes, with the same refresh and API-key fallback as audit sync. (Fixes #867)
 - Treat expired OAuth lease credentials as transient, allowing cloud sync and liveness to resume after login. (Fixes #866)
 - Serialize OAuth refreshes across processes and log credential-safe failure reasons. (Fixes #865)
 - Test that the installer wordmark stays in sync with the CLI renderer. (Fixes #864)

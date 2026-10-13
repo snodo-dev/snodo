@@ -601,8 +601,9 @@ def _post_snapshot(
 
     if config is None:
         config = ConfigManager().load()
-    cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
-    api_key = (cloud.get("api_key") or "").strip()
+    from snodo.infrastructure.cloud_credentials import safe_cloud_sync_credential
+
+    api_key, oauth = safe_cloud_sync_credential(config)
     if not api_key:
         return False, None, False
     state = CloudSyncState()
@@ -620,6 +621,7 @@ def _post_snapshot(
     for lease_attempt in range(2):
         lease = get_admission_lease(
             api_key, lease_url, session_id=session_id, sync_state=state,
+            oauth=oauth, config=config,
         )
         if lease is None:
             _report_push(session_id, get_last_admission_error() or
