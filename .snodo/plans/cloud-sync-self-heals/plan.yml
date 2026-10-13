@@ -1,0 +1,22 @@
+intent: 'Cloud sync keeps working without the user stepping in:
+
+  - no audit event is ever too large for the cloud to store;
+
+  - one unstorable event never stops automatic sync or liveness for its session;
+
+  - the user is told about a stuck session where they look anyway;
+
+  - old sessions'' unsent events drain on their own.'
+name: cloud-sync-self-heals
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_audit_events_capped_at_write
+  - 1.2_size_gap_does_not_block_session
+  - 1.3_stuck_sync_surfaced
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_backlog_drains_automatically
