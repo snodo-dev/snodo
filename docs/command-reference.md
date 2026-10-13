@@ -9,8 +9,12 @@ The top-level help groups commands into **Daily loop** (init, ready, run, recon,
 status, logs, dashboard), **Work records** (job, task, plan, queue, runs, meta,
 worktree), **Governance** (survey, intake, validate, mode, session, audit,
 authorize), **Setup** (config, models, cloud, serve, install, uninstall, cache,
-protocol), and **Advanced** (agent). Run bare `snodo` for a short first-task
-walkthrough.
+protocol), and **Advanced** (agent). Bare `snodo` shows the project readiness
+view and next step (with the wordmark on a terminal); it exits successfully even
+when the view includes attention markers. Top-level `snodo --help` also starts
+with the wordmark on a terminal. `snodo --version` keeps its version on stdout
+and, when a newer release is found on a terminal, prints an update hint to
+stderr. Set `SNODO_NO_UPDATE_CHECK=1` to disable the update check.
 
 ## Project, configuration, and services
 

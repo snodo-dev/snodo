@@ -319,11 +319,47 @@ def test_multiple_tasks_in_sequence(initialized_project):
 # CLI Interface Tests
 
 def test_no_command_shows_help():
-    """Test running snodo without command shows help."""
+    """Bare snodo exits successfully and renders the readiness view."""
     with patch('sys.argv', ['snodo']):
         result = main()
 
     assert result == 0
+
+
+def test_bare_tty_shows_wordmark_then_readiness_view(monkeypatch, capsys):
+    from snodo.cli import banner, home_view
+
+    monkeypatch.setattr(banner, "should_show_wordmark", lambda: True)
+    monkeypatch.setattr(banner, "colored_wordmark", lambda: "WORDMARK")
+    monkeypatch.setattr(home_view, "render_home_view", lambda *, color: "READINESS\n")
+    with patch('sys.argv', ['snodo']):
+        assert main() == 0
+    assert capsys.readouterr().out == "WORDMARK\nREADINESS\n"
+
+
+def test_version_update_hint_is_tty_stderr_only(monkeypatch, capsys):
+    from snodo.cli import banner, update_check
+    from snodo.version import __version__
+
+    monkeypatch.setattr(banner, "should_show_wordmark", lambda: True)
+    monkeypatch.setattr(update_check, "get_newer_version", lambda *, is_tty: "9.9.9")
+    with patch('sys.argv', ['snodo', '--version']):
+        assert main() == 0
+    captured = capsys.readouterr()
+    assert captured.out == f"snodo {__version__}\n"
+    assert "9.9.9 is available. Update with:" in captured.err
+
+
+def test_version_update_hint_is_suppressed_without_tty(monkeypatch, capsys):
+    from snodo.cli import banner
+    from snodo.version import __version__
+
+    monkeypatch.setattr(banner, "should_show_wordmark", lambda: False)
+    with patch('sys.argv', ['snodo', '--version']):
+        assert main() == 0
+    captured = capsys.readouterr()
+    assert captured.out == f"snodo {__version__}\n"
+    assert captured.err == ""
 
 
 def test_invalid_command():
