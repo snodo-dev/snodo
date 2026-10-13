@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Serialize OAuth refreshes across processes and log credential-safe failure reasons. (Fixes #865)
 - Test that the installer wordmark stays in sync with the CLI renderer. (Fixes #864)
 - Show the wordmark and project readiness view from bare `snodo`, brand top-level
   help on terminals, and show a best-effort update hint on terminal `--version`.

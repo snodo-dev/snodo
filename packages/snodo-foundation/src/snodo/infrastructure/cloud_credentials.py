@@ -6,7 +6,13 @@ import socket
 import time
 import logging
 
-from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, load_oauth_state, save_oauth_state
+from snodo.infrastructure.cloud_oauth_store import (
+    CloudOAuthState,
+    load_oauth_state,
+    load_oauth_state_unlocked,
+    oauth_state_lock,
+    save_oauth_state_unlocked,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -16,25 +22,56 @@ def resolve_cloud_credential(config: dict, *, force_refresh: bool = False, http_
     state = load_oauth_state()
     if state.client_id and (state.access_token or state.refresh_token):
         if force_refresh or state.is_near_expiry():
-            if not state.has_refresh_token():
-                return None, True
-            from snodo.infrastructure.cloud_oauth_client import CloudOAuthClient
-            from snodo.version import __version__
+            observed_state = state
+            with oauth_state_lock():
+                state = load_oauth_state_unlocked()
+                another_refresh_won = (
+                    state.access_token != observed_state.access_token
+                    or state.refresh_token != observed_state.refresh_token
+                )
+                if another_refresh_won and not state.is_near_expiry():
+                    return state.access_token, True
+                if not force_refresh and not state.is_near_expiry():
+                    return state.access_token, True
+                if not state.has_refresh_token():
+                    return None, True
+                from snodo.infrastructure.cloud_oauth_client import CloudOAuthClient
+                from snodo.version import __version__
 
-            client = CloudOAuthClient(config, http_client=http_client, version=__version__)
-            try:
-                payload = client.refresh(state.client_id, state.refresh_token)
-            except Exception:
-                return None, True
-            access = payload.get("access_token")
-            refresh = payload.get("refresh_token") or state.refresh_token
-            expires_in = payload.get("expires_in")
-            if not isinstance(access, str) or not access or not isinstance(expires_in, (int, float)):
-                return None, True
-            state = CloudOAuthState(state.client_id, access, refresh, time.time() + float(expires_in), payload.get("scope") or state.scope)
-            save_oauth_state(state)
+                client = CloudOAuthClient(config, http_client=http_client, version=__version__)
+                try:
+                    payload = client.refresh(state.client_id, state.refresh_token)
+                except Exception as exc:
+                    _logger.warning("Cloud OAuth refresh failed: %s", _safe_refresh_failure(exc))
+                    return None, True
+                access = payload.get("access_token")
+                refresh = payload.get("refresh_token") or state.refresh_token
+                expires_in = payload.get("expires_in")
+                if not isinstance(access, str) or not access or not isinstance(expires_in, (int, float)):
+                    _logger.warning("Cloud OAuth refresh failed: invalid OAuth response")
+                    return None, True
+                state = CloudOAuthState(
+                    state.client_id, access, refresh, time.time() + float(expires_in),
+                    payload.get("scope") or state.scope, state.registered_client_name,
+                    state.supports_code_redirect,
+                )
+                save_oauth_state_unlocked(state)
         return state.access_token, True
     return _configured_api_key(config), False
+
+
+def _safe_refresh_failure(error: Exception) -> str:
+    """Extract only a failure category/code, never arbitrary exception text."""
+    message = str(error)
+    if "network error" in message.lower():
+        return "network error"
+    if "HTTP " in message:
+        status = message.split("HTTP ", 1)[1].split()[0].rstrip(":")
+        return f"HTTP {status}" if status.isdigit() else "HTTP error"
+    code = getattr(error, "oauth_error", None)
+    if isinstance(code, str) and code.replace("_", "").isalnum():
+        return f"OAuth error {code}"
+    return "OAuth error"
 
 
 def _configured_api_key(config: dict) -> str | None:

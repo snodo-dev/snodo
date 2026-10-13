@@ -205,6 +205,13 @@ class CloudOAuthClient:
     @staticmethod
     def _decode_response(response: Any) -> dict:
         if not 200 <= response.status_code < 300:
+            try:
+                payload = response.json()
+                error = payload.get("error") if isinstance(payload, dict) else None
+            except Exception:
+                error = None
+            if isinstance(error, str) and error.replace("_", "").isalnum():
+                raise CloudOAuthError(f"OAuth error {error}")
             raise CloudOAuthError(f"OAuth endpoint returned HTTP {response.status_code}")
         try:
             payload = response.json()

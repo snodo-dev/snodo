@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+
 import httpx
 import pytest
 
@@ -37,11 +40,37 @@ def test_refused_refresh_falls_back_to_api_key(oauth_home, caplog):
     credential, is_oauth = safe_cloud_sync_credential(_config(), http_client=client)
     assert (credential, is_oauth) == ("configured-api-key", False)
     assert "refresh-secret" not in caplog.text
+    assert "HTTP 400" in caplog.text
 
 
 def test_working_oauth_precedes_api_key(oauth_home):
     save_oauth_state(CloudOAuthState("client", "usable-access", "refresh-secret", 4_000_000_000))
     assert safe_cloud_sync_credential(_config()) == ("usable-access", True)
+
+
+def test_concurrent_resolvers_refresh_once(oauth_home, monkeypatch):
+    from snodo.infrastructure.cloud_credentials import resolve_cloud_credential
+    from snodo.infrastructure import cloud_oauth_client
+
+    save_oauth_state(CloudOAuthState("client", "expired-access", "refresh-secret", 0))
+    calls = []
+    calls_lock = Lock()
+
+    class RefreshClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def refresh(self, client_id, refresh_token):
+            with calls_lock:
+                calls.append(refresh_token)
+            return {"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600}
+
+    monkeypatch.setattr(cloud_oauth_client, "CloudOAuthClient", RefreshClient)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: resolve_cloud_credential(_config()), range(2)))
+
+    assert results == [("new-access", True), ("new-access", True)]
+    assert calls == ["refresh-secret"]
 
 
 def test_401_and_failed_refresh_retries_lease_with_api_key(oauth_home, monkeypatch, caplog):

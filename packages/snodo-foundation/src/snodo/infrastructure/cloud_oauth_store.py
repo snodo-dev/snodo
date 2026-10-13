@@ -13,6 +13,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from typing import Callable, Iterator
 
 from snodo.infrastructure.atomic_json import atomic_write_json
@@ -21,6 +22,7 @@ from snodo.paths import resolve_home
 _STATE_FILE = "cloud_oauth.json"
 _LOCK_FILE = ".cloud_oauth.lock"
 _DEFAULT_MARGIN_SECONDS = 60.0
+_THREAD_LOCK = RLock()
 
 
 @dataclass(frozen=True, repr=False)
@@ -72,37 +74,55 @@ def _locked(path: Path) -> Iterator[None]:
     lock_path = path.parent / _LOCK_FILE
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
+        with _THREAD_LOCK:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
+
+
+@contextmanager
+def oauth_state_lock() -> Iterator[None]:
+    """Serialize a complete OAuth state transaction across threads and processes."""
+    with _locked(state_path()):
+        yield
 
 
 def load_oauth_state() -> CloudOAuthState:
     """Load stored state; missing, malformed, or invalid data means logged out."""
     path = state_path()
     with _locked(path):
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(raw, dict):
-                return CloudOAuthState()
-            client_id = raw.get("client_id")
-            access_token = raw.get("access_token")
-            refresh_token = raw.get("refresh_token")
-            expires_at = raw.get("expires_at")
-            scope = raw.get("scope")
-            registered_client_name = raw.get("registered_client_name")
-            if any(value is not None and not isinstance(value, str) for value in (client_id, access_token, refresh_token, scope, registered_client_name)):
-                return CloudOAuthState()
-            if expires_at is not None and (isinstance(expires_at, bool) or not isinstance(expires_at, (int, float))):
-                return CloudOAuthState()
-            supports_code_redirect = raw.get("supports_code_redirect", False)
-            if not isinstance(supports_code_redirect, bool):
-                return CloudOAuthState()
-            return CloudOAuthState(client_id, access_token, refresh_token, expires_at, scope, registered_client_name, supports_code_redirect)
-        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+        return _load_oauth_state_unlocked(path)
+
+
+def _load_oauth_state_unlocked(path: Path) -> CloudOAuthState:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
             return CloudOAuthState()
+        client_id = raw.get("client_id")
+        access_token = raw.get("access_token")
+        refresh_token = raw.get("refresh_token")
+        expires_at = raw.get("expires_at")
+        scope = raw.get("scope")
+        registered_client_name = raw.get("registered_client_name")
+        values = (client_id, access_token, refresh_token, scope, registered_client_name)
+        if any(value is not None and not isinstance(value, str) for value in values):
+            return CloudOAuthState()
+        if expires_at is not None and (isinstance(expires_at, bool) or not isinstance(expires_at, (int, float))):
+            return CloudOAuthState()
+        supports_code_redirect = raw.get("supports_code_redirect", False)
+        if not isinstance(supports_code_redirect, bool):
+            return CloudOAuthState()
+        return CloudOAuthState(
+            client_id, access_token, refresh_token, expires_at, scope,
+            registered_client_name, supports_code_redirect,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+        return CloudOAuthState()
 
 
 def save_oauth_state(state: CloudOAuthState) -> None:
@@ -120,8 +140,31 @@ def save_oauth_state(state: CloudOAuthState) -> None:
         "supports_code_redirect": state.supports_code_redirect,
     }
     with _locked(path):
-        atomic_write_json(path, payload, trailing_newline=True)
-        os.chmod(path, 0o600)
+        _save_oauth_state_unlocked(path, payload)
+
+
+def _save_oauth_state_unlocked(path: Path, payload: dict) -> None:
+    atomic_write_json(path, payload, trailing_newline=True)
+    os.chmod(path, 0o600)
+
+
+def save_oauth_state_unlocked(state: CloudOAuthState) -> None:
+    """Save while the caller holds ``oauth_state_lock``."""
+    if not isinstance(state, CloudOAuthState):
+        raise TypeError("state must be a CloudOAuthState")
+    path = state_path()
+    payload = {
+        "client_id": state.client_id, "access_token": state.access_token,
+        "refresh_token": state.refresh_token, "expires_at": state.expires_at,
+        "scope": state.scope, "registered_client_name": state.registered_client_name,
+        "supports_code_redirect": state.supports_code_redirect,
+    }
+    _save_oauth_state_unlocked(path, payload)
+
+
+def load_oauth_state_unlocked() -> CloudOAuthState:
+    """Load while the caller holds ``oauth_state_lock``."""
+    return _load_oauth_state_unlocked(state_path())
 
 
 def clear_oauth_state(*, keep_client_id: bool = True) -> None:
