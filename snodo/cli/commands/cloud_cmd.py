@@ -246,7 +246,9 @@ def _oauth_org_id(access_token: str) -> str:
         return ""
 
 
-def _format_oauth_expiry(expires_at: float | None, *, now: float | None = None) -> str:
+def _format_oauth_expiry(
+    expires_at: float | None, *, now: float | None = None, refresh_failed: bool = False,
+) -> str:
     """Format OAuth expiry in UTC and report its remaining lifetime."""
     if expires_at is None:
         return "unknown"
@@ -257,6 +259,8 @@ def _format_oauth_expiry(expires_at: float | None, *, now: float | None = None) 
     current = time.time() if now is None else now
     remaining = expires_at - current
     if remaining <= 0:
+        if refresh_failed:
+            return f"{expiry:%Y-%m-%d %H:%M:%S UTC} (expired; run snodo cloud login to refresh it)"
         return f"{expiry:%Y-%m-%d %H:%M:%S UTC} (expired; next sync will refresh it)"
     seconds = int(remaining)
     hours, seconds = divmod(seconds, 3600)
@@ -324,6 +328,13 @@ def cloud_status_command() -> int:
     api_url = get_cloud_ingest_url(config)
     from snodo.infrastructure.cloud_oauth_store import load_oauth_state
     oauth = load_oauth_state()
+    refresh_failed = False
+    if oauth.access_token and oauth.expires_at is not None and oauth.expires_at <= time.time():
+        from snodo.infrastructure.cloud_credentials import safe_cloud_sync_credential
+
+        credential, is_oauth = safe_cloud_sync_credential(config)
+        refresh_failed = credential is None or not is_oauth
+        oauth = load_oauth_state()
     has_oauth = bool(oauth.access_token or oauth.refresh_token)
     has_api_key = isinstance(api_key, str) and bool(api_key.strip())
     auth_method = "OAuth login" if has_oauth else "API key" if has_api_key else "none"
@@ -331,7 +342,9 @@ def cloud_status_command() -> int:
     print(f"Snodo cloud: {'connected' if auth_method != 'none' else 'not connected'}")
     print(f"  Authentication: {auth_method}")
     if has_oauth:
-        print(f"  Access token expires: {_format_oauth_expiry(oauth.expires_at)}")
+        print(f"  Access token expires: {_format_oauth_expiry(oauth.expires_at, refresh_failed=refresh_failed)}")
+        if refresh_failed and has_api_key:
+            print("  Cloud sync can use the configured API key; run snodo cloud login to restore OAuth.")
         print(f"  Refresh token present: {'yes' if oauth.has_refresh_token() else 'no'}")
         org_id = _oauth_org_id(oauth.access_token) if oauth.access_token else ""
         print(f"  Account/organisation: {org_id or 'unknown'}")

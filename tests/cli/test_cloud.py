@@ -306,7 +306,7 @@ class TestCloudStatus:
         ("expires_at", "expected"),
         [
             (2_000, "1970-01-01 00:33:20 UTC (in 10m)"),
-            (1_000, "1970-01-01 00:16:40 UTC (expired; next sync will refresh it)"),
+            (1_000, "1970-01-01 00:16:40 UTC (expired; run snodo cloud login to refresh it)"),
         ],
     )
     @pytest.mark.parametrize(
@@ -328,7 +328,9 @@ class TestCloudStatus:
         from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, save_oauth_state
         save_oauth_state(CloudOAuthState("client", token, "private-refresh-token", expires_at))
         from snodo.cli.commands.cloud_cmd import cloud_status_command
-        with patch("snodo.config.ConfigManager") as manager, patch("snodo.infrastructure.cloud_sync.CloudSyncState") as state:
+        with patch("snodo.config.ConfigManager") as manager, patch("snodo.infrastructure.cloud_sync.CloudSyncState") as state, patch(
+            "snodo.infrastructure.cloud_credentials.safe_cloud_sync_credential", return_value=(None, True),
+        ):
             manager.return_value.load.return_value = {"cloud": {"sync_enabled": True}}
             state.return_value.get_summary.return_value = {}
             assert cloud_status_command() == 0
@@ -338,6 +340,42 @@ class TestCloudStatus:
         assert token not in output
         assert "private-user" not in output and "private-provider" not in output
         assert "private-refresh-token" not in output
+
+    def test_expired_oauth_status_notes_api_key_fallback(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        monkeypatch.setattr("snodo.cli.commands.cloud_cmd.time.time", lambda: 1_400)
+        from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, save_oauth_state
+        save_oauth_state(CloudOAuthState("client", "access", "refresh", 1_000))
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+        with patch("snodo.config.ConfigManager") as manager, patch(
+            "snodo.infrastructure.cloud_sync.CloudSyncState"
+        ) as state, patch(
+            "snodo.infrastructure.cloud_credentials.safe_cloud_sync_credential", return_value=("api-key", False),
+        ):
+            manager.return_value.load.return_value = {"cloud": {"api_key": "api-key", "sync_enabled": True}}
+            state.return_value.get_summary.return_value = {}
+            assert cloud_status_command() == 0
+        output = capsys.readouterr().out
+        assert "run snodo cloud login" in output
+        assert "configured API key" in output
+
+    def test_expired_oauth_status_shows_successfully_refreshed_expiry(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        monkeypatch.setattr("snodo.cli.commands.cloud_cmd.time.time", lambda: 1_400)
+        from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, save_oauth_state
+        expired = CloudOAuthState("client", "old-access", "refresh", 1_000)
+        refreshed = CloudOAuthState("client", "new-access", "new-refresh", 2_000)
+        save_oauth_state(expired)
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+        with patch("snodo.config.ConfigManager") as manager, patch(
+            "snodo.infrastructure.cloud_sync.CloudSyncState"
+        ) as state, patch(
+            "snodo.infrastructure.cloud_credentials.safe_cloud_sync_credential", return_value=("new-access", True),
+        ), patch("snodo.infrastructure.cloud_oauth_store.load_oauth_state", side_effect=[expired, refreshed]):
+            manager.return_value.load.return_value = {"cloud": {"sync_enabled": True}}
+            state.return_value.get_summary.return_value = {}
+            assert cloud_status_command() == 0
+        assert "1970-01-01 00:33:20 UTC (in 10m)" in capsys.readouterr().out
 
     def test_oauth_status_and_dual_credential_precedence_are_redacted(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
