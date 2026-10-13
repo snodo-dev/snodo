@@ -23,6 +23,15 @@ from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
 from snodo.core.interfaces import TaskSpec
 from snodo.tools.workspace import WorkspaceMCP
 
+_REAL_CLI_MAJOR_VERSION = OpenCodeCLIAdapter._cli_major_version
+
+@pytest.fixture(autouse=True)
+def _opencode_v1_by_default():
+    """Pin the host CLI generation so argv tests never depend on the installed opencode."""
+    with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=1):
+        yield
+
+
 # ========== WORKSPACE PARAM RESOLUTION ==========
 
 class TestWorkspaceResolution:
@@ -354,3 +363,49 @@ class TestRegistration:
         assert isinstance(coder, OpenCodeCLIAdapter)
         assert coder.model == "opencode-cli/deepseek/deepseek-chat"
         assert coder.workspace == Path("/tmp")
+
+
+# ========== OPENCODE 2.x ==========
+
+class TestOpenCodeV2:
+    """opencode 2.x removed --dir and --dangerously-skip-permissions."""
+
+    def test_v2_argv_uses_standalone_and_auto(self, tmp_path):
+        adapter = OpenCodeCLIAdapter(model="", workspace=tmp_path)
+        with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=2):
+            argv = adapter._build_argv("prompt", str(tmp_path), "openai/gpt-6-luna")
+        assert argv == [
+            "opencode", "run", "--format", "json", "--standalone", "--auto",
+            "prompt", "-m", "openai/gpt-6-luna",
+        ]
+        assert "--dir" not in argv
+        assert "--dangerously-skip-permissions" not in argv
+
+    @pytest.mark.parametrize(
+        "reported, expected",
+        [("opencode v2.0.28", 2), ("1.14.3", 1), ("", 1), ("unknown", 1)],
+    )
+    def test_major_version_parsed_from_version_output(self, tmp_path, reported, expected):
+        adapter = OpenCodeCLIAdapter(model="", workspace=tmp_path)
+        with patch.object(OpenCodeCLIAdapter, "_cli_major_version", _REAL_CLI_MAJOR_VERSION), \
+                patch("snodo.coders.availability.read_binary_version", return_value=reported), \
+                patch.object(adapter, "_resolve_binary_path", return_value="/usr/bin/opencode"):
+            assert adapter._cli_major_version() == expected
+
+    def test_v2_events_are_rendered_and_usage_counted(self, tmp_path):
+        adapter = OpenCodeCLIAdapter(model="", workspace=tmp_path)
+        adapter._begin_subprocess_run()
+        tool = {"type": "tool_use", "part": {"tool": "patch", "state": {"status": "completed", "title": "patch"}}}
+        finish = {"type": "step_finish", "part": {"cost": 0, "tokens": {"input": 5422, "output": 34, "reasoning": 0, "cache": {"read": 1536, "write": 0}}}}
+        text = {"type": "text", "part": {"text": "Created hello.txt"}}
+        error = {"type": "error", "error": {"type": "provider.invalid-request", "message": "No endpoints found that support tool use."}}
+        assert adapter._process_output_line(json.dumps(tool)) == "[patch] patch"
+        assert adapter._process_output_line(json.dumps(finish)) == ""
+        assert adapter._process_output_line(json.dumps(text)) == "Created hello.txt"
+        assert adapter._process_output_line(json.dumps(error)) == "[error] No endpoints found that support tool use."
+        assert adapter.last_usage["input_tokens"] == 5422
+        assert adapter.last_usage["cache_read_tokens"] == 1536
+        tail = adapter._format_output_tail_stdout("\n".join(json.dumps(e) for e in (tool, text, error)))
+        assert tail.splitlines() == [
+            "[patch] patch", "Created hello.txt", "[error] No endpoints found that support tool use.",
+        ]

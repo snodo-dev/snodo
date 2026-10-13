@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Support opencode 2.x as the opencode-cli coder: build the `opencode run` arguments for
+  the installed CLI generation (`--standalone --auto` on 2.x) and render its `tool_use`
+  and `error` events. (Fixes #858)
+
 ## [0.24.0] — 2026-10-12
 
 - Automatically drain pending cloud events across project sessions after tasks and
