@@ -1,0 +1,23 @@
+intent: 'A machine logged in to snodo cloud with OAuth keeps sending liveness and
+  audit sync after its access token expires, even while several snodo processes run
+  at once:
+
+  - only one process refreshes the token at a time, and the others use the token it
+  saved;
+
+  - a refresh failure is logged with its reason;
+
+  - an auth failure never permanently stops a session;
+
+  - liveness uses the same credential as audit sync;
+
+  - `snodo cloud status` says when the login actually needs renewing.'
+name: oauth-liveness-heals
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_refresh_serialised_and_logged
+  - 1.2_auth_failure_not_a_refusal
+  - 1.3_liveness_uses_cloud_credential
+  - 1.4_cloud_status_reports_refresh_health

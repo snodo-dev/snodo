@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_refresh_serialised_and_logged": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "26b5286bb5e29fc0"
+    },
+    "1.2_auth_failure_not_a_refusal": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d0afdd279981b0c6"
+    },
+    "1.3_liveness_uses_cloud_credential": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0e6ac4db9b181889"
+    },
+    "1.4_cloud_status_reports_refresh_health": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "090e57e5a8799f00"
+    }
+  },
+  "integration": {
+    "branch": "plan/oauth-liveness-heals/integration",
+    "base_sha": "7e0ce0a4489672686b29f6f71fa8bf8bf482c5cb"
+  }
+}
