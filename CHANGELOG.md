@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Automatically drain pending cloud events across project sessions after tasks and
+  at serve startup, in bounded background work. (Fixes #857)
 - Surface refused cloud sessions and substantial local sync backlogs in `snodo ready`
   and `snodo serve` startup, with a recovery command. (Fixes #856)
 - Keep single-event cloud size gaps visible without blocking later automatic audit
