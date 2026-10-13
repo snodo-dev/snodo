@@ -4,6 +4,14 @@
 
 Requires Python 3.12 or later.
 
+Install or update Snodo in one step:
+
+```sh
+curl -fsSL https://snodo.dev/install | bash
+```
+
+Run the same command again to update. Alternatives:
+
 Try Snodo without installing it:
 
 ```bash

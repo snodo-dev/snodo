@@ -87,9 +87,15 @@ Follow the canonical [per-language first-run quickstart](docs/runbook.md#quickst
 for Python, Node/TypeScript, Go, or Rust. It includes the starter files needed
 for the initial commit, the Git identity prerequisite, and each stack's
 detected test command and governed hello-world mock task.
-Try the published package without installing it with `uvx snodo --version`, or
-install it for regular use with `uv tool install snodo`; `pip install snodo` is
-also available as a fallback. Python 3.12+ is required.
+Install or update Snodo with:
+
+```sh
+curl -fsSL https://snodo.dev/install | bash
+```
+
+The installer sets up uv if needed. Alternatives are `uv tool install snodo`
+and `pip install snodo`. To try the published package without installing it,
+run `uvx snodo --version`. Python 3.12+ is required.
 
 ### Container image
 
