@@ -1,0 +1,9 @@
+intent: Remove the retired `resolve` capability name from the repository. It was renamed to
+  `decide` in the shipped templates (#509), but tests still use it as if it were a valid grant.
+  Every shipped template should be guarded so it can only grant known capabilities.
+name: no-resolve
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.2_retire_resolve_capability_name

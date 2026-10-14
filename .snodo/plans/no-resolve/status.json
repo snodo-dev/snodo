@@ -1,0 +1,9 @@
+{
+  "tasks": {
+    "1.2_retire_resolve_capability_name": "completed"
+  },
+  "integration": {
+    "branch": "plan/no-resolve/integration",
+    "base_sha": "14173099fbb95352e90f8fcb476604dac449d6b2"
+  }
+}
