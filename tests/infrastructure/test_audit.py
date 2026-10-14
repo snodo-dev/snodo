@@ -1,6 +1,7 @@
 """Tests for append-only audit log with hash chain."""
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import tempfile
@@ -84,6 +85,86 @@ def test_append_multiple_events(temp_audit_log):
     # Verify chain links
     assert event2.previous_hash == event1.event_hash
     assert event3.previous_hash == event2.event_hash
+
+
+def test_old_audit_log_rotates_by_oldest_event_week(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    path = tmp_path / "audit.log"
+    audit = AuditLog(str(path))
+    now = datetime.now(UTC)
+    event = audit.append_event("old", {})
+    event.timestamp = (now - timedelta(days=8)).isoformat()
+    event.event_hash = audit._compute_hash(
+        event.sequence, event.timestamp, event.event_type, event.data,
+        event.previous_hash, event.project_id,
+    )
+    path.write_text(json.dumps(event.__dict__) + "\n")
+    iso_year, iso_week, _ = datetime.fromisoformat(event.timestamp).isocalendar()
+
+    current = AuditLog(str(path))
+    appended = current.append_event("new", {})
+    archive = tmp_path / f"audit.log.{iso_year}-w{iso_week:02d}"
+    assert archive.exists()
+    assert appended.sequence == event.sequence + 1
+    assert appended.previous_hash == event.event_hash
+    assert current.verify_chain()
+
+
+def test_large_audit_log_rotates_and_same_week_uses_suffix(tmp_path, monkeypatch):
+    from datetime import datetime
+
+    import snodo.infrastructure.audit as audit_module
+
+    path = tmp_path / "audit.log"
+    log = AuditLog(str(path))
+    first = log.append_event("one", {})
+    monkeypatch.setattr(audit_module, "_AUDIT_ROTATE_SIZE", 1)
+    log.append_event("two", {})
+    assert (tmp_path / f"audit.log.{datetime.fromisoformat(first.timestamp).isocalendar().year}-w{datetime.fromisoformat(first.timestamp).isocalendar().week:02d}").exists()
+    log.append_event("three", {})
+    assert list(tmp_path.glob("audit.log.*-w*.*"))
+    assert log.verify_chain()
+
+
+def test_rotation_failure_warns_and_append_continues(tmp_path, monkeypatch, caplog):
+    import snodo.infrastructure.audit as audit_module
+
+    path = tmp_path / "audit.log"
+    log = AuditLog(str(path))
+    log.append_event("one", {})
+    monkeypatch.setattr(audit_module, "_AUDIT_ROTATE_SIZE", 1)
+    monkeypatch.setattr(audit_module.os, "replace", lambda *_: (_ for _ in ()).throw(PermissionError("denied")))
+    appended = log.append_event("two", {})
+    assert appended.sequence == 1
+    assert len(path.read_text().splitlines()) == 2
+    assert "Could not rotate audit log" in caplog.text
+
+
+def test_concurrent_appenders_preserve_chain_during_rotation(tmp_path, monkeypatch):
+    import snodo.infrastructure.audit as audit_module
+
+    path = tmp_path / "audit.log"
+    first = AuditLog(str(path))
+    second = AuditLog(str(path))
+    first.append_event("seed", {})
+    monkeypatch.setattr(audit_module, "_AUDIT_ROTATE_SIZE", 1)
+
+    barrier = threading.Barrier(2)
+
+    def append(log, name):
+        barrier.wait()
+        return log.append_event(name, {})
+
+    with ThreadPoolExecutor(2) as pool:
+        results = [
+            pool.submit(append, first, "writer-one"),
+            pool.submit(append, second, "writer-two"),
+        ]
+        appended = [result.result() for result in results]
+
+    assert sorted(event.sequence for event in appended) == [1, 2]
+    assert AuditLog(str(path)).verify_chain()
 
 
 def test_archive_chain_load_append_verify_and_stream(tmp_path):
@@ -593,8 +674,10 @@ def test_legacy_log_loads_verifies_and_appends_current_format(tmp_path):
     resumed.append_event("current", {"i": 1})
 
     serialized = [json.loads(line) for line in log_path.read_text().splitlines()]
-    assert "project_id" not in serialized[0]
-    assert "project_id" in serialized[1]
+    archive = next(tmp_path.glob("audit.log.*-w*"))
+    archived = json.loads(archive.read_text())
+    assert "project_id" not in archived
+    assert "project_id" in serialized[0]
     assert resumed.verify_chain() is True
 
 
