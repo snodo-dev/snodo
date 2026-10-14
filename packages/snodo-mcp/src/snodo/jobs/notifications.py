@@ -269,6 +269,7 @@ def monitor(root_text: str, job_id: str) -> None:
     task_id = task.get("task_id")
     audit_path = root / ".snodo" / "audit.log"
     audit_offset = 0
+    audit_identity = None
     last_activity = started
     silent_sent = False
     threshold_value = _settings().get("silence_threshold_seconds", 900)
@@ -285,7 +286,26 @@ def monitor(root_text: str, job_id: str) -> None:
 
         # Route existing audit events; this adds no audit vocabulary or state.
         try:
+            try:
+                audit_stat = audit_path.stat()
+                current_identity = (audit_stat.st_dev, audit_stat.st_ino)
+                if (
+                    audit_identity is not None
+                    and (current_identity != audit_identity or audit_stat.st_size < audit_offset)
+                ):
+                    audit_offset = 0
+                audit_identity = current_identity
+            except OSError:
+                current_identity = None
             with audit_path.open("rb") as stream:
+                # Account for replacement between stat() and open().
+                opened_stat = os.fstat(stream.fileno())
+                opened_identity = (opened_stat.st_dev, opened_stat.st_ino)
+                if current_identity is not None and opened_identity != current_identity:
+                    audit_offset = 0
+                    audit_identity = opened_identity
+                if opened_stat.st_size < audit_offset:
+                    audit_offset = 0
                 stream.seek(audit_offset)
                 while line := stream.readline():
                     audit_offset = stream.tell()

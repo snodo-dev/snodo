@@ -333,6 +333,44 @@ def test_silence_threshold_fires_once_and_ends_on_completion(tmp_path, monkeypat
     assert len(silence_events) == 1
 
 
+def test_monitor_reads_replaced_audit_log_without_repeating_event(tmp_path, monkeypatch):
+    root = tmp_path
+    job_id = "j_rotation"
+    job = root / ".snodo" / "jobs" / job_id
+    job.mkdir(parents=True)
+    (job / "task.json").write_text(json.dumps({"task_id": "t_rotation", "description": "Rotate"}))
+    (job / "state.json").write_text(json.dumps({"status": "running", "started_at": 1}))
+    audit = root / ".snodo" / "audit.log"
+    audit.parent.mkdir(parents=True, exist_ok=True)
+
+    def event(event_hash):
+        return json.dumps({
+            "timestamp": "2026-01-01T00:00:00", "event_type": "halt",
+            "task_ref": "t_rotation", "event_hash": event_hash, "halt_type": "blocked",
+        }) + "\n"
+
+    audit.write_text(event("already-sent"))
+    sent = []
+    monkeypatch.setattr(notifications, "_settings", lambda: {"events": ["task_halted"]})
+    monkeypatch.setattr(notifications, "_targets", lambda _settings: [{"type": "webhook"}])
+    monkeypatch.setattr(notifications, "send", lambda _target, payload: sent.append(payload))
+    sleeps = [0]
+
+    def rotate(_seconds):
+        sleeps[0] += 1
+        if sleeps[0] == 1:
+            audit.rename(audit.with_suffix(".log.old"))
+            audit.write_text(event("already-sent") + event("after-swap"))
+        else:
+            (job / "state.json").write_text(json.dumps({"status": "completed", "started_at": 1}))
+
+    monkeypatch.setattr(notifications.time, "sleep", rotate)
+    notifications.monitor(str(root), job_id)
+
+    assert [payload["event"] for payload in sent] == ["task_halted", "task_halted"]
+    assert len(list((root / ".snodo" / "notifications" / "sent").iterdir())) == 2
+
+
 def test_config_redaction_hides_target_url_and_token():
     config = {"notifications": {"targets": [
         {"type": kind, "url": "https://secret.invalid/hook", "token": "top-secret"}
