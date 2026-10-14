@@ -1,0 +1,23 @@
+intent: Make a failed gate say what failed, and make a quiet gate look alive. Keep the failure
+  lines in the quality validator's output tail. Give worktree envs ruff by default. Re-sync
+  uv envs even when .venv exists. Emit a periodic "gate still running" progress line. Treat
+  any gate failure that also fails on the base commit as predating the task, not only pytest
+  ids.
+name: gate-signal
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_quality_tail_keeps_failure_lines
+  - 1.3_env_prep_resyncs_stale_deps
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_validator_still_running_progress
+  - 2.2_lint_tool_in_default_env
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_red_base_check_for_any_gate

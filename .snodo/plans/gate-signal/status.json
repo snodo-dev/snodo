@@ -1,0 +1,38 @@
+{
+  "tasks": {
+    "1.1_quality_tail_keeps_failure_lines": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5f8f48ebed4bf594"
+    },
+    "1.3_env_prep_resyncs_stale_deps": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "12360993277660aa"
+    },
+    "2.1_validator_still_running_progress": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c0f96490b7a3ef16"
+    },
+    "3.1_red_base_check_for_any_gate": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b8dbac2d6f151e5c"
+    },
+    "2.2_lint_tool_in_default_env": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c6db211f467e80b5"
+    }
+  },
+  "integration": {
+    "branch": "plan/gate-signal/integration",
+    "base_sha": "fada635c26012819115d3cff372d98ac68f571c3"
+  }
+}
