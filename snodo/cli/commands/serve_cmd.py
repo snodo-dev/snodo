@@ -28,12 +28,9 @@ from snodo.cli.commands.serve_tunnel_output import (
     tunnel_secret_values as _tunnel_secret_values,
 )
 from snodo.cli.commands.serve_tunnel_config import (  # noqa: F401 - re-exported for callers and tests
-    AUTH_METHODS,
     _auth_methods,
     _load_tunnel_config,
-    _rotatable_tunnel_credentials,
     _save_tunnel_config,
-    _select_tunnel_credential,
 )
 from snodo.cli.commands.serve_security import (
     _TUNNEL_HOSTNAME_RE,  # noqa: F401 - re-exported for callers and tests
@@ -41,7 +38,6 @@ from snodo.cli.commands.serve_security import (
     check_cloudflared as _check_cloudflared,
     derive_project_root as _derive_project_root,
     extract_existing_hostname as _extract_existing_hostname,
-    provision_with_auth as _provision_with_auth,
 )
 
 _logger = logging.getLogger(__name__)
@@ -81,16 +77,10 @@ def register(app: typer.Typer) -> None:
         ),
         auth: Optional[list[str]] = typer.Option(
             None, "--auth",
-            help="Tunnel authentication (oauth or service-token); repeat for any accepted mechanism",
-        ),
-        rotate: bool = typer.Option(
-            False, "--rotate", help="Rotate the Cloudflare service token for an existing tunnel",
-        ),
-        credential: Optional[str] = typer.Option(
-            None, "--credential", help="Credential name to rotate when a tunnel has more than one",
+            help="Tunnel authentication: OAuth (https://mcp-auth.snodo.dev)",
         ),
         delete: bool = typer.Option(
-            False, "--delete", help="Deprovision and remove the managed tunnel",
+            False, "--delete", help="With --tunnel, deprovision and remove the managed tunnel",
         ),
         hostname: Optional[str] = typer.Option(
             None, "--hostname",
@@ -134,7 +124,7 @@ def register(app: typer.Typer) -> None:
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
-            tunnel=tunnel, verbose=verbose, auth=auth, rotate=rotate, credential=credential,
+            tunnel=tunnel, verbose=verbose, auth=auth,
             delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
             mcp_uninstall_all=mcp_uninstall_all, mcp_list=mcp_list,
@@ -240,11 +230,11 @@ def _run_server(args, protocol) -> int:
     # Detect tunnel mode and wire the selected bearer verifier if active.
     tunnel_config = _load_tunnel_config(project_root)
     tunnel_hostname = tunnel_config.get("hostname")
-    auth_methods = _auth_methods(
-        getattr(args, "auth", None) or tunnel_config.get("auth")
+    auth_methods = ["oauth"] if tunnel_hostname else _auth_methods(
+        getattr(args, "auth", None)
     )
     extra_kwargs = {}
-    if tunnel_hostname and "oauth" in auth_methods:
+    if tunnel_hostname:
         from snodo.infrastructure.jwks import JwksClient
         from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
         from mcp.server.auth.settings import AuthSettings
@@ -268,7 +258,8 @@ def _run_server(args, protocol) -> int:
             )
             print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
         else:
-            print("  Warning: OAuth 2.1 disabled — could not load JWKS", file=sys.stderr)
+            print("  Error: OAuth 2.1 required for managed tunnels; could not load JWKS", file=sys.stderr)
+            return 1
 
     verbose = bool(getattr(args, "verbose", False))
     if verbose:
@@ -571,7 +562,7 @@ def _tunnel_project_slug(project_root: str) -> str:
 
 def _provision_tunnel(
     api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str,
-    port: int = DEFAULT_PORT, auth: Optional[list[str]] = None,
+    port: int = DEFAULT_PORT,
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
@@ -591,8 +582,6 @@ def _provision_tunnel(
             "snodo_version": snodo_version,
             "port": port,
         }
-        if auth:
-            payload["auth"] = auth
         resp = httpx.post(
             url,
             json=payload,
@@ -615,40 +604,6 @@ def _provision_tunnel(
         raise
     except Exception as e:
         raise TunnelAPIError(f"Tunnel provisioning failed: {e}") from e
-
-
-def _rotate_tunnel_token(api_key: str, hostname: str) -> dict:
-    """Revoke the current service token and issue its replacement.
-
-    The secret is returned by the cloud only in the issue response. Callers
-    must display it immediately and must not write it to tunnel.json.
-    """
-    try:
-        import httpx
-
-        api_url = _get_cloud_tunnel_api_url().rstrip("/")
-        headers = {"Authorization": f"Bearer {api_key}"}
-        revoke_url = f"{api_url}/tunnel/{hostname}/token"
-        revoked = httpx.delete(revoke_url, headers=headers, timeout=30.0)
-        if revoked.status_code not in (200, 204, 404):
-            raise TunnelAPIError(
-                f"Token revocation failed: DELETE {revoke_url} returned "
-                f"HTTP {revoked.status_code}: {revoked.text[:500]}",
-                status_code=revoked.status_code,
-            )
-
-        issued = httpx.post(revoke_url, headers=headers, timeout=30.0)
-        if issued.status_code != 200:
-            raise TunnelAPIError(
-                f"Token issuance failed: POST {revoke_url} returned "
-                f"HTTP {issued.status_code}: {issued.text[:500]}",
-                status_code=issued.status_code,
-            )
-        return issued.json()
-    except TunnelAPIError:
-        raise
-    except Exception as e:
-        raise TunnelAPIError(f"Token rotation failed: {e}") from e
 
 
 def _deprovision_tunnel(api_key: str, hostname: str) -> bool:
@@ -1055,7 +1010,6 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     from snodo.cli.commands.serve_tunnel_config import resolve_serve_mode
     mode = resolve_serve_mode(project_root, protocol, requested_mode)
     transport = getattr(args, "transport", "streamable-http")
-    rotate = getattr(args, "rotate", False)
     delete = getattr(args, "delete", False)
     delete_hostname = getattr(args, "hostname", None) or None
     requested_auth = getattr(args, "auth", None)
@@ -1082,49 +1036,12 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
     # 3. Load existing tunnel config
     tunnel_config = _load_tunnel_config(project_root)
-    auth_methods = _auth_methods(requested_auth or tunnel_config.get("auth"))
-
+    # Auth requested by the operator is validated before tunnel access. Legacy
+    # records may name service-token; ignore that retired setting and enforce OAuth.
     # --delete flow
     if delete:
         return _handle_tunnel_delete(project_root, tunnel_config, api_key,
                                      delete_hostname)
-
-    # --rotate flow
-    if rotate:
-        credential = _select_tunnel_credential(
-            tunnel_config, getattr(args, "credential", None),
-        )
-        if credential is None:
-            return 1
-        credential_name = str(
-            credential.get("name") or credential.get("id") or credential.get("type")
-        )
-        if credential.get("type") != "service_token":
-            print(f"Rotation is not implemented for tunnel credential '{credential_name}'.",
-                  file=sys.stderr)
-            return 1
-        hostname = tunnel_config.get("hostname")
-        if not hostname:
-            print("Cannot rotate a tunnel without a hostname.", file=sys.stderr)
-            return 1
-        try:
-            replacement = _rotate_tunnel_token(api_key, hostname)
-        except TunnelAPIError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-        new_client_id = replacement.get("client_id")
-        new_secret = replacement.get("client_secret")
-        if not new_client_id or not new_secret:
-            print("Error: token rotation returned no replacement client credentials.",
-                  file=sys.stderr)
-            return 1
-        tunnel_config["client_id"] = new_client_id
-        _save_tunnel_config(project_root, tunnel_config)
-        print(f"Rotated tunnel credential: {credential_name}")
-        print(f"  Client ID: {new_client_id}")
-        print(f"  Client secret: {new_secret}")
-        print("  Save the client secret now; it will not be shown again.")
-        return 0
 
     # 4. Decide the port before anything is provisioned. The tunnel is told the
     # port it must target when it is provisioned, and the MCP child is then
@@ -1184,9 +1101,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             return 1
 
         try:
-            provisioned = _provision_with_auth(
+            provisioned = _provision_tunnel(
                 api_key, project_slug, mode, short_id, __version__, port,
-                auth_methods,
             )
         except TunnelAPIError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -1222,11 +1138,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             "tunnel_token": provisioned["tunnel_token"],
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
             "port": port,
-            "auth": auth_methods,
         }
-        for key in ("client_id", "credentials", "auth_type"):
-            if provisioned.get(key) is not None:
-                tunnel_config[key] = provisioned[key]
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = True
 
@@ -1239,8 +1151,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     ]
     if getattr(args, "verbose", False):
         mcp_cmd.append("--verbose")
-    for method in auth_methods:
-        mcp_cmd.extend(["--auth", method])
+    mcp_cmd.extend(["--auth", "oauth"])
     if requested_mode:
         mcp_cmd.extend(["--mode", requested_mode])
 
@@ -1289,10 +1200,10 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # is its URL handed to the operator.
     _warn_if_unservable_hostname(tunnel_config["hostname"])
     if newly_provisioned:
-        _print_first_run_info(tunnel_config["hostname"], auth_methods, provisioned)
+        _print_first_run_info(tunnel_config["hostname"])
     else:
         print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
-        print(f"  Authentication: {', '.join(auth_methods)} (any accepted mechanism)")
+        print("  OAuth auth server: https://mcp-auth.snodo.dev")
         print()
 
     # 6. Start cloudflared
@@ -1396,22 +1307,14 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     return 1
 
 
-def _print_first_run_info(hostname: str, auth_methods: Optional[list[str]] = None,
-                          credentials: Optional[dict] = None) -> None:
+def _print_first_run_info(hostname: str) -> None:
     """Print the first-run tunnel configuration block."""
     print()
     print("✓ Snodo MCP tunnel active")
     print()
-    auth_methods = _auth_methods(auth_methods)
-    credentials = credentials or {}
-    print("Configure your MCP client with any accepted authentication mechanism:")
+    print("Connect your MCP client through OAuth:")
     print()
     print(f"  URL:              https://{hostname}/mcp")
-    if "oauth" in auth_methods:
-        print("  OAuth auth server: https://mcp-auth.snodo.dev")
-    if "service-token" in auth_methods:
-        print(f"  CF-Access-Client-Id: {credentials.get('client_id', '(not returned)')}")
-        print(f"  CF-Access-Client-Secret: {credentials.get('client_secret', '(not returned)')}")
-        print("  Save the service-token secret; it cannot be retrieved again.")
+    print("  OAuth auth server: https://mcp-auth.snodo.dev")
     print()
     print()

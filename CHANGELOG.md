@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Make managed tunnels OAuth-only, enforce bearer checks for legacy tunnel records, and remove retired service-token rotation. (Fixes #901)
 - Register Snodo MCP servers with GitHub Copilot in VS Code and Copilot CLI, preserving malformed configs without overwriting them. (Fixes #899)
 - `snodo models --validate` is an alias for `snodo models --check`.
 - The changelog CI check falls back to `origin/main` when a new-branch push has no previous commit.

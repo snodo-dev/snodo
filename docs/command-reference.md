@@ -245,7 +245,7 @@ the project's job and task record directories.
 
 | Command | Arguments and options |
 |---|---|
-| `snodo serve` | `--protocol`, `--mode`, `--transport`, `--port`, `--tunnel`, `--verbose`, `--auth`, `--rotate`, `--credential`, `--delete`, `--hostname`, `--mcp-install`, `--mcp-uninstall`, `--mcp-uninstall-all`, `--mcp-list`, `--purge`, `--orphans`, `--yes`/`-y`, deprecated `--install`, `--uninstall`, `--uninstall-all`, `--project-name` |
+| `snodo serve` | `--protocol`, `--mode`, `--transport`, `--port`, `--tunnel`, `--verbose`, `--auth`, `--delete`, `--hostname`, `--mcp-install`, `--mcp-uninstall`, `--mcp-uninstall-all`, `--mcp-list`, `--purge`, `--orphans`, `--yes`/`-y`, deprecated `--install`, `--uninstall`, `--uninstall-all`, `--project-name` |
 
 The legacy `snodo serve --install`, `--uninstall`, and `--uninstall-all`
 options are deprecated in v0.18.0; use `--mcp-install`, `--mcp-uninstall`,
@@ -256,7 +256,10 @@ in v0.18.0.
 response summaries; authentication refusals identify the failed check. The
 server defaults to stdio. HTTP transports require `--transport sse` or
 `--transport streamable-http`; `--tunnel` provisions and starts a managed
-tunnel. See `snodo serve --help` for tunnel auth, rotation, deletion, and
+tunnel. Managed tunnels always authenticate clients through OAuth at
+`https://mcp-auth.snodo.dev`; `--auth service-token` is refused. Tunnels carry
+no rotatable client credentials. `--delete` must be used with `--tunnel`.
+See `snodo serve --help` for tunnel deletion and
 MCP client management options for installed Claude Desktop and Codex-family
 clients (ChatGPT desktop, Codex CLI, and the IDE extension share
 `~/.codex/config.toml`; `CODEX_HOME` can relocate it).

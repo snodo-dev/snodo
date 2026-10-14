@@ -24,18 +24,6 @@ def extract_existing_hostname(body: str) -> str | None:
     return match.group(0) if match else None
 
 
-def provision_with_auth(api_key: str, project_slug: str, mode: str,
-                        short_id: str, version: str, port: int,
-                        auth_methods: list[str]) -> dict:
-    """Provision a tunnel with its selected authentication methods."""
-    from snodo.cli.commands.serve_cmd import _provision_tunnel
-
-    if auth_methods == ["oauth"]:
-        return _provision_tunnel(api_key, project_slug, mode, short_id, version, port)
-    return _provision_tunnel(api_key, project_slug, mode, short_id, version, port,
-                              auth=auth_methods)
-
-
 def check_cloudflared() -> bool:
     """Return whether cloudflared is available on PATH."""
     try:
