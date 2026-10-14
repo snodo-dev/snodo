@@ -1,0 +1,16 @@
+intent: Polish the first thing a user sees. On a terminal, `snodo --version` shows
+  the same wordmark header as bare `snodo`. Bare `snodo` shows the wave while it gathers
+  the status view after the wordmark. The readiness check finds the real test runner
+  in compound test commands.
+name: home-polish
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_version_shows_wordmark
+  - 1.2_readiness_runner_in_compound_commands
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_home_view_wave

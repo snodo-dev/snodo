@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_version_shows_wordmark": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2e7f406c986c7a4f"
+    },
+    "1.2_readiness_runner_in_compound_commands": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5bd4649fde8973fa"
+    },
+    "2.1_home_view_wave": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "96889cce6348a914"
+    }
+  },
+  "integration": {
+    "branch": "plan/home-polish/integration",
+    "base_sha": "c459572967bef0ea29ce33992c053d805bfd7c5a"
+  }
+}
