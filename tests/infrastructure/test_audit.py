@@ -86,6 +86,73 @@ def test_append_multiple_events(temp_audit_log):
     assert event3.previous_hash == event2.event_hash
 
 
+def test_append_reads_only_audit_log_tail(temp_audit_log, monkeypatch):
+    """Tail lookup must not iterate over the log or request an unbounded read."""
+    import builtins
+
+    temp_audit_log.append_event("existing", {})
+    path = Path(temp_audit_log.log_path)
+    event_line = path.read_bytes()
+    path.write_bytes((b"irrelevant\n" * 200_000) + event_line)
+
+    original_open = builtins.open
+    requested = []
+
+    class GuardedFile:
+        def __init__(self, file):
+            self.file = file
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.file.close()
+
+        def __getattr__(self, name):
+            return getattr(self.file, name)
+
+        def read(self, size=-1):
+            requested.append(size)
+            assert size >= 0, "tail lookup attempted an unbounded read"
+            return self.file.read(size)
+
+        def __iter__(self):
+            raise AssertionError("tail lookup iterated through the log")
+
+    def guarded_open(file, mode="r", *args, **kwargs):
+        opened = original_open(file, mode, *args, **kwargs)
+        return GuardedFile(opened) if Path(file) == path and "b" in mode else opened
+
+    monkeypatch.setattr(builtins, "open", guarded_open)
+    sequence, previous_hash = temp_audit_log._read_tail_state()
+    assert sequence == 1
+    assert previous_hash == temp_audit_log.events[0].event_hash
+    assert sum(requested) < path.stat().st_size
+
+
+def test_append_chains_after_event_larger_than_tail_window(temp_audit_log):
+    from snodo.infrastructure.audit import _AUDIT_TAIL_READ_BYTES
+
+    data = {"payload": "x" * (_AUDIT_TAIL_READ_BYTES * 2)}
+    timestamp = "2026-10-14T00:00:00+00:00"
+    event_hash = temp_audit_log._compute_hash(0, timestamp, "large", data, "0" * 64, "")
+    large_event = AuditEvent(0, timestamp, "large", "", data, "0" * 64, event_hash)
+    temp_audit_log.log_path.write_text(json.dumps(large_event.__dict__) + "\n")
+
+    next_event = temp_audit_log.append_event("next", {})
+    assert next_event.sequence == 1
+    assert next_event.previous_hash == event_hash
+
+
+@pytest.mark.parametrize("contents", ["", "\n\n", "\n \n"])
+def test_append_starts_chain_for_empty_or_blank_log(tmp_path, contents):
+    log_path = tmp_path / "audit.log"
+    log_path.write_text(contents)
+    event = AuditLog(str(log_path), project_id="test").append_event("first", {})
+    assert event.sequence == 0
+    assert event.previous_hash == "0" * 64
+
+
 def test_event_timestamps(temp_audit_log):
     """Test that events have timestamps."""
     event = temp_audit_log.append_event("test", {})

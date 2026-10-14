@@ -62,6 +62,7 @@ _LOCK_TIMEOUT = 10.0
 
 # Leave ample room below the cloud ingest's single-event ceiling.
 _AUDIT_EVENT_BYTE_BUDGET = 256 * 1024
+_AUDIT_TAIL_READ_BYTES = 64 * 1024
 _TRUNCATION_MARKER = "… [truncated: {removed} bytes removed]"
 
 
@@ -602,12 +603,23 @@ class AuditLog:
         """
         if not self.log_path.exists() or self.log_path.stat().st_size == 0:
             return 0, "0" * 64
-        last_line = ""
-        with open(self.log_path) as f:
-            for line in f:
-                if line.strip():
-                    last_line = line
-        if not last_line.strip():
+        # Work backward so append cost is independent of the log's total size.
+        # Keep extending the window when an event itself exceeds one chunk.
+        with open(self.log_path, "rb") as f:
+            position = f.seek(0, os.SEEK_END)
+            tail = b""
+            while position:
+                size = min(_AUDIT_TAIL_READ_BYTES, position)
+                position -= size
+                f.seek(position)
+                tail = f.read(size) + tail
+                candidate = tail.rstrip()
+                if candidate and (position == 0 or b"\n" in candidate):
+                    last_line = candidate.rsplit(b"\n", 1)[-1]
+                    break
+            else:
+                last_line = b""
+        if not last_line:
             return 0, "0" * 64
         try:
             event_dict = json.loads(last_line)
