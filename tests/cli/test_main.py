@@ -390,6 +390,7 @@ def test_version_update_hint_is_tty_stderr_only(monkeypatch, capsys):
     monkeypatch.setattr(banner, "should_show_wordmark", lambda: True)
     monkeypatch.setattr(banner, "colored_wordmark", lambda: "WORDMARK")
     monkeypatch.setattr(update_check, "get_newer_version", lambda *, is_tty: "9.9.9")
+    monkeypatch.delenv("NO_COLOR", raising=False)  # CI sets NO_COLOR, which keeps --version plain
     with patch('sys.argv', ['snodo', '--version']):
         assert main() == 0
     captured = capsys.readouterr()
