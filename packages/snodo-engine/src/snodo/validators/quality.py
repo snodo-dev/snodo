@@ -15,6 +15,7 @@ import re
 import shlex
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any, Optional
 
@@ -53,6 +54,8 @@ _OUTPUT_FAILURE_PATTERNS = (
 # baseline rerun to these ids is important: the normal test command may be a
 # large suite and a second full run would make a failing gate much more costly.
 _PYTEST_FAILED_RE = re.compile(r"^FAILED\s+(\S+)", re.MULTILINE)
+_BASELINE_RESULTS: dict[tuple[str, str, str], tuple[int, frozenset[str]]] = {}
+_BASELINE_LOCK = threading.Lock()
 
 # The no-op default test command shipped by every protocol template that has a
 # quality validator. It is a POSIX shell command that prints a notice and exits
@@ -410,6 +413,12 @@ class QualityValidator(ValidatorBase):
                     "task's defect. A pass on the baseline does not clear "
                     "the failure; an intermittent rerun remains blocking."
                 )
+            elif baseline == "red-different":
+                res.justification = (
+                    f"{res.justification} The task's base commit also fails this "
+                    "gate, but with different failure evidence; this failure "
+                    "remains the task's responsibility."
+                )
             outcome = "error" if getattr(res, "error", False) else "fail"
             tail = self._output_tail(result.stdout, result.stderr)
             self._audit_verification(
@@ -468,8 +477,8 @@ class QualityValidator(ValidatorBase):
         stdout: str,
         stderr: str,
         context: Optional[Any],
-    ) -> Optional[bool]:
-        """Check only failed pytest node ids against the task's base commit.
+    ) -> Optional[bool | str]:
+        """Compare failed gate evidence against the task's base commit.
 
         Returns ``True`` when the baseline fails, ``False`` when it passes, and
         ``None`` when the command or repository cannot support this cheap
@@ -477,50 +486,92 @@ class QualityValidator(ValidatorBase):
         may be a flaky task run, so the original failure remains blocking.
         """
         base_ref = getattr(context, "base_ref", None) if context else None
-        if not base_ref or not ("pytest" in command or "py.test" in command):
+        if not base_ref:
             return None
 
         output = f"{stdout or ''}\n{stderr or ''}"
-        failed_tests = _PYTEST_FAILED_RE.findall(output)
-        if not failed_tests:
-            return None
+        is_pytest = "pytest" in command or "py.test" in command
+        if is_pytest:
+            failed_tests = _PYTEST_FAILED_RE.findall(output)
+            if not failed_tests:
+                return None
+            selectors = " ".join(shlex.quote(test) for test in dict.fromkeys(failed_tests))
+            baseline_command = f"{command} {selectors}"
+            task_failures = set()
+        else:
+            task_failures = self._failure_evidence(output)
+            if not task_failures:
+                return None
+            baseline_command = command
 
-        selectors = " ".join(shlex.quote(test) for test in dict.fromkeys(failed_tests))
-        baseline_command = f"{command} {selectors}"
+        cache_key = None
+        if not is_pytest:
+            try:
+                common_dir = subprocess.run(
+                    ["git", "rev-parse", "--git-common-dir"],  # noqa: S607 - fixed git executable
+                    cwd=str(self.working_directory), capture_output=True, text=True,
+                    timeout=5, env=subprocess_env_without_job_context(),
+                )
+                repo_key = str((self.working_directory / common_dir.stdout.strip()).resolve()) if common_dir.returncode == 0 else str(self.working_directory)
+            except (OSError, subprocess.SubprocessError):
+                repo_key = str(self.working_directory)
+            cache_key = (repo_key, str(base_ref), command)
         worktree_path = None
         try:
-            with tempfile.TemporaryDirectory(prefix="snodo-quality-base-") as tmp:
-                worktree_path = tmp
-                added = subprocess.run(  # noqa: S603, S607 - fixed git argv; base_ref is a validated git ref
-                    ["git", "worktree", "add", "--detach", tmp, base_ref],  # noqa: S607 - fixed git executable
-                    cwd=str(self.working_directory),
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    env=subprocess_env_without_job_context(),
-                )
-                if added.returncode != 0:
-                    logger.warning("Could not create quality baseline worktree: %s", added.stderr)
-                    return None
-                baseline = subprocess.run(  # noqa: S602 - same trusted command as the primary run
-                    baseline_command,
-                    shell=True,
-                    cwd=tmp,
-                    capture_output=True,
-                    text=True,
-                    timeout=self._get_timeout(),
-                    env=subprocess_env_without_job_context(),
-                )
-                outcome = "fail" if baseline.returncode else "pass"
-                self._audit_verification(
-                    context,
-                    baseline_command,
-                    base_ref,
-                    baseline.returncode,
-                    outcome,
-                    self._output_tail(baseline.stdout, baseline.stderr),
-                )
-                return bool(baseline.returncode)
+            with _BASELINE_LOCK:
+                cached = _BASELINE_RESULTS.get(cache_key) if cache_key else None
+                if cached is not None:
+                    baseline_code, failures = cached
+                    if is_pytest:
+                        return bool(baseline_code)
+                    if baseline_code == 0:
+                        return False
+                    return True if task_failures <= failures else "red-different"
+                with tempfile.TemporaryDirectory(prefix="snodo-quality-base-") as tmp:
+                    worktree_path = tmp
+                    added = subprocess.run(  # noqa: S603, S607 - fixed git argv; base_ref is a validated git ref
+                        ["git", "worktree", "add", "--detach", tmp, base_ref],  # noqa: S607 - fixed git executable
+                        cwd=str(self.working_directory),
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        env=subprocess_env_without_job_context(),
+                    )
+                    if added.returncode != 0:
+                        logger.warning("Could not create quality baseline worktree: %s", added.stderr)
+                        return None
+                    baseline = subprocess.run(  # noqa: S602 - same trusted command as the primary run
+                        baseline_command,
+                        shell=True,
+                        cwd=tmp,
+                        capture_output=True,
+                        text=True,
+                        timeout=self._get_timeout(),
+                        env=subprocess_env_without_job_context(),
+                    )
+                    outcome = "fail" if baseline.returncode else "pass"
+                    self._audit_verification(
+                        context,
+                        baseline_command,
+                        base_ref,
+                        baseline.returncode,
+                        outcome,
+                        self._output_tail(baseline.stdout, baseline.stderr),
+                    )
+                    if baseline.returncode in (126, 127):
+                        return None
+                    if cache_key and baseline.returncode not in (126, 127):
+                        failures = frozenset(self._failure_evidence(
+                            f"{baseline.stdout or ''}\n{baseline.stderr or ''}"
+                        ))
+                        _BASELINE_RESULTS[cache_key] = (baseline.returncode, failures)
+                    else:
+                        failures = frozenset()
+                    if is_pytest:
+                        return bool(baseline.returncode)
+                    if baseline.returncode == 0:
+                        return False
+                    return True if task_failures <= failures else "red-different"
         except (OSError, subprocess.SubprocessError) as exc:
             logger.warning("Could not rerun failed tests on quality baseline: %s", exc)
             return None
@@ -536,6 +587,14 @@ class QualityValidator(ValidatorBase):
                     timeout=30,
                     env=subprocess_env_without_job_context(),
                 )
+
+    @staticmethod
+    def _failure_evidence(output: str) -> set[str]:
+        return {
+            line.strip()
+            for line in output.splitlines()
+            if line.strip() and any(pattern.match(line) for pattern in _OUTPUT_FAILURE_PATTERNS)
+        }
 
     def _classify_failure(self, command: str, returncode: int,
                           stdout: str, stderr: str) -> ValidatorResult:

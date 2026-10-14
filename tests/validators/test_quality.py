@@ -524,6 +524,53 @@ class TestQualityValidatorEvaluate:
         assert result is True
         assert run.call_args_list[1].args[0] == "pytest -q tests/test_shared.py::test_race"
 
+    def test_non_pytest_gate_compares_and_caches_base_failure(self, project_dir):
+        from snodo.validators import quality as quality_module
+
+        command = "make gate"
+        quality_module._BASELINE_RESULTS.clear()
+        spec = Validator(validator_id="quality", validator_type="quality", tooling={"test_command": command})
+        qv = QualityValidator(spec, project_dir)
+        context = SimpleNamespace(base_ref="base-nonpytest", audit_log=None)
+        responses = [
+            MagicMock(returncode=0, stdout="", stderr=""),  # git common dir
+            MagicMock(returncode=0, stdout="", stderr=""),  # worktree add
+            MagicMock(returncode=1, stdout="FAIL: version cutoff check\n", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # worktree remove
+            MagicMock(returncode=0, stdout="", stderr=""),  # cached lookup
+            MagicMock(returncode=0, stdout="", stderr=""),  # cached lookup
+        ]
+        with patch("snodo.validators.quality.subprocess.run", side_effect=responses) as run:
+            same = qv._rerun_failed_tests_on_base(command, "FAIL: version cutoff check\n", "", context)
+            same_again = qv._rerun_failed_tests_on_base(command, "FAIL: version cutoff check\n", "", context)
+            different = qv._rerun_failed_tests_on_base(command, "FAIL: another check\n", "", context)
+
+        assert same is True
+        assert same_again is True
+        assert different == "red-different"
+        assert sum(call.kwargs.get("shell", False) for call in run.call_args_list) == 1
+
+    def test_non_pytest_base_pass_does_not_clear_failure(self, project_dir):
+        from snodo.validators import quality as quality_module
+
+        command = "make gate -- unique-pass"
+        quality_module._BASELINE_RESULTS.clear()
+        spec = Validator(validator_id="quality", validator_type="quality", tooling={"test_command": command})
+        qv = QualityValidator(spec, project_dir)
+        context = SimpleNamespace(base_ref="base-passing-gate", audit_log=None)
+        responses = [
+            MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(returncode=0, stdout="all clear\n", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+        with patch("snodo.validators.quality.subprocess.run", side_effect=responses):
+            result = qv._rerun_failed_tests_on_base(
+                command, "FAIL: task regression\n", "", context
+            )
+
+        assert result is False
+
     def test_command_not_found_is_operational_error(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
         with patch("snodo.validators.quality.subprocess.run", side_effect=FileNotFoundError):
