@@ -86,6 +86,55 @@ def test_append_multiple_events(temp_audit_log):
     assert event3.previous_hash == event2.event_hash
 
 
+def test_archive_chain_load_append_verify_and_stream(tmp_path):
+    path = tmp_path / "audit.log"
+    original = AuditLog(str(path))
+    original.append_event("first", {})
+    second = original.append_event("second", {})
+    archive = tmp_path / "audit.log.2026-w41"
+    archive.write_bytes(Path(path).read_bytes())
+    path.write_text("")
+
+    current = AuditLog(str(path))
+    assert current.events == []
+    appended = current.append_event("third", {})
+    assert appended.sequence == 2
+    assert appended.previous_hash == second.event_hash
+    assert current.verify_chain_detailed().valid
+    assert [event.sequence for event in current.iter_history()] == [0, 1, 2]
+
+    # Startup only trusts the newest archive's tail; full verification catches
+    # a broken link earlier in that archive with its precise location.
+    verifier = AuditLog(str(path))
+    rows = archive.read_text().splitlines()
+    row = json.loads(rows[1])
+    row["previous_hash"] = "f" * 64
+    rows[1] = json.dumps(row)
+    archive.write_text("\n".join(rows) + "\n")
+    status = verifier.verify_chain_detailed()
+    assert not status.valid
+    assert str(archive) in status.detail
+    assert "line 2" in status.detail
+
+
+def test_archive_boundary_break_names_current_file_and_line(tmp_path):
+    path = tmp_path / "audit.log"
+    audit = AuditLog(str(path))
+    audit.append_event("first", {})
+    archive = tmp_path / "audit.log.2026-w41"
+    archive.write_bytes(Path(path).read_bytes())
+    path.write_text("")
+    AuditLog(str(path)).append_event("next", {})
+    verifier = AuditLog(str(path))
+    payload = json.loads(path.read_text())
+    payload["previous_hash"] = "f" * 64
+    path.write_text(json.dumps(payload) + "\n")
+    status = verifier.verify_chain_detailed()
+    assert not status.valid
+    assert str(path) in status.detail
+    assert "line 1" in status.detail
+
+
 def test_append_reads_only_audit_log_tail(temp_audit_log, monkeypatch):
     """Tail lookup must not iterate over the log or request an unbounded read."""
     import builtins

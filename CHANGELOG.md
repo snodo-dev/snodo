@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Continue and verify audit hash chains across ISO-week archive files, with streamed history access. (Fixes #887)
 - Read only the audit-log tail when appending events, including multi-megabyte final events. (Fixes #886)
 - Audit only changed, spec-free entries for per-task session decision updates while retaining the full checkpoint map. (Fixes #885)
 - Reorder the README to lead with gate evidence and installation before the working-loop explanation. (Fixes #884)

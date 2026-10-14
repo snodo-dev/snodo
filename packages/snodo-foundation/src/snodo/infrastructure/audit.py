@@ -18,6 +18,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 import os
 import copy
+import re
 import tempfile
 from pathlib import Path
 
@@ -288,6 +289,21 @@ class AuditLog:
                 return self.events.copy()
             return [e for e in self.events if e.event_type == event_type]
 
+    def iter_history(self):
+        """Stream events across archives and the active log, oldest first."""
+        for path in (*self._archive_paths(), self.log_path):
+            if not path.exists():
+                continue
+            with path.open() as stream:
+                for line_no, line in enumerate(stream, 1):
+                    if line.strip():
+                        try:
+                            payload = json.loads(line)
+                            payload.setdefault("project_id", "")
+                            yield AuditEvent(**payload)
+                        except (json.JSONDecodeError, TypeError) as err:
+                            raise AuditError(f"Malformed event in {path} on line {line_no}: {err}") from err
+
     def verify_chain(self) -> bool:
         """Verify integrity of the hash chain.
 
@@ -309,6 +325,8 @@ class AuditLog:
         :class:`ChainStatus` naming the first offending check so an operator
         told "the chain is invalid" can also see the reason and position.
         """
+        if self._archive_paths():
+            return self._verify_archived_chain()
         if not self._load_ok:
             return ChainStatus(
                 False, len(self.events), "load_incomplete",
@@ -370,6 +388,42 @@ class AuditLog:
                 file_status.sequence,
             )
 
+        return ChainStatus(True, count)
+
+    def _archive_paths(self) -> list[Path]:
+        pattern = re.compile(re.escape(self.log_path.name) + r"\.(\d{4})-w(\d{2})(?:\.(\d+))?$")
+        archives = []
+        for path in self.log_path.parent.glob(self.log_path.name + ".*-w*"):
+            match = pattern.fullmatch(path.name)
+            if match:
+                archives.append(((int(match[1]), int(match[2]), int(match[3] or 0), path.name), path))
+        return [path for _, path in sorted(archives)]
+
+    def _verify_archived_chain(self) -> ChainStatus:
+        sequence, previous_hash, count = 0, "0" * 64, 0
+        for path in (*self._archive_paths(), self.log_path):
+            if not path.exists():
+                continue
+            with path.open() as stream:
+                for line_no, line in enumerate(stream, 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        payload = json.loads(line)
+                        has_project_id = "project_id" in payload
+                        payload.setdefault("project_id", "")
+                        event = AuditEvent(**payload)
+                    except (json.JSONDecodeError, TypeError) as err:
+                        return ChainStatus(False, count, "file_malformed", f"Malformed event in {path} on line {line_no}: {err}")
+                    if event.sequence != sequence:
+                        return ChainStatus(False, count, "sequence_gap", f"Sequence discontinuity in {path} on line {line_no} (expected {sequence}, got {event.sequence}).", event.sequence)
+                    if event.previous_hash != previous_hash:
+                        return ChainStatus(False, count, "link_break", f"Hash chain break in {path} on line {line_no}.", event.sequence)
+                    if event.event_hash != self._compute_hash(event.sequence, event.timestamp, event.event_type, event.data, event.previous_hash, event.project_id, include_project_id=has_project_id):
+                        return ChainStatus(False, count, "event_hash_mismatch", f"Event hash mismatch in {path} on line {line_no}.", event.sequence)
+                    sequence += 1
+                    previous_hash = event.event_hash
+                    count += 1
         return ChainStatus(True, count)
 
     def _file_matches_memory(self) -> bool:
@@ -468,6 +522,8 @@ class AuditLog:
             AuditError: If the log cannot be parsed or its chain is broken,
                 naming the offending line number and the log path.
         """
+        archives = self._archive_paths()
+        start_sequence, prior_hash = self._read_archive_tail(archives[-1]) if archives else (0, "0" * 64)
         if not self.log_path.exists():
             return
 
@@ -489,7 +545,7 @@ class AuditLog:
 
                     has_project_id = "project_id" in event_dict
                     if not has_project_id:
-                        legacy_sequences.add(len(loaded))
+                        legacy_sequences.add(start_sequence + len(loaded))
                         event_dict["project_id"] = ""
 
                     try:
@@ -501,16 +557,17 @@ class AuditLog:
                             f"{_RECOVERY_GUIDANCE}"
                         ) from err
 
-                    if event.sequence != len(loaded):
+                    expected_sequence = start_sequence + len(loaded)
+                    if event.sequence != expected_sequence:
                         raise AuditError(
                             f"Failed to load audit log {self.log_path}: "
                             f"sequence discontinuity on line {line_no} "
-                            f"(expected {len(loaded)}, got {event.sequence}). "
+                            f"(expected {expected_sequence}, got {event.sequence}). "
                             f"{_RECOVERY_GUIDANCE}"
                         )
 
                     expected_previous = (
-                        loaded[-1].event_hash if loaded else "0" * 64
+                        loaded[-1].event_hash if loaded else prior_hash
                     )
                     if event.previous_hash != expected_previous:
                         raise AuditError(
@@ -601,8 +658,10 @@ class AuditLog:
         whatever the last writer actually persisted — never off process-local
         memory (Fixes #114). An empty file yields ``(0, "0"*64)``.
         """
+        archives = self._archive_paths()
+        archive_state = self._read_archive_tail(archives[-1]) if archives else (0, "0" * 64)
         if not self.log_path.exists() or self.log_path.stat().st_size == 0:
-            return 0, "0" * 64
+            return archive_state
         # Work backward so append cost is independent of the log's total size.
         # Keep extending the window when an event itself exceeds one chunk.
         with open(self.log_path, "rb") as f:
@@ -629,6 +688,41 @@ class AuditLog:
                 f"malformed JSON: {err}. {_RECOVERY_GUIDANCE}"
             ) from err
         return event_dict.get("sequence", 0) + 1, event_dict.get("event_hash", "0" * 64)
+
+    def _read_archive_tail(self, path: Path) -> tuple:
+        """Read only the tail of an archive file."""
+        with path.open("rb") as stream:
+            position = stream.seek(0, os.SEEK_END)
+            tail = b""
+            while position:
+                size = min(_AUDIT_TAIL_READ_BYTES, position)
+                position -= size
+                stream.seek(position)
+                tail = stream.read(size) + tail
+                candidate = tail.rstrip()
+                if candidate and (position == 0 or b"\n" in candidate):
+                    line = candidate.rsplit(b"\n", 1)[-1]
+                    break
+            else:
+                line = b""
+        if not line:
+            return 0, "0" * 64
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as err:
+            raise AuditError(f"Malformed tail in audit archive {path}: {err}") from err
+        has_project_id = "project_id" in event
+        event.setdefault("project_id", "")
+        try:
+            parsed = AuditEvent(**event)
+        except TypeError as err:
+            raise AuditError(f"Invalid tail event in audit archive {path}: {err}") from err
+        if parsed.event_hash != self._compute_hash(
+            parsed.sequence, parsed.timestamp, parsed.event_type, parsed.data,
+            parsed.previous_hash, parsed.project_id, include_project_id=has_project_id,
+        ):
+            raise AuditError(f"Event hash mismatch in audit archive {path} tail.")
+        return parsed.sequence + 1, parsed.event_hash
 
     def _append_to_disk(self, event: AuditEvent) -> None:
         """Append event to log file (raw, no retry).
