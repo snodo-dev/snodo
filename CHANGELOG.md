@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Inject the Snodo Cloud provider and current credential per run for opencode-cli models. (Fixes #872)
 - Route `snodo-cloud/<id>` models through the Snodo Cloud gateway using login credentials. (Fixes #869)
 - Document the snodo-cloud model provider, model discovery, billing and gateway configuration. (Fixes #870)
 - Report failed OAuth refreshes in `snodo cloud status` and recommend `snodo cloud login`. (Fixes #868)
