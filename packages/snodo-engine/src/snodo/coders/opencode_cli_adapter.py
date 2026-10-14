@@ -10,6 +10,8 @@ import re
 from typing import Any, List, Optional
 
 from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+from snodo.config import ConfigManager, DEFAULT_CLOUD_MODELS_URL
+from snodo.paths import subprocess_env_for_coder
 
 
 class OpenCodeCLIAdapter(SubprocessCoderAdapter):
@@ -63,6 +65,38 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
         if model:
             argv.extend(["-m", model])
         return argv
+
+    def _subprocess_env(self) -> dict[str, str]:
+        env = subprocess_env_for_coder()
+        if not self.model.startswith("opencode-cli/snodo-cloud/"):
+            return env
+
+        # Importing the foundation capability registers the OAuth resolver with
+        # ConfigManager; resolving here refreshes OAuth when needed and safely
+        # falls back to a configured API key.
+        from snodo.infrastructure import cloud_credentials  # noqa: F401
+
+        manager = ConfigManager()
+        model = self.model.removeprefix("opencode-cli/")
+        credential = manager.get_key_for_model(model)
+        if not credential:
+            raise ValueError("Snodo Cloud credentials unavailable; run snodo cloud login")
+        config = manager.load()
+        cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
+        base_url = cloud.get("models_url") if isinstance(cloud, dict) else None
+        base_url = base_url.strip() if isinstance(base_url, str) and base_url.strip() else DEFAULT_CLOUD_MODELS_URL
+        model_id = model.removeprefix("snodo-cloud/")
+        env["OPENCODE_CONFIG_CONTENT"] = json.dumps({
+            "provider": {
+                "snodo-cloud": {
+                    "npm": "@ai-sdk/openai-compatible",
+                    "name": "Snodo Cloud",
+                    "options": {"baseURL": base_url, "apiKey": credential},
+                    "models": {model_id: {"name": model_id}},
+                }
+            }
+        })
+        return env
 
     def _begin_subprocess_run(self) -> None:
         self.last_usage = self._empty_usage()

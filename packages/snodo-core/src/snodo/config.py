@@ -779,6 +779,10 @@ class ConfigManager:
             return key.strip() or None if isinstance(key, str) else None
         return self.get_key(provider)
 
+    def provider_key_available(self, provider: str) -> bool:
+        """Return whether the completion credential resolver has a key for a provider."""
+        return bool(self.get_key_for_model(f"{provider}/"))
+
     def set_model(self, model: str) -> None:
         """Set the default model.
 

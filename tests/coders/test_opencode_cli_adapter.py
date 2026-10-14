@@ -381,6 +381,38 @@ class TestOpenCodeV2:
         assert "--dir" not in argv
         assert "--dangerously-skip-permissions" not in argv
 
+
+class TestSnodoCloudProvider:
+    def test_cloud_model_gets_per_run_provider_and_credential_stays_out_of_argv(self, tmp_path):
+        adapter = OpenCodeCLIAdapter(
+            model="opencode-cli/snodo-cloud/gpt-6-luna", workspace=tmp_path,
+        )
+        manager = Mock()
+        manager.get_key_for_model.return_value = "secret-token"
+        manager.load.return_value = {"cloud": {"models_url": "https://gateway.example/v1"}}
+        with patch("snodo.coders.opencode_cli_adapter.ConfigManager", return_value=manager):
+            env = adapter._subprocess_env()
+
+        config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        provider = config["provider"]["snodo-cloud"]
+        assert provider["options"]["baseURL"] == "https://gateway.example/v1"
+        assert provider["models"] == {"gpt-6-luna": {"name": "gpt-6-luna"}}
+        argv = adapter._build_argv("prompt", str(tmp_path), adapter._bare_model())
+        assert argv[-2:] == ["-m", "snodo-cloud/gpt-6-luna"]
+        assert "secret-token" not in argv
+
+    def test_other_models_do_not_get_provider_injection(self, tmp_path):
+        adapter = OpenCodeCLIAdapter(model="opencode-cli/openai/gpt-6-luna", workspace=tmp_path)
+        assert "OPENCODE_CONFIG_CONTENT" not in adapter._subprocess_env()
+
+    def test_missing_cloud_credential_fails_with_login_guidance(self, tmp_path):
+        adapter = OpenCodeCLIAdapter(model="opencode-cli/snodo-cloud/gpt-6-luna", workspace=tmp_path)
+        manager = Mock()
+        manager.get_key_for_model.return_value = None
+        with patch("snodo.coders.opencode_cli_adapter.ConfigManager", return_value=manager):
+            with pytest.raises(ValueError, match="snodo cloud login"):
+                adapter._subprocess_env()
+
     @pytest.mark.parametrize(
         "reported, expected",
         [("opencode v2.0.28", 2), ("1.14.3", 1), ("", 1), ("unknown", 1)],

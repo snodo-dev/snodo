@@ -81,7 +81,6 @@ def run_canary_call(model: str, completion_fn: Optional[Any] = None, role: str =
 
 def _check_opencode_cli_model(model: str) -> str:
     """Best-effort lookup in snodo's catalog; OpenCode owns its own names."""
-    import os
     from snodo.config import ConfigManager
     from snodo.cli.commands.models_cmd import _get_models
 
@@ -92,7 +91,7 @@ def _check_opencode_cli_model(model: str) -> str:
     pc = providers.get(provider)
     if not separator or not model_id:
         return f"No provider/model pair to look up; {verify}"
-    if pc is None or not (pc.api_key or pc.api_key_ref or (pc.api_key_env and os.environ.get(pc.api_key_env))):
+    if pc is None or not ConfigManager().provider_key_available(provider):
         return f"Provider '{provider}' is not configured in snodo; {verify}"
     try:
         models = _get_models(provider, pc, force_refresh=True)

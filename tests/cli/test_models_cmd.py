@@ -67,6 +67,42 @@ def test_models_command_list_providers_happy_path(mock_providers_config, monkeyp
     assert "anthropic" in out
 
 
+def test_snodo_cloud_login_enables_generic_model_discovery(monkeypatch, tmp_path, capsys):
+    from snodo.config import ConfigManager, ProviderConfig
+
+    cloud = ProviderConfig(base_url="https://gateway.example/v1", models_endpoint="https://gateway.example/v1/models")
+    monkeypatch.setattr(ConfigManager, "get_providers", lambda self: {"snodo-cloud": cloud})
+    monkeypatch.setattr(ConfigManager, "load", lambda self: {})
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: "cloud-secret")
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._CACHE_DIR", tmp_path / "models")
+    monkeypatch.setattr("snodo.infrastructure.model_catalog.lookup", lambda name: {})
+    response = MagicMock()
+    response.json.return_value = {"data": [{"id": "@cf/vendor/model"}, {"id": "anthropic/claude"}]}
+    response.raise_for_status = MagicMock()
+    http = MagicMock()
+    http.get.return_value = response
+    monkeypatch.setitem(__import__("sys").modules, "httpx", http)
+
+    assert "snodo-cloud" in __import__("snodo.cli.commands.models_cmd", fromlist=["_configured_provider_names"])._configured_provider_names({"snodo-cloud": cloud})
+    assert models_command(SimpleNamespace(provider="snodo-cloud", flush=True)) == 0
+    out = capsys.readouterr().out
+    assert "snodo-cloud/@cf/vendor/model" in out
+    assert "snodo-cloud/anthropic/claude" in out
+    assert http.get.call_args.kwargs["headers"]["Authorization"] == "Bearer cloud-secret"
+
+
+def test_snodo_cloud_without_login_is_listed_unavailable(monkeypatch, capsys):
+    from snodo.config import ConfigManager, ProviderConfig
+
+    cloud = ProviderConfig(models_endpoint="https://gateway.example/v1/models")
+    monkeypatch.setattr(ConfigManager, "get_providers", lambda self: {"snodo-cloud": cloud})
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: None)
+    assert models_command(SimpleNamespace(provider=None, flush=False)) == 0
+    output = capsys.readouterr().out
+    assert "snodo-cloud    unavailable" in output
+    assert "snodo cloud login" in output
+
+
 def _git(root, *args):
     subprocess.run(["git", *args], cwd=str(root), check=True, capture_output=True)
 

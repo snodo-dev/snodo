@@ -408,7 +408,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             text=True,
             errors="replace",
             start_new_session=True,
-            env=subprocess_env_for_coder(),
+            env=self._subprocess_env(),
         )
         import psutil
 
@@ -766,6 +766,10 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
     def _begin_subprocess_run(self) -> None:
         """Reset adapter-specific observations before launching the CLI."""
         return None
+
+    def _subprocess_env(self) -> dict[str, str]:
+        """Build the isolated environment passed to the coder process."""
+        return subprocess_env_for_coder()
 
     def _diff_to_artifact(self, diff_entries: list) -> CodeArtifact:
         """Build a CodeArtifact from diff entries, re-reading content from disk."""

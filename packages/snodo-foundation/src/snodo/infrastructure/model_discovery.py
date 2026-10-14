@@ -46,7 +46,10 @@ def _resolve_api_key(provider_name: str, pc: ProviderConfig) -> Optional[str]:
     Returns:
         API key string, or None if neither source has one.
     """
-    key = ConfigManager.resolve_provider_key(provider_name, pc)
+    if provider_name == "snodo-cloud":
+        key = ConfigManager().get_key_for_model("snodo-cloud/")
+    else:
+        key = ConfigManager.resolve_provider_key(provider_name, pc)
     if key:
         return key
 
