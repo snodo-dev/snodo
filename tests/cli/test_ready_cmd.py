@@ -291,14 +291,14 @@ def test_ready_reports_validator_extension_status(git_project: Path, capsys, mon
 def test_ready_reports_unknown_and_legacy_capability_grants(git_project: Path, capsys):
     proto_file = git_project / ".snodo" / "protocol.yml"
     protocol_data = yaml.safe_load(proto_file.read_text())
-    protocol_data["modes"][0]["tools"] = ["plan", "resolve", "plna"]
+    protocol_data["modes"][0]["tools"] = ["plan", "not_a_real_capability", "plna"]
     proto_file.write_text(yaml.safe_dump(protocol_data))
 
     exit_code = ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=True))
     assert exit_code == 0
     result = json.loads(capsys.readouterr().out)
     assert len(result["warnings"]) == 2
-    assert any("Mode 'plan'" in warning and "'resolve'" in warning for warning in result["warnings"])
+    assert any("Mode 'plan'" in warning and "'not_a_real_capability'" in warning for warning in result["warnings"])
     assert any("'plna'" in warning and "Known capabilities:" in warning for warning in result["warnings"])
 
 
@@ -307,7 +307,7 @@ def test_mcp_ready_reports_same_capability_warning(git_project: Path, monkeypatc
 
     proto_file = git_project / ".snodo" / "protocol.yml"
     protocol_data = yaml.safe_load(proto_file.read_text())
-    protocol_data["modes"][0]["tools"] = ["resolve"]
+    protocol_data["modes"][0]["tools"] = ["not_a_real_capability"]
     proto_file.write_text(yaml.safe_dump(protocol_data))
     monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(git_project))
 
@@ -315,7 +315,7 @@ def test_mcp_ready_reports_same_capability_warning(git_project: Path, monkeypatc
     assert result["ok"] is True
     assert len(result["warnings"]) == 1
     assert "Mode 'plan'" in result["warnings"][0]
-    assert "unknown capability 'resolve'" in result["warnings"][0]
+    assert "unknown capability 'not_a_real_capability'" in result["warnings"][0]
 
 
 def test_mcp_ready_uses_the_served_project_not_the_process_cwd(git_project: Path, tmp_path, monkeypatch):

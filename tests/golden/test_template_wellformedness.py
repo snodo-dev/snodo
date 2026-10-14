@@ -43,10 +43,11 @@ def test_registry_contains_every_yml_in_templates_dir():
 
 
 def test_current_loop_templates_grant_real_mcp_capabilities():
-    """Every grant maps to MCP tools, and planning/dispatch grants compose."""
+    """Every shipped template grant maps to MCP tools; key grants compose."""
     from snodo.mcp.tools import MODE_TOOL_MAP
+    from snodo.protocols import list_templates
 
-    names = ("greenfield", "intent", "bugfix-surgeon", "feature-warden")
+    names = list_templates()
     planning_modes = {
         "greenfield": "plan",
         "intent": "producer",

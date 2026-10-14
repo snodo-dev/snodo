@@ -117,14 +117,14 @@ class TestToolResolution:
     def test_unknown_and_legacy_grants_warn_without_refusing_load(self, project_dir, caplog):
         data = dict(MINIMAL_PROTOCOL_DATA)
         data["modes"] = [
-            {"mode_id": "planner", "name": "Planner", "tools": ["plan", "resolve", "plna"]}
+            {"mode_id": "planner", "name": "Planner", "tools": ["plan", "not_a_real_capability", "plna"]}
         ]
         data["initial_mode"] = "planner"
         protocol = Protocol(**data)
 
         warnings = unknown_capability_warnings(protocol)
         assert len(warnings) == 2
-        for grant in ("resolve", "plna"):
+        for grant in ("not_a_real_capability", "plna"):
             message = next(warning for warning in warnings if f"'{grant}'" in warning)
             assert "Mode 'planner'" in message
             assert "Known capabilities:" in message
@@ -132,7 +132,7 @@ class TestToolResolution:
 
         # Unknown grants are advisory; server initialization still succeeds.
         ProtocolMCPServer(protocol, project_dir)
-        assert "unknown capability 'resolve'" in caplog.text
+        assert "unknown capability 'not_a_real_capability'" in caplog.text
         assert "unknown capability 'plna'" in caplog.text
 
     def test_server_without_mode_resolves_only_current_mode(self, server):

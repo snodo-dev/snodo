@@ -92,7 +92,7 @@ def mode_pair_exclusive(draw):
     """
     nonexclusive = st.sampled_from([
         "edit", "dispatch", "test", "validate", "review", "pr", "plan",
-        "resolve", "commit",
+        "commit",
     ])
 
     t1 = draw(st.lists(nonexclusive, min_size=2, max_size=4, unique=True))

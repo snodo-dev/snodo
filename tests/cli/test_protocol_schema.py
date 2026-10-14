@@ -23,7 +23,7 @@ def test_protocol_schema_publishes_runtime_choices_and_rules():
     assert execution["max_recovery_depth"]["minimum"] == 0
     capabilities = defs["Mode"]["properties"]["tools"]["items"]["enum"]
     assert {"plan", "queue", "edit", "dispatch"} <= set(capabilities)
-    assert not {"resolve", "planning"} & set(capabilities)
+    assert "planning" not in capabilities
     coders = defs["Mode"]["properties"]["coder"]["anyOf"][0]["enum"]
     assert {"opencode-cli", "codex-cli"} <= set(coders)
     assert schema["properties"]["metadata"]["x-snodo-open"] is True
