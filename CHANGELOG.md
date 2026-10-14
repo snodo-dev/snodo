@@ -11,6 +11,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Register Snodo MCP servers with GitHub Copilot in VS Code and Copilot CLI, preserving malformed configs without overwriting them. (Fixes #899)
 - `snodo models --validate` is an alias for `snodo models --check`.
+- The changelog CI check falls back to `origin/main` when a new-branch push has no previous commit.
 - Route matching models in a provider block through alternate LiteLLM API formats, preserving the block credential and base URL. (Fixes #898)
 - Remove the retired mode capability name from generated test data and use an all-template guard against unmapped grants. (Fixes #896)
 - Keep the changed task's spec text in session decision audit deltas without sending other tasks' entries. (Fixes #894)
