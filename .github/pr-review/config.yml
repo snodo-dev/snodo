@@ -2,8 +2,8 @@ llm:
   recon:
     models:
       - ollama-cloud/deepseek-v4-pro:0813
-      - ocgo1/responses/gpt-6-luna
-      - ocgo2/qwen3.8-flash
+      - ocgo1/qwen3.6-plus
+      - ocgo2/mimo-v2.6-flash
 providers:
   ollama-cloud:
     api_key_env: "${OLLAMA_CLOUD_API_KEY_ENV}"

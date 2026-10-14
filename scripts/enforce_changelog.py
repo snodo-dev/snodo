@@ -150,6 +150,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Gate mode warns on missing entries; release mode fails (default: gate).",
     )
     args = parser.parse_args(argv)
+    if not args.base.strip("0"):
+        # A new-branch push sends an all-zero (or empty) "before"; fall back to main.
+        args.base = "origin/main"
     repo_root = Path(args.repo).resolve()
     changelog_path = repo_root / args.changelog
 
