@@ -91,7 +91,7 @@ but some hosts (including Claude Desktop and relayed sessions) show only its
 plain-text snapshot.
 
 Register Snodo's mode-pinned MCP servers with `snodo serve --mcp-install`.
-Installation supports Claude Desktop, Claude Code, Cursor, Gemini CLI and the
+Installation supports Claude Desktop, Claude Code, Cursor, Gemini CLI, GitHub Copilot (VS Code and CLI) and the
 Codex family (ChatGPT desktop, Codex CLI and IDE extension). It writes their
 user-level configurations: Claude Desktop's platform-specific config,
 Claude Code's `~/.claude.json`, Cursor's `~/.cursor/mcp.json`, Gemini CLI's

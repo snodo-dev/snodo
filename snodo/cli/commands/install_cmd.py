@@ -3,6 +3,7 @@
 FILE: snodo/cli/commands/install_cmd.py (Task 7.14)
 """
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -126,6 +127,12 @@ def install_command(args) -> int:
     if not results:
         print("No supported MCP clients detected; skipped Claude Desktop and Codex / ChatGPT desktop.")
     for target, added, updated in results:
+        if not added and not updated and target.config_path.exists():
+            try:
+                json.loads(target.config_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                print(f"Skipped {target.name}: config could not be parsed; left unchanged ({target.config_path}).")
+                continue
         print(f"Updated {target.name}: {target.config_path} ({len(added)} added, {len(updated)} updated)")
         for name in added:
             print(f"  + {name}")

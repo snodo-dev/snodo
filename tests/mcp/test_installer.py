@@ -112,6 +112,34 @@ def test_new_client_targets_detect_install_uninstall_and_preserve_other_servers(
         }
 
 
+def test_copilot_targets_shape_and_preserve_other_servers(temp_dir, protocol):
+    targets = [
+        ClientTarget("GitHub Copilot (VS Code)", temp_dir / "Code/User/mcp.json", "servers", "json", "stdio"),
+        ClientTarget("GitHub Copilot CLI", temp_dir / ".copilot/mcp-config.json", "mcpServers", "json", "local", True),
+    ]
+    for target in targets:
+        target.config_path.parent.mkdir(parents=True)
+        target.config_path.write_text(json.dumps({target.servers_key: {"keep": {"command": "other"}}}))
+    install_clients(protocol, "/project/.snodo/protocol.yml", "project", targets)
+    vscode = json.loads(targets[0].config_path.read_text())["servers"]
+    cli = json.loads(targets[1].config_path.read_text())["mcpServers"]
+    assert vscode["snodo-project-producer"]["type"] == "stdio"
+    assert cli["snodo-project-producer"]["type"] == "local"
+    assert cli["snodo-project-producer"]["tools"] == ["*"]
+    mutate_clients("project", protocol, "project", targets=targets)
+    assert json.loads(targets[0].config_path.read_text())["servers"] == {"keep": {"command": "other"}}
+    assert json.loads(targets[1].config_path.read_text())["mcpServers"] == {"keep": {"command": "other"}}
+
+
+def test_invalid_json_target_is_not_overwritten(temp_dir, protocol):
+    target = ClientTarget("GitHub Copilot (VS Code)", temp_dir / "mcp.json", "servers", "json", "stdio")
+    target.config_path.write_text('{ invalid json')
+    before = target.config_path.read_text()
+    results = install_clients(protocol, "/project/.snodo/protocol.yml", "project", [target])
+    assert results == [(target, [], [])]
+    assert target.config_path.read_text() == before
+
+
 def test_client_targets_detect_new_user_config_directories(temp_dir, monkeypatch):
     from snodo.mcp import installer
 

@@ -34,6 +34,8 @@ class ClientTarget:
     config_path: Path
     servers_key: str
     format: str
+    entry_type: Optional[str] = None
+    add_tools: bool = False
 
 
 def get_codex_config_path() -> Path:
@@ -58,6 +60,21 @@ def get_gemini_config_path() -> Path:
     return Path.home() / ".gemini" / "settings.json"
 
 
+def _vscode_mcp_path() -> Path:
+    system = platform.system()
+    if system == "Darwin":
+        root = Path.home() / "Library" / "Application Support"
+    elif system == "Windows":
+        root = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+    else:
+        root = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+    return root / "Code" / "User" / "mcp.json"
+
+
+def get_copilot_cli_config_path() -> Path:
+    return Path(os.environ.get("COPILOT_HOME", str(Path.home() / ".copilot"))) / "mcp-config.json"
+
+
 def client_targets(claude_config_path: Optional[Path] = None) -> List[ClientTarget]:
     """Return known client targets, marking presence by their config directory."""
     claude = claude_config_path or get_claude_config_path()
@@ -65,6 +82,8 @@ def client_targets(claude_config_path: Optional[Path] = None) -> List[ClientTarg
     claude_code = get_claude_code_config_path()
     cursor = get_cursor_config_path()
     gemini = get_gemini_config_path()
+    vscode = _vscode_mcp_path()
+    copilot_cli = get_copilot_cli_config_path()
     targets = []
     if claude.parent.is_dir() or claude.exists():
         targets.append(ClientTarget("Claude Desktop", claude, "mcpServers", "json"))
@@ -77,6 +96,10 @@ def client_targets(claude_config_path: Optional[Path] = None) -> List[ClientTarg
         targets.append(ClientTarget("Cursor", cursor, "mcpServers", "json"))
     if gemini.parent.is_dir() or gemini.exists():
         targets.append(ClientTarget("Gemini CLI", gemini, "mcpServers", "json"))
+    if vscode.parent.is_dir():
+        targets.append(ClientTarget("GitHub Copilot (VS Code)", vscode, "servers", "json", "stdio"))
+    if copilot_cli.parent.is_dir():
+        targets.append(ClientTarget("GitHub Copilot CLI", copilot_cli, "mcpServers", "json", "local", True))
     return targets
 
 
@@ -87,11 +110,19 @@ def known_client_targets() -> List[ClientTarget]:
     claude_code = get_claude_code_config_path()
     cursor = get_cursor_config_path()
     gemini = get_gemini_config_path()
+    vscode = _vscode_mcp_path()
+    copilot_cli = get_copilot_cli_config_path()
     return [ClientTarget("Claude Desktop", claude, "mcpServers", "json"),
             ClientTarget("Codex / ChatGPT desktop", codex, "mcp_servers", "toml"),
             ClientTarget("Claude Code", claude_code, "mcpServers", "json"),
             ClientTarget("Cursor", cursor, "mcpServers", "json"),
-            ClientTarget("Gemini CLI", gemini, "mcpServers", "json")]
+            ClientTarget("Gemini CLI", gemini, "mcpServers", "json"),
+            ClientTarget("GitHub Copilot (VS Code)", vscode, "servers", "json", "stdio"),
+            ClientTarget("GitHub Copilot CLI", copilot_cli, "mcpServers", "json", "local", True)]
+
+
+class InvalidClientConfig(ValueError):
+    pass
 
 
 def _read_target(target: ClientTarget):
@@ -104,8 +135,8 @@ def _read_target(target: ClientTarget):
         return tomlkit.parse(text)
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
-        return {}
+    except json.JSONDecodeError as exc:
+        raise InvalidClientConfig(f"Cannot parse {target.config_path}: {exc}") from exc
 
 
 def _write_target(target: ClientTarget, config) -> None:
@@ -121,6 +152,10 @@ def _servers(config, target: ClientTarget):
 
 
 def _client_entry(entry: dict, target: ClientTarget) -> dict:
+    if target.entry_type:
+        entry = {**entry, "type": target.entry_type}
+    if target.add_tools:
+        entry = {**entry, "tools": ["*"]}
     if target.format != "toml":
         return entry
     # Snodo's long-running synchronous MCP tools need a higher ceiling than Codex's 60s default.
@@ -148,9 +183,14 @@ def install_clients(protocol: Protocol, protocol_path: str, project_name: str,
                     targets: Optional[List[ClientTarget]] = None):
     """Install into each detected client; never create absent client directories."""
     results = []
+    errors = []
     entries = generate_mcp_entries(protocol, protocol_path, project_name)
     for target in targets if targets is not None else client_targets():
-        config = _read_target(target)
+        try:
+            config = _read_target(target)
+        except (InvalidClientConfig, OSError) as exc:
+            errors.append((target, str(exc)))
+            continue
         servers = _servers(config, target)
         added, updated = [], []
         for name, entry in entries.items():
@@ -158,6 +198,7 @@ def install_clients(protocol: Protocol, protocol_path: str, project_name: str,
             servers[name] = _client_entry(entry, target)
         _write_target(target, config)
         results.append((target, added, updated))
+    results.extend((target, [], []) for target, _ in errors)
     return results
 
 
@@ -170,7 +211,10 @@ def mutate_clients(operation: str, protocol: Optional[Protocol] = None,
     if mode_id:
         expected = {name for name in expected if name.endswith("-" + mode_id)}
     for target in targets if targets is not None else client_targets():
-        config = _read_target(target)
+        try:
+            config = _read_target(target)
+        except (InvalidClientConfig, OSError):
+            continue
         servers = config.get(target.servers_key, {})
         if operation == "list":
             entries = []
