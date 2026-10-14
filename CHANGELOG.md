@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Audit only changed, spec-free entries for per-task session decision updates while retaining the full checkpoint map. (Fixes #885)
 - Reorder the README to lead with gate evidence and installation before the working-loop explanation. (Fixes #884)
 - Document what Snodo's test gate caught while building Snodo. (Fixes #883)
 - Show the terminal wave while bare `snodo` gathers its home status view. (Fixes #882)

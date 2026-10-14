@@ -25,6 +25,19 @@ class SessionError(Exception):
     """Session state is corrupt or unreadable."""
 
 
+def _decision_audit_entry(value: Any) -> Any:
+    """Remove task-spec text from a decision entry before it enters the audit log."""
+    if isinstance(value, dict):
+        return {
+            key: _decision_audit_entry(item)
+            for key, item in value.items()
+            if key not in {"spec", "original_spec", "task_spec", "superseded_spec", "superseded_specs"}
+        }
+    if isinstance(value, list):
+        return [_decision_audit_entry(item) for item in value]
+    return value
+
+
 # Exceptions that indicate a session file is corrupt/unreadable rather than
 # absent. Used to surface corruption (warn + audit) instead of silently
 # skipping, and to fail loud when resolving the active session.
@@ -329,9 +342,12 @@ class SessionManager:
 
         from snodo.infrastructure.state import atomic_update_json
 
+        previous_value: List[Any] = [None]
+
         def _updater(data: Dict[str, Any]) -> None:
             checkpoint = data.setdefault("checkpoint", {})
             decisions = checkpoint.setdefault("decisions", {})
+            previous_value[0] = decisions.get(key)
             decisions[key] = value
             now = datetime.now(UTC).isoformat()
             checkpoint["timestamp"] = now
@@ -340,11 +356,20 @@ class SessionManager:
         atomic_update_json(
             self.sessions_dir, f"{session_id}.json", _updater, strict=True,
         )
+        audited_value = value
+        if isinstance(value, dict):
+            previous = previous_value[0]
+            previous = previous if isinstance(previous, dict) else {}
+            audited_value = {
+                task_id: _decision_audit_entry(entry)
+                for task_id, entry in value.items()
+                if task_id not in previous or previous[task_id] != entry
+            }
         self._audit("session_decision_updated", {
             "op": "session_decision_updated",
             "session_id": session_id,
             "key": key,
-            "value": value,
+            "value": audited_value,
         })
 
     def update_memory_summary(self, session_id: str, summary: str) -> None:
