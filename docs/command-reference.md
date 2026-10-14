@@ -97,7 +97,7 @@ OAuth expiry and account details when known, without displaying credential
 values.
 
 `snodo install` (and `snodo serve --mcp-install`) detects Claude Desktop,
-Claude Code, Cursor, Gemini CLI and Codex-family clients and installs mode-pinned
+Claude Code, Cursor, Gemini CLI, GitHub Copilot (VS Code and CLI) and Codex-family clients and installs mode-pinned
 MCP entries into each detected user's configuration. It uses Claude Code's
 `~/.claude.json`, Cursor's `~/.cursor/mcp.json`, Gemini CLI's
 `~/.gemini/settings.json`, and Codex's `~/.codex/config.toml` (or `CODEX_HOME`);
