@@ -38,17 +38,21 @@ def _merge_event(project_root: Path, plan: str, task: str) -> Optional[dict]:
     """Return the latest task-specific merge event for a plan task."""
     try:
         from snodo.infrastructure.audit import AuditLog
-        events = AuditLog(str(project_root / ".snodo" / "audit.log")).get_history("task_merged")
+        audit = AuditLog(str(project_root / ".snodo" / "audit.log"))
+        events = audit.iter_history()
     except Exception as exc:
         _logger.debug("Could not read task merge history: %s", exc)
         return None
     prefix = f"task/{plan}/{task}/"
-    for event in reversed(events):
+    latest = None
+    for event in events:
         data = event.data or {}
+        if data.get("op", event.event_type) != "task_merged":
+            continue
         if data.get("task_ref") == task and str(data.get("branch", "")).startswith(prefix):
             if isinstance(data.get("merge_sha"), str) and data["merge_sha"]:
-                return data
-    return None
+                latest = data
+    return latest
 
 
 def _inline_change_size(project_root: Path, merge_event: dict) -> dict:

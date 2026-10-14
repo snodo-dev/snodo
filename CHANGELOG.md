@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Include archived unsent audit events in cloud sync and local backlog counts. (Fixes #892)
+- Include archived audit history in task reports, review lookups, models baselines and dashboard session views. (Fixes #891)
+- Include archived audit history in session-existence checks and mock-coder delivery suppression. (Fixes #889)
 - Resume job audit notifications from the start after audit-log replacement without re-notifying delivered events. (Fixes #888)
 - Continue and verify audit hash chains across ISO-week archive files, with streamed history access. (Fixes #887)
 - Read only the audit-log tail when appending events, including multi-megabyte final events. (Fixes #886)

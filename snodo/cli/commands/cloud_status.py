@@ -63,10 +63,12 @@ def local_unsent_counts(summary: dict) -> dict[str, tuple[int, int]]:
         return {}
 
     from snodo.infrastructure.audit import AuditLog
+    from snodo.infrastructure.cloud_unsent import events_after_cursor
     from snodo.infrastructure.cloud_sync import CloudSyncState
 
     try:
-        events = AuditLog(str(audit_path)).events
+        audit_log = AuditLog(str(audit_path))
+        events = audit_log.events
     except Exception:
         return {}
     project_ids = {getattr(event, "project_id", "") for event in events}
@@ -81,7 +83,7 @@ def local_unsent_counts(summary: dict) -> dict[str, tuple[int, int]]:
     project_key = state.project_cursor_id(project_id)
     if project_key in summary:
         cursor = state.get_project_cursor(project_id)
-        count = sum(event.sequence > cursor for event in events)
+        count = sum(1 for _ in events_after_cursor(audit_log, cursor))
         result[project_key] = (count, head)
 
     for key in summary:
@@ -90,5 +92,5 @@ def local_unsent_counts(summary: dict) -> dict[str, tuple[int, int]]:
         if not any(getattr(event, "data", {}).get("session_id") == key for event in events):
             continue
         cursor = max(state.get_cursor(key), state.get_project_cursor(project_id))
-        result[key] = (sum(event.sequence > cursor for event in events), head)
+        result[key] = (sum(1 for _ in events_after_cursor(audit_log, cursor)), head)
     return result

@@ -517,6 +517,30 @@ class TestAuditedButMissing:
         })
         assert not mgr.is_audited_but_missing("sess_del_1", str(project))
 
+    def test_archived_session_citation_and_current_deletion(self, mgr, tmp_path):
+        project = self._project(tmp_path)
+        from snodo.infrastructure.audit import AuditLog
+
+        audit_path = project / ".snodo" / "audit.log"
+        audit = AuditLog(str(audit_path))
+        audit.append_event("session_started", {"session_id": "sess_archived"})
+        audit_path.rename(project / ".snodo" / "audit.log.2026-w41")
+        current = AuditLog(str(audit_path))
+        current.append_event("session_deleted", {"session_id": "sess_archived"})
+        assert mgr.audited_missing_ids(str(project)) == []
+        assert not mgr.is_audited_but_missing("sess_archived", str(project))
+
+    def test_archived_session_citation_is_reported(self, mgr, tmp_path):
+        project = self._project(tmp_path)
+        from snodo.infrastructure.audit import AuditLog
+
+        audit_path = project / ".snodo" / "audit.log"
+        AuditLog(str(audit_path)).append_event(
+            "session_started", {"session_id": "sess_only_archived"},
+        )
+        audit_path.rename(project / ".snodo" / "audit.log.2026-w41")
+        assert mgr.audited_missing_ids(str(project)) == ["sess_only_archived"]
+
     def test_get_active_session_warns_on_audited_missing_pointer(
         self, mgr, tmp_path, caplog,
     ):
