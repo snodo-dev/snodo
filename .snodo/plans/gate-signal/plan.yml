@@ -20,4 +20,4 @@ waves:
   - 2
   id: 3
   tasks:
-  - 3.1_red_base_check_for_any_gate
+  - 3.2_red_base_recognised_for_any_gate

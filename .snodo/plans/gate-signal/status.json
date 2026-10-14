@@ -18,17 +18,17 @@
       "depth": 0,
       "spec_hash": "c0f96490b7a3ef16"
     },
-    "3.1_red_base_check_for_any_gate": {
-      "status": "pending",
-      "parent_task_ref": null,
-      "depth": 0,
-      "spec_hash": "b8dbac2d6f151e5c"
-    },
     "2.2_lint_tool_in_default_env": {
       "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "c6db211f467e80b5"
+    },
+    "3.2_red_base_recognised_for_any_gate": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a51755eadc4aeb4b"
     }
   },
   "integration": {
