@@ -5,7 +5,6 @@ FILE: snodo/cli/commands/models_cmd.py
 
 import json
 import logging
-import os
 import statistics
 import sys
 import time
@@ -14,6 +13,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional, Tuple
 import typer
 from snodo.infrastructure.paths import resolve_home, resolve_project_root
+from snodo.cli.commands.models_providers import _configured_provider_names, _list_providers
 
 _logger = logging.getLogger(__name__)
 _MAX_BENCHMARK_RUNS = 10
@@ -228,36 +228,6 @@ def models_command(args) -> int:
     _print_model_table(provider_name, models)
     print()
     print(f"{len(models)} model(s) from {provider_name}")
-    return 0
-
-
-def _configured_provider_names(providers: dict) -> list[str]:
-    """Return configured providers whose credentials are available."""
-    return sorted(
-        name for name, pc in providers.items()
-        if pc.api_key or (pc.api_key_env and os.environ.get(pc.api_key_env))
-    )
-
-
-def _list_providers(providers: dict) -> int:
-    configured = []
-    for name in sorted(providers.keys()):
-        pc = providers[name]
-        has_key = bool(pc.api_key or (pc.api_key_env and os.environ.get(pc.api_key_env)))
-        if has_key:
-            configured.append(name)
-
-    if not configured:
-        print("No providers configured. Add a key with: snodo config add <provider> <key>")
-        print("  Then run: snodo models --provider=<name>")
-        return 0
-
-    print("Configured providers:")
-    print()
-    for name in configured:
-        print(f"  {name:<14} configured")
-    print()
-    print("Run: snodo models --provider=<name> to list models")
     return 0
 
 
