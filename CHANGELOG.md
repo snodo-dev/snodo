@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Show the wordmark with the version for interactive `snodo --version`, while
+  preserving plain output for scripts and `NO_COLOR`. (Fixes #880)
 - Compare non-pytest quality-gate failures with the task base and reuse each cached base run. (Fixes #878)
 - Install the pinned Ruff version in the default dev dependency group so task worktrees can lint before committing. (Fixes #877)
 - Emit periodic progress lines while validators are still running. (Fixes #876)

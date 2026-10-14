@@ -339,14 +339,14 @@ def test_bare_tty_shows_wordmark_then_readiness_view(monkeypatch, capsys):
 
 def test_version_update_hint_is_tty_stderr_only(monkeypatch, capsys):
     from snodo.cli import banner, update_check
-    from snodo.version import __version__
 
     monkeypatch.setattr(banner, "should_show_wordmark", lambda: True)
+    monkeypatch.setattr(banner, "colored_wordmark", lambda: "WORDMARK")
     monkeypatch.setattr(update_check, "get_newer_version", lambda *, is_tty: "9.9.9")
     with patch('sys.argv', ['snodo', '--version']):
         assert main() == 0
     captured = capsys.readouterr()
-    assert captured.out == f"snodo {__version__}\n"
+    assert captured.out == "WORDMARK\n"
     assert "9.9.9 is available. Update with:" in captured.err
 
 
@@ -360,6 +360,18 @@ def test_version_update_hint_is_suppressed_without_tty(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == f"snodo {__version__}\n"
     assert captured.err == ""
+
+
+def test_version_with_no_color_stays_plain_even_on_tty(monkeypatch, capsys):
+    from snodo.cli import banner
+    from snodo.version import __version__
+
+    monkeypatch.setattr(banner, "should_show_wordmark", lambda: True)
+    monkeypatch.setenv("NO_COLOR", "")
+    with patch('sys.argv', ['snodo', '--version']):
+        assert main() == 0
+    captured = capsys.readouterr()
+    assert captured.out == f"snodo {__version__}\n"
 
 
 def test_invalid_command():

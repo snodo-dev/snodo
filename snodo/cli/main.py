@@ -96,10 +96,15 @@ def _app_callback(
         )
 
     if version:
+        import os
         from snodo.version import __version__
-        print(f"snodo {__version__}")
-        from snodo.cli.banner import should_show_wordmark
-        if should_show_wordmark():
+        from snodo.cli.banner import colored_wordmark, should_show_wordmark
+        is_tty = should_show_wordmark()
+        if is_tty and "NO_COLOR" not in os.environ:
+            print(colored_wordmark())
+        else:
+            print(f"snodo {__version__}")
+        if is_tty:
             from snodo.cli.update_check import get_newer_version
 
             newer_version = get_newer_version(is_tty=True)
