@@ -1,0 +1,29 @@
+intent: 'snodo cloud is a model provider out of the box. Once the user is logged in
+  to snodo cloud (OAuth or API key), "snodo-cloud/<model>" works everywhere a model
+  is used:
+
+  - validators, classifier, recon and the litellm coder, through the gateway at https://models.snodo.dev/v1;
+
+  - `snodo models --provider snodo-cloud`, which lists the models the organisation
+  enabled;
+
+  - the opencode-cli coder as "opencode-cli/snodo-cloud/<model>".
+
+  Before login, the provider stays quietly unavailable.'
+name: snodo-cloud-provider
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.2_docs_snodo_cloud_models
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.4_snodo_cloud_provider
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_models_lists_snodo_cloud
+  - 3.2_opencode_uses_snodo_cloud

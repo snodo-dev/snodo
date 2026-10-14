@@ -1,0 +1,30 @@
+{
+  "tasks": {
+    "1.2_docs_snodo_cloud_models": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c39695ae66b04a1b"
+    },
+    "3.1_models_lists_snodo_cloud": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0
+    },
+    "3.2_opencode_uses_snodo_cloud": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0
+    },
+    "2.4_snodo_cloud_provider": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5139bc2c3406cf5c"
+    }
+  },
+  "integration": {
+    "branch": "plan/snodo-cloud-provider/integration",
+    "base_sha": "aa11d68c78df0308fe37c29d5b4091e5fe1b9d73"
+  }
+}
