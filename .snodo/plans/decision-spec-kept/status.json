@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_decision_delta_keeps_its_spec": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b71e65b738a3c0fa"
+    }
+  },
+  "integration": {
+    "branch": "plan/decision-spec-kept/integration",
+    "base_sha": "a5e864ca48fc5ac4311164a14a4fcc89e6e5bd2b"
+  }
+}

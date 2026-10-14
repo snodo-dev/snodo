@@ -1,0 +1,10 @@
+intent: Session decision audit events carry only the changed task entry, as audit-diet
+  made them do. That entry keeps its task spec text again, so cloud sync still receives
+  the spec for halted and failed tasks. Each event holds one spec, never the whole
+  session's.
+name: decision-spec-kept
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_decision_delta_keeps_its_spec
