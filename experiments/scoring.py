@@ -32,6 +32,22 @@ def _swebench_python() -> str:
     """
     return os.environ.get("SNODO_SWEBENCH_PYTHON") or sys.executable
 
+_HARNESS_FLAGS: Optional[str] = None
+
+
+def _harness_flags() -> str:
+    """The installed harness's --help text, read once, to see which flags it takes."""
+    global _HARNESS_FLAGS
+    if _HARNESS_FLAGS is None:
+        try:
+            _HARNESS_FLAGS = subprocess.run(
+                [_swebench_python(), "-m", "swebench.harness.run_evaluation", "--help"],
+                capture_output=True, text=True, timeout=120,
+            ).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            _HARNESS_FLAGS = "--cache_level --namespace"
+    return _HARNESS_FLAGS
+
 _INSTANCE_CACHE: Dict[str, dict] = {}
 
 # Gold-patch result cache: instance_id -> result dict.
@@ -231,9 +247,13 @@ def score_predictions_batch(
             "--instance_ids", *sorted(instance_ids),
             "--max_workers", str(max_workers),
             "--run_id", run_id,
-            "--cache_level", cache_level,
         ]
-        if ns and ns.lower() not in ("none", "local", ""):
+        # swebench 5.x dropped --cache_level and --namespace (the image name
+        # comes from the dataset's test spec). Pass them only where supported.
+        _flags = _harness_flags()
+        if "--cache_level" in _flags:
+            cmd += ["--cache_level", cache_level]
+        if "--namespace" in _flags and ns and ns.lower() not in ("none", "local", ""):
             cmd += ["--namespace", ns]
 
         try:
