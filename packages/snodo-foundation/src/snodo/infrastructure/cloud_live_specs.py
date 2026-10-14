@@ -67,23 +67,23 @@ def delivery_suppressed(root: str, session_id: str) -> bool:
     """Honor the existing mock/benchmark delivery exclusion for spec bytes."""
     if os.environ.get("SNODO_BENCHMARK") == "1":
         return True
+    from snodo.infrastructure.audit import iter_audit_history
+
+    audit_path = Path(root) / ".snodo" / "audit.log"
     try:
-        lines = (Path(root) / ".snodo" / "audit.log").read_text(encoding="utf-8").splitlines()
+        events = iter_audit_history(audit_path)
+        for event in events:
+            data = event.data or {}
+            if data.get("session_id") != session_id:
+                continue
+            usage = data.get("usage", [])
+            if data.get("coder") == "mock" or any(
+                isinstance(item, dict) and item.get("coder") == "mock"
+                for item in usage if isinstance(usage, list)
+            ):
+                return True
     except OSError:
         return False
-    for line in lines:
-        try:
-            data = json.loads(line).get("data", {})
-        except (ValueError, AttributeError):
-            continue
-        if data.get("session_id") != session_id:
-            continue
-        usage = data.get("usage", [])
-        if data.get("coder") == "mock" or any(
-            isinstance(item, dict) and item.get("coder") == "mock"
-            for item in usage if isinstance(usage, list)
-        ):
-            return True
     return False
 
 

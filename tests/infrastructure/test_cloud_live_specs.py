@@ -89,3 +89,31 @@ def test_mock_and_benchmark_gate_is_closed(monkeypatch):
 
     monkeypatch.setenv("SNODO_BENCHMARK", "1")
     assert not cloud_liveness._sync_gate_open({"cloud": {"sync_enabled": True}})
+
+
+def test_archived_mock_usage_suppresses_delivery(tmp_path, monkeypatch):
+    from snodo.infrastructure.audit import AuditLog
+
+    root = tmp_path / "project"
+    audit_path = root / ".snodo" / "audit.log"
+    audit_path.parent.mkdir(parents=True)
+    AuditLog(str(audit_path)).append_event(
+        "coder_usage", {"session_id": "session-1", "usage": [{"coder": "mock"}]},
+    )
+    audit_path.rename(audit_path.with_name("audit.log.2026-w41"))
+    monkeypatch.delenv("SNODO_BENCHMARK", raising=False)
+    assert specs.delivery_suppressed(str(root), "session-1")
+
+
+def test_delivery_suppression_unchanged_without_archives(tmp_path, monkeypatch):
+    from snodo.infrastructure.audit import AuditLog
+
+    root = tmp_path / "project"
+    audit_path = root / ".snodo" / "audit.log"
+    audit_path.parent.mkdir(parents=True)
+    AuditLog(str(audit_path)).append_event(
+        "coder_usage", {"session_id": "session-1", "coder": "mock"},
+    )
+    monkeypatch.delenv("SNODO_BENCHMARK", raising=False)
+    assert specs.delivery_suppressed(str(root), "session-1")
+    assert not specs.delivery_suppressed(str(root), "other-session")

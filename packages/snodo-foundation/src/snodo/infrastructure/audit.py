@@ -291,18 +291,7 @@ class AuditLog:
 
     def iter_history(self):
         """Stream events across archives and the active log, oldest first."""
-        for path in (*self._archive_paths(), self.log_path):
-            if not path.exists():
-                continue
-            with path.open() as stream:
-                for line_no, line in enumerate(stream, 1):
-                    if line.strip():
-                        try:
-                            payload = json.loads(line)
-                            payload.setdefault("project_id", "")
-                            yield AuditEvent(**payload)
-                        except (json.JSONDecodeError, TypeError) as err:
-                            raise AuditError(f"Malformed event in {path} on line {line_no}: {err}") from err
+        yield from iter_audit_history(self.log_path)
 
     def verify_chain(self) -> bool:
         """Verify integrity of the hash chain.
@@ -389,6 +378,7 @@ class AuditLog:
             )
 
         return ChainStatus(True, count)
+
 
     def _archive_paths(self) -> list[Path]:
         pattern = re.compile(re.escape(self.log_path.name) + r"\.(\d{4})-w(\d{2})(?:\.(\d+))?$")
@@ -753,6 +743,35 @@ class AuditLog:
                     f"Failed to persist audit event seq={event.sequence} "
                     f"type={event.event_type}: {retry_err}"
                 ) from retry_err
+
+
+def iter_audit_history(log_path: str | Path):
+    """Stream events from ISO-week archives and the current log, oldest first.
+
+    This standalone form avoids constructing :class:`AuditLog`, whose normal
+    initialization loads the current log into memory.
+    """
+    log_path = Path(log_path)
+    pattern = re.compile(re.escape(log_path.name) + r"\.(\d{4})-w(\d{2})(?:\.(\d+))?$")
+    archives = []
+    for path in log_path.parent.glob(log_path.name + ".*-w*"):
+        match = pattern.fullmatch(path.name)
+        if match:
+            archives.append(((int(match[1]), int(match[2]), int(match[3] or 0), path.name), path))
+    paths = [path for _, path in sorted(archives)] + [log_path]
+    for path in paths:
+        if not path.exists():
+            continue
+        with path.open(encoding="utf-8") as stream:
+            for line_no, line in enumerate(stream, 1):
+                if not line.strip():
+                    continue
+                try:
+                    payload = json.loads(line)
+                    payload.setdefault("project_id", "")
+                    yield AuditEvent(**payload)
+                except (json.JSONDecodeError, TypeError) as err:
+                    raise AuditError(f"Malformed event in {path} on line {line_no}: {err}") from err
 
 
 # Singleton instance for global audit log

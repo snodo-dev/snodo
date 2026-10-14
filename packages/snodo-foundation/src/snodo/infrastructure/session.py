@@ -501,28 +501,22 @@ class SessionManager:
             of audited session ids with no file under this store.
         """
         audit_path = Path(project_root) / ".snodo" / "audit.log"
-        if not audit_path.exists():
+        if not audit_path.exists() and not list(audit_path.parent.glob("audit.log.*-w*")):
             return [], []
 
         ids: set = set()
         deleted_ids: set = set()
         try:
-            with open(audit_path) as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if isinstance(event, dict):
-                        data = event.get("data") or {}
-                        sid = data.get("session_id")
-                        if isinstance(sid, str) and sid:
-                            if event.get("event") == "session_deleted" or data.get("op") == "session_deleted":
-                                deleted_ids.add(sid)
-                            else:
-                                ids.add(sid)
+            from snodo.infrastructure.audit import iter_audit_history
+
+            for event in iter_audit_history(audit_path):
+                data = event.data or {}
+                sid = data.get("session_id")
+                if isinstance(sid, str) and sid:
+                    if event.event_type == "session_deleted" or data.get("op") == "session_deleted":
+                        deleted_ids.add(sid)
+                    else:
+                        ids.add(sid)
         except OSError:
             return [], []
 
@@ -576,27 +570,20 @@ class SessionManager:
         per-lookup path.
         """
         audit_path = Path(project_root) / ".snodo" / "audit.log"
-        if not audit_path.exists():
+        if not audit_path.exists() and not list(audit_path.parent.glob("audit.log.*-w*")):
             return False
         cited = False
         deleted = False
         try:
-            with open(audit_path) as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if not isinstance(event, dict):
-                        continue
-                    data = event.get("data") or {}
-                    if data.get("session_id") == session_id:
-                        if event.get("event") == "session_deleted" or data.get("op") == "session_deleted":
-                            deleted = True
-                        else:
-                            cited = True
+            from snodo.infrastructure.audit import iter_audit_history
+
+            for event in iter_audit_history(audit_path):
+                data = event.data or {}
+                if data.get("session_id") == session_id:
+                    if event.event_type == "session_deleted" or data.get("op") == "session_deleted":
+                        deleted = True
+                    else:
+                        cited = True
         except OSError:
             return False
         if deleted:
