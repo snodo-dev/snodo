@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_case_study_own_history": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b93cb9d076fb4d11"
+    },
+    "2.1_readme_first_look": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "53062e56b174c516"
+    }
+  },
+  "integration": {
+    "branch": "plan/first-look/integration",
+    "base_sha": "f054320fabea7ea53bd9afc069546c1af06e214e"
+  }
+}

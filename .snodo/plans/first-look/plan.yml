@@ -1,0 +1,16 @@
+intent: Make snodo's value visible on first look for engineers who already use coding
+  agents. Add a short page with evidence from snodo's own history, where agents said
+  done and the gate said no. Reorder the README so a one-line value statement, that
+  evidence, and install come first. Add a short "why add this to CI and code review"
+  answer. Leave snodo cloud out.
+name: first-look
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_case_study_own_history
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_readme_first_look
