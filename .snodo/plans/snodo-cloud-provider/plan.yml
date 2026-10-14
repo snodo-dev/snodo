@@ -25,5 +25,9 @@ waves:
   - 2
   id: 3
   tasks:
-  - 3.1_models_lists_snodo_cloud
   - 3.2_opencode_uses_snodo_cloud
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_models_lists_snodo_cloud
