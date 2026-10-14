@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Route matching models in a provider block through alternate LiteLLM API formats, preserving the block credential and base URL. (Fixes #898)
 - Remove the retired mode capability name from generated test data and use an all-template guard against unmapped grants. (Fixes #896)
 - Keep the changed task's spec text in session decision audit deltas without sending other tasks' entries. (Fixes #894)
 - Rotate audit logs after seven days or 256 MiB while preserving the hash chain. (Fixes #893)

@@ -16,6 +16,11 @@ class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class _ProviderModelRoute(_StrictModel):
+    match: StrictStr
+    litellm_provider: StrictStr
+
+
 class _Provider(_StrictModel):
     api_key: StrictStr = ""
     api_key_env: StrictStr = ""
@@ -25,6 +30,7 @@ class _Provider(_StrictModel):
     account_id_env: StrictStr = ""
     base_url: StrictStr = ""
     litellm_provider: StrictStr = ""
+    model_routes: list[_ProviderModelRoute] = []
     extra_headers: dict[StrictStr, StrictStr] = {}
     probe_model: StrictStr = ""
     catalog_provider: StrictStr = ""
