@@ -836,11 +836,9 @@ class CloudSyncDispatcher:
             state.get_project_cursor(project_id) if project_id else 0,
         )
 
-        # Collect unsynced events
-        unsynced: list = []
-        for ev in events:
-            if ev.sequence > cursor:
-                unsynced.append(ev)
+        from snodo.infrastructure.cloud_unsent import events_after_cursor
+
+        unsynced = list(events_after_cursor(audit_log, cursor))
 
         if not unsynced:
             if project_id:
@@ -1206,7 +1204,9 @@ def _pending_count(audit_log: Any, session_id: str) -> int:
         state.get_project_cursor(_project_id_from_events(events))
         if _project_id_from_events(events) else 0,
     )
-    return sum(1 for ev in events if ev.sequence > cursor)
+    from snodo.infrastructure.cloud_unsent import events_after_cursor
+
+    return sum(1 for _ in events_after_cursor(audit_log, cursor))
 
 
 def flush_pending_syncs() -> None:
