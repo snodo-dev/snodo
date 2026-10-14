@@ -1,0 +1,44 @@
+{
+  "tasks": {
+    "1.1_audit_chain_spans_archives": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e4351cca333a4f93"
+    },
+    "1.2_job_notifications_survive_log_replacement": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2b648a7e4bfd301f"
+    },
+    "2.1_session_and_mock_checks_read_history": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b0c452993d02d757"
+    },
+    "2.2_cloud_sync_reads_unsent_events_from_archives": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ba9b1ed6bc8ab8a3"
+    },
+    "2.3_reports_and_dashboard_read_history": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "48f87f54ba3aae17"
+    },
+    "3.1_rotate_audit_log_weekly_or_by_size": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "001b2698ebc7c3f6"
+    }
+  },
+  "integration": {
+    "branch": "plan/audit-archive/integration",
+    "base_sha": "67729ec1bc8136bcdfe92d05781f190e021489f1"
+  }
+}
