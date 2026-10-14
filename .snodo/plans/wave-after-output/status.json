@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_cloud_status_wave_during_session_scan": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1f58789fcbbe9817"
+    }
+  },
+  "integration": {
+    "branch": "plan/wave-after-output/integration",
+    "base_sha": "dab282be7851258b279265469711e7ab63ee438b"
+  }
+}

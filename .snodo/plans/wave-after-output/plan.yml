@@ -1,0 +1,10 @@
+intent: When a command has already printed something and then goes quiet on a slow
+  step, the snodo wave shows again until the next line appears. The first case is
+  `snodo cloud status`, which pauses after its header while it reads per-session sync
+  state.
+name: wave-after-output
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_cloud_status_wave_during_session_scan
