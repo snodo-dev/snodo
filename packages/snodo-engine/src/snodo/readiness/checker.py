@@ -17,6 +17,7 @@ Ordering: cheapest fix at highest severity first.
 
 import logging
 import re
+import shlex
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -33,6 +34,53 @@ from snodo.readiness.models import (
 from snodo.survey.analyzer import _detect_decision_paths
 
 _logger = logging.getLogger(__name__)
+
+
+def _test_command_runners(command: str) -> List[str]:
+    """Return plausible executable names from shell simple commands."""
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="();<>|&!{}")
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return []
+
+    separators = {";", "|", "||", "&", "&&", "(", ")", "{", "}"}
+    builtins = {
+        "!", "[", ":", ".", "break", "cd", "continue", "eval", "exec",
+        "exit", "export", "false", "read", "return", "set", "shift", "test",
+        "times", "trap", "true", "umask", "unset", "wait",
+    }
+    runners: List[str] = []
+    segment: List[str] = []
+
+    def inspect(words: List[str]) -> None:
+        while words and words[0] == "!":
+            words = words[1:]
+        while words and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):
+            words = words[1:]
+        if not words:
+            return
+        executable = words[0]
+        if executable == "exec":
+            words = words[1:]
+            if words and words[0] == "-a":
+                words = words[2:]
+            if not words:
+                return
+            executable = words[0]
+        if executable in builtins or executable.startswith("-"):
+            return
+        runners.append(executable)
+
+    for token in tokens:
+        if token in separators:
+            inspect(segment)
+            segment = []
+        else:
+            segment.append(token)
+    inspect(segment)
+    return runners
 
 # Supported marker files for quality test runner auto-detection
 _TEST_MARKERS: List[Tuple[str, str]] = [
@@ -536,8 +584,9 @@ def assess_readiness(
 
         # Workstation Check: is the runner executable on PATH?
         if effective_cmd:
-            runner_binary = effective_cmd.strip().split()[0]
-            if not shutil.which(runner_binary):
+            for runner_binary in _test_command_runners(effective_cmd):
+                if shutil.which(runner_binary):
+                    continue
                 workstation_findings.append(
                     ReadinessFinding(
                         id=f"quality_runner_missing_on_path:{runner_binary}",

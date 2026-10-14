@@ -26,7 +26,7 @@ from snodo.compiler.models import (
     Protocol,
     Validator,
 )
-from snodo.readiness.checker import _extract_cited_paths, assess_readiness
+from snodo.readiness.checker import _extract_cited_paths, _test_command_runners, assess_readiness
 from snodo.readiness.models import FindingSeverity, ReadinessKind
 
 
@@ -75,6 +75,23 @@ def _make_protocol(
         initial_mode=modes[0].mode_id,
         roles=[],
     )
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("(test -f x || exit 0) && pytest", ["pytest"]),
+        ("FOO=1 npm test", ["npm"]),
+        ("cd web && make test", ["make"]),
+        ("pytest --version", ["pytest"]),
+    ],
+)
+def test_test_command_runner_parsing(command: str, expected: list[str]):
+    assert _test_command_runners(command) == expected
+
+
+def test_unparseable_test_command_has_no_runner():
+    assert _test_command_runners("pytest 'unterminated") == []
 
 
 def test_fully_satisfied_protocol_scores_full_figure(git_repo: Path):
