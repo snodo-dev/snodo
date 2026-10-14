@@ -19,7 +19,7 @@ from typing import Any
 
 OUTCOMES = ("MERGED", "MINOR REWORK", "MAJOR REWORK", "REJECTED")
 DEFAULT_DIFF_LIMIT = 100_000
-RECON_TIMEOUT_SECONDS = 300
+RECON_TIMEOUT_SECONDS = int(os.environ.get("SNODO_PR_REVIEW_TIMEOUT", 900))
 
 
 def _gh_json(repo: str, pr: int, field: str) -> str:
