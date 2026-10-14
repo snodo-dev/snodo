@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Emit periodic progress lines while validators are still running. (Fixes #876)
 - Reinstall task dependencies when an auto-detected lockfile is newer than its
   existing install directory. (Fixes #875)
 - Keep quality-gate failure lines ahead of trailing output in bounded validator diagnostics. (Fixes #874)

@@ -52,6 +52,7 @@ _ENGINE_LINES = {
     "  Recovery (attempt 2/3): spawned t_fix_2 (quality (warn))": CODER,
     "    quality: started": ACTIVITY,
     "    quality: finished": ACTIVITY,
+    "    quality: still running (3m)": ACTIVITY,
     "    ✓ quality: pass": GATE_OK,
     "    ✓ quality: pass (skipped) — tests": GATE_OK,
     "    ⚠️ quality: warn — something": GATE_WARN,
@@ -359,4 +360,3 @@ def test_graphbuilder_progress_verbose_gate_is_unchanged():
         builder._progress("  normal line")
         builder._progress("  fine detail", verbose=True)
     assert out.getvalue() == "  normal line\n"
-

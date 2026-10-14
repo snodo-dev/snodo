@@ -261,6 +261,7 @@ _GATE_RE = re.compile(r"^\s*[✓⚠❌💥]\ufe0f?\s*\S+:")
 _ACTIVITY_RES = (
     re.compile(r"^\s*\S+:\s+started\s*$"),
     re.compile(r"^\s*\S+:\s+finished\s*$"),
+    re.compile(r"^\s*\S+:\s+still running\s+\(\d+m\)\s*$"),
     re.compile(r"^\s+(Original|Authored|Critique):"),
 )
 #: The watch loop's liveness line ("  ~ watching · plan 1:20 · no status

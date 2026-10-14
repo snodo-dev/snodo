@@ -36,6 +36,8 @@ def _summarize(lines: list[str]) -> str:
     for raw in lines:
         line = " ".join(raw.split())
         low = line.lower()
+        if re.search(r"\bquality:\s*still running\b", low):
+            latest = "running the gate"
         if "validator" in low and any(word in low for word in ("finished", "completed", "passed", "failed")):
             match = re.search(r"(?:validator\s+)?([\w.-]+).*?(?:finished|completed|passed|failed)", low)
             if match:

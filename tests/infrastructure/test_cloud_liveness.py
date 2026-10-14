@@ -58,6 +58,7 @@ def test_live_run_identity_and_legacy_pid_behavior(monkeypatch):
     ("Validator security finished\nValidator tests finished\n", "pre-execute validators: 2 finished"),
     ("Coder dispatched\nCoder turn 1\n", "coder working"),
     ("Running verification gate\n", "running the gate"),
+    ("    quality: still running (3m)\n", "running the gate"),
 ])
 def test_job_progress_summarizes_known_activity(tmp_path, log, expected):
     job = tmp_path / "job"

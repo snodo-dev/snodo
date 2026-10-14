@@ -12,6 +12,7 @@ validators were doing anything.  These tests pin the split:
 """
 
 from unittest.mock import MagicMock
+import time
 
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
@@ -163,3 +164,30 @@ def test_raising_progress_sink_does_not_stop_validation(capsys):
     assert results[0].severity == "pass"
     err = capsys.readouterr().err
     assert err.count("sink failed") == 1, err
+
+
+def test_long_running_validator_gets_heartbeats_but_fast_one_does_not():
+    validators = [
+        Validator(validator_id=vid, validator_type="security", evaluation_phase="pre_execute",
+                  criteria=["Check"], tools=[])
+        for vid in ("slow", "fast")
+    ]
+    narration: list[str] = []
+
+    def dispatch(v_spec, _ctx, _reg):
+        time.sleep(0.12 if v_spec.validator_id == "slow" else 0.005)
+        return ValidatorResult(validator_id=v_spec.validator_id, severity="pass", justification="ok")
+
+    results, _ = run_validators(
+        protocol=_protocol(validators[0]), validators=validators,
+        task=Task(id="t1", spec="do the thing"), phase="pre_execute",
+        validator_config=MagicMock(max_tokens=1500, max_tool_turns=6),
+        current_mode="producer", dispatch_fn=dispatch, progress_cb=narration.append,
+        progress_interval=0.03,
+    )
+
+    assert [result.severity for result in results] == ["pass", "pass"]
+    heartbeats = [line for line in narration if "still running" in line]
+    assert heartbeats and all("slow:" in line for line in heartbeats)
+    assert not any("fast:" in line for line in heartbeats)
+    assert narration.index("    slow: finished") > narration.index(heartbeats[-1])

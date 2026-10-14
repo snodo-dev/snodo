@@ -18,7 +18,9 @@ import hashlib
 import json
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -463,6 +465,7 @@ def run_validators(
     verdict_cache: Any = None,
     wave_specs: Optional[List[str]] = None,
     wave_results: Optional[Dict[str, ValidatorResult]] = None,
+    progress_interval: float = 60.0,
 ) -> Tuple[List[ValidatorResult], Dict[str, str]]:
     """Run a list of validators against a task and return ordered results.
 
@@ -597,12 +600,17 @@ def run_validators(
                         result = ValidatorResult.model_validate(result)
                     results_by_id[v.validator_id] = copy.deepcopy(result)
 
+    started_at: Dict[str, float] = {}
+    started_lock = threading.Lock()
+
     def _dispatch_with_progress(v: Validator, ctx: ValidatorContext) -> ValidatorResult:
         # Emitted from inside the worker, not at submit time: with a bounded
         # pool a queued validator has not started yet, and an operator watching
         # "which are still out" must not be told otherwise.
         if progress_sink is not None:
             progress_sink(f"    {v.validator_id}: started")
+        with started_lock:
+            started_at[v.validator_id] = time.monotonic()
         return dispatch_fn(v, ctx, reg)
 
     # Acceptance must be able to cite independent execution evidence. Run it
@@ -628,116 +636,138 @@ def run_validators(
             future = executor.submit(_dispatch_with_progress, v, ctx)
             futures[future] = v.validator_id
 
-        for future in as_completed(futures):
-            vid = futures[future]
-            try:
-                result = future.result()
-            except Exception as e:  # noqa: BLE001
-                logger.warning(
-                    "Validator %s failed outside the dispatch boundary: %s: %s",
-                    vid, type(e).__name__, e,
-                )
-                result = ValidatorResult(
-                    validator_id=vid,
-                    severity="blocker",
-                    justification=f"Validator error ({type(e).__name__}): {e}",
-                    error=True,
-                )
+        pending = set(futures)
+        last_progress: Dict[str, float] = {}
+        while pending:
+            completed, pending = wait(
+                pending, timeout=max(0.01, progress_interval),
+                return_when=FIRST_COMPLETED,
+            )
+            now = time.monotonic()
             if progress_sink is not None:
-                progress_sink(f"    {vid}: finished")
-            if result is not None:
-                v_obj = next((v for v in validators if v.validator_id == vid), None)
-                missing_access = getattr(result, "tool_access_missing", None)
-                if (
-                    v_obj is not None
-                    and getattr(v_obj, "check_tool_access", False)
-                    and isinstance(missing_access, dict)
-                    and missing_access.get("criterion")
-                    and missing_access.get("capability")
-                ):
-                    criterion = missing_access["criterion"]
-                    capability = missing_access["capability"]
+                with started_lock:
+                    starts = dict(started_at)
+                for future in pending:
+                    vid = futures[future]
+                    started = starts.get(vid)
+                    if (started is not None and not future.done()
+                            and now - started >= progress_interval
+                            and now - last_progress.get(vid, started) >= progress_interval):
+                        elapsed_minutes = max(1, int((now - started) // 60))
+                        progress_sink(
+                            f"    {vid}: still running ({elapsed_minutes}m)"
+                        )
+                        last_progress[vid] = now
+            for future in completed:
+                vid = futures[future]
+                try:
+                    result = future.result()
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        "Validator %s failed outside the dispatch boundary: %s: %s",
+                        vid, type(e).__name__, e,
+                    )
                     result = ValidatorResult(
-                        validator_id=result.validator_id,
+                        validator_id=vid,
                         severity="blocker",
-                        justification=(
-                            f"Criterion '{criterion}' cannot be verified: "
-                            f"missing capability '{capability}', which is outside "
-                            f"this validator's declared tools ({', '.join(v_obj.tools) or '(none)'}). "
-                            "Run a recon and fold its findings into a smaller or "
-                            "more detailed spec before re-validating."
-                        ),
-                        cited_criteria=result.cited_criteria,
-                        tool_access_missing=missing_access,
+                        justification=f"Validator error ({type(e).__name__}): {e}",
+                        error=True,
                     )
-                tool_access_refusal = (
-                    isinstance(missing_access, dict)
-                    and getattr(v_obj, "check_tool_access", False)
-                    and result.severity == "blocker"
-                )
-                is_recovery = (getattr(task, "depth", 0) > 0 or bool(getattr(task, "prior_failures", None)))
-                if (
-                    not tool_access_refusal
-                    and phase == "pre_execute"
-                    and is_recovery
-                    and result.severity in ("warn", "blocker")
-                    and not getattr(result, "error", False)
-                ):
-                    original_severity = result.severity
-                    cap_originals[result.validator_id] = original_severity
-                    result = ValidatorResult(
-                        validator_id=result.validator_id,
-                        severity="pass",
-                        justification=f"[Pre-execute recovery finding ({original_severity}): non-blocking evidence for coder] {result.justification}",
-                        cited_criteria=result.cited_criteria,
-                        severity_original=original_severity,
-                        reused=getattr(result, "reused", False),
-                    )
-                    if audit_log is not None:
-                        _cap_data = {
-                            "validator_id": result.validator_id,
-                            "original": original_severity,
-                            "capped": "pass",
-                            "reason": "pre_execute_recovery_tree_state",
-                        }
-                        if session_id:
-                            _cap_data["session_id"] = session_id
-                        audit_log.append_event("severity_cap_applied", _cap_data)
-                elif (
-                    not tool_access_refusal
-                    and v_obj is not None
-                    and v_obj.severity_cap is not None
-                    and not getattr(result, "error", False)
-                    and result.severity is not None
-                ):
-                    from snodo.compiler.models import Severity
-
-                    if Severity(result.severity) > v_obj.severity_cap:
-                        original_severity = result.severity
+                if progress_sink is not None:
+                    progress_sink(f"    {vid}: finished")
+                if result is not None:
+                    v_obj = next((v for v in validators if v.validator_id == vid), None)
+                    missing_access = getattr(result, "tool_access_missing", None)
+                    if (
+                        v_obj is not None
+                        and getattr(v_obj, "check_tool_access", False)
+                        and isinstance(missing_access, dict)
+                        and missing_access.get("criterion")
+                        and missing_access.get("capability")
+                    ):
+                        criterion = missing_access["criterion"]
+                        capability = missing_access["capability"]
                         result = ValidatorResult(
                             validator_id=result.validator_id,
-                            severity=v_obj.severity_cap.value,
-                            justification=result.justification,
+                            severity="blocker",
+                            justification=(
+                                f"Criterion '{criterion}' cannot be verified: "
+                                f"missing capability '{capability}', which is outside "
+                                f"this validator's declared tools ({', '.join(v_obj.tools) or '(none)'}). "
+                                "Run a recon and fold its findings into a smaller or "
+                                "more detailed spec before re-validating."
+                            ),
+                            cited_criteria=result.cited_criteria,
+                            tool_access_missing=missing_access,
+                        )
+                    tool_access_refusal = (
+                        isinstance(missing_access, dict)
+                        and getattr(v_obj, "check_tool_access", False)
+                        and result.severity == "blocker"
+                    )
+                    is_recovery = (getattr(task, "depth", 0) > 0 or bool(getattr(task, "prior_failures", None)))
+                    if (
+                        not tool_access_refusal
+                        and phase == "pre_execute"
+                        and is_recovery
+                        and result.severity in ("warn", "blocker")
+                        and not getattr(result, "error", False)
+                    ):
+                        original_severity = result.severity
+                        cap_originals[result.validator_id] = original_severity
+                        result = ValidatorResult(
+                            validator_id=result.validator_id,
+                            severity="pass",
+                            justification=f"[Pre-execute recovery finding ({original_severity}): non-blocking evidence for coder] {result.justification}",
                             cited_criteria=result.cited_criteria,
                             severity_original=original_severity,
                             reused=getattr(result, "reused", False),
                         )
-                        cap_originals[result.validator_id] = original_severity
                         if audit_log is not None:
                             _cap_data = {
                                 "validator_id": result.validator_id,
                                 "original": original_severity,
-                                "capped": result.severity,
+                                "capped": "pass",
+                                "reason": "pre_execute_recovery_tree_state",
                             }
                             if session_id:
                                 _cap_data["session_id"] = session_id
                             audit_log.append_event("severity_cap_applied", _cap_data)
-                # Report the *final* (post-cap) severity so the operator's view
-                # matches the audit record; carry the pre-cap value alongside it.
-                # The sink already swallows and reports its own failure once.
-                if verdict_sink is not None:
-                    verdict_sink(vid, result)
-                results_by_id[vid] = result
+                    elif (
+                        not tool_access_refusal
+                        and v_obj is not None
+                        and v_obj.severity_cap is not None
+                        and not getattr(result, "error", False)
+                        and result.severity is not None
+                    ):
+                        from snodo.compiler.models import Severity
+
+                        if Severity(result.severity) > v_obj.severity_cap:
+                            original_severity = result.severity
+                            result = ValidatorResult(
+                                validator_id=result.validator_id,
+                                severity=v_obj.severity_cap.value,
+                                justification=result.justification,
+                                cited_criteria=result.cited_criteria,
+                                severity_original=original_severity,
+                                reused=getattr(result, "reused", False),
+                            )
+                            cap_originals[result.validator_id] = original_severity
+                            if audit_log is not None:
+                                _cap_data = {
+                                    "validator_id": result.validator_id,
+                                    "original": original_severity,
+                                    "capped": result.severity,
+                                }
+                                if session_id:
+                                    _cap_data["session_id"] = session_id
+                                audit_log.append_event("severity_cap_applied", _cap_data)
+                    # Report the *final* (post-cap) severity so the operator's view
+                    # matches the audit record; carry the pre-cap value alongside it.
+                    # The sink already swallows and reports its own failure once.
+                    if verdict_sink is not None:
+                        verdict_sink(vid, result)
+                    results_by_id[vid] = result
 
     for v in deferred_acceptance:
         ctx = copy.copy(context)
