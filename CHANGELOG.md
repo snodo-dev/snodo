@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Reinstall task dependencies when an auto-detected lockfile is newer than its
+  existing install directory. (Fixes #875)
 - Keep quality-gate failure lines ahead of trailing output in bounded validator diagnostics. (Fixes #874)
 - Show the terminal wave while `snodo cloud status` reads sync state after its connection header. (Fixes #873)
 - Count a Snodo Cloud login as a configured model provider and discover gateway models with its cloud credential. (Fixes #871)

@@ -58,12 +58,38 @@ class TestEnvironmentDetection:
         assert res.reason == "no recognized markers"
 
     def test_already_installed_skips_auto_prep(self, temp_worktree):
-        (temp_worktree / "package-lock.json").touch()
-        (temp_worktree / "node_modules").mkdir()
+        marker = temp_worktree / "package-lock.json"
+        marker.touch()
+        guard = temp_worktree / "node_modules"
+        guard.mkdir()
+        import os
+
+        os.utime(marker, (100, 100))
+        os.utime(guard, (200, 200))
 
         res = prepare_environment(temp_worktree)
         assert res.status == "skipped"
         assert "already installed" in res.reason
+
+    def test_stale_install_guard_runs_auto_prep(self, temp_worktree):
+        import os
+
+        marker = temp_worktree / "package-lock.json"
+        marker.touch()
+        guard = temp_worktree / "node_modules"
+        guard.mkdir()
+        os.utime(guard, (100, 100))
+        os.utime(marker, (200, 200))
+        executed = []
+
+        res = prepare_environment(
+            temp_worktree,
+            run_command_fn=lambda cmd, cwd: (executed.append(cmd) or 0, "installed"),
+        )
+
+        assert res.status == "executed"
+        assert executed == ["npm ci"]
+        assert "older than package-lock.json" in res.reason
 
 
 class TestExplicitProtocolOverride:

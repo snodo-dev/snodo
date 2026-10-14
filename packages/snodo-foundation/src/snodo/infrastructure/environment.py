@@ -69,13 +69,23 @@ def detect_prepare_command(target_dir: str | Path) -> Optional[Tuple[str, str]]:
     Returns:
         (command, installed_guard_dir) if markers match, or None if no markers match.
     """
+    detection = _detect_prepare_command(target_dir)
+    if detection is None:
+        return None
+    command, guard_dir, _marker = detection
+    return command, guard_dir
+
+
+def _detect_prepare_command(target_dir: str | Path) -> Optional[Tuple[str, str, str]]:
+    """Detect the command, install guard, and marker that selected the rule."""
     root = Path(target_dir)
     if not root.is_dir():
         return None
 
     for markers, guard_dir, cmd in ECOSYSTEM_RULES:
-        if any((root / marker).exists() for marker in markers):
-            return cmd, guard_dir
+        for marker in markers:
+            if (root / marker).exists():
+                return cmd, guard_dir, marker
 
     return None
 
@@ -108,6 +118,8 @@ def prepare_environment(
     # 1. Resolve command string (explicit arg > protocol config > auto-detect)
     command_to_run: Optional[str] = None
     guard_dir: Optional[str] = None
+    marker: Optional[str] = None
+    stale_guard_reason: Optional[str] = None
 
     if explicit_command is not None:
         cmd_strip = explicit_command.strip()
@@ -120,17 +132,31 @@ def prepare_environment(
             return PrepResult(status="skipped", reason="explicitly disabled in protocol")
         command_to_run = cmd_strip
     else:
-        detection = detect_prepare_command(target_path)
+        detection = _detect_prepare_command(target_path)
         if not detection:
             return PrepResult(status="skipped", reason="no recognized markers")
-        command_to_run, guard_dir = detection
+        command_to_run, guard_dir, marker = detection
 
     # 2. Skip auto-install if dependencies already exist
-    if guard_dir and (target_path / guard_dir).is_dir():
-        return PrepResult(
-            status="skipped",
-            command=command_to_run,
-            reason=f"already installed ({guard_dir} exists)",
+    if guard_dir and marker and (target_path / guard_dir).is_dir():
+        try:
+            marker_mtime = (target_path / marker).stat().st_mtime
+            guard_mtime = (target_path / guard_dir).stat().st_mtime
+        except OSError:
+            marker_mtime = guard_mtime = 0
+            return PrepResult(
+                status="skipped",
+                command=command_to_run,
+                reason=f"already installed ({guard_dir} exists)",
+            )
+        if marker_mtime <= guard_mtime:
+            return PrepResult(
+                status="skipped",
+                command=command_to_run,
+                reason=f"already installed ({guard_dir} exists)",
+            )
+        stale_guard_reason = (
+            f"{guard_dir} is older than {marker}; reinstalling dependencies"
         )
 
     # 3. Execute command
@@ -173,6 +199,7 @@ def prepare_environment(
     return PrepResult(
         status="executed",
         command=command_to_run,
+        reason=stale_guard_reason,
         exit_code=exit_code,
         output=output,
     )
