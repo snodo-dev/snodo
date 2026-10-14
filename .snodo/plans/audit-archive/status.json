@@ -13,19 +13,13 @@
       "spec_hash": "2b648a7e4bfd301f"
     },
     "2.1_session_and_mock_checks_read_history": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "b0c452993d02d757"
     },
-    "2.2_cloud_sync_reads_unsent_events_from_archives": {
-      "status": "pending",
-      "parent_task_ref": null,
-      "depth": 0,
-      "spec_hash": "ba9b1ed6bc8ab8a3"
-    },
     "2.3_reports_and_dashboard_read_history": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "48f87f54ba3aae17"
@@ -35,6 +29,12 @@
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "001b2698ebc7c3f6"
+    },
+    "2.4_cloud_sync_archive_reads_in_own_module": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d7101536502ef346"
     }
   },
   "integration": {

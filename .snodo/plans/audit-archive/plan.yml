@@ -1,10 +1,10 @@
-intent: Keep a project's live audit log small by archiving it weekly or by size, without
-  breaking the hash chain. When the current audit.log's oldest event is more than
-  7 days old, or the file passes a size limit, it moves to an archive named by ISO
-  week (for example audit.log.2026-w41). The next event chains from the archive's
-  last event, with the sequence continuing. Opening the log loads only the current
-  file. `snodo audit verify` and the readers that need history walk the archives in
-  order. Readers become archive-aware first, and rotation is switched on last.
+intent: Keep a project's live audit log small by archiving it weekly or by size, without breaking
+  the hash chain. When the current audit.log's oldest event is more than 7 days old, or the
+  file passes a size limit, it moves to an archive named by ISO week (for example audit.log.2026-w41).
+  The next event chains from the archive's last event, with the sequence continuing. Opening
+  the log loads only the current file. `snodo audit verify` and the readers that need history
+  walk the archives in order. Readers become archive-aware first, and rotation is switched
+  on last.
 name: audit-archive
 waves:
 - depends_on: []
@@ -17,8 +17,8 @@ waves:
   id: 2
   tasks:
   - 2.1_session_and_mock_checks_read_history
-  - 2.2_cloud_sync_reads_unsent_events_from_archives
   - 2.3_reports_and_dashboard_read_history
+  - 2.4_cloud_sync_archive_reads_in_own_module
 - depends_on:
   - 2
   id: 3
