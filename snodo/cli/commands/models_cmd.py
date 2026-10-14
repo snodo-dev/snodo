@@ -29,7 +29,7 @@ def register(app: typer.Typer) -> None:
         stats: bool = typer.Option(False, "--stats", help="Report actual model and coder usage from project records"),
         provenance: bool = typer.Option(False, "--provenance", help="Show requested versus served models from recent runs"),
         provenance_limit: int = typer.Option(20, "--provenance-limit", min=1, help="Maximum recent provenance records to show"),
-        check: bool = typer.Option(False, "--check", help="Make one cheap live call against each configured model"),
+        check: bool = typer.Option(False, "--check", "--validate", help="Make one cheap live call against each configured model"),
         benchmark: bool = typer.Option(
             False, "--benchmark",
             help="Time a fixed prompt against the selected model. Makes real, billed API calls.",
