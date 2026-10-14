@@ -230,9 +230,6 @@ def _run_server(args, protocol) -> int:
     # Detect tunnel mode and wire the selected bearer verifier if active.
     tunnel_config = _load_tunnel_config(project_root)
     tunnel_hostname = tunnel_config.get("hostname")
-    auth_methods = ["oauth"] if tunnel_hostname else _auth_methods(
-        getattr(args, "auth", None)
-    )
     extra_kwargs = {}
     if tunnel_hostname:
         from snodo.infrastructure.jwks import JwksClient
@@ -1012,7 +1009,6 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     transport = getattr(args, "transport", "streamable-http")
     delete = getattr(args, "delete", False)
     delete_hostname = getattr(args, "hostname", None) or None
-    requested_auth = getattr(args, "auth", None)
 
     # Prefer streamable-http for tunnels
     if transport == "stdio":
