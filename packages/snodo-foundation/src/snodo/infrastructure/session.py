@@ -25,19 +25,6 @@ class SessionError(Exception):
     """Session state is corrupt or unreadable."""
 
 
-def _decision_audit_entry(value: Any) -> Any:
-    """Remove task-spec text from a decision entry before it enters the audit log."""
-    if isinstance(value, dict):
-        return {
-            key: _decision_audit_entry(item)
-            for key, item in value.items()
-            if key not in {"spec", "original_spec", "task_spec", "superseded_spec", "superseded_specs"}
-        }
-    if isinstance(value, list):
-        return [_decision_audit_entry(item) for item in value]
-    return value
-
-
 # Exceptions that indicate a session file is corrupt/unreadable rather than
 # absent. Used to surface corruption (warn + audit) instead of silently
 # skipping, and to fail loud when resolving the active session.
@@ -361,7 +348,7 @@ class SessionManager:
             previous = previous_value[0]
             previous = previous if isinstance(previous, dict) else {}
             audited_value = {
-                task_id: _decision_audit_entry(entry)
+                task_id: entry
                 for task_id, entry in value.items()
                 if task_id not in previous or previous[task_id] != entry
             }

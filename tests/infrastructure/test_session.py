@@ -625,13 +625,14 @@ class TestAuditLog:
         audit_log.append_event.assert_called_once()
         assert audit_log.append_event.call_args[0][0] == "session_decision_updated"
 
-    def test_map_decision_audits_only_changed_spec_free_entries(
+    def test_map_decision_audits_only_changed_entries_with_specs(
         self, mgr_with_audit, audit_log, project_root,
     ):
         session = mgr_with_audit.create_session("producer", project_root)
         audit_log.reset_mock()
         full_map = {}
         merged = {}
+        event_sizes = []
         for index in range(20):
             task_id = f"task-{index}"
             entry = {"status": "halt", "task_spec": "large spec " * 100}
@@ -639,13 +640,15 @@ class TestAuditLog:
             mgr_with_audit.update_decision(session.session_id, "halt", full_map)
             event = audit_log.append_event.call_args[0][1]
             assert list(event["value"]) == [task_id]
-            assert "task_spec" not in event["value"][task_id]
-            assert len(str(event["value"])) < 100
+            assert event["value"][task_id]["task_spec"] == entry["task_spec"]
+            assert len(event["value"]) == 1
+            event_sizes.append(len(str(event["value"])))
             merged.update(event["value"])
 
         checkpoint = mgr_with_audit.load_session(session.session_id).checkpoint.decisions["halt"]
         assert len(checkpoint) == 20
-        assert merged == {task_id: {"status": "halt"} for task_id in checkpoint}
+        assert merged == checkpoint
+        assert max(event_sizes) - min(event_sizes) <= 1
 
     def test_update_memory_audits(self, mgr_with_audit, audit_log, project_root):
         session = mgr_with_audit.create_session("producer", project_root)

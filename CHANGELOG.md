@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Keep the changed task's spec text in session decision audit deltas without sending other tasks' entries. (Fixes #894)
 - Rotate audit logs after seven days or 256 MiB while preserving the hash chain. (Fixes #893)
 - Include archived unsent audit events in cloud sync and local backlog counts. (Fixes #892)
 - Include archived audit history in task reports, review lookups, models baselines and dashboard session views. (Fixes #891)
@@ -16,7 +17,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Resume job audit notifications from the start after audit-log replacement without re-notifying delivered events. (Fixes #888)
 - Continue and verify audit hash chains across ISO-week archive files, with streamed history access. (Fixes #887)
 - Read only the audit-log tail when appending events, including multi-megabyte final events. (Fixes #886)
-- Audit only changed, spec-free entries for per-task session decision updates while retaining the full checkpoint map. (Fixes #885)
+- Audit only changed entries for per-task session decision updates while retaining the full checkpoint map. (Fixes #885)
 - Reorder the README to lead with gate evidence and installation before the working-loop explanation. (Fixes #884)
 - Document what Snodo's test gate caught while building Snodo. (Fixes #883)
 - Show the terminal wave while bare `snodo` gathers its home status view. (Fixes #882)
