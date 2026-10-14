@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_decision_events_carry_only_the_change": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "efa04b2ff990d4e8"
+    },
+    "1.2_audit_append_reads_only_the_tail": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8e7c05449d0140b6"
+    }
+  },
+  "integration": {
+    "branch": "plan/audit-diet/integration",
+    "base_sha": "51d236bc37069f336c57aa8e0ddd430a5f7002a9"
+  }
+}

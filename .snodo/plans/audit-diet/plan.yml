@@ -1,0 +1,12 @@
+intent: 'Stop the audit log growing quadratically, and make appending cheap. Today
+  99% of the log''s bytes are session_decision_updated events: every update re-logs
+  a session''s whole accumulated per-task map (halt, task_failure, classification),
+  including task spec text. The event should carry only what changed. Appending a
+  new event should read only the end of the file, not the whole log.'
+name: audit-diet
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_decision_events_carry_only_the_change
+  - 1.2_audit_append_reads_only_the_tail
