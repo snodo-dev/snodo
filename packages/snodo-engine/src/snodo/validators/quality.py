@@ -37,8 +37,17 @@ _DETECT_RULES = [
     ("go.mod", "go test ./..."),
 ]
 
-# Bound on the stdout/stderr tail surfaced in a failure message.
-_OUTPUT_TAIL_CHARS = 400
+# Bound on the stdout/stderr excerpt surfaced in a failure message. Failure
+# lines are kept first so the audit event's separate 400-character cap also
+# preserves the most useful evidence.
+_OUTPUT_TAIL_CHARS = 1500
+_OUTPUT_FAILURE_PATTERNS = (
+    re.compile(r"^.*\bFAILED\s+\S+.*$"),
+    re.compile(r"^.*\bFAIL:.*$"),
+    re.compile(r"^.*\berror:.*$", re.IGNORECASE),
+    # Ruff and similar linters report file:line:column: CODE message.
+    re.compile(r"^.*:\d+:\d+:\s+[A-Z][A-Z0-9]+\b.*$"),
+)
 
 # Pytest prints one node id per line in its failure summary.  Restricting the
 # baseline rerun to these ids is important: the normal test command may be a
@@ -588,12 +597,48 @@ class QualityValidator(ValidatorBase):
         return "permission denied" in lowered or "is a directory" in lowered
 
     def _output_tail(self, stdout: str, stderr: str) -> str:
-        """Return a bounded tail of the command's combined output."""
+        """Keep diagnostic failure lines before a bounded end-of-output tail."""
         combined = f"{stdout or ''}\n{stderr or ''}".strip()
         if not combined:
             return "(no output)"
         if len(combined) <= _OUTPUT_TAIL_CHARS:
             return combined
+        lines = combined.splitlines()
+        failures = []
+        seen = set()
+        for line in lines:
+            if line not in seen and any(pattern.match(line) for pattern in _OUTPUT_FAILURE_PATTERNS):
+                failures.append(line)
+                seen.add(line)
+        if failures:
+            # Reserve room for end-of-output context while retaining complete
+            # diagnostic lines whenever possible.
+            failure_budget = min(1200, _OUTPUT_TAIL_CHARS - 1)
+            kept_failures = []
+            used = 0
+            for line in failures:
+                separator = 1 if kept_failures else 0
+                if used + separator + len(line) > failure_budget:
+                    if not kept_failures:
+                        kept_failures.append(line[:failure_budget])
+                    break
+                kept_failures.append(line)
+                used += separator + len(line)
+            failure_text = "\n".join(kept_failures)
+            remaining = _OUTPUT_TAIL_CHARS - len(failure_text) - 1
+            context_lines = []
+            context_seen = set(seen)
+            for line in reversed(lines):
+                if line not in context_seen:
+                    context_lines.append(line)
+                    context_seen.add(line)
+            context = "\n".join(reversed(context_lines))
+            if remaining > 0 and context:
+                if len(context) > remaining:
+                    marker = "...\n"
+                    context = marker + context[-max(0, remaining - len(marker)):]
+                return f"{failure_text}\n{context}"
+            return failure_text
         return "...\n" + combined[-_OUTPUT_TAIL_CHARS:]
 
     def _extract_summary(self, output: str) -> str:

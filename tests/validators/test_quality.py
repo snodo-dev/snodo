@@ -640,6 +640,48 @@ class TestQualityValidatorEvaluate:
             assert "compilation failed" in result.justification
 
 
+class TestOutputTail:
+    def test_keeps_ruff_location_before_long_source_excerpt(self, qv):
+        output = "src/example.py:12:8: F401 `unused` imported but unused\n" + "source excerpt\n" * 200
+
+        tail = qv._output_tail(output, "")
+
+        assert "src/example.py:12:8: F401" in tail
+        assert len(tail) <= 1500
+
+    def test_keeps_fail_line_before_many_summary_lines(self, qv):
+        output = "FAIL: file-length check exceeded limit\n" + "summary line\n" * 200
+
+        assert "FAIL: file-length check exceeded limit" in qv._output_tail(output, "")
+
+    def test_keeps_pytest_failed_node_before_stderr_warnings(self, qv):
+        stdout = "FAILED tests/x.py::test_y - assertion failed\n" + "passed\n" * 100
+        stderr = "warning: noisy warning\n" * 100
+
+        tail = qv._output_tail(stdout, stderr)
+
+        assert "FAILED tests/x.py::test_y - assertion failed" in tail
+        assert "warning: noisy warning" in tail
+
+    def test_short_output_is_unchanged(self, qv):
+        assert qv._output_tail("short output", "") == "short output"
+
+    def test_audit_cap_keeps_failure_lines_first(self, qv):
+        audit = MagicMock()
+        tail = qv._output_tail(
+            "src/example.py:12:8: F401 unused\nFAIL: check failed\n" + "context\n" * 300,
+            "",
+        )
+
+        qv._audit_verification(
+            SimpleNamespace(audit_log=audit), "pytest", "commit", 1, "fail", tail,
+        )
+
+        event = audit.append_event.call_args.args[1]
+        assert len(event["output_tail"]) <= 400
+        assert event["output_tail"].startswith("src/example.py:12:8: F401 unused\nFAIL: check failed")
+
+
 class TestExtractSummary:
     def test_last_line(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
