@@ -11,9 +11,45 @@
 [![Security Policy](https://img.shields.io/badge/security-policy-brightgreen)](SECURITY.md)
 [![Built with snodo](https://img.shields.io/badge/built%20with-snodo-2DD4BF)](#built-with-snodo)
 
-**Enforce your development process around whichever AI agent writes the code.**
+**Get evidence that an agent's work is done before it merges.** Snodo runs your
+process validators and test gate inside the agent's own work loop.
 
 ![How snodo runs a task: an agent dispatches over MCP, pre-execute validators issue a signed token, any coder writes the change in its own worktree, post-execute validators run the tests, and clean work arrives as a pull request. A warning sends the findings back to the coder, which corrects and retries until the validators pass. A single blocker halts the run until a human acknowledges it and revises the intent, which starts the run again. Every step is appended to a hash-chained audit log.](https://raw.githubusercontent.com/snodo-dev/snodo/main/docs/assets/snodo-flow.svg)
+
+The gate caught work an agent thought was ready: across **515 gate runs**, **102
+did not pass**; in **15 tasks**, the gate sent failing-test evidence back to the
+coder and the next attempt passed. [See the examples and counts](docs/what-the-gate-caught.md).
+
+## Install and first run
+
+Follow the canonical [per-language first-run quickstart](docs/runbook.md#quickstart)
+for Python, Node/TypeScript, Go, or Rust. It includes the starter files needed
+for the initial commit, the Git identity prerequisite, and each stack's
+detected test command and governed hello-world mock task.
+Install or update Snodo with:
+
+```sh
+curl -fsSL https://snodo.dev/install | bash
+```
+
+The installer sets up uv if needed. Alternatives are `uv tool install snodo`
+and `pip install snodo`. To try the published package without installing it,
+run `uvx snodo --version`. Python 3.12+ is required.
+
+Before spending anything on an existing repository, run `snodo ready`. Without
+an LLM, it checks whether the artefacts the protocol expects — decision records,
+a resolvable test command, coder configs — are **committed**, and scores what is
+missing by how cheap it is to fix. Task worktrees only see `HEAD`, so "present
+on disk" is not enough. See the [runbook](docs/runbook.md) for readiness, the
+full configuration surface, and the command reference.
+
+## Why add this alongside CI, agent instructions, and code review?
+
+Snodo enforces the protocol's validators and test gate before work merges, inside
+the agent's own loop. A failure returns to the coder as evidence; a blocker
+halts the run and cannot be outvoted; every decision is recorded in a
+hash-chained audit log. The cost is one gate run per task, plus the validators'
+model calls.
 
 ## Built with snodo
 
@@ -23,9 +59,6 @@ in its own worktree, is verified by the test gate, and arrives here as a pull
 request that snodo opened. The protocol that governs this repository is
 [`.snodo/protocol.yml`](.snodo/protocol.yml), and every run is recorded in its audit
 log.
-
-See [what the gate caught while building Snodo](docs/what-the-gate-caught.md)
-for real examples and counts from this repository's audit history.
 
 AI coding agents are fast, confident and non-deterministic. They will report a
 task as finished while a test is failing, while the change has drifted outside
@@ -84,22 +117,6 @@ contributors. The coder is interchangeable and separate from the judge — an
 in-process LLM client, a host CLI authenticated against your own subscription,
 or a containerised server all converge on the same gate and the same merge path.
 
-## Install and first run
-
-Follow the canonical [per-language first-run quickstart](docs/runbook.md#quickstart)
-for Python, Node/TypeScript, Go, or Rust. It includes the starter files needed
-for the initial commit, the Git identity prerequisite, and each stack's
-detected test command and governed hello-world mock task.
-Install or update Snodo with:
-
-```sh
-curl -fsSL https://snodo.dev/install | bash
-```
-
-The installer sets up uv if needed. Alternatives are `uv tool install snodo`
-and `pip install snodo`. To try the published package without installing it,
-run `uvx snodo --version`. Python 3.12+ is required.
-
 ### Container image
 
 Build the Snodo engine image from the repository root with
@@ -108,13 +125,6 @@ repository with `docker run --rm -v "$PWD:/workspace" -w /workspace snodo ready`
 the image's entrypoint is `snodo`, so CLI arguments are passed directly. The
 image contains no code-host credentials; provide any required credentials through
 your runtime's normal environment or secret mechanism.
-
-Before spending anything on an existing repository, run `snodo ready`. Without
-an LLM, it checks whether the artefacts the protocol expects — decision records,
-a resolvable test command, coder configs — are **committed**, and scores what is
-missing by how cheap it is to fix. Task worktrees only see `HEAD`, so "present
-on disk" is not enough. See the [runbook](docs/runbook.md) for readiness, the
-full configuration surface, and the command reference.
 
 ## What a mock run does
 
@@ -137,6 +147,7 @@ Measured size, complexity and the CI gates are on the [docs home](docs/index.md)
 Three honest boundaries, so you meet them here rather than an hour in:
 
 - **The `opencode` coder paths are experimental.** `litellm` (the default),
+  `openai`, `anthropic`, `gemini`, `opencode-cli`, `codex-cli`, `claude-cli`,
   `agy` and `mock` are supported. The built-in `litellm` coder exists so snodo
   works with nothing else installed; if an expert CLI is available, prefer it.
 - **The repository is trusted, not sandboxed.** snodo runs your test and build
