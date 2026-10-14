@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Show the terminal wave while bare `snodo` gathers its home status view. (Fixes #882)
 - Identify actual executables in compound quality-test commands for readiness PATH checks. (Fixes #881)
 - Show the wordmark with the version for interactive `snodo --version`, while
   preserving plain output for scripts and `NO_COLOR`. (Fixes #880)

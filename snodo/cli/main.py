@@ -122,8 +122,11 @@ def _app_callback(
         if is_tty:
             print(colored_wordmark())
         from snodo.cli.home_view import render_home_view
+        from snodo.cli.spinner import wave_while_silent
 
-        print(render_home_view(color=is_tty), end="")
+        with wave_while_silent("checking the project"):
+            home_view = render_home_view(color=is_tty)
+        print(home_view, end="")
 
 
 # === Auto-discovery: mount command modules that expose `app` (group) or `register` (command) ===

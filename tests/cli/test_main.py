@@ -328,13 +328,60 @@ def test_no_command_shows_help():
 
 def test_bare_tty_shows_wordmark_then_readiness_view(monkeypatch, capsys):
     from snodo.cli import banner, home_view
+    from contextlib import contextmanager
+    from snodo.cli import spinner
 
     monkeypatch.setattr(banner, "should_show_wordmark", lambda: True)
     monkeypatch.setattr(banner, "colored_wordmark", lambda: "WORDMARK")
-    monkeypatch.setattr(home_view, "render_home_view", lambda *, color: "READINESS\n")
+    events = []
+
+    @contextmanager
+    def wave(label):
+        events.append(("enter", label))
+        try:
+            yield
+        finally:
+            events.append(("exit", label))
+
+    def render(*, color):
+        events.append(("render", color))
+        return "READINESS\n"
+
+    monkeypatch.setattr(spinner, "wave_while_silent", wave)
+    monkeypatch.setattr(home_view, "render_home_view", render)
     with patch('sys.argv', ['snodo']):
         assert main() == 0
     assert capsys.readouterr().out == "WORDMARK\nREADINESS\n"
+    assert events == [
+        ("enter", "checking the project"),
+        ("render", True),
+        ("exit", "checking the project"),
+    ]
+
+
+def test_bare_tty_render_exception_exits_wave(monkeypatch):
+    from contextlib import contextmanager
+    from snodo.cli import banner, home_view, spinner
+
+    monkeypatch.setattr(banner, "should_show_wordmark", lambda: True)
+    monkeypatch.setattr(banner, "colored_wordmark", lambda: "WORDMARK")
+    events = []
+
+    @contextmanager
+    def wave(label):
+        try:
+            yield
+        finally:
+            events.append("cleared")
+
+    def fail(*, color):
+        raise RuntimeError("render failed")
+
+    monkeypatch.setattr(spinner, "wave_while_silent", wave)
+    monkeypatch.setattr(home_view, "render_home_view", fail)
+    with patch('sys.argv', ['snodo']), pytest.raises(RuntimeError, match="render failed"):
+        main()
+    assert events == ["cleared"]
 
 
 def test_version_update_hint_is_tty_stderr_only(monkeypatch, capsys):
