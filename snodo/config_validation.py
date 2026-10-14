@@ -21,6 +21,7 @@ class _CloudConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     api_key: str = ""
     api_url: str = "https://api.snodo.dev"
+    models_url: str = "https://models.snodo.dev/v1"
     tunnel_api_url: str = "https://app.snodo.dev"
     sync_enabled: StrictBool = False
     liveness_interval_seconds: int = Field(default=60, ge=1)

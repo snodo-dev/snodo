@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Route `snodo-cloud/<id>` models through the Snodo Cloud gateway using login credentials. (Fixes #869)
 - Document the snodo-cloud model provider, model discovery, billing and gateway configuration. (Fixes #870)
 - Report failed OAuth refreshes in `snodo cloud status` and recommend `snodo cloud login`. (Fixes #868)
 - Use the OAuth login for liveness pushes, with the same refresh and API-key fallback as audit sync. (Fixes #867)

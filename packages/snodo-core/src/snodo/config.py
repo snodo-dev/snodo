@@ -41,6 +41,9 @@ class ProviderConfig(BaseModel):
     catalog_provider: str = ""
 
 
+DEFAULT_CLOUD_MODELS_URL = "https://models.snodo.dev/v1"
+
+
 DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
     "anthropic": ProviderConfig(
         api_key_env="ANTHROPIC_API_KEY",
@@ -87,6 +90,13 @@ DEFAULT_CLOUD_API_URL = "https://api.snodo.dev"
 DEFAULT_TUNNEL_API_URL = "https://app.snodo.dev"
 DEFAULT_CLOUD_LIVENESS_URL = "https://app.snodo.dev"
 DEFAULT_CLOUD_OAUTH_METADATA_URL = "https://mcp-auth.snodo.dev/.well-known/oauth-authorization-server"
+_cloud_model_credential_resolver = None
+
+
+def register_cloud_model_credential_resolver(resolver) -> None:
+    """Register the foundation-layer OAuth credential capability."""
+    global _cloud_model_credential_resolver
+    _cloud_model_credential_resolver = resolver
 
 
 def derive_liveness_url(api_url: str) -> str:
@@ -226,6 +236,7 @@ PROVIDER_MODEL_PREFIXES = {
     "google": ["gemini/", "gemini-"],
     "cloudflare": ["cloudflare/", "openai/@cf/", "@cf/"],
     "deepseek": ["deepseek/"],
+    "snodo-cloud": ["snodo-cloud/"],
 }
 
 # Alias map: litellm provider name → snodo config key.
@@ -341,6 +352,14 @@ class ConfigManager:
         for name, pc in DEFAULT_PROVIDER_CATALOG.items():
             if name not in result:
                 result[name] = pc
+        if "snodo-cloud" not in result:
+            base = _cloud_url(config, "models_url", DEFAULT_CLOUD_MODELS_URL)
+            result["snodo-cloud"] = ProviderConfig(
+                models_endpoint=base.rstrip("/") + "/models",
+                base_url=base,
+                litellm_provider="openai",
+                catalog_provider="snodo-cloud",
+            )
         return result
 
     @staticmethod
@@ -352,6 +371,11 @@ class ConfigManager:
         provider = ConfigManager._provider_for_model(model)
         if provider is None:
             return None
+        if provider == "snodo-cloud":
+            config = ConfigManager().load()
+            cloud = config.get("cloud", {})
+            configured = cloud.get("models_url") if isinstance(cloud, dict) else None
+            return (configured.strip() if isinstance(configured, str) and configured.strip() else DEFAULT_CLOUD_MODELS_URL)
         pc = ConfigManager().get_providers().get(provider)
         if pc and pc.base_url:
             return pc.base_url
@@ -363,6 +387,8 @@ class ConfigManager:
         provider_key = ConfigManager._provider_for_model(model)
         if not provider_key:
             return None
+        if provider_key == "snodo-cloud":
+            return "openai"
         pc = ConfigManager().get_providers().get(provider_key)
         if pc and pc.litellm_provider:
             return pc.litellm_provider
@@ -380,6 +406,8 @@ class ConfigManager:
         provider_key = ConfigManager._provider_for_model(model)
         if not provider_key:
             return model
+        if provider_key == "snodo-cloud":
+            return "openai/" + model[len("snodo-cloud/"):] if model.startswith("snodo-cloud/") else "openai/" + model
         pc = ConfigManager().get_providers().get(provider_key)
         if pc and pc.litellm_provider:
             if model.startswith(f"{provider_key}/"):
@@ -743,6 +771,12 @@ class ConfigManager:
         provider = self._provider_for_model(model)
         if provider is None:
             return None
+        if provider == "snodo-cloud":
+            if _cloud_model_credential_resolver is not None:
+                return _cloud_model_credential_resolver(self.load())
+            cloud = self.load().get("cloud", {})
+            key = cloud.get("api_key") if isinstance(cloud, dict) else None
+            return key.strip() or None if isinstance(key, str) else None
         return self.get_key(provider)
 
     def set_model(self, model: str) -> None:

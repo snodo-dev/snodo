@@ -39,6 +39,7 @@ class _Engine(_StrictModel):
 class _Cloud(_StrictModel):
     api_key: StrictStr = ""
     api_url: StrictStr = "https://api.snodo.dev"
+    models_url: StrictStr = "https://models.snodo.dev/v1"
     tunnel_api_url: StrictStr = "https://app.snodo.dev"
     oauth_metadata_url: StrictStr = "https://mcp-auth.snodo.dev/.well-known/oauth-authorization-server"
     sync_enabled: StrictBool = False

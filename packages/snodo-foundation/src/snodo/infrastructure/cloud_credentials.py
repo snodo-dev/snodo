@@ -6,6 +6,7 @@ import socket
 import time
 import logging
 
+from snodo.config import register_cloud_model_credential_resolver
 from snodo.infrastructure.cloud_oauth_store import (
     CloudOAuthState,
     load_oauth_state,
@@ -132,3 +133,14 @@ def safe_cloud_sync_credential(config: dict, *, force_refresh: bool = False, htt
             return key, False
         _logger.warning("Cloud OAuth credential refresh failed; run `snodo cloud login` again")
         return None, True
+
+
+def _cloud_model_credential(config: dict) -> str | None:
+    """Resolve a model-gateway credential without logging or exposing it."""
+    credential, _is_oauth = safe_cloud_sync_credential(config)
+    return credential
+
+
+# Foundation owns OAuth persistence/refresh; register its capability with core
+# without making core depend on this package.
+register_cloud_model_credential_resolver(_cloud_model_credential)
