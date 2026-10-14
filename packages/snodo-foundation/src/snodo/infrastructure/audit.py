@@ -13,7 +13,7 @@ import json
 import logging
 import threading
 import time
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 import os
@@ -60,6 +60,11 @@ _RECOVERY_GUIDANCE = (
 #: failing loudly. The audit log is the attestation; a writer that cannot get
 #: the lock must not silently proceed (Fixes #114).
 _LOCK_TIMEOUT = 10.0
+
+# Rotate old or large logs on the next append. Kept as module defaults rather
+# than user configuration so every writer applies the same policy.
+_AUDIT_ROTATE_AGE = timedelta(days=7)
+_AUDIT_ROTATE_SIZE = 256 * 1024 * 1024
 
 # Leave ample room below the cloud ingest's single-event ceiling.
 _AUDIT_EVENT_BYTE_BUDGET = 256 * 1024
@@ -241,6 +246,7 @@ class AuditLog:
             if not self._project_id:
                 self._project_id = _resolve_default_project_id()
             with self._exclusive_file_lock():
+                self._rotate_if_needed()
                 # Derive the true sequence from the file, not from memory: a
                 # concurrent process may have appended since this instance
                 # loaded (Fixes #114).
@@ -606,16 +612,20 @@ class AuditLog:
             return _NullContext()
 
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        # The sibling lock survives rename of audit.log. Locking only the log
+        # inode lets a process that opened it before rotation append to archive.
+        lock_file = open(self.log_path.with_name(self.log_path.name + ".lock"), "a")
         f = open(self.log_path, "a")
         try:
             deadline = time.monotonic() + _LOCK_TIMEOUT
             while True:
                 try:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
                 except (BlockingIOError, OSError) as e:
                     if time.monotonic() >= deadline:
                         f.close()
+                        lock_file.close()
                         raise AuditError(
                             f"Could not acquire the exclusive lock on audit log "
                             f"{self.log_path} within {_LOCK_TIMEOUT:.0f}s. "
@@ -626,7 +636,28 @@ class AuditLog:
                     time.sleep(0.01)
         except Exception:
             f.close()
+            lock_file.close()
             raise
+
+        # Also lock the current log inode for compatibility with existing
+        # external holders, while the stable sidecar is the rotation mutex.
+        deadline = time.monotonic() + _LOCK_TIMEOUT
+        while True:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (BlockingIOError, OSError) as err:
+                if time.monotonic() >= deadline:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    f.close()
+                    lock_file.close()
+                    raise AuditError(
+                        f"Could not acquire the exclusive lock on audit log "
+                        f"{self.log_path} within {_LOCK_TIMEOUT:.0f}s. "
+                        "Another snodo process is holding it. Refusing to "
+                        f"append rather than risk a broken hash chain. {_RECOVERY_GUIDANCE}"
+                    ) from err
+                time.sleep(0.01)
 
         class _Locked:
             def __enter__(self):
@@ -636,10 +667,42 @@ class AuditLog:
                 try:
                     fcntl.flock(f.fileno(), fcntl.LOCK_UN)
                 finally:
-                    f.close()
+                    try:
+                        f.close()
+                    finally:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                        lock_file.close()
                 return False
 
         return _Locked()
+
+    def _rotate_if_needed(self) -> None:
+        """Move an aged or oversized current log to its oldest event's week."""
+        try:
+            if not self.log_path.exists():
+                return
+            size = self.log_path.stat().st_size
+            if size == 0:
+                return
+            with self.log_path.open("rb") as stream:
+                first_line = stream.readline()
+            oldest = json.loads(first_line)
+            timestamp = datetime.fromisoformat(oldest["timestamp"].replace("Z", "+00:00"))
+            aged = datetime.now(UTC) - timestamp.astimezone(UTC) > _AUDIT_ROTATE_AGE
+            if not aged and size <= _AUDIT_ROTATE_SIZE:
+                return
+            iso_year, iso_week, _ = timestamp.isocalendar()
+            base = self.log_path.with_name(f"{self.log_path.name}.{iso_year}-w{iso_week:02d}")
+            archive = base
+            suffix = 2
+            while archive.exists():
+                archive = base.with_name(f"{base.name}.{suffix}")
+                suffix += 1
+            os.replace(self.log_path, archive)
+            self.events.clear()
+            self._legacy_sequences.clear()
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as err:
+            _logger.warning("Could not rotate audit log %s; continuing to append: %s", self.log_path, err)
 
     def _read_tail_state(self) -> tuple:
         """Return ``(sequence, previous_hash)`` from the file's last line.
