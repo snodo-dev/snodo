@@ -24,6 +24,9 @@ request that snodo opened. The protocol that governs this repository is
 [`.snodo/protocol.yml`](.snodo/protocol.yml), and every run is recorded in its audit
 log.
 
+See [what the gate caught while building Snodo](docs/what-the-gate-caught.md)
+for real examples and counts from this repository's audit history.
+
 AI coding agents are fast, confident and non-deterministic. They will report a
 task as finished while a test is failing, while the change has drifted outside
 the task, or while it contradicts a decision your team recorded months ago.
