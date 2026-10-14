@@ -416,6 +416,83 @@ class TestCloudStatus:
         assert "Authentication: API key" in out
         assert "sndo_live_abcdef123456789000" not in out
 
+    def test_status_wave_covers_sync_scan_and_clears_before_section(self, monkeypatch, tmp_path):
+        import io
+        import sys
+        import time
+
+        class Terminal(io.StringIO):
+            encoding = "utf-8"
+
+            def isatty(self):
+                return True
+
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        monkeypatch.delenv("CI", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.delenv("SNODO_NO_SPINNER", raising=False)
+        monkeypatch.delenv("SNODO_MCP_SERVER", raising=False)
+        monkeypatch.delenv("SNODO_JOB_ID", raising=False)
+        monkeypatch.setenv("TERM", "xterm")
+        stdout, stderr = io.StringIO(), Terminal()
+        monkeypatch.setattr(sys, "stdout", stdout)
+        monkeypatch.setattr(sys, "stderr", stderr)
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+
+        with patch("snodo.config.ConfigManager") as manager, patch(
+            "snodo.infrastructure.cloud_sync.CloudSyncState"
+        ) as state:
+            manager.return_value.load.return_value = {"cloud": {"sync_enabled": True}}
+
+            def scan():
+                time.sleep(0.35)
+                return {"session": {"last_synced_sequence": 1}}
+
+            state.return_value.get_summary.side_effect = scan
+            assert cloud_status_command() == 0
+        output = stdout.getvalue()
+        assert output.index("Snodo cloud:") < output.index("Sync status per session")
+        assert "reading sync state" in stderr.getvalue()
+        assert stderr.getvalue().endswith("\r\033[2K")
+
+    def test_status_wave_clears_when_sync_scan_raises(self, monkeypatch, tmp_path):
+        import io
+        import sys
+        import time
+
+        class Terminal(io.StringIO):
+            encoding = "utf-8"
+
+            def isatty(self):
+                return True
+
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        monkeypatch.delenv("CI", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.delenv("SNODO_NO_SPINNER", raising=False)
+        monkeypatch.delenv("SNODO_MCP_SERVER", raising=False)
+        monkeypatch.delenv("SNODO_JOB_ID", raising=False)
+        monkeypatch.setenv("TERM", "xterm")
+        monkeypatch.setattr(sys, "stdout", io.StringIO())
+        stderr = Terminal()
+        monkeypatch.setattr(sys, "stderr", stderr)
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+
+        with patch("snodo.config.ConfigManager") as manager, patch(
+            "snodo.infrastructure.cloud_sync.CloudSyncState"
+        ) as state:
+            manager.return_value.load.return_value = {"cloud": {"sync_enabled": True}}
+
+            def fail_scan():
+                time.sleep(0.35)
+                raise RuntimeError("scan failed")
+
+            state.return_value.get_summary.side_effect = fail_scan
+            with pytest.raises(RuntimeError, match="scan failed"):
+                cloud_status_command()
+        assert "reading sync state" in stderr.getvalue()
+        assert stderr.getvalue().endswith("\r\033[2K")
+
     def test_disconnected_shows_not_connected(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_status_command
 

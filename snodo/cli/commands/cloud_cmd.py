@@ -316,6 +316,7 @@ def cloud_logout_command() -> int:
 
 def cloud_status_command() -> int:
     """Show cloud connection and sync state."""
+    from snodo.cli.spinner import wave_while_silent
     from snodo.config import ConfigManager, get_cloud_ingest_url
     from snodo.infrastructure.cloud_sync import CloudSyncState
 
@@ -355,10 +356,11 @@ def cloud_status_command() -> int:
     if auth_method == "none":
         print("  Run: snodo cloud connect <api_key> or snodo cloud login")
 
-    state = CloudSyncState()
-    summary = state.get_summary()
-    from snodo.cli.commands.cloud_status import local_unsent_counts
-    local_counts = local_unsent_counts(summary)
+    with wave_while_silent("reading sync state"):
+        state = CloudSyncState()
+        summary = state.get_summary()
+        from snodo.cli.commands.cloud_status import local_unsent_counts
+        local_counts = local_unsent_counts(summary)
     if summary:
         print()
         print("Sync status per session and project:")
