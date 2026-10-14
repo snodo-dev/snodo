@@ -22,6 +22,28 @@ provider. Discovery is cached for 24 hours, and a provider that cannot be
 queried is skipped or served from cache; an empty result is therefore not proof
 that no provider exists.
 
+## Use snodo cloud models
+
+Sign in with `snodo cloud login`, or connect with an API key using
+`snodo cloud connect <api_key>`. Name a model `snodo-cloud/<id>`, such as
+`snodo-cloud/gpt-6-luna` or `snodo-cloud/@cf/qwen/qwen3.8-27b`. To see the
+models enabled for your organisation, run `snodo models --provider snodo-cloud`.
+For the coder, use the `opencode-cli/snodo-cloud/<id>` prefix. Billing follows
+your organisation's setting in Snodo Cloud under **Models → Billing**, including
+one monthly limit. The gateway defaults to `https://models.snodo.dev/v1`; set
+`cloud.models_url` to use another URL.
+
+For example, this user configuration selects a cloud model for the coder:
+
+```yaml
+model: snodo-cloud/gpt-6-luna
+llm:
+  coder:
+    model: opencode-cli/snodo-cloud/gpt-6-luna
+cloud:
+  models_url: https://models.snodo.dev/v1
+```
+
 ## Resolve a model query
 
 Call `resolve_model` with a required `query`. Matching is case-insensitive and
