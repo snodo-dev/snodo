@@ -232,7 +232,7 @@ def _get_all_task_branches(project_root: str) -> dict:
     try:
         from snodo.infrastructure.audit import get_audit_log
         audit_log = get_audit_log(str(Path(project_root) / ".snodo" / "audit.log"))
-        events = audit_log.get_history() if audit_log else []
+        events = audit_log.iter_history() if audit_log else []
         audit_available = True
         for ev in events:
             data = ev.data or {}
@@ -936,7 +936,7 @@ def task_report_command(args) -> int:
         return 1
 
     audit_log = get_audit_log()
-    events = audit_log.events if audit_log else []
+    events = audit_log.iter_history() if audit_log else []
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
@@ -998,7 +998,9 @@ def task_report_command(args) -> int:
     from snodo.infrastructure.validator_outcomes import aggregate_validator_outcomes
     from snodo.run_statistics import summarize_window
 
-    validator_stats = aggregate_validator_outcomes(events, days=days)
+    validator_stats = aggregate_validator_outcomes(
+        audit_log.iter_history() if audit_log else [], days=days
+    )
     from snodo.cli.commands.task_report_display import validator_stats_payload
 
     validator_data = validator_stats_payload(validator_stats)
@@ -1075,13 +1077,13 @@ def task_review_pending_command(args) -> int:
         return 1
 
     audit_log = get_audit_log()
-    events = audit_log.events if audit_log else []
+    events = audit_log.iter_history() if audit_log else []
 
     # Merge identity -> (task_ref, branch, merge timestamp, event_data).
     # The merge commit SHA is the identity (Fixes #101); the branch name is a
     # human label that repeats across merges and must not be used as an identity.
     merged: dict = {}
-    for ev in events:
+    for ev in (audit_log.iter_history() if audit_log else []):
         data = ev.data or {}
         op = data.get("op") or ev.event_type
         if op != "task_merged":

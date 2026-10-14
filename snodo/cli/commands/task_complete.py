@@ -85,14 +85,17 @@ def get_hand_completion_record(project_root: str, task_id: str) -> Optional[dict
         if not audit_log_path.exists():
             return None
         audit_log = get_audit_log(str(audit_log_path))
-        events = getattr(audit_log, "events", [])
-        for ev in reversed(events):
+        events = audit_log.iter_history() if hasattr(audit_log, "iter_history") else iter(getattr(audit_log, "events", []))
+        latest = None
+        for ev in events:
             data = ev.data or {}
             op = data.get("op") or ev.event_type
             if op in ("task_completed_by_hand", "hand_completed"):
                 ref = data.get("task_ref") or data.get("task_id")
                 if ref == task_id:
-                    return data
+                    latest = data
+        if latest is not None:
+            return latest
     except Exception as e:
         _logger.debug("Could not check hand completion for %s: %s", task_id, e)
     return None

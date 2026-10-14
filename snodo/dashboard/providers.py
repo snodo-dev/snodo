@@ -853,12 +853,11 @@ class DashboardDataProvider:
         Second pass: events correlated via task_ref from session_task_changed events
         (covers pre-fix events that lack session_id).
         """
-        all_events = audit.get_history()
         result: List[AuditEvent] = []
         session_task_refs: set = set()
 
         # First pass: directly tagged events, and collect task_refs
-        for ev in all_events:
+        for ev in audit.iter_history():
             data = ev.data if isinstance(ev.data, dict) else {}
             if data.get("session_id") == session_id:
                 result.append(ev)
@@ -872,7 +871,7 @@ class DashboardDataProvider:
 
         # Second pass: correlate via task_ref for events without session_id
         if session_task_refs:
-            for ev in all_events:
+            for ev in audit.iter_history():
                 data = ev.data if isinstance(ev.data, dict) else {}
                 if data.get("session_id"):
                     continue  # already handled in first pass
