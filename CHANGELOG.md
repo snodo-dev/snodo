@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Install the pinned Ruff version in the default dev dependency group so task worktrees can lint before committing. (Fixes #877)
 - Emit periodic progress lines while validators are still running. (Fixes #876)
 - Reinstall task dependencies when an auto-detected lockfile is newer than its
   existing install directory. (Fixes #875)
