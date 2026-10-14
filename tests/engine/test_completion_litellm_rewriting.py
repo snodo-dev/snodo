@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from snodo.config import ConfigManager, ProviderConfig, provider_env
+from snodo.config import ConfigManager, ProviderConfig, ProviderModelRoute, provider_env
 from snodo.validators.runner import build_completion_fn
 
 
@@ -169,3 +169,58 @@ def test_google_rewrite_preserves_other_provider_model_ids(tmp_path, monkeypatch
     assert ConfigManager.resolve_litellm_model("openai/gpt-5.6-terra") == "openai/gpt-5.6-terra"
     assert ConfigManager.resolve_litellm_model("ollama-cloud/deepseek-v4-pro:0813") == "ollama-cloud/deepseek-v4-pro:0813"
     assert ConfigManager.resolve_litellm_model("ocgo/gemini-3.8-flash") == "ocgo/gemini-3.8-flash"
+
+
+def test_provider_model_routes_select_protocol_and_keep_credentials(monkeypatch):
+    providers = {
+        "ocgo": ProviderConfig(
+            api_key="ocgo-secret",
+            base_url="https://opencode.ai/zen/go/v1",
+            litellm_provider="openai",
+            model_routes=[ProviderModelRoute(match="claude-*", litellm_provider="anthropic")],
+        )
+    }
+    monkeypatch.setattr(ConfigManager, "get_providers", lambda self: providers)
+
+    claude = build_completion_fn("ocgo/claude-sonnet-4-5", MagicMock())
+    glm = build_completion_fn("ocgo/glm-4.5", MagicMock())
+    assert claude.keywords == {
+        "model": "anthropic/claude-sonnet-4-5",
+        "api_base": "https://opencode.ai/zen/go",
+        "api_key": "ocgo-secret",
+    }
+    assert glm.keywords["model"] == "openai/glm-4.5"
+    assert glm.keywords["api_base"] == "https://opencode.ai/zen/go/v1"
+    assert glm.keywords["api_key"] == "ocgo-secret"
+
+
+def test_model_routes_are_accepted_and_malformed_values_rejected():
+    import importlib.util
+    from pathlib import Path
+    import sys
+
+    from snodo.config_validation import _UserConfig
+    from snodo.config_validation import ConfigKeyError, _validated_user_config
+
+    strict_schema_path = Path(__file__).parents[2] / "packages/snodo-core/src/snodo/config_validation.py"
+    spec = importlib.util.spec_from_file_location("snodo_core_config_validation", strict_schema_path)
+    assert spec and spec.loader
+    core_schema = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = core_schema
+    spec.loader.exec_module(core_schema)
+
+    valid = {"providers": {"ocgo": {"model_routes": [
+        {"match": "claude-*", "litellm_provider": "anthropic"}
+    ]}}}
+    _UserConfig.model_validate(valid)
+    core_schema._Root.model_validate(valid)
+    with pytest.raises(Exception):
+        _UserConfig.model_validate({"providers": {"ocgo": {"model_routes": "claude-*"}}})
+    with pytest.raises(ConfigKeyError):
+        _validated_user_config({"providers": {"ocgo": {"model_routes": [
+            {"match": "claude-*", "wrong": "anthropic"}
+        ]}}})
+    with pytest.raises(Exception):
+        core_schema._Root.model_validate({"providers": {"ocgo": {"model_routes": [
+            {"match": "claude-*", "wrong": "anthropic"}
+        ]}}})

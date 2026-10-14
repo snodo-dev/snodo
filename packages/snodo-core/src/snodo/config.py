@@ -15,6 +15,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+from fnmatch import fnmatchcase
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -24,6 +25,13 @@ import yaml
 from pydantic import BaseModel, Field
 
 from snodo.paths import resolve_home
+
+
+class ProviderModelRoute(BaseModel):
+    """A model-ID glob and the LiteLLM provider route to use for it."""
+    model_config = {"extra": "forbid"}
+    match: str
+    litellm_provider: str
 
 
 class ProviderConfig(BaseModel):
@@ -36,6 +44,7 @@ class ProviderConfig(BaseModel):
     account_id_env: str = ""
     base_url: str = ""
     litellm_provider: str = ""
+    model_routes: list[ProviderModelRoute] = Field(default_factory=list)
     extra_headers: Dict[str, str] = Field(default_factory=dict)
     probe_model: str = ""
     catalog_provider: str = ""
@@ -378,6 +387,8 @@ class ConfigManager:
             return (configured.strip() if isinstance(configured, str) and configured.strip() else DEFAULT_CLOUD_MODELS_URL)
         pc = ConfigManager().get_providers().get(provider)
         if pc and pc.base_url:
+            if ConfigManager._model_route(model, pc) == "anthropic":
+                return re.sub(r"/v1/?$", "", pc.base_url.rstrip("/"))
             return pc.base_url
         return None
 
@@ -390,8 +401,10 @@ class ConfigManager:
         if provider_key == "snodo-cloud":
             return "openai"
         pc = ConfigManager().get_providers().get(provider_key)
-        if pc and pc.litellm_provider:
-            return pc.litellm_provider
+        if pc:
+            route = ConfigManager._model_route(model, pc)
+            if route:
+                return route
         return provider_key
 
     @staticmethod
@@ -409,14 +422,14 @@ class ConfigManager:
         if provider_key == "snodo-cloud":
             return "openai/" + model[len("snodo-cloud/"):] if model.startswith("snodo-cloud/") else "openai/" + model
         pc = ConfigManager().get_providers().get(provider_key)
-        if pc and pc.litellm_provider:
+        if pc and (route := ConfigManager._model_route(model, pc)):
             if model.startswith(f"{provider_key}/"):
                 raw_id = model[len(provider_key) + 1:]
             else:
                 raw_id = model
-            if raw_id.startswith(f"{pc.litellm_provider}/"):
+            if raw_id.startswith(f"{route}/"):
                 return raw_id
-            return f"{pc.litellm_provider}/{raw_id}"
+            return f"{route}/{raw_id}"
         # ``google`` is snodo's namespace for Google's Gemini API, whereas
         # LiteLLM routes Gemini models using the ``gemini/`` provider prefix.
         # Keep this mapping here (rather than relying on the provider block) so
@@ -425,6 +438,24 @@ class ConfigManager:
             raw_id = model[len("google/"):] if model.startswith("google/") else model
             return raw_id if raw_id.startswith("gemini/") else f"gemini/{raw_id}"
         return model
+
+    @staticmethod
+    def _model_route(model: str, provider: Any) -> str:
+        """Return the first matching optional model route, else the provider default.
+
+        ``getattr`` is intentional: older provider-like objects and test doubles
+        need not implement this newer optional setting.
+        """
+        provider_key = ConfigManager._provider_for_model(model) or ""
+        model_id = model[len(provider_key) + 1:] if model.startswith(f"{provider_key}/") else model
+        for rule in getattr(provider, "model_routes", ()) or ():
+            pattern = rule.get("match", "") if isinstance(rule, dict) else getattr(rule, "match", "")
+            route = rule.get("litellm_provider", "") if isinstance(rule, dict) else getattr(rule, "litellm_provider", "")
+            if isinstance(pattern, str) and isinstance(route, str) and pattern and route:
+                if (fnmatchcase(model_id, pattern) if any(char in pattern for char in "*?[")
+                        else model_id.startswith(pattern)):
+                    return route
+        return getattr(provider, "litellm_provider", "") or ""
 
     @staticmethod
     def resolve_extra_headers(model: str, task_id: Optional[str] = None) -> Optional[Dict[str, str]]:

@@ -76,6 +76,7 @@ provider, the defaults are empty strings and an empty `extra_headers` map.
 | `account_id_env` | `""` | Environment-variable name for the account identifier; Cloudflare defaults to `CLOUDFLARE_ACCOUNT_ID`. |
 | `base_url` | `""` | Custom API base URL for LiteLLM requests. |
 | `litellm_provider` | `""` | LiteLLM provider route name, useful for custom-compatible providers. |
+| `model_routes` | `[]` | Ordered rules with `match` (model-ID prefix or simple glob) and `litellm_provider`; the first matching rule overrides the default route. |
 | `extra_headers` | `{}` | Extra HTTP headers; `{task_id}` in a value is substituted with the current task ID (`unknown` when absent). |
 | `probe_model` | `""` | Model used by provider key checks. Built-ins supply a probe model. |
 | `catalog_provider` | `""` | Provider name used for model catalog lookup when it differs from the config entry name. |
@@ -93,6 +94,29 @@ providers:
     extra_headers:
       x-task: "{task_id}"
 ```
+
+Gateways can expose different model families using different API formats on
+the same host and credential. OpenCode Go, for example, can route Claude models
+to Anthropic Messages while other model IDs keep the OpenAI-compatible default:
+
+```yaml
+providers:
+  ocgo:
+    api_key_env: OCGO_API_KEY
+    base_url: https://opencode.ai/zen/go/v1
+    litellm_provider: openai
+    model_routes:
+      - match: claude-*
+        litellm_provider: anthropic
+      - match: minimax-*
+        litellm_provider: anthropic
+```
+
+Rules match the model ID after the local provider prefix is removed. `match`
+without glob metacharacters matches an ID prefix; `*`, `?`, and `[` use simple
+glob matching. Rules are checked in order and the first match wins. Routed
+models reuse the provider block's API key and base URL; an Anthropic route has a
+trailing `/v1` removed from its base URL when present.
 
 Credential selection prefers a configured `api_key`, then `api_key_ref`, then
 `api_key_env`. `env:` and `command:` references are resolved only when the
