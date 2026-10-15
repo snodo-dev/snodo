@@ -39,29 +39,42 @@ def _issue_numbers(text: str) -> set[str]:
 def protected_paths_notice(
     protocol: Any = None,
     workspace: Any = None,
-    extra_paths: Any = None,
+    declared_paths: Any = None,
 ) -> str:
     """Return the shared advisory naming paths the engine will refuse.
 
     Advisory only: the post-execution diff guard and the state-directory
     mutation guard remain the enforcement (ADR 049, ADR 058).
+
+    Engine state and the protocol's declared paths are named as two groups: a
+    protocol that declares nothing must not read as though it had (#908).
     """
-    declared = list(getattr(protocol, "protected_paths", None) or [])
-    paths = list(dict.fromkeys([*(extra_paths or []), *declared, ".snodo/"]))
+    declared = list(dict.fromkeys([
+        *(getattr(protocol, "protected_paths", None) or []),
+        *(declared_paths or []),
+    ]))
+    state_paths = [".snodo/"]
     local_home = (
         get_project_local_home_rel(workspace) if workspace is not None else None
     )
     if local_home:
         candidate = local_home.rstrip("/") + "/"
-        if candidate not in paths:
-            paths.append(candidate)
-    return (
-        "## Paths the Engine Will Refuse\n"
-        "The engine will refuse changes to these paths after your work is checked. "
+        if candidate not in state_paths:
+            state_paths.append(candidate)
+    lines = [
+        "## Paths the Engine Will Refuse",
+        "The engine refuses changes to the paths below after your work is checked. "
         "This is a warning, not a sandbox or access restriction; files may remain "
-        "readable and writable:\n"
-        + "\n".join(f"- `{path}`" for path in paths)
-    )
+        "readable and writable:",
+        "- `.snodo/` — engine state (audit log, sessions, task records)",
+    ]
+    lines += [f"- `{path}` — engine state" for path in state_paths[1:]]
+    if declared:
+        lines += ["", "This protocol also declares these protected paths:"]
+        lines += [f"- `{path}` — declared in `.snodo/protocol.yml`" for path in declared]
+    else:
+        lines += ["", "This protocol declares no additional protected paths."]
+    return "\n".join(lines)
 
 
 # CoderAdapter is the canonical name for the coder interface.
