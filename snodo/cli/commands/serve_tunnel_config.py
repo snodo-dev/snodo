@@ -56,6 +56,26 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
     }
     if config.get("port") is not None:
         to_save["port"] = config["port"]
+<<<<<<< HEAD
+=======
+    if config.get("auth"):
+        to_save["auth"] = list(config["auth"])
+    if config.get("client_id"):
+        to_save["client_id"] = config["client_id"]
+    if config.get("credentials"):
+        to_save["credentials"] = config["credentials"]
+    # A tunnel provisioned before the auth set was recorded carries a single
+    # auth_type; it is read when deciding what is rotatable.
+    if config.get("auth_type"):
+        to_save["auth_type"] = config["auth_type"]
+    # Recovery metadata is local lifecycle state, not a protocol/job status.
+    recovery = config.get("recovery")
+    if isinstance(recovery, dict) and recovery.get("action") == "delete":
+        to_save["recovery"] = {
+            "action": "delete",
+            "hostname": str(recovery.get("hostname", "")),
+        }
+>>>>>>> main
     path.write_text(json.dumps(to_save, indent=2) + "\n")
 
 
