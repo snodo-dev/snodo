@@ -9,11 +9,15 @@ from typer.testing import CliRunner
 from snodo.cli.commands import serve_cmd
 
 
-def test_auth_defaults_to_oauth_and_repeated_values_accumulate():
+def test_auth_defaults_to_oauth_and_refuses_service_tokens():
     assert serve_cmd._auth_methods(None) == ["oauth"]
-    assert serve_cmd._auth_methods(["oauth", "service-token"]) == [
-        "oauth", "service-token",
-    ]
+    try:
+        serve_cmd._auth_methods(["service-token"])
+    except ValueError as error:
+        assert "OAuth" in str(error)
+        assert "mcp-auth.snodo.dev" in str(error)
+    else:  # pragma: no cover
+        raise AssertionError("service-token auth was accepted")
 
 
 def test_invalid_auth_value_is_named():
@@ -25,14 +29,14 @@ def test_invalid_auth_value_is_named():
         raise AssertionError("invalid auth value was accepted")
 
 
-def test_provision_request_always_names_auth_set():
+def test_provision_request_does_not_send_retired_auth_set():
     response = MagicMock(status_code=200)
     response.json.return_value = {"hostname": "x.tunnel.snodo.dev", "tunnel_token": "t"}
     with patch.object(serve_cmd, "_get_cloud_tunnel_api_url", return_value="https://cloud"), \
          patch("httpx.post", return_value=response) as post:
-        serve_cmd._provision_tunnel("key", "project", "all", "short", "1", auth=["oauth"])
+        serve_cmd._provision_tunnel("key", "project", "all", "short", "1")
 
-    assert post.call_args.kwargs["json"]["auth"] == ["oauth"]
+    assert "auth" not in post.call_args.kwargs["json"]
 
 
 def test_legacy_service_token_auth_cannot_disable_oauth(monkeypatch):
@@ -71,15 +75,14 @@ def test_explicit_service_token_rejected_before_external_effects(monkeypatch, ca
     assert "OAuth" in capsys.readouterr().err
 
 
-def test_service_token_credential_is_reported_once(capsys):
+def test_banner_only_shows_url_and_oauth_server(capsys):
     serve_cmd._print_first_run_info(
         "x.tunnel.snodo.dev",
-        ["oauth", "service-token"],
-        {"client_id": "id.access", "client_secret": "secret"},
     )
     output = capsys.readouterr().out
-    assert "id.access" in output
-    assert output.count("CF-Access-Client-Secret: secret") == 1
+    assert "https://x.tunnel.snodo.dev/mcp" in output
+    assert "mcp-auth.snodo.dev" in output
+    assert "CF-Access-Client" not in output
 
 
 def test_help_names_values_and_any_semantics():
@@ -91,10 +94,9 @@ def test_help_names_values_and_any_semantics():
     out = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
 
     assert result.exit_code == 0
-    assert "oauth" in out
-    assert "service-token" in out
-    assert "repeat" in out
-    assert "any accepted" in out
+    assert "OAuth" in out
+    assert "service-token" not in out
+    assert "--delete" in out and "--tunnel" in out
     assert "--verbose" in out
 
 
@@ -182,3 +184,50 @@ def test_tunnel_hostname_is_added_to_http_host_allowlist(monkeypatch):
         "http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080",
         "https://safe.tunnel.snodo.dev",
     ]
+
+
+def test_legacy_service_token_tunnel_enables_oauth(monkeypatch):
+    from types import SimpleNamespace
+
+    server = MagicMock()
+    server.get_tools.return_value = []
+    mcp = MagicMock()
+    mcp.settings = SimpleNamespace(transport_security=SimpleNamespace(), port=None)
+    protocol = SimpleNamespace(protocol_id="test", get_mode=lambda _: True)
+    monkeypatch.setattr("snodo.mcp.server.ProtocolMCPServer", lambda **_: server)
+    monkeypatch.setattr("snodo.mcp.transport.build_fastmcp_server", lambda *_a, **kwargs: (mcp, kwargs)[0])
+    monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
+    monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {
+        "hostname": "legacy.tunnel.snodo.dev", "auth": ["service-token"],
+    })
+    monkeypatch.setattr(serve_cmd, "_choose_serve_port", lambda _: 8080)
+    monkeypatch.setattr("snodo.infrastructure.jwks.JwksClient.fetch", lambda _: True)
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.install", lambda: None)
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.uninstall", lambda: None)
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "")
+    seen = {}
+    def build(_server, **kwargs):
+        seen.update(kwargs)
+        return mcp
+    monkeypatch.setattr("snodo.mcp.transport.build_fastmcp_server", build)
+    serve_cmd._run_server(SimpleNamespace(
+        protocol="protocol.yml", mode=None, transport="streamable-http", port=8080,
+    ), protocol)
+    assert "token_verifier" in seen
+
+
+def test_service_token_request_fails_before_provisioning(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    import pytest
+
+    monkeypatch.setattr(serve_cmd, "load_protocol", lambda _: object())
+    monkeypatch.setattr(serve_cmd, "_run_tunnel", lambda *_: pytest.fail("tunnel ran"))
+    args = SimpleNamespace(
+        auth=["service-token"], protocol="unused.yml", tunnel=True,
+        mcp_install=False, mcp_uninstall=False, mcp_uninstall_all=False,
+        mcp_list=False, install=False, uninstall=False, uninstall_all=False,
+    )
+    assert serve_cmd.serve_command(args) == 2
+    message = capsys.readouterr().err
+    assert "OAuth" in message and "mcp-auth.snodo.dev" in message

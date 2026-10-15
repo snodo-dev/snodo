@@ -19,7 +19,7 @@ def test_failed_delete_blocks_restart_then_retry_clears_record(tmp_path, monkeyp
     monkeypatch.setattr(serve_cmd, "_get_snodo_api_key", lambda: "key")
     monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: stored)
     effects = []
-    monkeypatch.setattr(serve_cmd, "_provision_with_auth", lambda *a: effects.append("provision"))
+    monkeypatch.setattr(serve_cmd, "_provision_tunnel", lambda *a: effects.append("provision"))
     monkeypatch.setattr(serve_cmd.subprocess, "Popen", lambda *a, **k: effects.append("process"))
     args = SimpleNamespace(protocol="protocol.yml", mode=None, transport="http", rotate=False,
                            delete=False, hostname=None, auth=None, port=None, verbose=False)

@@ -1,7 +1,7 @@
 # snodo serve --tunnel: managed remote tunnel via snodo.dev
 
 ## Intent
-One command gives engineers a stable public HTTPS URL and service token
+One command gives engineers a stable public HTTPS URL protected by OAuth
 for their snodo MCP server. No Cloudflare account, no DNS config, no
 domain required. Requires a free snodo account (snodo-cloud provisions
 the tunnel infrastructure). The core engine works without this — this
@@ -27,10 +27,9 @@ First run:
        cloud.api_url, which is the audit ingest base):
        {project_slug, mode, short_id, snodo_version}
      Auth: snodo API key in Authorization header
-     Response: {hostname, tunnel_token, client_id, client_secret}
+      Response: {hostname, tunnel_token}
   6. Store in .snodo/tunnel.json:
-       {hostname, tunnel_token, client_id, created_at}
-     NOTE: client_secret is NOT stored — shown once only
+        {hostname, tunnel_token, created_at}
   7. Start MCP server (subprocess, same as snodo serve)
   8. Start cloudflared: cloudflared tunnel run --token {tunnel_token}
   9. Wait for cloudflared to connect (parse stdout for "Registered
@@ -40,14 +39,10 @@ First run:
 
   ✓ Snodo MCP tunnel active
 
-  Configure in your AI provider (Claude, Gemini, ChatGPT, etc.):
+  Connect your MCP client through OAuth:
 
     URL:    https://\{hostname\}/mcp
-    Header: CF-Access-Client-Id: {client_id}
-    Header: CF-Access-Client-Secret: {client_secret}
-
-  ⚠  Save the Client Secret — it will not be shown again.
-     Rotate with: snodo serve --tunnel --rotate
+    OAuth auth server: https://mcp-auth.snodo.dev
 
   Press Ctrl+C to stop.
 
@@ -64,7 +59,7 @@ Subsequent runs (tunnel.json exists):
    4. Print:
 
   ✓ Snodo MCP tunnel active: https://\{hostname\}/mcp
-  (Use your saved CF-Access-Client-Id and CF-Access-Client-Secret)
+   OAuth auth server: https://mcp-auth.snodo.dev
 
    Press Ctrl+C to stop.
 
@@ -86,15 +81,6 @@ Failed deletion recovery:
   credentials. Tunnel connections are OAuth-only; legacy saved auth settings
   do not disable OAuth, and --auth service-token is rejected before side effects.
 
---rotate flag:
-  Select one rotatable service credential. If none exists, explain that OAuth
-  bearer credentials expire and cannot be rotated. If several exist, require
-  --credential <name> rather than guessing.
-  DELETE api.snodo.dev/tunnel/{hostname}/token (revokes old token)
-  POST api.snodo.dev/tunnel/{hostname}/token (creates new token)
-  Update tunnel.json with new client_id
-  Print new client_id + client_secret (once)
-
 Ctrl+C handling:
   Stop both subprocesses (MCP server + cloudflared) cleanly
 
@@ -103,37 +89,30 @@ Ctrl+C handling:
 POST {cloud.tunnel_api_url}/tunnel/provision   # default https://app.snodo.dev
   Auth: Bearer {snodo_api_key}
   Body: {project_slug, mode, short_id, snodo_version}
-  Creates: Cloudflare tunnel + DNS record + Access app + service token
-  Returns: {hostname, tunnel_token, client_id, client_secret}
+  Creates: Cloudflare tunnel + DNS record
+  Returns: {hostname, tunnel_token}
 
-DELETE api.snodo.dev/tunnel/{hostname}/token
-POST api.snodo.dev/tunnel/{hostname}/token
-  Token rotation
 
 ## .snodo/tunnel.json schema
 {
   "hostname": "acme-api-prod-a3f7.tunnel.snodo.dev",
   "tunnel_token": "eyJ...",
-  "client_id": "88bf3b6d....access",
   "created_at": "2026-06-07T..."
 }
-client_secret never stored.
 
 ## Acceptance criteria
-- First run: provisions tunnel, shows client_secret once, starts services
+- First run: provisions tunnel and starts services behind OAuth
 - Subsequent runs: uses stored config, starts services
-- --rotate: revokes old token, issues new one, shows new secret once
 - Ctrl+C: both subprocesses stop cleanly
 - cloudflared not installed: clear error with install instructions
 - No snodo account: clear message with signup URL
 - stdio transport unchanged, no --tunnel behaviour bleeds into default
 
 ## Testing
-- Unit: tunnel.json written correctly (no client_secret)
+- Unit: tunnel.json stores only tunnel hostname, token, and metadata
 - Unit: cloudflared not found → clear error
 - Unit: no snodo account → clear message
 - Unit: Ctrl+C → both processes stop
-- Unit: --rotate calls correct API endpoints
 - Integration: end-to-end with real cloudflared (e2e marked test)
 - Full suite passes
 
@@ -141,8 +120,7 @@ client_secret never stored.
 - Read cli/commands/serve_cmd.py, cli/main.py,
   infrastructure/config.py (how API key is stored/read) before
   touching anything
-- client_secret NEVER written to disk — shown once, user's
-  responsibility
+- OAuth bearer tokens are verified by the tunnel's MCP server
 - cloudflared is a subprocess — not a Python dependency
 - snodo-cloud provisioning API is a separate ticket (snodo-cloud repo)
 - Touch: serve_cmd.py, cli/main.py only in snodo-public
