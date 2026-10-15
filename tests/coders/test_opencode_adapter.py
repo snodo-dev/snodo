@@ -33,6 +33,8 @@ def test_container_coder_prompt_names_declared_and_engine_paths(tmp_path):
     assert "generated/" in prompt
     assert ".snodo/" in prompt
     assert "## Paths the Engine Will Refuse" in prompt
+    # Declared paths are attributed to the protocol, not to engine state (#908).
+    assert "This protocol also declares these protected paths:" in prompt
 
 
 def test_container_prompt_with_no_declared_paths_shows_only_engine_state(tmp_path):
@@ -42,6 +44,31 @@ def test_container_prompt_with_no_declared_paths_shows_only_engine_state(tmp_pat
 
     assert ".snodo/" in prompt
     assert "secrets.yml" not in prompt
+    # An empty declaration must not read as though paths were protected.
+    assert "This protocol declares no additional protected paths." in prompt
+    assert "This protocol also declares" not in prompt
+
+
+def test_notice_separates_engine_state_from_protocol_declarations():
+    from snodo.coders.base import protected_paths_notice
+
+    notice = protected_paths_notice(
+        SimpleNamespace(protected_paths=["docs/adr/**"]), workspace=None
+    )
+
+    assert "- `.snodo/` — engine state" in notice
+    assert "- `docs/adr/**` — declared in `.snodo/protocol.yml`" in notice
+    assert "docs/adr/**` — engine state" not in notice
+
+
+def test_notice_without_any_protocol_context_still_warns_about_engine_state():
+    from snodo.coders.base import protected_paths_notice
+
+    notice = protected_paths_notice()
+
+    assert "## Paths the Engine Will Refuse" in notice
+    assert "- `.snodo/` — engine state" in notice
+    assert "no additional protected paths" in notice
 
 class TestWorkspaceResolution:
     """OpenCodeAdapter accepts workspace from multiple sources."""
