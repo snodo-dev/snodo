@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Bump the `mcp` dependency to 1.30.0 to clear GHSA-84m7-p3x7-pcfv (unbounded session accumulation in the StreamableHTTP transport).
 - Make managed tunnels OAuth-only, enforce bearer checks for legacy tunnel records, and remove retired service-token rotation. (Fixes #901)
 ## [0.25.0] — 2026-10-15
 
