@@ -2,7 +2,7 @@
 
 A project directory name may contain a dot, and a dot in a hostname is a
 label separator, not a character: "droptrack.io" once provisioned
-droptrack.io-all-<short>.tunnel.snodo.dev — a name one level deeper than
+droptrack.io-all-<short>-tunnel.snodo.dev — a name one level deeper than
 the wildcard certificate covers, so TLS could never match it. These tests
 pin the fix: the slug sent for provisioning is a single valid DNS label,
 distinct projects and distinct modes never collapse onto one hostname, and
@@ -21,7 +21,7 @@ from snodo.cli.commands import serve_cmd
 from snodo.cli.commands.serve_tunnel_config import resolve_serve_mode
 
 _LABEL = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\Z")
-_TUNNEL_DOMAIN = ".tunnel.snodo.dev"
+_TUNNEL_DOMAIN = "-tunnel.snodo.dev"
 
 
 class TestResolveServeMode:
@@ -68,7 +68,7 @@ class TestSlugIsSingleLabel:
         assert "." not in slug
         assert _LABEL.match(slug)
         assert _LABEL.match(_leading_label(hostname))
-        assert hostname.count(".") == 3  # exactly <one label>.tunnel.snodo.dev
+        assert hostname.count(".") == 2  # exactly <one label>.snodo.dev
         assert serve_cmd._TUNNEL_HOSTNAME_RE.fullmatch(hostname)
 
     def test_run_tunnel_sends_a_single_label_slug(self, tmp_path):
@@ -154,6 +154,10 @@ class TestLegacyBrokenTunnelIsSurfaced:
             f"droptrack-io-1a2b3c-all-kfc93s{_TUNNEL_DOMAIN}"
         ) is False
         assert capsys.readouterr().err == ""
+
+    def test_legacy_hostname_is_unservable(self, capsys):
+        assert serve_cmd._warn_if_unservable_hostname("old.tunnel.snodo.dev") is True
+        assert "old.tunnel.snodo.dev" in capsys.readouterr().err
 
 
 class TestHostnameRegexShape:
