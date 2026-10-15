@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 - Make managed tunnels OAuth-only, enforce bearer checks for legacy tunnel records, and remove retired service-token rotation. (Fixes #901)
+## [0.25.0] — 2026-10-15
+
 - Use OAuth-only authentication for managed tunnels; reject service-token auth and ignore legacy saved auth settings. (Fixes #901)
 - Add a read-only renderer for the concise project home and next-step view. (Fixes #862)
 - Register Snodo MCP servers with GitHub Copilot in VS Code and Copilot CLI, preserving malformed configs without overwriting them. (Fixes #899)
