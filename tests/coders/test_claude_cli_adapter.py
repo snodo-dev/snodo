@@ -1,8 +1,26 @@
 import json
 import os
 
+from snodo.core.interfaces import TaskSpec
+
 from snodo.coders import CODER_REGISTRY, resolve_coder_name
 from snodo.coders.claude_cli_adapter import ClaudeCLIAdapter
+
+
+def test_cli_prompt_warns_about_protocol_and_engine_protected_paths(tmp_path):
+    adapter = ClaudeCLIAdapter(workspace=tmp_path)
+    adapter.protected_paths = ["README.md", "secrets/**"]
+    prompt = adapter._build_prompt(TaskSpec(description="do work", constraints=[]))
+    assert "README.md" in prompt
+    assert "secrets/**" in prompt
+    assert ".snodo/" in prompt
+    assert "not a sandbox" in prompt
+
+    adapter.protected_paths = []
+    prompt = adapter._build_prompt(TaskSpec(description="do work", constraints=[]))
+    assert "README.md" not in prompt
+    assert "secrets/**" not in prompt
+    assert ".snodo/" in prompt
 
 
 def test_claude_cli_routes_and_builds_noninteractive_command(tmp_path):

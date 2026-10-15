@@ -835,6 +835,10 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
 
         parts.append(f"## Task\n{spec.description}")
 
+        boundary = self._protected_paths_guidance()
+        if boundary:
+            parts.extend(["", boundary])
+
         if spec.constraints:
             parts.append("\n## Constraints")
             for c in spec.constraints:
@@ -846,3 +850,15 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         )
 
         return "\n".join(parts)
+
+    def _protected_paths_guidance(self) -> str:
+        """Explain enforced path boundaries to a locally-running CLI coder."""
+        paths = list(getattr(self, "protected_paths", []) or [])
+        lines = ["## Paths the engine will refuse"]
+        lines.append(
+            "The engine will refuse changes to these paths. This is a warning, "
+            "not a sandbox or access restriction; files may remain readable and writable."
+        )
+        lines.extend(f"- `{path}`" for path in paths)
+        lines.append("- `.snodo/` (engine state; always refused)")
+        return "\n".join(lines)
