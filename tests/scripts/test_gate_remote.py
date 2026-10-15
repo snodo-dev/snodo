@@ -23,6 +23,7 @@ import pty
 import re
 import select
 import signal
+import shutil
 import subprocess
 import sys
 import termios
@@ -234,7 +235,7 @@ def test_gate_output_lines_begin_at_column_zero_on_a_raw_pty(tmp_path: Path):
         f"gate_supervise {program}",
         tmp_path,
     )
-    assert output == b"one\r\ntwo\r\nthree\r\n", (
+    assert output.endswith(b"one\r\ntwo\r\nthree\r\n"), (
         "a gate's output staircased on a raw terminal: each line must return "
         f"to column zero before the next (got {output!r})"
     )
@@ -443,3 +444,46 @@ def test_gate_pytest_invocation_has_a_per_test_timeout():
     text = GATE_REMOTE.read_text(encoding="utf-8")
     gate_case = text.split("    gate)", 1)[1].split("    gate-ci)", 1)[0]
     assert "--timeout=60" in gate_case
+    assert "--timeout-method=signal" in gate_case
+
+
+def test_gate_narrates_phases_separately_from_suite_output(tmp_path: Path):
+    text = GATE_REMOTE.read_text(encoding="utf-8")
+    assert "waiting for a slot" in text and "still waiting for a slot" in text
+    assert "timed out waiting for a slot" in text
+    assert "syncing dependencies" in text and "starting test suite" in text
+    # Phase messages use the preserved stderr descriptor, not the gate's
+    # stdout stream, which remains byte-for-byte machine-readable.
+    assert "printf 'Gate: starting test suite.\\n' >&3" in text
+
+
+def test_slot_wait_has_a_timeout_and_reports_elapsed_time(tmp_path: Path):
+    if shutil.which("flock") is None:
+        pytest.skip("flock is not installed")
+    slot_dir = tmp_path / ".gate-slots"
+    slot_dir.mkdir()
+    # Hold both slots in another process so the supervisor must time out.
+    lock = subprocess.Popen(
+        ["bash", "-c", f'exec 8>"{slot_dir}/slot0"; flock -n 8; sleep 20'],
+        start_new_session=True,
+    )
+    lock2 = subprocess.Popen(
+        ["bash", "-c", f'exec 8>"{slot_dir}/slot1"; flock -n 8; sleep 20'],
+        start_new_session=True,
+    )
+    try:
+        time.sleep(0.2)
+        proc = subprocess.run(
+            ["bash", "-c", f'source "{GATE_REMOTE}"; gate_supervise true'],
+            env=dict(os.environ, GATE_ROOT=str(tmp_path), GATE_SLOTS="2",
+                     GATE_SLOT_TIMEOUT="2", GATE_SLOT_PROGRESS_INTERVAL="1"),
+            capture_output=True, text=True, timeout=8,
+        )
+        assert proc.returncode != 0
+        assert "waiting for a slot (waited" in proc.stderr
+        assert "timed out waiting for a slot" in proc.stderr
+    finally:
+        _kill_group(lock.pid)
+        _kill_group(lock2.pid)
+        lock.wait(timeout=5)
+        lock2.wait(timeout=5)

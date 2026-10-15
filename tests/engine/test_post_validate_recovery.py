@@ -598,7 +598,14 @@ class TestEvidenceReachesFixTask:
             stdout="tests/test_card.py::test_photo FAILED\nE   AssertionError: assert 3 == 4\n",
             stderr="",
         )
-        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result):
+        # The gate spawns through the module's Popen seam so it can kill the
+        # whole process group on timeout; double that seam, not run().
+        process = MagicMock(returncode=mock_result.returncode)
+        process.communicate.return_value = (
+            mock_result.stdout.encode(),
+            mock_result.stderr.encode(),
+        )
+        with patch("snodo.validators.quality._Popen", return_value=process):
             result = qv.evaluate()
 
         assert result.severity == "blocker"
