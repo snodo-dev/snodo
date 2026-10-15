@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_oauth_only": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9db7f04f7a22aa65"
+    }
+  },
+  "integration": {
+    "branch": "plan/tunnel-oauth-only/integration",
+    "base_sha": "a8823d39dcd20936c6cb21e9561310068bd93940"
+  }
+}

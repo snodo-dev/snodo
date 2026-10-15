@@ -1,0 +1,29 @@
+{
+  "tasks": {
+    "1.1_delete_recovery": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e496ae0f2fcc7f6e"
+    },
+    "2.1_confirm_connection": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a71dd1230dce1c91",
+      "recorded_by": "Codex orchestrator",
+      "recorded_at": "2026-10-15T00:14:18.280651+00:00",
+      "judged": false
+    },
+    "3.1_patch_coverage": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "da7a40b9989ff2c2"
+    }
+  },
+  "integration": {
+    "branch": "plan/tunnel-recovery-feedback/integration",
+    "base_sha": "a8823d39dcd20936c6cb21e9561310068bd93940"
+  }
+}

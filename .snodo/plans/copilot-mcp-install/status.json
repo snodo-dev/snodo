@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_copilot": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7dae7b2ff57a9843"
+    }
+  },
+  "integration": {
+    "branch": "plan/copilot-mcp-install/integration",
+    "base_sha": "9da20e99ab34bb9bb1c442446c838c245aa635bb"
+  }
+}

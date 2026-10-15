@@ -1,0 +1,27 @@
+intent: 'Getting snodo and coming back to it feels easy:
+
+  - one line installs or updates it;
+
+  - bare `snodo` greets the user with the snodo.dev wordmark and a readiness view
+  that names the next step;
+
+  - `snodo --help` carries the same wordmark;
+
+  - `snodo --version` mentions a newer release when there is one.
+
+  The wordmark appears only on a terminal. Piped, JSON and MCP output stay plain.'
+name: cli-polish
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_wordmark_banner
+  - 1.2_one_line_installer
+  - 1.3_update_check
+  - 1.4_home_readiness_view
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_wire_greeting_help_version
+  - 2.2_installer_wordmark_matches_cli

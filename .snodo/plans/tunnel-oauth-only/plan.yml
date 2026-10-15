@@ -1,0 +1,9 @@
+intent: Tunnels authenticate with OAuth only, matching the cloud's decision to provision
+  no service tokens; the CLI stops offering, printing or trusting service-token tunnel
+  auth, and never serves a tunnel without its OAuth check.
+name: tunnel-oauth-only
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_oauth_only

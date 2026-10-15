@@ -1,0 +1,44 @@
+{
+  "tasks": {
+    "1.1_wordmark_banner": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "84472f1585487bcf"
+    },
+    "1.2_one_line_installer": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "82ee282a7439a36c"
+    },
+    "1.3_update_check": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "92486a5724da0a90"
+    },
+    "1.4_home_readiness_view": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "90a0c8631b7b8731"
+    },
+    "2.1_wire_greeting_help_version": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "67cca49f3b0ec720"
+    },
+    "2.2_installer_wordmark_matches_cli": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9fbe312174963d0c"
+    }
+  },
+  "integration": {
+    "branch": "plan/cli-polish/integration",
+    "base_sha": "3461b0e5ac9827563cf8a02098f8daad7281b23e"
+  }
+}
