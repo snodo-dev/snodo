@@ -56,6 +56,15 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
     }
     if config.get("port") is not None:
         to_save["port"] = config["port"]
+    # Recovery metadata is local lifecycle state, not a protocol/job status.
+    # Retired service-token fields (auth, client_id, credentials, auth_type)
+    # are deliberately not persisted any more.
+    recovery = config.get("recovery")
+    if isinstance(recovery, dict) and recovery.get("action") == "delete":
+        to_save["recovery"] = {
+            "action": "delete",
+            "hostname": str(recovery.get("hostname", "")),
+        }
     path.write_text(json.dumps(to_save, indent=2) + "\n")
 
 

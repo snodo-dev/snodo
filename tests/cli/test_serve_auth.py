@@ -39,6 +39,42 @@ def test_provision_request_does_not_send_retired_auth_set():
     assert "auth" not in post.call_args.kwargs["json"]
 
 
+def test_legacy_service_token_auth_cannot_disable_oauth(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/isolated")
+    monkeypatch.setattr(serve_cmd, "_check_cloudflared", lambda: True)
+    monkeypatch.setattr(serve_cmd, "_get_snodo_api_key", lambda: "key")
+    monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {
+        "hostname": "legacy.tunnel.snodo.dev", "tunnel_token": "token",
+        "auth": ["service-token"],
+    })
+    monkeypatch.setattr(serve_cmd, "_choose_serve_port", lambda _: 8000)
+    monkeypatch.setattr(serve_cmd, "_wait_for_server_bind", lambda _: False)
+    process = MagicMock(returncode=1, stderr=None)
+    commands = []
+    monkeypatch.setattr(serve_cmd.subprocess, "Popen", lambda *a, **k: commands.append(a[0]) or process)
+    monkeypatch.setattr(serve_cmd, "_terminate_process_group", lambda _: None)
+    args = SimpleNamespace(protocol="protocol.yml", mode=None, transport="http", rotate=False,
+                           delete=False, hostname=None, auth=None, port=8000, verbose=False)
+    assert serve_cmd._run_tunnel(args, SimpleNamespace(initial_mode="default"), "protocol.yml") == 1
+    assert commands and commands[0][commands[0].index("--auth") + 1] == "oauth"
+
+
+def test_explicit_service_token_rejected_before_external_effects(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    def forbidden(*_a, **_k):
+        raise AssertionError("side effect occurred")
+
+    monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/isolated")
+    monkeypatch.setattr(serve_cmd, "_check_cloudflared", forbidden)
+    args = SimpleNamespace(protocol="protocol.yml", mode=None, transport="http", rotate=False,
+                           delete=False, hostname=None, auth=["service-token"], port=None, verbose=False)
+    assert serve_cmd._run_tunnel(args, SimpleNamespace(initial_mode="default"), "protocol.yml") == 1
+    assert "OAuth" in capsys.readouterr().err
+
+
 def test_banner_only_shows_url_and_oauth_server(capsys):
     serve_cmd._print_first_run_info(
         "x.tunnel.snodo.dev",
