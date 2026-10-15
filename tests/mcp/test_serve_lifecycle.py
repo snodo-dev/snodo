@@ -480,6 +480,60 @@ def test_failed_bind_does_not_remove_an_existing_tunnel(tmp_path):
     assert deprovisioned == []
 
 
+def test_unregistered_live_cloudflared_fails_without_announcing_active(capsys):
+    """A locally bound MCP listener is insufficient without CF registration."""
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None,
+        transport="streamable-http", port=9090, rotate=False, delete=False,
+    )
+    protocol = MagicMock()
+    stored = {"hostname": "existing.tunnel.snodo.dev", "tunnel_token": "tok"}
+    mcp, cf = MagicMock(), MagicMock()
+    mcp.pid = 123
+    mcp.poll.return_value = None
+    cf.pid = 456
+    cf.poll.return_value = None
+    cf.stderr.readline.return_value = "connecting, not registered\n"
+    now = iter([0, 31])
+    terminated = []
+
+    def fake_popen(cmd, **_kwargs):
+        return cf if cmd[0] == "cloudflared" else mcp
+
+    with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True), \
+         patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key"), \
+         patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=stored), \
+         patch("snodo.cli.commands.serve_cmd._port_holder_pid", return_value=None), \
+         patch("snodo.cli.commands.serve_cmd.subprocess.Popen", side_effect=fake_popen), \
+         patch("snodo.cli.commands.serve_cmd.time.monotonic", side_effect=lambda: next(now)), \
+         patch("snodo.cli.commands.serve_cmd.time.sleep"), \
+         patch("snodo.cli.commands.serve_cmd._terminate_process_group",
+               side_effect=lambda proc, timeout=5: terminated.append(proc)):
+        result = serve_cmd._run_tunnel(args, protocol, ".snodo/protocol.yml")
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "tunnel active" not in captured.out.lower()
+    assert "registered tunnel connection" in captured.err.lower()
+    assert set(terminated) == {mcp, cf}
+    assert "existing.tunnel.snodo.dev" not in captured.err or "delete" not in captured.err
+
+
+def test_new_tunnel_rollback_failure_keeps_deliberate_recovery_target(tmp_path, capsys):
+    config = {"hostname": "new.tunnel.snodo.dev", "tunnel_token": "tok"}
+    saved = []
+    with patch("snodo.cli.commands.serve_cmd._deprovision_tunnel",
+               side_effect=serve_cmd.TunnelAPIError("HTTP 500", status_code=500)), \
+         patch("snodo.cli.commands.serve_cmd._save_tunnel_config",
+               side_effect=lambda root, value: saved.append(dict(value))), \
+         patch("snodo.cli.commands.serve_cmd._delete_tunnel_file") as delete:
+        serve_cmd._deprovision_newly_provisioned_tunnel(str(tmp_path), "key", config)
+
+    delete.assert_not_called()
+    assert saved[0]["recovery"] == {"action": "delete", "hostname": "new.tunnel.snodo.dev"}
+    assert "--delete --hostname new.tunnel.snodo.dev" in capsys.readouterr().err
+
+
 def test_tunnel_targets_the_port_it_chose(tmp_path):
     """The tunnel is provisioned for, and the child told, the chosen port."""
     import io

@@ -35,7 +35,8 @@ First run:
   8. Start cloudflared: cloudflared tunnel run --token {tunnel_token}
   9. Wait for cloudflared to connect (parse stdout for "Registered
      tunnel connection")
-  10. Print:
+   10. Only after the local MCP listener is bound AND cloudflared reports
+       "Registered tunnel connection", print:
 
   ✓ Snodo MCP tunnel active
 
@@ -53,12 +54,37 @@ First run:
 Subsequent runs (tunnel.json exists):
   1. Start MCP server
   2. Start cloudflared with stored tunnel_token
-  3. Print:
+   3. Wait for "Registered tunnel connection" before printing active. If
+      registration is not confirmed within 30 seconds, stop both child process
+      groups and return failure; do not print or imply that a URL is active.
+      Show redacted cloudflared diagnostics and advise checking network access
+      and retrying. A newly provisioned tunnel is rolled back; if rollback fails,
+      retain its hostname/token and give the deliberate --delete recovery command.
+      An existing tunnel is never automatically deleted on connection failure.
+   4. Print:
 
   ✓ Snodo MCP tunnel active: https://\{hostname\}/mcp
   (Use your saved CF-Access-Client-Id and CF-Access-Client-Secret)
 
-  Press Ctrl+C to stop.
+   Press Ctrl+C to stop.
+
+“Tunnel active” proves that the local MCP listener bound and cloudflared
+registered a connection with Cloudflare. It does not prove end-to-end client
+reachability, hostname/DNS propagation, or that a client's authentication is
+configured correctly.
+
+Failed deletion recovery:
+  A failed Cloud DELETE (including HTTP 500) does not establish that the
+  tunnel or DNS has been removed. The CLI retains the local hostname/token
+  and records local recovery metadata, but refuses to start the saved tunnel
+  or claim it is active. Retry deliberately with:
+    snodo serve --tunnel --delete --hostname <hostname>
+  A successful HTTP 200 or no-record HTTP 404 clears the local record only
+  when it names that same target. An explicit different hostname never clears
+  or changes the unrelated local record. Cloud owns retry-safe resource cleanup;
+  this CLI does not infer resource state from error text or blindly erase local
+  credentials. Tunnel connections are OAuth-only; legacy saved auth settings
+  do not disable OAuth, and --auth service-token is rejected before side effects.
 
 --rotate flag:
   Select one rotatable service credential. If none exists, explain that OAuth
