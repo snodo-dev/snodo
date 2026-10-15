@@ -1,0 +1,12 @@
+intent: A custom provider block can send different model families over different API
+  formats. Gateways such as OpenCode Go serve some models on an OpenAI-compatible
+  chat-completions endpoint and others (Claude, and possibly MiniMax and Qwen) on
+  an Anthropic-compatible messages endpoint behind the same key. Today snodo routes
+  every model in a block with one litellm_provider, so "ocgo/claude-haiku-5-5" is
+  sent in OpenAI format and refused with "Model does not support this protocol".
+name: provider-model-routes
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.2_provider_routes_tolerate_older_provider_objects

@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.2_provider_routes_tolerate_older_provider_objects": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a39807e8ffa02750"
+    }
+  },
+  "integration": {
+    "branch": "plan/provider-model-routes/integration",
+    "base_sha": "1004e9bc4302896ea60af1b552b0e07ae730f248"
+  }
+}

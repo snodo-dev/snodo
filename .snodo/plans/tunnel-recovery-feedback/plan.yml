@@ -1,0 +1,18 @@
+intent: After a managed tunnel deletion fails, the CLI guides the operator through
+  retrying cleanup instead of silently reusing a stale token, and reports a tunnel
+  active only after a confirmed Cloudflare connection. Authentication messages describe
+  the provisioned configuration and preserve the accepted OAuth-only direction.
+name: tunnel-recovery-feedback
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_delete_recovery
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_confirm_connection
+- id: 3
+  tasks:
+  - 3.1_patch_coverage
