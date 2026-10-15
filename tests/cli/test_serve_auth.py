@@ -80,9 +80,9 @@ def test_banner_only_shows_url_and_oauth_server(capsys):
         "x.tunnel.snodo.dev",
     )
     output = capsys.readouterr().out
+    assert "https://x.tunnel.snodo.dev/mcp" in output
     # codeql[py/incomplete-url-substring-sanitization] false positive: this
     # asserts the banner prints the literal OAuth server URL; no URL is parsed.
-    assert "https://x.tunnel.snodo.dev/mcp" in output
     assert "https://mcp-auth.snodo.dev" in output
     assert "CF-Access-Client" not in output
 
