@@ -65,7 +65,7 @@ dev = [
     "hypothesis==6.168.5",
     "ruff==0.16.10",
     "radon>=6.0.0",
-    "import-linter==2.12",
+    "import-linter==2.15",
 ]
 studies = [
     "marimo>=0.9.0",
@@ -119,7 +119,7 @@ dev = [
     "grimp==3.17",
     "httpx2>=2.4.0",
     "hypothesis==6.168.5",
-    "import-linter==2.12",
+    "import-linter==2.15",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "pytest-timeout==2.4.0",
