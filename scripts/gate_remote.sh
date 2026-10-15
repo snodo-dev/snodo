@@ -34,10 +34,10 @@ gate_run() {
   local -a pytest_args
   case "$target" in
     gate)
-      pytest_args=(tests/ -q -n "$GATE_JOBS" --timeout=60)
+      pytest_args=(tests/ -q -n "$GATE_JOBS" --timeout=60 --timeout-method=signal)
       ;;
     gate-ci)
-      pytest_args=(tests/ -m "" -n "$GATE_JOBS" --tb=short --timeout=60 \
+      pytest_args=(tests/ -m "" -n "$GATE_JOBS" --tb=short --timeout=60 --timeout-method=signal \
         --cov --cov-report=term-missing --cov-fail-under=80)
       ;;
     *)
@@ -45,8 +45,9 @@ gate_run() {
       return 2
       ;;
   esac
+  printf 'Gate: syncing dependencies.\n' >&3
   uv sync --all-extras -q \
-    && CI=true uv run pytest "${pytest_args[@]}" \
+    && { printf 'Gate: starting test suite.\n' >&3; CI=true uv run pytest "${pytest_args[@]}"; } \
     && uv run ruff check . \
     && uv run lint-imports \
     && uv run python scripts/enforce_file_length.py \
@@ -66,14 +67,29 @@ gate_acquire_slot() {
   command -v flock >/dev/null 2>&1 || return 0
   local slots="${GATE_SLOTS:-2}" slot_dir="${GATE_ROOT:-$HOME/Dev/gates}/.gate-slots"
   mkdir -p "$slot_dir"
+  local started=$SECONDS timeout="${GATE_SLOT_TIMEOUT:-600}" interval="${GATE_SLOT_PROGRESS_INTERVAL:-10}" announced=0
   while :; do
     local slot=0
     while [ "$slot" -lt "$slots" ]; do
       exec 9>"$slot_dir/slot$slot"
-      if flock -n 9; then return 0; fi
+      if flock -n 9; then
+        if [ "$announced" -eq 1 ]; then printf 'Gate: acquired a slot after %s seconds.\n' "$((SECONDS - started))" >&3; fi
+        return 0
+      fi
       exec 9>&-
       slot=$((slot + 1))
     done
+    local elapsed=$((SECONDS - started))
+    if [ "$announced" -eq 0 ]; then
+      printf 'Gate: waiting for a slot (waited %s seconds).\n' "$elapsed" >&3
+      announced=1
+    elif [ "$((elapsed % interval))" -lt 2 ]; then
+      printf 'Gate: still waiting for a slot (waited %s seconds).\n' "$elapsed" >&3
+    fi
+    if [ "$elapsed" -ge "$timeout" ]; then
+      printf 'gate_remote.sh: timed out waiting for a slot after %s seconds.\n' "$elapsed" >&2
+      return 1
+    fi
     sleep 2
   done
 }
@@ -126,6 +142,8 @@ gate_supervise() {
   # Reset the trap before reaping so a reap cannot re-enter it, then end the
   # tree. 129 is the conventional 128+HUP for an interrupted command.
   trap 'trap - HUP INT TERM; gate_reap; exit 129' HUP INT TERM
+  exec 3>&2
+  printf 'Gate: acquiring a slot.\n' >&3
   gate_acquire_slot || return $?
   # Every tool must see a pipe rather than the terminal, or its output
   # changes -- that is what the `| cat` below is for. The connection's own
