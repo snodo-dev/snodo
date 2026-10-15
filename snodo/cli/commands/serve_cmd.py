@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, Optional
+from typing import Optional
 
 import typer
 
@@ -26,6 +26,13 @@ from snodo.cli.commands import load_protocol
 from snodo.cli.commands.serve_tunnel_output import (
     forward_child_line as _forward_child_line,
     tunnel_secret_values as _tunnel_secret_values,
+)
+from snodo.cli.commands.serve_tunnel_process import (
+    captured_stderr as _captured_stderr,
+    drain_stream as _drain_stream,
+    signal_process_group as _signal_process_group,  # noqa: F401 - retained internal export
+    terminate_process_group as _terminate_process_group,
+    wait_for_server_bind as _wait_for_server_bind,
 )
 from snodo.cli.commands.serve_tunnel_config import (  # noqa: F401 - re-exported for callers and tests
     AUTH_METHODS,
@@ -917,58 +924,6 @@ def _choose_serve_port(explicit_port: Optional[int]) -> Optional[int]:
     return port
 
 
-def _terminate_process_group(proc, timeout: float = 5.0) -> None:
-    """Stop *proc* and everything in its process group, then reap it.
-
-    A server that spawns children owns them: terminating only the direct child
-    leaves whatever IT started — an MCP listener holding the port — alive. The
-    children are started in their own session (``start_new_session=True``), so
-    the whole group is addressable with ``killpg`` and can be torn down in one
-    act (Fixes #290). The group is signalled SIGTERM first and SIGKILL after
-    the grace period; a process whose group cannot be signalled (already
-    exited) is signalled directly instead.
-    """
-    if proc is None:
-        return
-    _signal_process_group(proc.pid, signal.SIGTERM)
-    try:
-        proc.wait(timeout=timeout)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    _signal_process_group(proc.pid, signal.SIGKILL)
-    try:
-        proc.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        pass
-
-
-def _signal_process_group(pid: int, sig: int) -> None:
-    """Signal *pid*'s whole process group, falling back to the process alone."""
-    try:
-        os.killpg(os.getpgid(pid), sig)
-    except (ProcessLookupError, OSError):
-        try:
-            os.kill(pid, sig)
-        except (ProcessLookupError, OSError):
-            pass
-
-
-def _wait_for_server_bind(mcp_process, sleep_fn=None) -> bool:
-    """Give the MCP server 2s to bind, then report if it is alive.
-
-    The real wait is needed in production (uvicorn needs a moment to bind the
-    port before cloudflared fronts it), but it is real wall-clock time that a
-    test cannot parallelise away. *sleep_fn* is resolved at call time so tests
-    can inject a clock that advances instantly (e.g. by patching
-    ``time.sleep``); it defaults to the real ``time.sleep``.
-    """
-    if sleep_fn is None:
-        sleep_fn = time.sleep
-    sleep_fn(2.0)
-    return mcp_process.poll() is None
-
-
 def _print_tunnel_conflict(err: TunnelAPIError) -> None:
     """Report a 409 provisioning conflict in a form the operator can act on.
 
@@ -991,66 +946,6 @@ def _print_tunnel_conflict(err: TunnelAPIError) -> None:
     else:
         print("The conflict response did not name the existing tunnel.",
               file=sys.stderr)
-
-
-def _drain_stream(
-    stream: Any,
-    sink: Optional[collections.deque[str]] = None,
-    on_line: Optional[Callable[[str], None]] = None,
-) -> Optional[threading.Thread]:
-    """Continuously drain a child pipe in a background daemon thread.
-
-    A pipe with no reader holds a bounded OS buffer (tens of kilobytes). Once
-    full, the child's write() blocks indefinitely. This drainer reads lines
-    until EOF, optionally preserving recent lines in *sink* (a bounded deque)
-    for diagnostics and invoking *on_line* for each line.
-    """
-    if stream is None:
-        return None
-
-    # In unit tests, subprocess.Popen is often mocked with MagicMock where
-    # readline() returns repeatedly without blocking. Real child pipes are
-    # always io.IOBase instances; only spawn background drain threads on real
-    # IO streams.
-    if not isinstance(stream, io.IOBase):
-        return None
-
-    def _reader() -> None:
-        while True:
-            try:
-                line = stream.readline()
-            except (ValueError, OSError):
-                break
-            except UnicodeDecodeError:
-                continue
-            if not line:
-                break
-            if sink is not None:
-                sink.append(line)
-            if on_line is not None:
-                try:
-                    on_line(line)
-                except Exception:  # noqa: S110
-                    pass
-        try:
-            stream.close()
-        except OSError:
-            pass
-
-    t = threading.Thread(target=_reader, daemon=True)
-    t.start()
-    return t
-
-
-def _captured_stderr(process: Any, tail: collections.deque[str]) -> str:
-    """Return drained stderr, with a guarded read only as a test fallback."""
-    stderr_output = "".join(tail)
-    if not stderr_output and process.stderr:
-        try:
-            stderr_output = process.stderr.read()
-        except (ValueError, OSError):
-            stderr_output = ""
-    return stderr_output
 
 
 def _run_tunnel(args, protocol, protocol_path) -> int:
