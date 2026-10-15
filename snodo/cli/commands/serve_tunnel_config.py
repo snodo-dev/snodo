@@ -115,6 +115,13 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
     # auth_type; it is read when deciding what is rotatable.
     if config.get("auth_type"):
         to_save["auth_type"] = config["auth_type"]
+    # Recovery metadata is local lifecycle state, not a protocol/job status.
+    recovery = config.get("recovery")
+    if isinstance(recovery, dict) and recovery.get("action") == "delete":
+        to_save["recovery"] = {
+            "action": "delete",
+            "hostname": str(recovery.get("hostname", "")),
+        }
     path.write_text(json.dumps(to_save, indent=2) + "\n")
 
 

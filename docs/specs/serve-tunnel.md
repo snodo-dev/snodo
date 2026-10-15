@@ -60,6 +60,19 @@ Subsequent runs (tunnel.json exists):
 
   Press Ctrl+C to stop.
 
+Failed deletion recovery:
+  A failed Cloud DELETE (including HTTP 500) does not establish that the
+  tunnel or DNS has been removed. The CLI retains the local hostname/token
+  and records local recovery metadata, but refuses to start the saved tunnel
+  or claim it is active. Retry deliberately with:
+    snodo serve --tunnel --delete --hostname <hostname>
+  A successful HTTP 200 or no-record HTTP 404 clears the local record only
+  when it names that same target. An explicit different hostname never clears
+  or changes the unrelated local record. Cloud owns retry-safe resource cleanup;
+  this CLI does not infer resource state from error text or blindly erase local
+  credentials. Tunnel connections are OAuth-only; legacy saved auth settings
+  do not disable OAuth, and --auth service-token is rejected before side effects.
+
 --rotate flag:
   Select one rotatable service credential. If none exists, explain that OAuth
   bearer credentials expire and cannot be rotated. If several exist, require

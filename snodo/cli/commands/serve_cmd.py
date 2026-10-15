@@ -707,7 +707,14 @@ def _handle_tunnel_delete(project_root: str, tunnel_config: dict,
     try:
         was_found = _deprovision_tunnel(api_key, target)
     except RuntimeError as e:
+        # Preserve credentials and the exact failed target so the next normal
+        # serve cannot mistake a partially deleted tunnel for a healthy one.
+        if target == local_hostname:
+            tunnel_config["recovery"] = {"action": "delete", "hostname": target}
+            _save_tunnel_config(project_root, tunnel_config)
         print(f"Error: {e}", file=sys.stderr)
+        if target == local_hostname:
+            print(f"Retry cleanup deliberately with: snodo serve --tunnel --delete --hostname {target}", file=sys.stderr)
         return 1
 
     # Only clear the local record when it pointed at the tunnel we just
@@ -1060,6 +1067,11 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     delete_hostname = getattr(args, "hostname", None) or None
     requested_auth = getattr(args, "auth", None)
 
+    if requested_auth and "service-token" in requested_auth:
+        print("Error: service-token authentication is not supported; connect with OAuth instead.", file=sys.stderr)
+        print("  Configure an OAuth connection to https://mcp-auth.snodo.dev.", file=sys.stderr)
+        return 1
+
     # Prefer streamable-http for tunnels
     if transport == "stdio":
         transport = "streamable-http"
@@ -1082,12 +1094,21 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
     # 3. Load existing tunnel config
     tunnel_config = _load_tunnel_config(project_root)
-    auth_methods = _auth_methods(requested_auth or tunnel_config.get("auth"))
+    # OAuth is the supported connection mechanism. Legacy auth fields cannot
+    # weaken this policy, and a CLI override does not mutate cloud config.
+    auth_methods = ["oauth"]
 
     # --delete flow
     if delete:
         return _handle_tunnel_delete(project_root, tunnel_config, api_key,
-                                     delete_hostname)
+                                      delete_hostname)
+
+    recovery = tunnel_config.get("recovery")
+    if isinstance(recovery, dict) and recovery.get("action") == "delete":
+        hostname = recovery.get("hostname") or tunnel_config.get("hostname")
+        print(f"Tunnel cleanup for {hostname} previously failed; refusing to reuse its saved token.", file=sys.stderr)
+        print(f"Retry deliberately with: snodo serve --tunnel --delete --hostname {hostname}", file=sys.stderr)
+        return 1
 
     # --rotate flow
     if rotate:
