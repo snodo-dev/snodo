@@ -61,3 +61,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [055](055-orchestrator-pubsub-by-plan.md) | Orchestrator pub/sub coordination by plan | 2026-10-03 | Proposed client-side counterpart to cloud-hosted per-organisation streams |
 | [056](056-full-task-spec-by-hash.md) | Full task specs in the cloud live view by content hash | 2026-10-04 | `cloud_liveness.py` (proposed) |
 | [057](057-headless-login-by-pasted-code.md) | Headless cloud login by pasting an OAuth code | 2026-10-04 | `cloud_oauth_client.py` + `cloud_cmd.py` |
+| [058](058-protected-path-advisory-guidance-and-merge-base-detection.md) | Protected-path guidance is advisory; detection uses the task's merge base | 2026-10-15 | `Protocol.protected_paths` + post-execute gate |

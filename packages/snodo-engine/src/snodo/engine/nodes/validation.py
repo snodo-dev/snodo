@@ -655,8 +655,17 @@ class ValidationNodeMixin:
         if not protected or not loop_state.base_ref or self.git_mcp is None:
             return None
         try:
+            head = self.git_mcp.get_head_sha()
+            # A task branch may have been rebased onto newer base-branch
+            # commits since base_ref was captured. Diff from the common
+            # ancestor so those incoming commits are not attributed to this task.
+            merge_bases = self.git_mcp.repo.merge_base(
+                self.git_mcp.repo.commit(loop_state.base_ref),
+                self.git_mcp.repo.commit(head),
+            )
+            comparison_base = merge_bases[0].hexsha if merge_bases else loop_state.base_ref
             changed = self.git_mcp.changed_paths_between_refs(
-                loop_state.base_ref, self.git_mcp.get_head_sha()
+                comparison_base, head
             )
         except Exception as exc:
             self._audit("protected_paths_unchecked", {

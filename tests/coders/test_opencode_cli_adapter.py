@@ -23,6 +23,15 @@ from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
 from snodo.core.interfaces import TaskSpec
 from snodo.tools.workspace import WorkspaceMCP
 
+
+def test_opencode_cli_prompt_includes_engine_boundary_guidance(tmp_path):
+    adapter = OpenCodeCLIAdapter(workspace=tmp_path)
+    adapter.protected_paths = ["docs/policy.md"]
+    prompt = adapter._build_prompt(TaskSpec(description="do work", constraints=[]))
+    assert "docs/policy.md" in prompt
+    assert ".snodo/" in prompt
+    assert "not a sandbox" in prompt
+
 _REAL_CLI_MAJOR_VERSION = OpenCodeCLIAdapter._cli_major_version
 
 @pytest.fixture(autouse=True)

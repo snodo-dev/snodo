@@ -13,6 +13,7 @@ Covers:
 import subprocess
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -22,6 +23,25 @@ from snodo.core.interfaces import TaskSpec
 from snodo.tools.workspace import WorkspaceMCP
 
 # ========== WORKSPACE PARAM RESOLUTION ==========
+
+def test_container_coder_prompt_names_declared_and_engine_paths(tmp_path):
+    adapter = OpenCodeAdapter(model="opencode/test", workspace=tmp_path)
+    adapter.protocol = SimpleNamespace(protected_paths=["secrets.yml", "generated/"])
+    prompt = adapter._build_prompt(TaskSpec(description="work", constraints=[]))
+
+    assert "secrets.yml" in prompt
+    assert "generated/" in prompt
+    assert ".snodo/" in prompt
+    assert "## Paths the Engine Will Refuse" in prompt
+
+
+def test_container_prompt_with_no_declared_paths_shows_only_engine_state(tmp_path):
+    adapter = OpenCodeAdapter(model="opencode/test", workspace=tmp_path)
+    adapter.protocol = SimpleNamespace(protected_paths=[])
+    prompt = adapter._build_prompt(TaskSpec(description="work", constraints=[]))
+
+    assert ".snodo/" in prompt
+    assert "secrets.yml" not in prompt
 
 class TestWorkspaceResolution:
     """OpenCodeAdapter accepts workspace from multiple sources."""

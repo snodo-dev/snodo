@@ -116,7 +116,7 @@ payloads, environment references, and the test command.
 | `global_constraints` | list[Constraint] | no | Protocol-wide constraints (see Constraints) |
 | `execution` | ExecutionConfig | no | Execution and recovery configuration (see Execution configuration) |
 | `queue` | QueueConfig | no | Default behaviour for queue runs (see Queue configuration) |
-| `protected_paths` | list[string] | no | Repository-relative paths a task may not change; checked against the task branch diff |
+| `protected_paths` | list[string] | no | Repository-relative paths a task must not change; shown to CLI coders before execution as guidance, then checked after execution against task-branch changes since the common ancestor with the base branch |
 | `write_allowed_prefixes` | list[string] | no | Project-relative prefixes writable through MCP `write`; default `[".snodo/"]` |
 | `exclusive_tools` | set[string] | no | Tools that must be exclusive to one mode; always includes `approve` and `merge` |
 | `modules` | list[Module] | no | Optional named repository scopes (see Modules) |
@@ -200,7 +200,15 @@ modules:
 | `tooling` | dict | no | Per-module tooling; empty falls back to protocol-level tooling |
 | `validators` | list[string] | no | Validator IDs applying within this module |
 
-`protected_paths` forbids task changes to listed repository-relative paths.
+`protected_paths` declares repository-relative paths that the task should not
+change. The declarations are shown to CLI coders before they run as guidance;
+they are a request, not a sandbox or a write boundary. Snodo checks them after
+execution by comparing the task branch with its common ancestor (merge base)
+with the base branch. A change to a declared path, including a descendant of a
+declared directory, is rejected by the post-execution guard. Changes that came
+from the base branch are not counted as task changes merely because the base ref
+advanced or moved during a rebase.
+
 `write_allowed_prefixes` separately controls the MCP `write` capability; it
 defaults to `[".snodo/"]` and does not grant `write` to any mode by itself.
 
