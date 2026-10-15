@@ -745,21 +745,23 @@ def _deprovision_newly_provisioned_tunnel(project_root: str, api_key: str,
 
     A start that fails must not leave a tunnel behind it (Fixes #309). Only the
     tunnel this invocation created is removed — an existing tunnel recorded in
-    tunnel.json is someone else's and stays. The local record is cleared too, so
-    the next attempt provisions afresh rather than running cloudflared against a
-    token whose tunnel is gone. Deprovision failures are reported but not
-    re-raised: the start already failed, and the operator still needs the
-    original error, not a second one.
+    tunnel.json is someone else's and stays. The local record is cleared only
+    after successful deprovision. On failure retain the exact target and token
+    for the deliberate delete recovery path.
     """
     hostname = tunnel_config.get("hostname")
-    _delete_tunnel_file(project_root)
     if not hostname:
         return
     try:
         _deprovision_tunnel(api_key, hostname)
+        _delete_tunnel_file(project_root)
         print(f"Rolled back tunnel: {hostname}", file=sys.stderr)
     except RuntimeError as e:
+        tunnel_config["recovery"] = {"action": "delete", "hostname": hostname}
+        _save_tunnel_config(project_root, tunnel_config)
         print(f"Warning: could not roll back tunnel {hostname}: {e}",
+              file=sys.stderr)
+        print(f"Retry cleanup deliberately with: snodo serve --tunnel --delete --hostname {hostname}",
               file=sys.stderr)
 
 
@@ -1306,17 +1308,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                                                   tunnel_config)
         return 1
 
-    # Bind confirmed: only now is the tunnel announced as active, and only now
-    # is its URL handed to the operator.
-    _warn_if_unservable_hostname(tunnel_config["hostname"])
-    if newly_provisioned:
-        _print_first_run_info(tunnel_config["hostname"], auth_methods, provisioned)
-    else:
-        print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
-        print(f"  Authentication: {', '.join(auth_methods)} (any accepted mechanism)")
-        print()
-
-    # 6. Start cloudflared
+    # 6. Start cloudflared only after the local listener is ready.
     cf_cmd = ["cloudflared", "tunnel", "run"]
     cf_env = os.environ.copy()
     cf_env["TUNNEL_TOKEN"] = tunnel_config["tunnel_token"]
@@ -1340,8 +1332,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     _drain_stream(cf_process.stderr, sink=cf_stderr_tail, on_line=_on_cf_line)
 
     connected = False
-    deadline = time.time() + 30
-    while time.time() < deadline:
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
         if cf_connected.is_set():
             connected = True
             break
@@ -1354,9 +1346,32 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             break
         time.sleep(0.1)
 
-    if not connected and cf_process.poll() is None:
-        # Still running, just didn't see the connect line yet — proceed
-        pass
+    if not connected:
+        print("Error: cloudflared did not confirm a registered tunnel connection within 30 seconds.",
+              file=sys.stderr)
+        stderr_output = _captured_stderr(cf_process, cf_stderr_tail)
+        if stderr_output:
+            _forward_child_line(stderr_output, sys.stderr, verbose_secrets) if verbose else print(stderr_output, file=sys.stderr)
+        elif cf_process.poll() is not None:
+            print(f"cloudflared exited with code {cf_process.returncode} before registration.",
+                  file=sys.stderr)
+        else:
+            print("cloudflared is still running but has not registered; check network access and retry.",
+                  file=sys.stderr)
+        _terminate_process_group(cf_process)
+        _terminate_process_group(mcp_process)
+        if newly_provisioned:
+            _deprovision_newly_provisioned_tunnel(project_root, api_key, tunnel_config)
+        return 1
+
+    # A live URL proves both the local bind and registration with Cloudflare.
+    _warn_if_unservable_hostname(tunnel_config["hostname"])
+    if newly_provisioned:
+        _print_first_run_info(tunnel_config["hostname"], auth_methods, provisioned)
+    else:
+        print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
+        print(f"  Authentication: {', '.join(auth_methods)} (any accepted mechanism)")
+        print()
 
     print("Press Ctrl+C to stop.")
 
