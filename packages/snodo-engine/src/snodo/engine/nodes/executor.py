@@ -49,6 +49,8 @@ class ExecutorMixin:
         if workspace_mcp and getattr(coder, "workspace_mcp", None) is None:
             coder.workspace_mcp = workspace_mcp
 
+        coder.protocol = getattr(self, "protocol", None)
+
         coder._job_id = self._job_id or self._session_id or ""
         coder._task_id = task.id
         coder._depth = getattr(task, "depth", 0) or 0

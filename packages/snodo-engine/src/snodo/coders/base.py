@@ -36,6 +36,34 @@ def _issue_numbers(text: str) -> set[str]:
     }
 
 
+def protected_paths_notice(
+    protocol: Any = None,
+    workspace: Any = None,
+    extra_paths: Any = None,
+) -> str:
+    """Return the shared advisory naming paths the engine will refuse.
+
+    Advisory only: the post-execution diff guard and the state-directory
+    mutation guard remain the enforcement (ADR 049, ADR 058).
+    """
+    declared = list(getattr(protocol, "protected_paths", None) or [])
+    paths = list(dict.fromkeys([*(extra_paths or []), *declared, ".snodo/"]))
+    local_home = (
+        get_project_local_home_rel(workspace) if workspace is not None else None
+    )
+    if local_home:
+        candidate = local_home.rstrip("/") + "/"
+        if candidate not in paths:
+            paths.append(candidate)
+    return (
+        "## Paths the Engine Will Refuse\n"
+        "The engine will refuse changes to these paths after your work is checked. "
+        "This is a warning, not a sandbox or access restriction; files may remain "
+        "readable and writable:\n"
+        + "\n".join(f"- `{path}`" for path in paths)
+    )
+
+
 # CoderAdapter is the canonical name for the coder interface.
 # It's an alias for the core Coder ABC to provide a clearer name
 # in the adapter context while maintaining interface compatibility.

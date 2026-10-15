@@ -25,7 +25,12 @@ from typing import Any, Optional
 import httpx
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
-from snodo.coders.base import CoderUnavailableError, InPlaceCoderAdapter, LLMCallError
+from snodo.coders.base import (
+    CoderUnavailableError,
+    InPlaceCoderAdapter,
+    LLMCallError,
+    protected_paths_notice,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -472,6 +477,11 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
             parts.append("")
 
         parts.append(f"## Task\n{spec.description}")
+
+        parts.extend(["", protected_paths_notice(
+            getattr(self, "protocol", None), getattr(self, "_workspace", None),
+            getattr(self, "protected_paths", None),
+        )])
 
         if spec.constraints:
             parts.append("\n## Constraints")
