@@ -12,6 +12,8 @@ Covers:
 """
 
 import shutil
+import os
+import shlex
 import subprocess
 import tempfile
 from pathlib import Path
@@ -29,6 +31,11 @@ from snodo.validators.quality import (
 )
 
 # === Fixtures ===
+
+def _mock_process(result):
+    process = MagicMock(returncode=result.returncode)
+    process.communicate.return_value = (result.stdout.encode(), result.stderr.encode())
+    return process
 
 @pytest.fixture
 def project_dir():
@@ -403,15 +410,15 @@ class TestQualityValidatorEvaluate:
         qv = QualityValidator(quality_spec, project_dir)
         mock_result = MagicMock(returncode=0, stdout="1 passed\n", stderr="")
 
-        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result) as run:
+        with patch("snodo.validators.quality._Popen", return_value=_mock_process(mock_result)) as popen:
             qv.evaluate()
             qv._rerun_failed_tests_on_base(
                 "pytest -q", "FAILED tests/test_sample.py::test_it\n", "",
                 SimpleNamespace(base_ref="base-sha", audit_log=None),
             )
 
-        assert len(run.call_args_list) == 6
-        for call in run.call_args_list:
+        assert popen.call_count == 1
+        for call in popen.call_args_list:
             env = call.kwargs["env"]
             assert all(key not in env for key in JOB_CONTEXT_ENV_VARS)
             assert env["QUALITY_ENV_SENTINEL"] == "preserved"
@@ -420,7 +427,7 @@ class TestQualityValidatorEvaluate:
         qv = QualityValidator(quality_spec, project_dir)
         mock_result = MagicMock(returncode=0, stdout="5 passed\n", stderr="")
         with patch.object(qv, "_tracked_worktree_is_clean", return_value=True), patch(
-            "snodo.validators.quality.subprocess.run", return_value=mock_result
+            "snodo.validators.quality._Popen", return_value=_mock_process(mock_result)
         ):
             result = qv.evaluate()
             assert result.severity == "pass"
@@ -467,8 +474,8 @@ class TestQualityValidatorEvaluate:
         with patch.object(qv, "_tracked_worktree_is_clean", return_value=True), patch.object(
             qv, "_resolve_commit_hash", side_effect=commit_hash
         ), patch(
-            "snodo.validators.quality.subprocess.run",
-            return_value=MagicMock(returncode=0, stdout="5 passed\n", stderr=""),
+            "snodo.validators.quality._Popen",
+            return_value=_mock_process(MagicMock(returncode=0, stdout="5 passed\n", stderr="")),
         ):
             result = qv.evaluate(context)
 
@@ -573,7 +580,7 @@ class TestQualityValidatorEvaluate:
 
     def test_command_not_found_is_operational_error(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
-        with patch("snodo.validators.quality.subprocess.run", side_effect=FileNotFoundError):
+        with patch("snodo.validators.quality._Popen", side_effect=FileNotFoundError):
             result = qv.evaluate()
             assert result.error is True
             assert result.severity == "blocker"
@@ -582,13 +589,41 @@ class TestQualityValidatorEvaluate:
     def test_timeout_is_operational_error(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
         with patch(
-            "snodo.validators.quality.subprocess.run",
+            "snodo.validators.quality._Popen",
             side_effect=subprocess.TimeoutExpired(cmd="pytest", timeout=300),
         ):
             result = qv.evaluate()
             assert result.error is True
             assert result.severity == "blocker"
             assert "timed out" in result.justification
+
+    def test_timeout_preserves_output_and_kills_process_group(self, project_dir):
+        from snodo.infrastructure.audit import AuditLog
+
+        child_pid_file = Path(project_dir) / "child.pid"
+        script = (
+            "import subprocess, sys, time; "
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+            f"open({str(child_pid_file)!r}, 'w').write(str(child.pid)); "
+            "print('gate reached slow step', flush=True); time.sleep(30)"
+        )
+        spec = Validator(
+            validator_id="quality", validator_type="quality",
+            tooling={"test_command": f"python -c {shlex.quote(script)}", "timeout": 0.3},
+        )
+        audit = AuditLog(str(Path(project_dir) / "audit.log"))
+        result = QualityValidator(spec, project_dir).evaluate(SimpleNamespace(audit_log=audit))
+
+        assert result.error is True
+        assert result.severity == "blocker"
+        assert "gate reached slow step" in result.justification
+        assert "timed out" in result.justification
+        event = audit.get_history("verification_executed")[0]
+        assert event.data["outcome"] == "error"
+        assert "gate reached slow step" in event.data["output_tail"]
+        assert "Timeout after 0.3s" in event.data["output_tail"]
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(child_pid_file.read_text()), 0)
 
     def test_no_test_command_runs_noop_and_records_no_tests(self, quality_spec_no_tooling, project_dir):
         """When no test command can be determined, the shipped no-op default
@@ -647,7 +682,7 @@ class TestQualityValidatorEvaluate:
         mock_result = MagicMock(
             returncode=127, stdout="", stderr="/bin/sh: pytest: command not found\n",
         )
-        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result):
+        with patch("snodo.validators.quality._Popen", return_value=_mock_process(mock_result)):
             result = qv.evaluate()
             assert result.error is True
             assert result.severity == "blocker"
@@ -659,7 +694,7 @@ class TestQualityValidatorEvaluate:
         mock_result = MagicMock(
             returncode=126, stdout="", stderr="/bin/sh: pytest: Permission denied\n",
         )
-        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result):
+        with patch("snodo.validators.quality._Popen", return_value=_mock_process(mock_result)):
             result = qv.evaluate()
             assert result.error is True
             assert result.severity == "blocker"
@@ -681,7 +716,7 @@ class TestQualityValidatorEvaluate:
     def test_stderr_used_when_no_stdout(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
         mock_result = MagicMock(returncode=1, stdout="", stderr="Error: compilation failed\n")
-        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result):
+        with patch("snodo.validators.quality._Popen", return_value=_mock_process(mock_result)):
             result = qv.evaluate()
             assert result.severity == "blocker"
             assert "compilation failed" in result.justification
