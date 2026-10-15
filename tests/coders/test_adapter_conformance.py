@@ -326,7 +326,8 @@ def test_declared_capabilities_are_present_on_every_adapter(name):
 
     The engine injects capabilities unconditionally, never behind a hasattr
     guard (#68): workspace_mcp, progress_callback, _job_id, _task_id, model,
-    and the two behavioural switches. A registered adapter must expose them
+    the protocol context, and the two behavioural switches. A registered
+    adapter must expose them
     (via its own attributes or inherited base-class defaults) so that "this
     adapter does not support X" is a visible fact — a missing attribute here
     means the engine would silently skip the adapter, which is the exact
@@ -339,6 +340,8 @@ def test_declared_capabilities_are_present_on_every_adapter(name):
         "_job_id",
         "_task_id",
         "model",
+        "protocol",
+        "protected_paths",
         "skip_workspace_write",
         "skip_engine_commit",
     ]
@@ -397,3 +400,32 @@ def test_progress_callback_is_injected_unconditionally():
     assert coder.progress_callback is _progress
     assert coder._job_id == "job_x"
     assert coder._task_id == "t_x"
+
+
+def test_protocol_context_is_injected_as_a_declared_capability():
+    """The prompt guidance reads ``coder.protocol`` and
+    ``coder.protected_paths``, so the engine sets both on every adapter.
+    An attribute nothing assigns is the duck-typed seam #908 closes: the
+    guidance would silently render as though the protocol declared nothing."""
+    from types import SimpleNamespace
+
+    from snodo.coders.mock import MockAdapter
+
+    harness = _ExecutorHarness()
+    harness.protocol = SimpleNamespace(protected_paths=["docs/adr/**", "secrets.yml"])
+    coder = MockAdapter()
+    harness._prepare_coder(coder, None, Task(id="t_p", spec="s"))
+
+    assert coder.protocol is harness.protocol
+    assert coder.protected_paths == ("docs/adr/**", "secrets.yml")
+
+
+def test_protocol_context_defaults_to_nothing_declared():
+    from snodo.coders.mock import MockAdapter
+
+    harness = _ExecutorHarness()
+    coder = MockAdapter()
+    harness._prepare_coder(coder, None, Task(id="t_n", spec="s"))
+
+    assert coder.protocol is None
+    assert coder.protected_paths == ()

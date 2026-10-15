@@ -61,6 +61,16 @@ class Coder(ABC):
     #: Model identifier the adapter is bound to. Used for default-model
     #: resolution and coder-respawn checks; may be empty on simple adapters.
     model: str = ""
+    #: Protocol for the current run, injected by the engine before dispatch so
+    #: an adapter can render protocol guidance in its prompt. Declared here
+    #: rather than duck-typed at the assignment site: adapters read it, so a
+    #: missing capability must be a visible fact (#908, ADR 035).
+    #: None = no protocol context injected; the adapter renders no guidance.
+    protocol: Optional[Any] = None
+    #: Paths the protocol declares protected, injected with the protocol.
+    #: Empty = the protocol declares none; engine state under ``.snodo/`` is
+    #: refused regardless of what a protocol declares.
+    protected_paths: tuple = ()
     #: When True, the coder has access to and observes test execution feedback
     #: during implementation (e.g. LiteLLMAdapter with test runner access).
     #: Default False: the coder does not observe tests.
