@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-validator-tool-jev"
-version = "0.24.0"
+version = "0.25.0"
 description = "TypeSafe Jev decision tool for Snodo validators"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["snodo-engine==0.24.0", "httpx>=0.27.0"]
+dependencies = ["snodo-engine==0.25.0", "httpx>=0.27.0"]
 
 [project.entry-points."snodo.validator_tools"]
 decide = "snodo_validator_tool_jev:tool"
