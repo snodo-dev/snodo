@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. Superseded on the comparison basis and coder guidance by [ADR 058](058-protected-path-advisory-guidance-and-merge-base-detection.md); this record remains the history of the detection-first decision.
 
 ## Context
 
