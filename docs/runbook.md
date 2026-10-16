@@ -201,8 +201,12 @@ Unknown keys report the rejected key. Secret fields are redacted by `config
 get`; provider credentials can also be managed with `snodo config add` and
 `snodo config remove`.
 
-Anthropic, OpenAI, Google, OpenRouter, DeepSeek and Cloudflare Workers AI have
-built-in provider configuration. `litellm_provider: openai` is what makes an
+The built-in providers—[Anthropic](providers/anthropic.md),
+[OpenAI](providers/openai.md), [Google](providers/google.md),
+[OpenRouter](providers/openrouter.md), [DeepSeek](providers/deepseek.md), and
+[Cloudflare Workers AI](providers/cloudflare.md)—have built-in provider
+configuration. For [Ollama](providers/ollama.md) and [OpenCode Go](providers/opencode-go.md),
+see their setup guides. `litellm_provider: openai` is what makes an
 arbitrary compatible endpoint work: snodo rewrites `ollama/<model>` to
 `openai/<model>` and sends it to `base_url`. Omit `api_key_env` for a local
 server that needs no key. This covers Ollama Cloud, a local Ollama or
