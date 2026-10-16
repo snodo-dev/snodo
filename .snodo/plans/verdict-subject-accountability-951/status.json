@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_verdict_names_its_subject": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2187646cf04aba6a"
+    },
+    "2.1_reuse_provenance": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "47904a37b7712f26"
+    },
+    "3.1_restore_removed_explanation": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8f30690f7b6a5986"
+    }
+  },
+  "integration": {
+    "branch": "plan/verdict-subject-accountability-951/integration",
+    "base_sha": "c5b1e4ec8ebb6730f7aa04258eae71357b6876ef"
+  }
+}

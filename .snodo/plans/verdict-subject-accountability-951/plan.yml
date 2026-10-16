@@ -1,0 +1,19 @@
+intent: A validator verdict that is about something other than the task under judgement
+  can no longer be counted as a pass by the quorum, and a verdict reused from the
+  project's verdict cache records the subject it was reused from.
+name: verdict-subject-accountability-951
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_verdict_names_its_subject
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_reuse_provenance
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_restore_removed_explanation
