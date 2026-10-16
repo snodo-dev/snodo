@@ -204,7 +204,14 @@ class QualityValidator(ValidatorBase):
         return None
 
     def _get_timeout(self) -> float:
-        """Get timeout from tooling config or default."""
+        """Get timeout from tooling config or default.
+
+        The timeout is the upper bound in seconds for the quality gate.  It
+        is enforced with ``subprocess.TimeoutExpired`` and is deliberately
+        independent of any *test runner*–level timeout (for example,
+        ``pytest-timeout``).  This ensures the gate terminates even when the
+        test runner or individual tests have no per-test timeout configured.
+        """
         tooling = self.validator_spec.tooling
         if tooling and tooling.get("timeout"):
             return float(tooling["timeout"])
