@@ -49,7 +49,12 @@ class ExecutorMixin:
         if workspace_mcp and getattr(coder, "workspace_mcp", None) is None:
             coder.workspace_mcp = workspace_mcp
 
-        coder.protocol = getattr(self, "protocol", None)
+        protocol = getattr(self, "protocol", None)
+        coder.protocol = protocol
+        # Declared alongside the protocol on the Coder ABC so the prompt
+        # guidance has a visible source instead of an attribute nothing sets
+        # (#908). A protocol that declares none yields an empty tuple.
+        coder.protected_paths = tuple(getattr(protocol, "protected_paths", None) or ())
 
         coder._job_id = self._job_id or self._session_id or ""
         coder._task_id = task.id

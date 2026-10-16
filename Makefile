@@ -189,8 +189,8 @@ deploy-docs: docs
 # the point of GATE_NAME; several taking the host down is not. GATE_SLOTS
 # gates share a host at once through flock slots under GATE_ROOT, so a burst
 # of abandoned-plus-live runs waits instead of oversubscribing the box until a
-# login shell takes tens of seconds. Waiting is silent; a clean gate prints
-# exactly what it always did.
+# login shell takes tens of seconds. The remote wrapper reports slot wait
+# progress on stderr, separately from the machine-readable gate output.
 
 GATE_HOST ?= yprift01@192.168.0.104
 GATE_HOME ?= /home/yprift01
