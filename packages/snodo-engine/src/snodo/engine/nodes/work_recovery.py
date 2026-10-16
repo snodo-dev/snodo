@@ -5,9 +5,10 @@ import os
 from typing import Any, Optional
 
 from snodo.infrastructure.worktree import _name_component
-from snodo.tools.git import resolve_base_branch
 
-_logger = logging.getLogger(__name__)
+# This is an executor probe even though its implementation lives separately.
+# Keep the diagnostic channel stable for operators and log consumers.
+_logger = logging.getLogger("snodo.engine.nodes.executor")
 
 
 def existing_task_branch_work(
@@ -30,12 +31,21 @@ def existing_task_branch_work(
     try:
         repo = git_mcp.repo
         branch = repo.active_branch.name
-        if not executor._active_branch_is_task_branch(branch):
-            return None
-        head = repo.head.commit
+    except Exception as exc:
+        _logger.warning(
+            "Work-recovery probe: active branch name unreadable, "
+            "skipping recovery: %s: %s", type(exc).__name__, exc,
+        )
+        return None
+    if not executor._active_branch_is_task_branch(branch):
+        return None
 
-        # Compare the exact snapshot, not its merge-base: inherited waves are
-        # already in this commit. A retry may still have older task-owned work.
+    # Resolve through the public module at call time, preserving the tool's
+    # failure-injection seam as well as its diagnostic reason.
+    from snodo.tools.git import resolve_base_branch
+
+    try:
+        head = repo.head.commit
         start = (refs_before or {}).get(branch)
         if start:
             try:
@@ -52,39 +62,64 @@ def existing_task_branch_work(
             target = f"plan/{_name_component(plan)}/integration"
         if not plan:
             target = resolve_base_branch(str(git_mcp.project_root))
-        try:
-            bases = repo.merge_base(repo.commit(target), head)
-            if not bases:
-                raise ValueError("No merge-base with task merge target")
-            anchor = bases[0]
-        except Exception as exc:
-            _logger.warning("Work-recovery probe: task merge target unresolved: %s", exc)
-            fallback = base_ref or resolve_base_branch(str(git_mcp.project_root))
-            bases = repo.merge_base(repo.commit(fallback), head)
-            if bases and _paths(bases[0], head):
-                # The probe failed to establish ownership. This is an
-                # inspection failure, not a work_already_present assertion.
-                executor._audit("execution_failed", {
-                    "op": "work_recovery_probe",
-                    "task_ref": getattr(task, "id", None),
-                    "base_ref": bases[0].hexsha,
-                    "verdict": "ambiguous",
-                    "error": "Work recovery ambiguous: task merge target unresolved",
-                })
-                executor._progress(
-                    "  Work-recovery probe is ambiguous: only the plan base "
-                    "could be resolved; branch history is not evidence of "
-                    "this run's output."
-                )
-            return None
-        paths = _paths(anchor, head)
-        return (anchor.hexsha, paths) if paths else None
+        target_commit = repo.commit(target)
     except Exception as exc:
         _logger.warning(
             "Work-recovery probe: branch/base inspection failed, "
             "skipping recovery: %s: %s", type(exc).__name__, exc,
         )
+        _ambiguous_fallback(executor, git_mcp, base_ref, task)
         return None
+
+    try:
+        # The common case needs no merge-base subprocess. Besides avoiding
+        # unnecessary work, keep ancestry failures distinguishable from an
+        # unresolvable branch name.
+        if repo.is_ancestor(target_commit, head):
+            anchor = target_commit
+        else:
+            bases = repo.merge_base(target_commit, head)
+            if not bases:
+                _ambiguous_fallback(executor, git_mcp, base_ref, task)
+                return None
+            anchor = bases[0]
+        paths = _paths(anchor, head)
+        return (anchor.hexsha, paths) if paths else None
+    except Exception as exc:
+        _logger.warning(
+            "Work-recovery probe: ancestry/diff inspection failed, "
+            "skipping recovery: %s: %s", type(exc).__name__, exc,
+        )
+        return None
+
+
+def _ambiguous_fallback(executor: Any, git_mcp: Any, base_ref: Optional[str], task: Any) -> None:
+    """A historical base can explain a diff, but cannot establish ownership."""
+    from snodo.tools.git import resolve_base_branch
+
+    try:
+        repo = git_mcp.repo
+        fallback = base_ref or resolve_base_branch(str(git_mcp.project_root))
+        bases = repo.merge_base(repo.commit(fallback), repo.head.commit)
+        if not bases or not _paths(bases[0], repo.head.commit):
+            return
+        executor._audit("execution_failed", {
+            "op": "work_recovery_probe",
+            "task_ref": getattr(task, "id", None),
+            "base_ref": bases[0].hexsha,
+            "verdict": "ambiguous",
+            "error": "Work recovery ambiguous: task merge target unresolved",
+        })
+        executor._progress(
+            "  Work-recovery probe is ambiguous: only the plan base "
+            "could be resolved; branch history is not evidence of "
+            "this run's output."
+        )
+    except Exception as exc:
+        _logger.warning(
+            "Work-recovery probe: branch/base inspection failed, "
+            "skipping recovery: %s: %s", type(exc).__name__, exc,
+        )
 
 
 def _paths(anchor: Any, head: Any) -> list[str]:

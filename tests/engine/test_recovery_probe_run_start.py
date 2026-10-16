@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from snodo.coders.base import CoderTimeoutError, TurnBudgetExhausted
-from snodo.compiler.models import Mode, Protocol, Validator
+from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import CodeArtifact
 
 from tests.engine.test_bounded_run_work_is_judged import (
@@ -24,11 +24,19 @@ def protocol():
         protocol_id="run_start", name="Run start", version="1.0.0",
         initial_mode="producer",
         modes=[Mode(mode_id="producer", name="Producer", tools=["edit"],
-                    validators=["acceptance"])],
-        validators=[Validator(
-            validator_id="acceptance", validator_type="acceptance",
-            evaluation_phase="post_execute", criteria=["Judge the branch"],
-        )],
+                    validators=["security", "acceptance"])],
+        validators=[
+            Validator(
+                validator_id="security", validator_type="security",
+                evaluation_phase="pre_execute", criteria=["Check the change"],
+            ),
+            Validator(
+                validator_id="acceptance", validator_type="acceptance",
+                evaluation_phase="post_execute", severity_cap="warn",
+                criteria=["Judge the branch"],
+            ),
+        ],
+        disagreement_policy=DisagreementPolicy.UNANIMOUS,
     )
 
 
@@ -52,13 +60,15 @@ def plan_repo(tmp_path, monkeypatch):
 
 def _run(protocol, wt, *, action=None, snapshot=True):
     coder = SimpleNamespace(
-        implement=action or (lambda spec: CodeArtifact(files=[])),
+        implement=MagicMock(side_effect=action or (lambda spec: CodeArtifact(files=[]))),
         skip_workspace_write=True, skip_engine_commit=True,
         last_read_paths=[], last_listed_dirs=[], last_findings=None,
         last_report=None,
     )
     audit = MagicMock()
     builder = _builder(protocol, str(wt), coder, _passing_validators, audit)
+    probe = MagicMock(wraps=builder._existing_task_branch_work)
+    builder._existing_task_branch_work = probe
     if not snapshot:
         real_snapshot = builder._repo_ref_snapshot
 
@@ -69,8 +79,12 @@ def _run(protocol, wt, *, action=None, snapshot=True):
 
         builder._repo_ref_snapshot = without_active_branch
     state = _state()
-    state["task"]["plan_name"] = "example"
+    state["task"].update(plan_name="example", base="main")
     result = builder.build_graph().compile().invoke(state)
+    # No assertion below may pass merely because WF3 rejected the fixture.
+    coder.implement.assert_called_once()
+    probe.assert_called_once()
+    assert probe.call_args.kwargs["task"].plan_name == "example"
     return result, audit
 
 
@@ -101,9 +115,12 @@ def test_inherited_history_does_not_hide_workspace_escape(protocol, plan_repo):
 
 def test_inherited_commits_make_no_recovered_work_claim(protocol, plan_repo, capsys):
     _, wt, _ = plan_repo
-    _, audit = _run(protocol, wt)
+    result, audit = _run(protocol, wt)
+    assert result["halt_type"] == "no_file_operations"
     assert "work_already_present" not in [c.args[0] for c in audit.append_event.call_args_list]
-    assert "earlier attempt committed" not in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "earlier attempt committed" not in output
+    assert "Work already present on the task branch" not in output
 
 
 def test_retry_recovers_its_own_previous_attempt(protocol, plan_repo):
@@ -112,6 +129,27 @@ def test_retry_recovers_its_own_previous_attempt(protocol, plan_repo):
     _git("git", "add", ".", cwd=wt)
     _git("git", "commit", "-qm", "previous attempt", cwd=wt)
     result, audit = _run(protocol, wt)
+    assert result["is_blocked"] is False
+    assert result["metadata"]["post_validation"]["outcome"] == "passed"
+    assert "feature.py" in result["artifacts"]
+    assert "earlier.py" not in result["artifacts"]
+    recovery = [c.args[1] for c in audit.append_event.call_args_list
+                if c.args[0] == "work_already_present"]
+    assert recovery[0]["base_ref"] == integration
+
+
+def test_run_start_snapshot_recovers_only_dispatch_work(protocol, plan_repo, monkeypatch):
+    _, wt, integration = plan_repo
+    # The snapshot must suffice even when the integration ref is unavailable.
+    monkeypatch.setenv("SNODO_PLAN_INTEGRATION_BRANCH", "missing-integration")
+
+    def commit_work(spec):
+        (wt / "feature.py").write_text("answer = 42\n")
+        _git("git", "add", ".", cwd=wt)
+        _git("git", "commit", "-qm", "this dispatch", cwd=wt)
+        return CodeArtifact(files=[])
+
+    result, audit = _run(protocol, wt, action=commit_work)
     assert result["is_blocked"] is False
     assert result["metadata"]["post_validation"]["outcome"] == "passed"
     assert "feature.py" in result["artifacts"]
@@ -147,5 +185,8 @@ def test_bounded_empty_run_does_not_recover_plan_history(protocol, plan_repo, bo
 
     result, audit = _run(protocol, wt, action=bounded)
     assert result["is_blocked"] is True
+    assert result["halt_type"] == (
+        "environment_error" if bound is CoderTimeoutError else "turn_budget_exhausted"
+    )
     assert result["metadata"]["post_validation"]["outcome"] == "skipped"
     assert "work_already_present" not in [c.args[0] for c in audit.append_event.call_args_list]
