@@ -12,6 +12,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Require a validator verdict to name the task it judges, reject one that names another task instead of counting it as a pass, and record the subject a cached verdict was gathered for so a reused verdict is only served to that same subject; a malformed or unusable cache record is a miss rather than a validator error. (Fixes #951)
 - Add a Cloudflare AI Gateway provider guide covering configuration, model IDs, verification and troubleshooting. (Fixes #952)
 - Link the Cloudflare AI Gateway guide from the docs navigation, the providers overview and the Workers AI guide. (Fixes #953)
+- Judge a recovery probe against the attempt it resumes rather than the plan's base branch, so a coder run that changes nothing is no longer promoted to a pass because earlier waves left work on the task branch; a multi-wave plan can no longer advance, deliver or merge on an inherited diff. (Fixes #947)
+- Supply the previous attempt's failure report to pre-execute validators as clearly separated evidence instead of concatenating it into the task description, so a retry is no longer refused for the content of its own failure record, and a pre-execute refusal that never reached the coder no longer spends a coder attempt. (Fixes #931)
+- Fix the stale and unresolvable links in the published documentation and make the docs build fail on broken links, absolute links and unrecognized references. (#955; in-page anchors still unvalidated)
 
 ## [0.26.0] — 2026-10-16
 
