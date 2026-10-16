@@ -9,9 +9,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+
 - Deliver single-wave plan runs to their integration branch and refuse unsafe checkout-target merges. (Fixes #910)
 - Keep plan and queue wave coders and MCPs rooted in each task worktree, and fail loudly if dispatch workspace identity is lost. (Fixes #911)
+- Preserve partial test output and terminate subprocess trees when quality-gate commands time out. (Fixes #786)
+- Report remote gate slot waits, progress and timeout on stderr, and use signal-based pytest timeouts so hung tests leave tracebacks. (Fixes #787)
+- Bump the `mcp` dependency to 1.30.0 to clear GHSA-84m7-p3x7-pcfv (unbounded session accumulation in the StreamableHTTP transport).
 - Make managed tunnels OAuth-only, enforce bearer checks for legacy tunnel records, and remove retired service-token rotation. (Fixes #901)
+- Name the paths the engine will refuse to CLI coders before they run, and compare the task branch against its merge base with the base branch afterwards, so changes replayed by a rebase are no longer blamed on the task. (Fixes #907)
+- Fix-forward on that guidance: `protocol` and `protected_paths` are declared coder capabilities the engine injects instead of attributes adapters only read, the prompt separates always-refused engine state from protocol declarations, and the rebase attribution is now tested against real git history. (Fixes #908)
 ## [0.25.0] — 2026-10-15
 
 - Use OAuth-only authentication for managed tunnels; reject service-token auth and ignore legacy saved auth settings. (Fixes #901)

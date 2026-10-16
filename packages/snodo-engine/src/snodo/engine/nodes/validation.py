@@ -10,8 +10,21 @@ from snodo.coders.base import (
     TurnBudgetExhausted,
 )
 from snodo.infrastructure.tokens import TokenStoreError
+from snodo.tools.git import resolve_base_branch
 from snodo.engine.policy import PolicyAction, policy_decision_to_dict
 from snodo.engine.nodes.writeback import _coder_registry_name
+
+
+def _resolved_base_branch(project_root: Any) -> str:
+    """Return the repository's base branch, or "" when it cannot be resolved.
+
+    An unresolvable base branch is not an error: the guard still has the
+    captured base ref to work from, it just cannot prove a newer fork point.
+    """
+    try:
+        return resolve_base_branch(str(project_root))
+    except Exception:
+        return ""
 
 
 class ValidationNodeMixin:
@@ -656,14 +669,13 @@ class ValidationNodeMixin:
             return None
         try:
             head = self.git_mcp.get_head_sha()
-            # A task branch may have been rebased onto newer base-branch
-            # commits since base_ref was captured. Diff from the common
-            # ancestor so those incoming commits are not attributed to this task.
-            merge_bases = self.git_mcp.repo.merge_base(
-                self.git_mcp.repo.commit(loop_state.base_ref),
-                self.git_mcp.repo.commit(head),
-            )
-            comparison_base = merge_bases[0].hexsha if merge_bases else loop_state.base_ref
+            # A task branch rebased onto newer base-branch commits makes the
+            # captured base_ref an *ancestor* of HEAD, so
+            # merge_base(base_ref, HEAD) returns base_ref itself and the
+            # replayed incoming history is still blamed on the task. Take the
+            # merge-base with the live base branch instead: it is the true
+            # fork point whether or not the branch was rebased.
+            comparison_base = self._task_fork_point(loop_state, head)
             changed = self.git_mcp.changed_paths_between_refs(
                 comparison_base, head
             )
@@ -693,6 +705,38 @@ class ValidationNodeMixin:
                 "Protected path changed in the task branch: " + ", ".join(touched)
             ),
         )
+
+    def _task_fork_point(self, loop_state: LoopState, head: str) -> str:
+        """Return the ref a task branch's own changes should be diffed from.
+
+        ``base_ref`` is where the task started, which is not always the fork
+        point: rebasing onto newer base-branch commits leaves ``base_ref`` an
+        ancestor of HEAD, so diffing from it counts the replayed incoming
+        commits as task changes. The merge-base with the live base branch is
+        the true fork point whether or not a rebase happened; ``base_ref`` is
+        the fallback when that branch cannot be resolved.
+        """
+        candidates = [ref for ref in (
+            _resolved_base_branch(self.git_mcp.project_root),
+            loop_state.base_ref,
+        ) if ref]
+        for ref in candidates:
+            try:
+                merge_bases = self.git_mcp.repo.merge_base(
+                    self.git_mcp.repo.commit(ref),
+                    self.git_mcp.repo.commit(head),
+                )
+            except Exception:
+                # An unusable base-branch tip (e.g. only tracked remotely) is a
+                # reason to try the captured ref, not a reason to stop checking.
+                # Ancestry failing for the captured ref itself is: the guard
+                # must not blame the task for a diff it cannot compute.
+                if ref != loop_state.base_ref:
+                    continue
+                raise
+            if merge_bases:
+                return merge_bases[0].hexsha
+        return loop_state.base_ref
 
     def _detect_validator_contradictions(
         self, loop_state: LoopState, results: List[ValidatorResult]

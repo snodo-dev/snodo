@@ -479,8 +479,7 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         parts.append(f"## Task\n{spec.description}")
 
         parts.extend(["", protected_paths_notice(
-            getattr(self, "protocol", None), getattr(self, "_workspace", None),
-            getattr(self, "protected_paths", None),
+            self.protocol, self._workspace, self.protected_paths,
         )])
 
         if spec.constraints:
