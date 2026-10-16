@@ -18,6 +18,7 @@ from snodo.coders import LiteLLMAdapter, MockAdapter
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.tools.git import GitMCP
 from snodo.engine.state import _task_branch_name, _branch_exists
+from snodo.engine.nodes.work_recovery import existing_task_branch_work
 from snodo.infrastructure.worktree import worktree_dir
 
 _logger = logging.getLogger(__name__)
@@ -40,24 +41,13 @@ class ExecutorMixin:
     """Mixin providing executor node capabilities to GraphBuilder."""
 
     def _prepare_coder(self, coder: Any, workspace_mcp: Optional[Any], task: Task) -> None:
-        """Inject workspace and thread tracking IDs into coder.
-
-        The coder capability surface is DECLARED on the Coder ABC (base-class
-        defaults), so these assignments are unconditional — never behind a
-        ``hasattr`` guard (docs/architecture/coder-adapter-contract.md §3.1,
-        #68). A coder that does not support a capability inherits a visible
-        default rather than being silently skipped.
-        """
+        """Inject workspace, protocol capabilities and tracking IDs into coder."""
         if workspace_mcp and getattr(coder, "workspace_mcp", None) is None:
             coder.workspace_mcp = workspace_mcp
 
         protocol = getattr(self, "protocol", None)
         coder.protocol = protocol
-        # Declared alongside the protocol on the Coder ABC so the prompt
-        # guidance has a visible source instead of an attribute nothing sets
-        # (#908). A protocol that declares none yields an empty tuple.
         coder.protected_paths = tuple(getattr(protocol, "protected_paths", None) or ())
-
         coder._job_id = self._job_id or self._session_id or ""
         coder._task_id = task.id
         coder._depth = getattr(task, "depth", 0) or 0
@@ -65,20 +55,10 @@ class ExecutorMixin:
         coder.progress_callback = getattr(self, "_progress", None)
 
     def _record_coder_run_facts(self, coder: Any, code_artifact: Any = None) -> None:
-        """Record the coder run's own facts on the builder for the halt payload.
-
-        These are per-run facts, overwritten on every dispatch so a field a
-        human reads to understand a halt can never carry a previous attempt's
-        output (Fixes #281). ``code_artifact`` is absent when the coder raised;
-        the coder's own attributes then carry whatever it produced.
-        """
+        """Record this dispatch's facts, never a previous attempt's output."""
         metadata = getattr(code_artifact, "metadata", None)
         metadata = metadata if isinstance(metadata, dict) else {}
         self._last_commit_reason = getattr(coder, "last_commit_reason", None)
-        # Which binary produced the run. Recorded per-run from the coder's own
-        # resolution (or its artifact metadata) so a halt payload is specific
-        # enough to tell two installations of the same tool apart after the
-        # fact (Fixes #290). Absent for coders that invoke no program.
         self._last_coder_binary = (
             getattr(coder, "last_binary_path", "") or metadata.get("coder_binary", "")
         )
@@ -147,7 +127,6 @@ class ExecutorMixin:
             from snodo.coders.report import CoderReport
             self._last_coder_report = CoderReport(stop_reason="completed", findings=findings)
 
-
     def _recover_bounded_run_work(
         self,
         git_mcp: Optional[Any],
@@ -156,30 +135,19 @@ class ExecutorMixin:
         *,
         turn_budget: bool = False,
         base_ref: Optional[str] = None,
+        refs_before: Optional[Dict[str, str]] = None,
+        task: Optional[Task] = None,
     ) -> Optional[List[str]]:
-        """Carry work a bounded run could not submit into post-execute validation.
+        """Carry committed work into validation after either anticipated bound.
 
-        A run that hits a bound — the clock or its turn budget — is a bounded,
-        anticipated outcome, not a coder fault: the coder ran out of time or
-        turns to *submit*, not to write, so the files it produced are on disk
-        either way. Before assuming the work is absent, ask the task-branch
-        probe #281 built whether it is already committed (an earlier attempt's
-        commit, or this run's own commit the adapter's readback missed). Work
-        found there is carried into post-execute validation exactly as freshly
-        produced work would be, so the judges decide instead of the engine
-        assuming.
-
-        Returns the artifact list to return from the executor when recoverable
-        work was found, or ``None`` when the branch holds nothing — the caller
-        then reports the bounded outcome under its own halt. BOTH bounded
-        exceptions route through THIS method so the two paths cannot drift
-        apart (Fixes #282). ``turn_budget`` records for the run's own payload
-        which bound was hit, so a recovered run that passes is still reported
-        as having hit its turn budget rather than proceeding silently.
+        Both bounds use the same provenance probe as the empty-artifact path;
+        inherited plan history must not turn a bounded empty run into a pass.
         """
         self._record_coder_run_facts(coder)
         self._last_turn_budget_exhausted = turn_budget
-        existing = self._existing_task_branch_work(git_mcp, base_ref)
+        existing = self._existing_task_branch_work(
+            git_mcp, base_ref, refs_before=refs_before, task=task,
+        )
         if existing is None:
             return None
         self._last_existing_work_base_ref = existing[0]
@@ -198,13 +166,7 @@ class ExecutorMixin:
                 git_mcp.create_branch(branch_name)
 
     def _apply_file_operations(self, workspace_mcp: Any, coder: Any, code_artifact: Any, task: Task) -> List[str]:
-        """Apply file write/delete operations and return affected paths.
-
-        Returns an empty list when the coder emitted no file operations; the
-        caller decides what an empty result means (see ``_default_executor``,
-        which raises ``NoFileOperationsError`` only when the work does not
-        exist anywhere on the branch, #221).
-        """
+        """Apply file write/delete operations and return affected paths."""
         artifact_paths = []
         for file_op in code_artifact.files:
             if file_op.action == "delete":
@@ -217,118 +179,23 @@ class ExecutorMixin:
                 if not coder.skip_workspace_write:
                     workspace_mcp.write_file(file_op.path, file_op.content)
             artifact_paths.append(file_op.path)
-
         return artifact_paths
 
     def _existing_task_branch_work(
-        self, git_mcp: Optional[Any], base_ref: Optional[str] = None
+        self, git_mcp: Optional[Any], base_ref: Optional[str] = None,
+        *, refs_before: Optional[Dict[str, str]] = None, task: Optional[Task] = None,
     ) -> Optional[tuple]:
-        """Return work already committed to the task branch that the base lacks.
-
-        Within a single run the coder adapter distinguishes "committed its
-        work" from "did nothing" by diffing the HEAD recorded before dispatch
-        against HEAD after. Across runs that comparison is blind: when a retry
-        executes on a task branch that already carries an earlier attempt's
-        commit (the attempt committed its work and then the run failed
-        afterwards), this run's starting HEAD already contains that work. The
-        coder finds the work present, correctly writes nothing, HEAD does not
-        move, and the start..end diff is empty — so the run is misreported as
-        no_file_operations even though the task is done and the result is
-        sitting on the branch in front of it.
-
-        Compare against the branch's base as well — the point where the task
-        branch diverged from the branch it will merge into. When HEAD is ahead
-        of that base, the work exists. Returns ``(base_ref_sha, [paths])`` for
-        the committed work (the diff between the merge-base with the base
-        branch and HEAD), or None when there is no such work.
-
-        None is returned (and no_file_operations stands) when there is no git
-        repo, the active branch is not a task branch, or the branch is not
-        ahead of the base — a coder that produced nothing on an unchanged
-        branch is still no_file_operations.
-        """
-        if git_mcp is None:
-            return None
-        try:
-            from snodo.tools.git import resolve_base_branch
-
-            repo = git_mcp.repo
-            try:
-                branch = repo.active_branch.name
-            except Exception as e:
-                # Detached HEAD legitimately yields no branch name, but a git
-                # failure (unreadable ref, lock contention) looks identical to
-                # the caller. The distinction decides whether recoverable work
-                # is silently abandoned, so record why.
-                _logger.warning(
-                    "Work-recovery probe: active branch name unreadable, "
-                    "skipping recovery: %s: %s", type(e).__name__, e,
-                )
-                return None
-            # Only task branches hold this task's work; a degraded run on the
-            # operator's own branch must never be treated as task work. The
-            # prefix is the protocol's execution.branch_prefix (default "task"),
-            # read rather than assumed so a project that configures another
-            # prefix keeps the recovered-work guard (#222).
-            if not self._active_branch_is_task_branch(branch):
-                return None
-            head = repo.head.commit
-            base_branch = base_ref or resolve_base_branch(str(git_mcp.project_root))
-            base_commit = repo.commit(base_branch)
-        except Exception as e:
-            # None here lets the run halt as no_file_operations — a verdict
-            # about the coder's output. If the reason is a git failure rather
-            # than an unchanged branch, the verdict is unearned; say so.
-            _logger.warning(
-                "Work-recovery probe: branch/base inspection failed, "
-                "no_file_operations may be misattributed: %s: %s",
-                type(e).__name__, e,
-            )
-            return None
-
-        # If HEAD is an ancestor (or equal) of the base tip, the branch holds
-        # no work the base lacks: genuinely empty, so no_file_operations stands.
-        try:
-            if repo.is_ancestor(head, base_commit):
-                return None
-            merge_bases = repo.merge_base(base_commit, head)
-            anchor = merge_bases[0] if merge_bases else base_commit
-            if anchor.hexsha == head.hexsha:
-                return None
-            paths = []
-            for d in anchor.diff(head):
-                path = d.b_path or d.a_path
-                if path and path not in paths:
-                    paths.append(path)
-        except Exception as e:
-            _logger.warning(
-                "Work-recovery probe: ancestry/diff inspection failed, "
-                "no_file_operations may be misattributed: %s: %s",
-                type(e).__name__, e,
-            )
-            return None
-
-        if not paths:
-            return None
-        return (anchor.hexsha, sorted(paths))
+        """Probe run-start commits and previous task-owned work, not plan history."""
+        return existing_task_branch_work(
+            self, git_mcp, base_ref, refs_before=refs_before, task=task,
+        )
 
     def _task_branch_prefix(self) -> str:
-        """Return the configured task-branch prefix for the active protocol.
-
-        ``execution.branch_prefix`` (default ``"task"``) is compiled into the
-        protocol, so the guard reads it rather than hardcoding the literal: a
-        project that changes the prefix gets the same recovered-work protection,
-        and the guard must not fail silently on a supported configuration (#222).
-        Falls back to the model default only when no protocol/execution config
-        is in scope (standalone unit use), never raising.
-        """
+        """Return the configured task-branch prefix for the active protocol."""
         try:
             execution = getattr(self.protocol, "execution", None)
             prefix = getattr(execution, "branch_prefix", None) or "task"
         except Exception as e:
-            # Falling back to the default prefix is safe for execution, but a
-            # project that configured another prefix loses its recovered-work
-            # guard silently unless the protocol read failure is recorded.
             _logger.warning(
                 "Could not read execution.branch_prefix, defaulting to 'task': %s: %s",
                 type(e).__name__, e,
@@ -350,7 +217,6 @@ class ExecutorMixin:
                 git_mcp.commit(f"feat: {task.spec}")
                 git_artifacts.append("git_commit")
             except Exception as e:
-                # Git operation failed, not critical
                 git_artifacts.append(f"git_error: {str(e)}")
         return git_artifacts
 
@@ -391,9 +257,6 @@ class ExecutorMixin:
                 if not line:
                     if path is not None:
                         resolved = Path(path).resolve()
-                        # Exclude the project root itself and anything inside
-                        # the engine-managed worktree container; both are
-                        # internal checkouts.
                         if resolved != root and not resolved.is_relative_to(managed):
                             checkouts.append((resolved, branch))
                     path = branch = None
@@ -422,48 +285,33 @@ class ExecutorMixin:
     def _default_executor(
         self,
         task: Task,
-        token: ValidationToken,  # JWT-backed, from tokens.py (7.7)
+        token: ValidationToken,
         coder: Union[LiteLLMAdapter, MockAdapter],
         workspace_mcp: Optional[WorkspaceMCP],
         git_mcp: Optional[GitMCP],
         memory_summary: str = "",
         project_context: Optional[Dict[str, Any]] = None,
     ) -> List[str]:
-        """Default executor - REAL IMPLEMENTATION.
-
-        This actually:
-        1. Calls coder to generate code (returns CodeArtifact with FileArtifact list)
-        2. Iterates file operations: write or delete via workspace MCP
-        3. Stages and commits via git MCP
-        """
+        """Dispatch coder, apply its file operations and commit the artifacts."""
         artifacts = []
-
         self._prepare_coder(coder, workspace_mcp, task)
-
-        # Generate code using coder with context
         spec = TaskSpec(
             description=task.spec,
             constraints=[],
             memory_summary=memory_summary,
             project_context=project_context or {},
         )
-
         self._ensure_task_branch(git_mcp, task)
         refs_before = self._repo_ref_snapshot(git_mcp)
 
         try:
             code_artifact = coder.implement(spec)
             self._record_coder_run_facts(coder, code_artifact)
-
-            # If workspace available, process file operations
             self._last_execution_writes = [
                 file_op.path
                 for file_op in code_artifact.files
                 if getattr(file_op, "action", "write") != "delete"
             ]
-            # Paths the coder inspected this attempt (paths only, never
-            # contents) so a recovery attempt starts from where the last one
-            # looked instead of cold (#157 follow-up).
             self._last_execution_reads = {
                 "files": sorted(set(getattr(coder, "last_read_paths", []) or [])),
                 "directories": sorted(
@@ -475,9 +323,6 @@ class ExecutorMixin:
                     workspace_mcp, coder, code_artifact, task
                 )
                 if not artifact_paths:
-                    # The coder produced no file operations. Before declaring a
-                    # no_file_operations halt, ask whether the coder produced findings
-                    # (investigation / survey tasks), or work already exists on the task branch:
                     has_findings = bool(
                         _is_real_findings(self._last_findings)
                         or (
@@ -503,22 +348,17 @@ class ExecutorMixin:
                     )
                     if not has_findings:
                         existing = self._existing_task_branch_work(
-                            git_mcp, getattr(task, "base", None)
+                            git_mcp, getattr(task, "base", None),
+                            refs_before=refs_before, task=task,
                         )
+                        # Even a retry with recoverable work must not hide a
+                        # coder that escaped to another checkout this run.
+                        escaped = self._escaped_repo_commit(
+                            git_mcp, refs_before, task
+                        )
+                        if escaped:
+                            raise ExecutionError(escaped)
                         if existing is None:
-                            escaped = self._escaped_repo_commit(
-                                git_mcp, refs_before, task
-                            )
-                            if escaped:
-                                raise ExecutionError(escaped)
-                            # "Coder produced nothing" is the same fault whether the
-                            # engine commits the artifacts (skip_engine_commit False)
-                            # or the adapter commits them itself (skip_engine_commit
-                            # True). Opting out of the engine's commit mechanism does
-                            # NOT waive the obligation that the coder produce
-                            # observable work — a no-op run must fail loudly on every
-                            # adapter, not be downgraded to an audit note on some
-                            # (docs/architecture/coder-adapter-contract.md §4, #68).
                             raise NoFileOperationsError(
                                 "Coder produced no file operations: it exited 0 "
                                 "having written nothing. output_tail carries the "
@@ -530,82 +370,51 @@ class ExecutorMixin:
                                 "engine does not parse coder output to tell them "
                                 "apart (ADR 034)."
                             )
-                        # The work is already committed on the branch: carry those
-                        # artifacts forward exactly as freshly produced ones would be
-                        # so post-execute validation judges what is actually there.
-                        # There is nothing new to stage or commit, so the engine's
-                        # commit path is skipped.
+                        # Nothing new to stage: post-execute judges still
+                        # examine the committed branch as before.
                         self._last_existing_work_base_ref = existing[0]
                         artifacts.extend(existing[1])
                 else:
                     artifacts.extend(artifact_paths)
-
                     git_artifacts = self._commit_artifacts(
                         git_mcp, coder, artifact_paths, task
                     )
                     artifacts.extend(git_artifacts)
             else:
-                # No workspace, just return stub
                 artifacts.append(f"code_generated_for_{task.id}")
 
         except SnodoMutationError:
-            # A coder that writes in place mutated protected .snodo/ state.
-            # Propagate unchanged so the engine can surface a blocker halt and
-            # audit the attempt (Fixes #52) — this is a governance violation,
-            # not an execution fault.
             self._record_coder_run_facts(coder)
             raise
         except TurnBudgetExhausted:
-            # The coder ran out of turns to SUBMIT, not turns to write. A
-            # bounded, anticipated outcome — not a crash and not a validator
-            # verdict — so before reporting it, ask whether the work it
-            # produced is already committed on the task branch, exactly as the
-            # clock-bound path below does. Work found there is carried into
-            # post-execute validation so the judges decide; with nothing
-            # recoverable the exception propagates and the engine reports the
-            # bounded turn-budget outcome under its own run-level halt rather
-            # than a verdict about the code.
             recovered = self._recover_bounded_run_work(
                 git_mcp,
                 coder,
                 artifacts,
                 turn_budget=True,
                 base_ref=getattr(task, "base", None),
+                refs_before=refs_before,
+                task=task,
             )
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            if escaped:
+                raise ExecutionError(escaped)
             if recovered is not None:
                 return recovered
             raise
         except CoderTimeoutError:
-            # A run that ended on the clock. Whatever it produced is not lost:
-            # the same bounded-run work-recovery probe as the turn-budget path
-            # above asks whether the work already exists on the task branch —
-            # an earlier attempt (or this run's own commit, if the adapter's
-            # readback missed it) may have committed it. If it does, carry it
-            # into post-execute validation exactly as freshly produced work
-            # would be, so the judges decide (Fixes #281). If not, re-raise:
-            # the engine reports the operational timeout, never a blocker
-            # verdict.
             self._record_coder_run_facts(coder)
             recovered = self._recover_bounded_run_work(
-                git_mcp, coder, artifacts, base_ref=getattr(task, "base", None)
+                git_mcp, coder, artifacts, base_ref=getattr(task, "base", None),
+                refs_before=refs_before, task=task,
             )
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            if escaped:
+                raise ExecutionError(escaped)
             if recovered is not None:
                 return recovered
             raise
         except AdapterError:
-            # The coder backend itself failed: a CLI that rejected the
-            # arguments, an LLM call that errored, output that could not be
-            # parsed — and, in its CoderUnavailableError subclass, a binary
-            # missing from PATH. These are operator-fixable coder faults, not
-            # engine faults, so they propagate unchanged and the engine reports
-            # them under their own halt outcomes (``execution_error`` for coder
-            # faults, ``environment_error`` for a missing program) instead of
-            # laundering them into ``internal_error`` (Fixes #195; taxonomy in
-            # ADR 015). The environment subclass must survive this catch
-            # intact: it is what keeps a missing install from being recorded as
-            # a blocker verdict. The coder's own output tail is recorded first
-            # so THIS run's ending, not a previous attempt's, reaches the
-            # payload (Fixes #281).
             self._record_coder_run_facts(coder)
             raise
         except ExecutionError:

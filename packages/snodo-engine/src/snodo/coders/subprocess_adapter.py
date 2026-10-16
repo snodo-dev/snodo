@@ -809,7 +809,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             meta["findings"] = findings
 
         if not files:
-            _logger.warning("%s returned no files — task completed with no changes", self.binary)
+            _logger.warning("%s returned no files — no diff changes observed", self.binary)
             return CodeArtifact(files=[], metadata=meta, findings=findings)
 
         return CodeArtifact(files=files, metadata=meta, findings=findings)
