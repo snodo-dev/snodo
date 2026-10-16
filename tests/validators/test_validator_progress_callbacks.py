@@ -64,7 +64,7 @@ def test_tool_validator_turn_narration_reaches_progress_sink():
             _tool_call(
                 "c2",
                 "submit_verdict",
-                '{"severity": "pass", "justification": "Looks good"}',
+                '{"task_id": "t1", "severity": "pass", "justification": "Looks good"}',
             )
         ]),
     ])
