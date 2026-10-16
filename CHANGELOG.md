@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Keep plan and queue wave coders and MCPs rooted in each task worktree, and fail loudly if dispatch workspace identity is lost. (Fixes #911)
 - Make managed tunnels OAuth-only, enforce bearer checks for legacy tunnel records, and remove retired service-token rotation. (Fixes #901)
 ## [0.25.0] — 2026-10-15
 
