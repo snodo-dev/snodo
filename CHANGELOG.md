@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-10-16
+
 - Route recon completion requests through shared provider parameter and message-shape adaptation, including per-model reasoning-effort memory, recovery on later tool turns, and the same adaptations applied in the validator, coder and classifier. (Fixes #926, #927; related: #923, #924, #925)
 - Reset the retry budget only when a blocked task's spec is replaced through the supported plan path (hash-keyed on the recorded spec, so hand-edits do not reset), rebuild the retry prompt from the current spec, and clear both task failure and halt records on `snodo task abandon`. (Fixes #909, Fixes #943)
 - Tell dispatched CLI coders that only their task workspace counts, deny OpenCode's session-move and worktree-create tools per run, and report escaped repository work as an execution fault, distinguishing engine-managed task worktrees from external checkouts; the escape-recovery tests no longer leave live `git cat-file` children behind for the #258 leak guard to fail on. (Fixes #941)
