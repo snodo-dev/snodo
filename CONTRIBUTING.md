@@ -100,6 +100,31 @@ creating a GitHub Release. Use the **Release dry run** check to catch
 GitHub Actions environment differences before tagging; tag/CHANGELOG validation
 is performed only by the tag-triggered release workflow.
 
+### Documentation links
+
+Run `make docs` after documentation changes. It uses the deployment's
+`mkdocs.yml` and builds with `--strict`; unresolved, absolute local, and
+unrecognized local links are warnings and therefore fail the build.
+Only files served from `docs/` can be local site targets. For repository-only
+files, show the repository path as code and provide the repository URL, as the
+three example references in `docs/extending.md` do. Do not copy examples into
+the site without a drift check against their sources.
+
+To verify that link validation still fails closed:
+
+1. Run `make docs` and confirm it succeeds.
+2. Create a temporary `docs/link-validation-canary.md` (do not overwrite an
+   existing file) containing `[missing page](link-validation-missing-page.md)`.
+   Ensure the target does not exist.
+3. Run `make docs` again. Confirm it exits nonzero and reports the missing
+   `link-validation-missing-page.md` target, rather than an unrelated failure.
+4. Remove `docs/link-validation-canary.md` and run `make docs` once more.
+   Confirm the clean build succeeds, and do not commit the canary or generated
+   `site/` output.
+
+Keep the link validation levels at warning or higher; fix invalid targets
+rather than excluding documents or lowering validation to pass the build.
+
 ### Always-pass checks (local and CI)
 
 ```bash
@@ -114,7 +139,7 @@ uv run python scripts/enforce_vocabularies.py    # closed-vocabulary check
 are closed: a validator returns one of three severities, a halt resolves to a
 fixed set of outcomes, and a task carries a fixed set of statuses. The check
 reads them from the code (the `ValidatorResult.severity` annotation, the
-`_CANONICAL_HALT` map, the task-status anchors) and fails when a value appears
+`_CANONICAL_HALT` map, and the task-status anchors) and fails when a value appears
 that is not in `scripts/vocabularies_baseline.txt`. A new value is a decision,
 not an edit: write a decision record and add the baseline line in the same
 change. `--update-baseline` refuses while the check is red, so it cannot launder
