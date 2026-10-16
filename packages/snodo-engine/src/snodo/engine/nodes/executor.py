@@ -398,7 +398,7 @@ class ExecutorMixin:
             )
             escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
             if escaped:
-                raise ExecutionError(escaped)
+                raise ExecutionError(escaped) from None
             if recovered is not None:
                 return recovered
             raise
@@ -410,7 +410,7 @@ class ExecutorMixin:
             )
             escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
             if escaped:
-                raise ExecutionError(escaped)
+                raise ExecutionError(escaped) from None
             if recovered is not None:
                 return recovered
             raise
