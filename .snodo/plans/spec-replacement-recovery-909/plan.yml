@@ -1,0 +1,10 @@
+intent: 'Make a replaced blocked-task spec judge fresh: reset the attempt lineage
+  on spec change, clear both failure and halt records on abandon, and keep the two
+  oversized CLI modules under the file-size gate by extraction. Continues issue #909
+  on current main.'
+name: spec-replacement-recovery-909
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_spec_replacement_resets_attempt

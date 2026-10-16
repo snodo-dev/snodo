@@ -1,0 +1,9 @@
+intent: One gate test fails only under full-suite parallel load, and the anti-flake
+  ratchet turns that into a blocker on unrelated tasks. Make the process-group-kill
+  assertion wait for the kill instead of sampling once, without weakening it.
+name: gate-flake-timeout-test
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_gate_kill_assertion_waits

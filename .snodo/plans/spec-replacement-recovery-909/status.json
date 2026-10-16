@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_spec_replacement_resets_attempt": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f8bfea762ee2050b"
+    }
+  }
+}

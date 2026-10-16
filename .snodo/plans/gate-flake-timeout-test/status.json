@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_gate_kill_assertion_waits": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "96baedfd3738e6ae"
+    }
+  }
+}
