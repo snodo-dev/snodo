@@ -9,8 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a model-provider overview and navigation for the eight provider guides. (Fixes #938; provider guides: #929, #930, #932, #933, #934, #935, #936, #937)
 - Treat a replaced blocked-task spec as fresh validator input with a reset retry budget, and clear both task failure and halt records when abandoning a task. (Fixes #909)
-
 - Recognize canonical managed tunnel hostnames under `snodo.dev`, including conflict recovery and warnings for unservable legacy names. (Fixes #918)
 - Deliver single-wave plan runs to their integration branch and refuse unsafe checkout-target merges. (Fixes #910)
 - Keep plan and queue wave coders and MCPs rooted in each task worktree, and fail loudly if dispatch workspace identity is lost. (Fixes #911)
