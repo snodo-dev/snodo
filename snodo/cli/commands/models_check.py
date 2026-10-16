@@ -6,7 +6,7 @@ from typing import Any, Callable, Optional
 _logger = logging.getLogger(__name__)
 
 
-def run_canary_call(model: str, completion_fn: Optional[Any] = None, role: str = "validator") -> None:
+def run_canary_call(model: str, completion_fn: Optional[Any] = None, role: str = "validator") -> Optional[str]:
     """Exercise the request shape the configured role actually uses."""
     import litellm
     from snodo.config import ConfigManager
@@ -23,15 +23,18 @@ def run_canary_call(model: str, completion_fn: Optional[Any] = None, role: str =
         "model": ConfigManager.resolve_litellm_model(model),
         "messages": [{"role": "user", "content": "Reply with OK."}],
     }
+    unforced_verdict_instruction = None
     if role == "validator":
         from snodo.validators.llm_validator import LLMValidator, _UNFORCED_VERDICT_INSTRUCTION
+        unforced_verdict_instruction = _UNFORCED_VERDICT_INSTRUCTION
         kwargs["messages"] = [{"role": "user", "content": "Call submit_verdict with severity pass and justification OK."}]
         kwargs["tools"] = [LLMValidator._SUBMIT_VERDICT_DEF]
         kwargs["tool_choice"] = {"type": "function", "function": {"name": "submit_verdict"}}
-        kwargs["max_tokens"] = llm_config.validator.max_tokens
+        kwargs["max_tokens"] = min(llm_config.validator.max_tokens, 64)
     elif role == "recon":
         from snodo.recon import _READ_ONLY_TOOLS
         kwargs["tools"] = _READ_ONLY_TOOLS
+        kwargs["max_tokens"] = 64
         # Recon does not set max_tokens, temperature, or tool_choice.
     elif role == "classifier":
         classifier = llm_config.classifier
@@ -48,7 +51,7 @@ def run_canary_call(model: str, completion_fn: Optional[Any] = None, role: str =
         from snodo.recon import _READ_ONLY_TOOLS
         kwargs["tools"] = _READ_ONLY_TOOLS
         kwargs["parallel_tool_calls"] = True
-        kwargs["max_tokens"] = llm_config.coder.max_tokens
+        kwargs["max_tokens"] = min(llm_config.coder.max_tokens, 64)
     if role in ("validator", "coder") and not _is_gemini3_plus(model):
         kwargs["temperature"] = 0.0
     api_key = ConfigManager().get_key_for_model(model)
@@ -73,10 +76,52 @@ def run_canary_call(model: str, completion_fn: Optional[Any] = None, role: str =
                 if role == "validator" and parameter == "tool_choice":
                     request["messages"].append({"role": "user", "content": _UNFORCED_VERDICT_INSTRUCTION})
 
-    if role == "validator":
-        call_with_unforced_tool_fallback(call, kwargs, instruction=_UNFORCED_VERDICT_INSTRUCTION)
-    else:
-        call(**kwargs)
+    first_turn = None
+    try:
+        if role == "validator":
+            first_turn = call_with_unforced_tool_fallback(
+                call, kwargs, instruction=unforced_verdict_instruction,
+            )
+        else:
+            first_turn = call(**kwargs)
+    except Exception as error:
+        raise RuntimeError(f"turn 1 failed: {error}") from error
+
+    if role not in ("validator", "recon", "coder"):
+        return None
+
+    message = _completion_message(first_turn)
+    tool_calls = _message_value(message, "tool_calls")
+    if not tool_calls:
+        return "second turn skipped (first turn returned no tool call)"
+
+    tool_call = tool_calls[0]
+    tool_call_id = _message_value(tool_call, "id") or "model-check-tool-call"
+    followup = dict(kwargs)
+    followup["messages"] = [
+        *kwargs["messages"],
+        message,
+        {"role": "tool", "tool_call_id": tool_call_id, "content": "OK"},
+    ]
+    followup.pop("tool_choice", None)
+    try:
+        call(**followup)
+    except Exception as error:
+        raise RuntimeError(f"turn 2 failed: {error}") from error
+    return None
+
+
+def _message_value(message: Any, key: str) -> Any:
+    if isinstance(message, dict):
+        return message.get(key)
+    return getattr(message, key, None)
+
+
+def _completion_message(response: Any) -> Any:
+    choices = _message_value(response, "choices")
+    if not choices:
+        return None
+    return _message_value(choices[0], "message")
 
 
 def _check_opencode_cli_model(model: str) -> str:
@@ -143,13 +188,16 @@ def check_configured_models(
                 ))
             continue
         try:
-            canary_call(model, role=role)
+            canary_detail = canary_call(model, role=role)
         except Exception as error:
             results.append((role, model, False, str(error)))
         else:
             from snodo.config import ConfigManager
             resolved = ConfigManager.resolve_litellm_model(model)
-            detail = f"LiteLLM model: {resolved}" if resolved != model else ""
+            details = [f"LiteLLM model: {resolved}"] if resolved != model else []
+            if canary_detail:
+                details.append(canary_detail)
+            detail = "; ".join(details)
             results.append((role, model, True, detail))
 
     if not results:

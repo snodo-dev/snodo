@@ -6,6 +6,14 @@ An orchestrator should discover and resolve a model before proposing a change.
 The normal plan path uses the model configured for the project; choosing a
 different model for one run is an explicit exception.
 
+Run `snodo models --check` before a run to make a small, billed provider canary
+using each role's request shape. Validator, recon, and LiteLLM coder checks
+continue for a second turn when the model returns a tool call; the canary feeds
+back a short tool result. A failure reports the turn that failed, while a first
+turn without a tool call is reported as successful with the second turn skipped.
+Classifier checks are single-turn. This is a smoke test, not a guarantee that a
+model will complete every task.
+
 ## Discover configured models
 
 Call `list_models` to inspect the models discovered from Snodo's configured

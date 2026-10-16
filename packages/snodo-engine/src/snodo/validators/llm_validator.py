@@ -64,6 +64,9 @@ from snodo.validators.llm_provider_errors import (
     _is_provider_rejection,
     _is_transient_error,
     _remove_rejected_parameter,
+    _reshape_rejected_messages,
+    apply_remembered_message_shape,
+    apply_remembered_parameters,
     _provider_retry_delay,
     _usage_tokens,
 )
@@ -1123,11 +1126,18 @@ class LLMValidator(ValidatorBase):
         indefinitely. Provider Retry-After hints take precedence.
         """
         removed: Set[str] = set()
+        shaped: Set[str] = set()
+        apply_remembered_parameters(self.model, kwargs)
+        kwargs["messages"] = apply_remembered_message_shape(kwargs.get("messages", []), self.model)
         while True:
             try:
                 return self._call_completion_with_transient_retry(**kwargs)
             except Exception as e:
-                parameter = _remove_rejected_parameter(e, kwargs, removed)
+                if _reshape_rejected_messages(e, kwargs, self.model, shaped):
+                    continue
+                parameter = _remove_rejected_parameter(
+                    e, kwargs, removed, self.model,
+                )
                 if parameter:
                     self._parameter_fallback_used = True
                     if parameter_fallback_instruction and parameter == "tool_choice":

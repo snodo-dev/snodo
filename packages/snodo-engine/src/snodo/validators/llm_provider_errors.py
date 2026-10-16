@@ -16,9 +16,14 @@ from typing import Any, Callable, Optional
 # the judge loop (Fixes #381 moved it, nothing else).
 from snodo.infrastructure.usage_tracker import usage_tokens_of as _usage_tokens  # noqa: F401 - re-export for the judge loop
 from snodo.infrastructure.llm_parameter_errors import (
+    apply_remembered_parameters,  # noqa: F401 - re-export for validator loop
     is_provider_request_rejection as _is_shared_provider_rejection,
     rejected_parameter_name,
     remove_rejected_parameter,
+)
+from snodo.infrastructure.message_shape import (
+    apply_remembered_message_shape,  # noqa: F401 - re-export for validator loop
+    reshape_messages_after_rejection,
 )
 
 _logger = logging.getLogger(__name__)
@@ -102,6 +107,7 @@ def _remove_rejected_parameter(
     e: Exception,
     kwargs: dict[str, Any],
     removed: set[str],
+    model: Optional[str] = None,
 ) -> Optional[str]:
     """Remove one provider-rejected request parameter, at most once.
 
@@ -109,7 +115,20 @@ def _remove_rejected_parameter(
     the parameter decision here makes the canary and validator use the same
     provider-error interpretation.
     """
-    return remove_rejected_parameter(e, kwargs, removed)
+    return remove_rejected_parameter(e, kwargs, removed, model)
+
+
+def _reshape_rejected_messages(
+    e: Exception, kwargs: dict[str, Any], model: str, attempted: set[str]
+) -> bool:
+    messages = kwargs.get("messages")
+    if not isinstance(messages, list):
+        return False
+    reshaped = reshape_messages_after_rejection(e, messages, model, attempted)
+    if reshaped is None:
+        return False
+    kwargs["messages"] = reshaped
+    return True
 
 
 def call_with_unforced_tool_fallback(

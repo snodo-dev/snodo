@@ -516,6 +516,41 @@ def test_models_check_recovers_from_forced_tool_choice_refusal(monkeypatch, caps
     assert "tool_choice" not in calls[1]
 
 
+@pytest.mark.parametrize("reject_second", [False, True])
+def test_models_check_validator_exercises_second_tool_turn(monkeypatch, capsys, reject_second):
+    monkeypatch.setattr(
+        "snodo.cli.commands.models_cmd._configured_models",
+        lambda: [("validator", "openai/two-turn")],
+    )
+    calls = []
+
+    def canary(model, role="validator"):
+        def completion(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 2 and reject_second:
+                raise RuntimeError("message shape rejected")
+            return {"choices": [{"message": {
+                "role": "assistant",
+                "tool_calls": [{"id": "call-1", "type": "function", "function": {"name": "submit_verdict", "arguments": "{}"}}],
+            }}]}
+
+        run_canary_call(model, completion, role=role)
+
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
+    result = models_check_command(SimpleNamespace())
+    output = capsys.readouterr().out
+    assert len(calls) == (2 if reject_second else 2)
+    if reject_second:
+        assert result == 1
+        assert "FAILED   openai/two-turn (validator): turn 2" in output
+    else:
+        assert result == 0
+        assert "OK       openai/two-turn (validator)" in output
+        assert calls[1]["messages"][-1] == {
+            "role": "tool", "tool_call_id": "call-1", "content": "OK",
+        }
+
+
 def test_models_check_keeps_credential_rejection_failed(monkeypatch, capsys):
     """A credential rejection is not a recoverable parameter refusal."""
     monkeypatch.setattr(
@@ -535,7 +570,7 @@ def test_models_check_keeps_credential_rejection_failed(monkeypatch, capsys):
 
     assert models_check_command(SimpleNamespace()) == 1
     out = capsys.readouterr().out
-    assert "FAILED   openai/bad-credential (coder): invalid_api_key" in out
+    assert "FAILED   openai/bad-credential (coder): turn 1 failed: invalid_api_key" in out
 
 
 def test_models_check_does_not_send_subprocess_coder_to_litellm(monkeypatch, capsys):
@@ -573,7 +608,7 @@ def test_canary_shapes_recon_and_classifier_like_real_calls():
     run_canary_call("deepseek/deepseek-chat", completion, role="recon")
     recon = calls.pop()
     assert "tools" in recon and "tool_choice" not in recon
-    assert "max_tokens" not in recon and "temperature" not in recon
+    assert recon["max_tokens"] == 64 and "temperature" not in recon
 
     run_canary_call("deepseek/deepseek-chat", completion, role="classifier")
     classifier = calls.pop()

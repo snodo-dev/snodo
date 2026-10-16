@@ -59,6 +59,74 @@ def test_call_agent_passes_configured_completion_budget(monkeypatch):
     assert completion.call_args.kwargs["max_tokens"] == 2300
 
 
+def test_recon_adapts_provider_requested_reasoning_effort_none(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from snodo.config import ConfigManager
+
+    monkeypatch.setattr(ConfigManager, "resolve_litellm_model", staticmethod(lambda model: model))
+    monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
+    monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: None)
+    requests = []
+
+    def completion(**kwargs):
+        requests.append(kwargs.copy())
+        if "reasoning_effort" not in kwargs:
+            error = ValueError("Function tools with reasoning_effort are not supported; set reasoning_effort to 'none'")
+            error.status_code = 400
+            raise error
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="answer", tool_calls=[]),
+        )])
+
+    with patch("litellm.completion", side_effect=completion):
+        result = recon_module.call_agent(str(tmp_path), "fake/model", "query", [], "agent", max_turns=1)
+
+    assert result.result == "answer"
+    assert len(requests) == 2
+    assert requests[1]["reasoning_effort"] == "none"
+
+
+def test_recon_adapts_array_content_rejection_on_second_turn(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from snodo.config import ConfigManager
+
+    monkeypatch.setattr(ConfigManager, "resolve_litellm_model", staticmethod(lambda model: model))
+    monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
+    monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: None)
+    requests = []
+
+    def completion(**kwargs):
+        requests.append(kwargs.copy())
+        if len(requests) == 2:
+            kwargs["messages"][-1]["content"] = [
+                {"type": "text", "text": "file content"},
+            ]
+            error = ValueError("message content array is not supported")
+            error.status_code = 400
+            raise error
+        if len(requests) == 1:
+            tool_call = SimpleNamespace(id="read", function=SimpleNamespace(
+                name="read_file", arguments=json.dumps({"path": "sample.py"}),
+            ))
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content="", tool_calls=[tool_call]),
+            )])
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="answer", tool_calls=[]),
+        )])
+
+    with patch("snodo.recon._execute_recon_read", return_value="file content"), \
+         patch("litellm.completion", side_effect=completion):
+        result = recon_module.call_agent(str(tmp_path), "fake/shape", "query", [], "agent", max_turns=2)
+
+    assert result.result == "answer"
+    assert len(requests) == 3
+    assert requests[1]["messages"] != requests[2]["messages"]
+    assert all(not isinstance(message.get("content"), list) for message in requests[2]["messages"])
+
+
 def test_recon_uses_shared_read_tools_lines_and_free_repeat(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from snodo.config import ConfigManager
