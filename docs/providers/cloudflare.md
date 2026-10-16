@@ -1,6 +1,6 @@
 # Cloudflare Workers AI
 
-This guide takes you from a Cloudflare account to a successful Snodo model check.
+This guide takes you from a Cloudflare account to a successful Snodo model check. For routing models from multiple vendors through an AI Gateway instead, see the [Cloudflare AI Gateway guide](cloudflare-ai-gateway.md).
 
 ## 1. What you need
 

@@ -7,6 +7,7 @@ For credentials, Snodo checks `api_key` first (including encrypted `@keys/<provi
 | Guide | Use this when |
 | --- | --- |
 | [Cloudflare Workers AI](cloudflare.md) | You want to use models served by Cloudflare Workers AI. |
+| [Cloudflare AI Gateway](cloudflare-ai-gateway.md) | You want to route models from multiple vendors through an AI Gateway. |
 | [Ollama and OpenAI-compatible servers](ollama.md) | You want local Ollama or another OpenAI-compatible endpoint. |
 | [OpenCode Go](opencode-go.md) | You want to use models through the OpenCode Go gateway. |
 | [Anthropic](anthropic.md) | You want to connect to Anthropic's Claude models. |
