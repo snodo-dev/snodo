@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_changelog_base_fallback": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a42092a345db6be8"
+    }
+  }
+}

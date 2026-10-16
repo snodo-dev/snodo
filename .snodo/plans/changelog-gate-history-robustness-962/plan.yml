@@ -1,0 +1,8 @@
+intent: Make the changelog coverage gate survive a rewritten branch history instead
+  of dying on an unreachable base commit (#962)
+name: changelog-gate-history-robustness-962
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_changelog_base_fallback

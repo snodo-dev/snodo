@@ -7,10 +7,10 @@
       "spec_hash": "02f60a5726c96aee"
     },
     "2.1_retry_control_and_provenance": {
-      "status": "in_progress",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "b9d7461f002295f6"
+      "spec_hash": "904b16a5318809e2"
     }
   },
   "integration": {

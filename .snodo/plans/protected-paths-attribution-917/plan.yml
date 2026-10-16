@@ -1,0 +1,10 @@
+intent: 'Close the three review findings that survived the merge of PR #915 (issue
+  #917): a duplicate protected_paths injection that uses the wrong type, a silent
+  exception swallow in the base-branch resolver, and a redundant dual source in the
+  protected-paths notice.'
+name: protected-paths-attribution-917
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_single_attribution_source
