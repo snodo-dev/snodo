@@ -4,7 +4,6 @@ FILE: snodo/engine/nodes/executor.py
 """
 
 import logging
-import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from snodo.core.interfaces import Task, TaskSpec, ExecutionError, NoFileOperationsError
@@ -19,6 +18,7 @@ from snodo.coders import LiteLLMAdapter, MockAdapter
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.tools.git import GitMCP
 from snodo.engine.state import _task_branch_name, _branch_exists
+from snodo.infrastructure.worktree import worktree_dir
 
 _logger = logging.getLogger(__name__)
 
@@ -341,55 +341,6 @@ class ExecutorMixin:
         prefix = self._task_branch_prefix()
         return branch == prefix or branch.startswith(prefix + "/")
 
-    @staticmethod
-    def _repo_ref_snapshot(git_mcp: Optional[Any]) -> dict[str, str]:
-        """Snapshot refs in the dispatched repository without starting git subprocesses."""
-        if git_mcp is None:
-            return {}
-        try:
-            return {ref.path: ref.commit.hexsha for ref in git_mcp.repo.refs}
-        except Exception:
-            return {}
-
-    def _escaped_repo_commit(self, git_mcp: Optional[Any], before: dict[str, str]) -> Optional[str]:
-        """Find new work in a non-engine checkout, ignoring concurrent task refs."""
-        if git_mcp is None:
-            return None
-        try:
-            repo = git_mcp.repo
-            prefix = self._task_branch_prefix().strip("/") + "/"
-            refs = []
-            for ref in repo.refs:
-                # Other concurrent Snodo tasks legitimately create/change these.
-                if ref.name.startswith(prefix):
-                    continue
-                if ref.path not in before and ref.commit.hexsha:
-                    refs.append(ref)
-                elif ref.path in before and ref.commit.hexsha != before[ref.path]:
-                    refs.append(ref)
-            if not refs:
-                return None
-            # Only report when this repository has a linked checkout outside
-            # Snodo's managed task-worktree area; those checkouts are where
-            # registered-project routing can leak a run's writes.
-            worktrees = subprocess.run(
-                ["git", "worktree", "list", "--porcelain"],  # noqa: S607
-                cwd=repo.working_tree_dir, capture_output=True, text=True, check=True,
-            ).stdout.splitlines()
-            common_dir = Path(repo.git_dir).resolve()
-            while common_dir.name != ".git" and common_dir.parent != common_dir:
-                common_dir = common_dir.parent
-            managed_root = (common_dir.parent / ".snodo" / "worktrees").resolve()
-            external = [Path(line[9:]).resolve() for line in worktrees if line.startswith("worktree ")
-                        and Path(line[9:]).resolve() != Path(repo.working_tree_dir).resolve()
-                        and not Path(line[9:]).resolve().is_relative_to(managed_root)]
-            if external:
-                ref = refs[0]
-                return f"{external[0]} (ref {ref.name} at {ref.commit.hexsha[:12]})"
-        except Exception:
-            return None
-        return None
-
     def _commit_artifacts(self, git_mcp: Optional[Any], coder: Any, artifact_paths: List[str], task: Task) -> List[str]:
         """Commit modified artifact files to repository."""
         git_artifacts = []
@@ -402,6 +353,59 @@ class ExecutorMixin:
                 # Git operation failed, not critical
                 git_artifacts.append(f"git_error: {str(e)}")
         return git_artifacts
+
+    def _repo_ref_snapshot(self, git_mcp: Optional[Any]) -> Dict[str, str]:
+        """Snapshot local refs before a coder run, best-effort."""
+        if git_mcp is None:
+            return {}
+        try:
+            return {head.name: head.commit.hexsha for head in git_mcp.repo.heads}
+        except Exception as e:
+            _logger.debug("Could not snapshot repository refs: %s", e)
+            return {}
+
+    def _escaped_repo_commit(
+        self, git_mcp: Optional[Any], before: Dict[str, str], task: Task
+    ) -> Optional[str]:
+        """Describe changed non-task refs checked out outside Snodo worktrees."""
+        if git_mcp is None:
+            return None
+        try:
+            repo = git_mcp.repo
+            changed = [head.name for head in repo.heads
+                       if before.get(head.name) != head.commit.hexsha]
+            prefix = self._task_branch_prefix() + "/"
+            changed = [ref for ref in changed if not ref.startswith(prefix)]
+            if not changed:
+                return None
+            root = Path(str(git_mcp.project_root)).resolve()
+            managed = worktree_dir(str(root)).resolve()
+            entries = repo.git.worktree("list", "--porcelain")
+            checkouts = []
+            path = None
+            branch = None
+            for line in (*entries.splitlines(), ""):
+                if not line:
+                    if path is not None and path != root:
+                        resolved = Path(path).resolve()
+                        if not resolved.is_relative_to(managed):
+                            checkouts.append((resolved, branch))
+                    path = branch = None
+                elif line.startswith("worktree "):
+                    path = line.removeprefix("worktree ")
+                elif line.startswith("branch refs/heads/"):
+                    branch = line.removeprefix("branch refs/heads/")
+            if not checkouts:
+                return None
+            for ref in changed:
+                matching = next((p for p, b in checkouts if b == ref), None)
+                location = (str(matching) if matching is not None else
+                            "external checkout(s): " + ", ".join(str(p) for p, _ in checkouts))
+                return (f"Workspace escape detected: ref '{ref}' changed in {location}. "
+                        "Rescue the work and rerun.")
+        except Exception as e:
+            _logger.debug("Could not inspect repository escape: %s", e)
+        return None
 
     def _default_executor(
         self,
@@ -433,7 +437,7 @@ class ExecutorMixin:
         )
 
         self._ensure_task_branch(git_mcp, task)
-        refs_before_coder = self._repo_ref_snapshot(git_mcp)
+        refs_before = self._repo_ref_snapshot(git_mcp)
 
         try:
             code_artifact = coder.implement(spec)
@@ -468,13 +472,9 @@ class ExecutorMixin:
                             git_mcp, getattr(task, "base", None)
                         )
                         if existing is None:
-                            escaped = self._escaped_repo_commit(git_mcp, refs_before_coder)
+                            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
                             if escaped:
-                                raise ExecutionError(
-                                    "Coder workspace escape: repository "
-                                    f"gained work at {escaped}. Rescue it by inspecting/cherry-picking "
-                                    "that ref, then rerun; the task workspace was left unchanged."
-                                )
+                                raise ExecutionError(escaped)
                             # "Coder produced nothing" is the same fault whether the
                             # engine commits the artifacts (skip_engine_commit False)
                             # or the adapter commits them itself (skip_engine_commit

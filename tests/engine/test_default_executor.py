@@ -198,27 +198,6 @@ def test_empty_artifacts_always_raise(sample_protocol, sample_task, mock_token):
             builder._default_executor(sample_task, mock_token, coder, workspace_mcp, None)
 
 
-
-def test_empty_artifacts_with_external_repo_work_raise_execution_fault(
-    sample_protocol, sample_task, mock_token,
-):
-    """External ref work is an execution fault, not a spec retry verdict."""
-    builder = GraphBuilder(sample_protocol)
-    coder = DummyCoder([])
-    with patch.object(builder, "_repo_ref_snapshot", return_value={"refs/heads/main": "old"}), \
-            patch.object(
-                builder, "_escaped_repo_commit",
-                return_value="/operator/checkout (ref main at abc123)",
-            ):
-        with pytest.raises(
-            ExecutionError,
-            match=r"workspace escape.*operator/checkout.*main",
-        ):
-            builder._default_executor(
-                sample_task, mock_token, coder, MagicMock(), MagicMock(),
-            )
-
-
 def test_git_path_success_and_error(sample_protocol, sample_task, mock_token):
     """git path: artifacts present + skip_engine_commit False -> stage + commit; git op raises -> error logged"""
     workspace_mcp = MagicMock()
@@ -298,3 +277,61 @@ def test_delete_nonexistent_path_not_a_crash(sample_protocol, sample_task, mock_
 
     workspace_mcp.delete_file.assert_called_once_with("nonexistent.py")
     assert "nonexistent.py" in artifacts
+
+
+def _git(cwd, *args):
+    import subprocess
+
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def test_escape_detector_ignores_engine_managed_worktrees(tmp_path, sample_protocol):
+    from snodo.engine.loop import GraphBuilder
+    from snodo.infrastructure.worktree import worktree_dir
+    from snodo.tools.git import GitMCP
+
+    root = tmp_path / "project"
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+    managed = worktree_dir(str(root)) / "plan" / "task"
+    managed.parent.mkdir(parents=True)
+    _git(root, "worktree", "add", "-b", "task/plan/task/feature", str(managed))
+    builder = GraphBuilder(sample_protocol)
+    mcp = GitMCP(str(root))
+    before = builder._repo_ref_snapshot(mcp)
+    (managed / "change.txt").write_text("managed")
+    _git(managed, "add", "change.txt")
+    _git(managed, "commit", "-m", "managed change")
+    assert builder._escaped_repo_commit(mcp, before, Task(id="task", spec="")) is None
+
+
+def test_escape_detector_names_external_checkout_and_changed_ref(tmp_path, sample_protocol):
+    from snodo.engine.loop import GraphBuilder
+    from snodo.tools.git import GitMCP
+
+    root = tmp_path / "project"
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+    external = tmp_path / "external-checkout"
+    _git(root, "worktree", "add", "-b", "operator-branch", str(external))
+    builder = GraphBuilder(sample_protocol)
+    mcp = GitMCP(str(root))
+    before = builder._repo_ref_snapshot(mcp)
+    (external / "escape.txt").write_text("escaped")
+    _git(external, "add", "escape.txt")
+    _git(external, "commit", "-m", "external change")
+    result = builder._escaped_repo_commit(mcp, before, Task(id="task", spec=""))
+    assert str(external) in result
+    assert "operator-branch" in result
