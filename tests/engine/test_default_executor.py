@@ -198,16 +198,22 @@ def test_empty_artifacts_always_raise(sample_protocol, sample_task, mock_token):
             builder._default_executor(sample_task, mock_token, coder, workspace_mcp, None)
 
 
+
 def test_empty_artifacts_with_external_repo_work_raise_execution_fault(
     sample_protocol, sample_task, mock_token,
 ):
-    """A committed ref outside the dispatched task tree is an execution fault."""
+    """External ref work is an execution fault, not a spec retry verdict."""
     builder = GraphBuilder(sample_protocol)
-    builder._worktree_path = "/snodo/.snodo/worktrees/task"
     coder = DummyCoder([])
     with patch.object(builder, "_repo_ref_snapshot", return_value={"refs/heads/main": "old"}), \
-            patch.object(builder, "_escaped_repo_commit", return_value="/operator/checkout (ref main at abc123)"):
-        with pytest.raises(ExecutionError, match=r"workspace escape.*operator/checkout.*main"):
+            patch.object(
+                builder, "_escaped_repo_commit",
+                return_value="/operator/checkout (ref main at abc123)",
+            ):
+        with pytest.raises(
+            ExecutionError,
+            match=r"workspace escape.*operator/checkout.*main",
+        ):
             builder._default_executor(
                 sample_task, mock_token, coder, MagicMock(), MagicMock(),
             )

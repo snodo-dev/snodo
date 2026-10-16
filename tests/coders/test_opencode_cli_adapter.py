@@ -31,8 +31,8 @@ def test_opencode_cli_prompt_includes_engine_boundary_guidance(tmp_path):
     assert "docs/policy.md" in prompt
     assert ".snodo/" in prompt
     assert "not a sandbox" in prompt
-    assert "Workspace confinement" in prompt
-    assert "only place your work counts" in prompt
+    assert "Workspace Confinement" in prompt
+    assert "dispatched workspace is the only place" in prompt
 
 _REAL_CLI_MAJOR_VERSION = OpenCodeCLIAdapter._cli_major_version
 
@@ -114,10 +114,10 @@ class TestWorkspaceResolution:
             adapter.implement(spec)
 
         assert executed_kwargs["cwd"] == str(worktree)
+        inline = json.loads(executed_kwargs["env"]["OPENCODE_CONFIG_CONTENT"])
+        assert inline["permission"]["edit"] == "deny"
+        assert inline["tools"] == {"session_move": False, "worktree_create": False}
         assert executed_kwargs["cwd"] != str(Path.cwd())
-        run_config = json.loads(executed_kwargs["env"]["OPENCODE_CONFIG_CONTENT"])
-        assert run_config["permission"]["edit"] == "deny"
-        assert run_config["tools"] == {"session_move": False, "worktree_create": False}
         dir_idx = executed_argv.index("--dir")
         assert executed_argv[dir_idx + 1] == str(worktree)
         assert executed_argv[dir_idx + 1] != str(Path.cwd())
@@ -408,11 +408,11 @@ class TestSnodoCloudProvider:
             env = adapter._subprocess_env()
 
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
-        assert config["permission"]["edit"] == "deny"
-        assert config["tools"] == {"session_move": False, "worktree_create": False}
         provider = config["provider"]["snodo-cloud"]
         assert provider["options"]["baseURL"] == "https://gateway.example/v1"
         assert provider["models"] == {"gpt-6-luna": {"name": "gpt-6-luna"}}
+        assert config["permission"]["edit"] == "deny"
+        assert config["tools"] == {"session_move": False, "worktree_create": False}
         argv = adapter._build_argv("prompt", str(tmp_path), adapter._bare_model())
         assert argv[-2:] == ["-m", "snodo-cloud/gpt-6-luna"]
         assert "secret-token" not in argv
