@@ -30,6 +30,16 @@ nav:
       - User configuration: configuration.md
       - Command reference: command-reference.md
       - Coder backends: coders.md
+      - Model providers:
+          - Overview: providers/index.md
+          - Cloudflare Workers AI: providers/cloudflare.md
+          - Ollama and OpenAI-compatible servers: providers/ollama.md
+          - OpenCode Go: providers/opencode-go.md
+          - Anthropic: providers/anthropic.md
+          - OpenAI: providers/openai.md
+          - Google: providers/google.md
+          - OpenRouter: providers/openrouter.md
+          - DeepSeek: providers/deepseek.md
       - TypeSafe Jev decide tool: typesafe-decide.md
       - Non-engineering role templates: non-engineering-roles.md
       - Authoring a plan: authoring-a-plan.md
