@@ -32,6 +32,11 @@ def _record_task_start(project_root: str, task_id: str, spec: str) -> None:
         task_dir = Path(project_root) / ".snodo" / "tasks" / task_id
 
         def _update(state: dict) -> None:
+            if state.get("started_at"):
+                from snodo.infrastructure.atomic_json import atomic_write_json
+                attempts = task_dir / "attempts"
+                attempts.mkdir(exist_ok=True)
+                atomic_write_json(attempts / f"{time.time_ns()}.json", dict(state))
             state["task_id"] = task_id
             state["description"] = spec
             if "created_at" not in state:
@@ -65,7 +70,10 @@ def _record_task_completion(
     try:
         from snodo.infrastructure.state import atomic_update_json
         from snodo.version import __version__
+        from snodo.cli.commands.retry_workspace import read_origin
 
+        if halt_payload:
+            halt_payload = {**halt_payload, **read_origin(project_root, task_id)}
         task_dir = Path(project_root) / ".snodo" / "tasks" / task_id
         job_id = os.environ.get("SNODO_JOB_ID") or ""
         job_dir = Path(project_root) / ".snodo" / "jobs" / job_id if job_id else None

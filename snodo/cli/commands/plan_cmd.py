@@ -123,6 +123,7 @@ def plan_run(
     verbose: bool = exec_option("verbose"),
     mock: bool = exec_option("mock"),
     retain_worktree: bool = exec_option("retain_worktree"),
+    fresh_start: bool = exec_option("fresh_start"),
     no_isolation: bool = exec_option("no_isolation"),
     fixture: Optional[str] = exec_option("fixture"),
 ):
@@ -133,6 +134,7 @@ def plan_run(
         plan=name, wave=wave, interactive=interactive,
         protocol=protocol, model=model, coder=coder, mode=mode, module=module,
         verbose=verbose, mock=mock,
+        fresh_start=fresh_start,
         retain_worktree=retain_worktree, no_isolation=no_isolation, fixture=fixture,
     )
     return _plan_run(args)
@@ -554,8 +556,7 @@ def _plan_create(planner, args) -> int:
     print(f"  Intent: {description}")
     waves = plan_data.get("waves", [])
     print(f"  Waves: {len(waves)}")
-    total_tasks = sum(len(w.get("tasks", [])) for w in waves)
-    print(f"  Tasks: {total_tasks}")
+    print(f"  Tasks: {sum(len(w.get('tasks', [])) for w in waves)}")
     return 0
 
 
