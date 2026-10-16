@@ -62,7 +62,7 @@ jobs:
         with:
           files: ./coverage.xml
           # Use OIDC: it successfully authenticated the original upload, while
-          # CODECOV_TOKEN belongs to a different repository and Codecov rejected
+          # CODECOV_TOKEN belongs to a different repository, and Codecov rejected
           # uploads with "Repository not found". Tokenless uploads are rate-limited.
           use_oidc: true
           # Without this the CLI globs for coverage files as well as using
@@ -93,7 +93,7 @@ jobs:
         run: uv run python scripts/enforce_file_length.py
       - name: Docs-coverage ratchet
         run: uv run python scripts/enforce_docs_coverage.py
-      - name: Strict docs build
+      - name: Strict docs build and local anchors
         run: make docs
       - name: Closed-vocabulary check
         run: uv run python scripts/enforce_vocabularies.py

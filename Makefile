@@ -150,6 +150,7 @@ clean:
 .PHONY: docs docs-serve deploy-docs
 
 docs:
+	uv run --extra docs python scripts/enforce_docs_anchors.py
 	uv run --extra docs mkdocs build --strict
 
 docs-serve:
@@ -282,19 +283,14 @@ wt-rebase:
 		echo "── $(WT_PREFIX)$$w"; \
 		if [ ! -d "$$d" ]; then echo "   missing, skipped"; continue; fi; \
 		if [ -n "$$(git -C $$d status --porcelain)" ]; then \
-			echo "   DIRTY — refusing to rebase over uncommitted work:"; \
-			git -C $$d status --short; exit 1; \
-		fi; \
+			echo "   DIRTY — commit it first:"; git -C $$d status --short; exit 1; fi; \
 		git -C $$d rebase origin/main || { echo "   rebase failed"; exit 1; }; \
 	done
 
 wt-merge:
-	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "This checkout is dirty — commit or stash before merging."; exit 1; fi
 	@git fetch -q origin
 	@for w in $(_W); do \
 		b=$(WT_BRANCH)$$w; d=$(WT_ROOT)/$(WT_PREFIX)$$w; \
-		echo "── $(WT_PREFIX)$$w"; \
 		if [ ! -d "$$d" ]; then echo "   missing, skipped"; continue; fi; \
 		if [ -n "$$(git -C $$d status --porcelain)" ]; then \
 			echo "   DIRTY — commit it first:"; git -C $$d status --short; exit 1; fi; \
