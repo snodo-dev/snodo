@@ -488,10 +488,10 @@ class WritebackMixin:
         if getattr(loop_state, "halt_type", None) == "escalated":
             phase = loop_state.pending_disagreement.get("phase", phase) if loop_state.pending_disagreement else phase
 
-        # The CLI retry budget counts coding attempts, not rejected inputs.
-        # Keep a refusal retryable with its critique, but do not spend budget
-        # on a coder that the pre-execute gate never dispatched.
-        attempt = existing.get("attempt", 0) + (phase != "pre_execute")
+        # This is the recorded failure sequence, not the judged-coding count
+        # narrated by _build_attempt_summary. A phase label alone cannot tell
+        # whether a coder was dispatched.
+        attempt = existing.get("attempt", 0) + 1
 
         failed_validators = [
             {
@@ -871,7 +871,7 @@ class WritebackMixin:
                 payload["coder_report"] = self._build_coder_report_payload(parsed, loop_state)
         findings = meta.get("findings")
         if findings is None and payload.get("coder_report"):
-            findings = payload["coder_report"].get("findings")
+            findings = payload.get("coder_report").get("findings")
         if findings is not None:
             payload["findings"] = findings
         return payload

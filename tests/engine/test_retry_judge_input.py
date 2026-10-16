@@ -105,7 +105,7 @@ def test_evidence_reaches_completion_separately_for_both_judge_paths(tools):
 
 
 @pytest.mark.parametrize("previous", [0, 2])
-def test_refusal_preserves_retry_budget_and_post_execute_spends_it(previous):
+def test_refusal_preserves_coding_summary_not_failure_sequence(previous):
     decisions = {"task_failure": {"rate": {"attempt": previous, "original_spec": SPEC}}}
     session = SimpleNamespace(checkpoint=SimpleNamespace(decisions=decisions))
     manager = MagicMock()
@@ -118,19 +118,32 @@ def test_refusal_preserves_retry_budget_and_post_execute_spends_it(previous):
     writer = WritebackMixin()
     writer._session_manager = manager
     writer._session_id = "session"
-    state = LoopState(task=Task(id="rate", spec=SPEC), current_mode="producer",
+    state = LoopState(task=Task(id="rate", spec=SPEC, depth=previous), current_mode="producer",
                       is_blocked=True, halt_type="blocked")
     results = [ValidatorResult(validator_id="spec", severity="blocker", justification="refused")]
     writer._auto_write_failure_context(state, results)
-    assert decisions["task_failure"]["rate"]["attempt"] == previous
+    # Failure records keep their established sequence, independently of the
+    # narrative's count of judged coding attempts.
+    assert decisions["task_failure"]["rate"]["attempt"] == previous + 1
     assert decisions["task_failure"]["rate"]["phase"] == "pre_execute"
-    assert _build_attempt_summary(state, "pre_execute")["total"] == 0
+    before = _build_attempt_summary(state, "pre_execute")
+    assert before["total"] == previous
+    assert before["coder_dispatches"] == previous
     payload = writer._build_halt_payload(state)
     assert payload["phase"] == "pre_execute"
-    assert payload["attempts"]["coder_dispatches"] == 0
+    assert payload["attempts"] == before
     assert "no coder attempt was consumed" in payload["hint"]
 
     state.metadata["post_validation"] = {"outcome": "blocked"}
+    state.validation_results = results
     writer._auto_write_failure_context(state, results)
-    assert decisions["task_failure"]["rate"]["attempt"] == previous + 1
-    assert _build_attempt_summary(state, "post_execute")["total"] == 1
+    assert decisions["task_failure"]["rate"]["attempt"] == previous + 2
+    after = _build_attempt_summary(state, "post_execute")
+    assert after["total"] == previous + 1
+    assert after["coder_dispatches"] == previous + 1
+    assert after["history"][:-1] == before["history"]
+    assert after["history"][-1] == {"attempt": previous + 1, "outcome": "blocked"}
+    payload = writer._build_halt_payload(state)
+    assert payload["phase"] == "post_execute"
+    assert payload["attempts"] == after
+    assert "no coder attempt was consumed" not in payload["hint"]
