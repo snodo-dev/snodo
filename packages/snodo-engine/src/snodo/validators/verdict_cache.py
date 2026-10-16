@@ -27,11 +27,13 @@ never in the operator's home, so it cannot cross projects.  It is an
 optimisation only: a cold, deleted, corrupt or unwritable cache degrades to a
 fresh judgement and a debug line — never a halt, never a governance change.
 The audit log never holds cache entries; a reused verdict reaches the audit
-trail through the result it is, flagged ``reused``.
+trail through the result it is, flagged ``reused``. Its provenance names the
+original question and gathering time using identifiers and digests only.
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
@@ -49,7 +51,7 @@ CACHE_FILENAME = "verdict_cache.json"
 
 #: Bumped whenever the on-disk shape changes; a mismatch discards the old
 #: file rather than guessing at it.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 #: Upper bound on stored verdicts.  The cache is bounded so a long-lived
 #: project cannot grow it without limit; least-recently-used entries are
@@ -57,7 +59,16 @@ SCHEMA_VERSION = 1
 DEFAULT_MAX_ENTRIES = 2000
 
 
-def compute_verdict_key(
+def question_key(question: Dict[str, Any]) -> str:
+    """Digest a question's safe, canonical identity, also stored alongside it."""
+    canonical = json.dumps(
+        question, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        allow_nan=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def compute_verdict_question(
     *,
     validator_id: str,
     validator_type: str,
@@ -71,31 +82,43 @@ def compute_verdict_key(
     subject: str,
     max_tokens: Any,
     max_tool_turns: Any,
-) -> str:
-    """Return the content digest of one validation question.
+    subject_kind: str = "",
+    subject_id: str = "",
+) -> Dict[str, Any]:
+    """Describe exactly the keyed question without persisting sensitive inputs.
 
-    Every field participates in the digest.  Omitting one would let two
-    genuinely different questions collide, which is the dangerous direction;
-    including one that is not actually load-bearing only costs a cache miss.
+    Criteria and subject contents are digested; readable identifiers describe
+    whose question it was, while the digests let an operator compare inputs.
+    Even a tree's base ref is hashed, not copied into the audit trail.
     """
-    payload = {
+    return {
         "validator_id": validator_id,
         "validator_type": validator_type,
-        "criteria": list(criteria or []),
+        "criteria_digest": question_key({"criteria": list(criteria or [])}),
         "tools": list(tools or []),
         "model": model or "",
         "protocol_id": protocol_id or "",
         "protocol_version": protocol_version or "",
         "mode_id": mode_id or "",
         "phase": phase or "",
-        "subject": subject,
+        "subject": {
+            "kind": subject_kind,
+            "id": subject_id,
+            "digest": hashlib.sha256(subject.encode("utf-8")).hexdigest(),
+        },
         "max_tokens": max_tokens,
         "max_tool_turns": max_tool_turns,
     }
-    canonical = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def compute_verdict_key(**kwargs: Any) -> str:
+    """Return the content digest of one validation question.
+
+    Every field participates in the digest.  Omitting one would let two
+    genuinely different questions collide, which is the dangerous direction;
+    including one that is not actually load-bearing only costs a cache miss.
+    """
+    return question_key(compute_verdict_question(**kwargs))
 
 
 def default_cache_path(project_root: str | Path) -> Path:
@@ -144,33 +167,53 @@ class VerdictCache:
     # ------------------------------------------------------------------
 
     def get(self, key: str) -> Optional[Dict[str, Any]]:
-        """Return the stored record for *key*, or None on a miss."""
-        with self._lock:
-            entry = self._entries.get(key)
-            if entry is None:
-                return None
-            entry["last_used"] = time.time()
-            return dict(entry)
+        """Return an isolated stored record for inspection, or None on a miss.
 
-    def put(self, key: str, result: Any) -> None:
+        Serving it as a verdict additionally requires the runner to match the
+        recorded question against today's question and validate the result.
+        """
+        try:
+            with self._lock:
+                entry = self._entries.get(key)
+                if entry is None:
+                    return None
+                entry["last_used"] = time.time()
+                return copy.deepcopy(entry)
+        except Exception as e:  # noqa: BLE001 — cache reads must never halt
+            logger.debug("Verdict cache read failed: %s", e)
+            return None
+
+    def put(self, key: str, result: Any, *, question: Dict[str, Any]) -> None:
         """Store *result* under *key*, evicting and flushing as needed.
 
         Only a genuine verdict reaches here (the caller filters errors and
-        skipped passes); this method does not re-validate that.
+        skipped passes); this method also checks defensively at the boundary.
+        An error and a skipped pass are never stored or reused.
         """
-        now = time.time()
-        record = {
-            "validator_id": getattr(result, "validator_id", ""),
-            "severity": getattr(result, "severity", None),
-            "justification": getattr(result, "justification", ""),
-            "cited_criteria": list(getattr(result, "cited_criteria", None) or []),
-            "stored_at": now,
-            "last_used": now,
-        }
-        with self._lock:
-            self._entries[key] = record
-            self._evict_locked()
-            self._flush_locked()
+        try:
+            if (getattr(result, "error", False) or getattr(result, "skipped", False)
+                    or not getattr(result, "cacheable", True)
+                    or getattr(result, "severity", None) not in ("pass", "warn", "blocker")
+                    or question_key(question) != key
+                    or question.get("validator_id") != result.validator_id):
+                return
+            now = time.time()
+            record = {
+                "validator_id": result.validator_id,
+                "severity": result.severity,
+                "justification": result.justification,
+                "cited_criteria": list(getattr(result, "cited_criteria", None) or []),
+                "tool_access_missing": copy.deepcopy(getattr(result, "tool_access_missing", None)),
+                "question": copy.deepcopy(question),
+                "stored_at": now,
+                "last_used": now,
+            }
+            with self._lock:
+                self._entries[key] = record
+                self._evict_locked()
+                self._flush_locked()
+        except Exception as e:  # noqa: BLE001 — cache writes must never halt
+            logger.debug("Verdict cache store failed: %s", e)
 
     def clear(self) -> None:
         """Drop every entry and delete the on-disk file."""
@@ -205,9 +248,9 @@ class VerdictCache:
 
     def _load(self) -> None:
         """Load entries from disk; any problem starts from a clean slate."""
-        if not self.path.is_file():
-            return
         try:
+            if not self.path.is_file():
+                return
             raw = self.path.read_text(encoding="utf-8")
             payload = json.loads(raw)
             if not isinstance(payload, dict):
@@ -219,7 +262,7 @@ class VerdictCache:
                 )
                 return
             stored_project = payload.get("project") or ""
-            if self.project_root and stored_project and stored_project != self.project_root:
+            if self.project_root and stored_project != self.project_root:
                 logger.debug(
                     "Verdict cache %s belongs to project %s, not %s; ignoring",
                     self.path, stored_project, self.project_root,
@@ -234,7 +277,7 @@ class VerdictCache:
                     cleaned[key] = entry
             self._entries = cleaned
             self._evict_locked()
-        except (OSError, ValueError, TypeError) as e:
+        except Exception as e:  # noqa: BLE001 — corrupt cache is a miss
             logger.debug(
                 "Verdict cache %s could not be read (%s: %s); starting empty",
                 self.path, type(e).__name__, e,
@@ -266,7 +309,7 @@ class VerdictCache:
             )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    json.dump(payload, handle, ensure_ascii=False)
+                    json.dump(payload, handle, ensure_ascii=False, allow_nan=False)
                 os.replace(tmp_path, self.path)
             except BaseException:
                 try:

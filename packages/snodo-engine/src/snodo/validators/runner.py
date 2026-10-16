@@ -30,7 +30,8 @@ from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.infrastructure.completion_headers import wrap_completion_fn_with_headers
 from snodo.validators.change import build_change_context
 from snodo.validators.context import ValidatorContext
-from snodo.validators.verdict_cache import compute_verdict_key
+from snodo.validators.verdict_cache import compute_verdict_question, question_key
+from snodo.validators.verdict_reuse import reused_result
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,7 @@ def enrich_result_with_criteria(
         examined=getattr(result, "examined", None),
         skipped=getattr(result, "skipped", False),
         reused=getattr(result, "reused", False),
+        cache_provenance=getattr(result, "cache_provenance", None),
         cacheable=getattr(result, "cacheable", True),
     )
 
@@ -308,17 +310,6 @@ def _verdict_subject(
     return None, False
 
 
-def _result_from_cache(record: Dict[str, Any]) -> ValidatorResult:
-    """Rebuild a stored verdict, marked as reused."""
-    return ValidatorResult(
-        validator_id=record.get("validator_id", ""),
-        severity=record.get("severity"),
-        justification=record.get("justification", ""),
-        cited_criteria=record.get("cited_criteria") or None,
-        reused=True,
-    )
-
-
 def dispatch_validator(
     v: Validator, context: ValidatorContext, reg: Any
 ) -> ValidatorResult:
@@ -330,18 +321,23 @@ def dispatch_validator(
     verdict is capped exactly like a fresh one.
 
     Never raises — failures become ``error=True`` ValidatorResults (which the
-    policy evaluator maps to ``validator_error`` / fail-closed).
+    policy evaluator maps to ``validator_error`` / fail-closed). A cache fault
+    instead becomes a miss, never an unusable verdict or an operational halt.
     """
     cache = getattr(context, "verdict_cache", None)
     key: Optional[str] = None
+    question = None
     if cache is not None:
-        subject, cacheable = _verdict_subject(v, context, reg)
-        if cacheable and subject:
-            mode = getattr(context, "current_mode", None)
-            mode_id = getattr(mode, "mode_id", None) or getattr(context, "mode_name", "")
-            protocol = getattr(context, "protocol", None)
-            try:
-                key = compute_verdict_key(
+        try:
+            subject, cacheable = _verdict_subject(v, context, reg)
+            if cacheable and subject:
+                mode = getattr(context, "current_mode", None)
+                mode_id = getattr(mode, "mode_id", None) or getattr(context, "mode_name", "")
+                protocol = getattr(context, "protocol", None)
+                task = context.task
+                wave = (getattr(v, "tooling", None) or {}).get("scope") == "wave"
+                subject_id = (task.wave_id or "") if wave else task.id
+                question = compute_verdict_question(
                     validator_id=v.validator_id,
                     validator_type=v.validator_type,
                     criteria=v.criteria,
@@ -352,25 +348,26 @@ def dispatch_validator(
                     mode_id=str(mode_id or ""),
                     phase=getattr(context, "phase", ""),
                     subject=subject,
+                    subject_kind=_verdict_subject_kind(v, context, reg) or "",
+                    subject_id=subject_id,
                     max_tokens=getattr(context, "max_tokens", None),
                     max_tool_turns=getattr(context, "max_tool_turns", None),
                 )
+                key = question_key(question)
                 cached = cache.get(key)
-            except Exception as e:  # noqa: BLE001 — cache must never halt a run
-                logger.debug("Verdict cache lookup failed (judging fresh): %s", e)
-                cached = None
-            if cached is not None:
-                logger.debug(
-                    "Verdict cache hit for validator %s (%s)",
-                    v.validator_id, context.phase,
-                )
-                return _result_from_cache(cached)
+                result = reused_result(cached, key, question)
+                if result is not None:
+                    logger.debug("Verdict cache hit for validator %s (%s)", v.validator_id, context.phase)
+                    return result
+        except Exception as e:  # noqa: BLE001 — cache must never halt a run
+            logger.debug("Verdict cache lookup failed (judging fresh): %s", e)
+            key = None
 
     result = _evaluate_validator(v, context, reg)
 
     if cache is not None and key is not None and _is_cacheable_verdict(result):
         try:
-            cache.put(key, result)
+            cache.put(key, result, question=question)
         except Exception as e:  # noqa: BLE001 — cache writes must never halt
             logger.debug("Verdict cache store failed (verdict stands): %s", e)
     return result
@@ -567,12 +564,16 @@ def run_validators(
     # before the pool starts: every tree-keyed judge shares the digest, the
     # git read happens once rather than once per validator, and it never runs
     # concurrently under the pool.
-    if verdict_cache is not None and any(
-        _verdict_subject_kind(v, context, reg) in _TREE_READING_KINDS
-        for v in validators
-    ):
-        context.verdict_tree_subject = _tree_subject(context)
-        context.verdict_tree_subject_ready = True
+    if verdict_cache is not None:
+        try:
+            if any(_verdict_subject_kind(v, context, reg) in _TREE_READING_KINDS
+                   for v in validators):
+                context.verdict_tree_subject = _tree_subject(context)
+                context.verdict_tree_subject_ready = True
+        except Exception as e:  # noqa: BLE001 — subject faults only disable reuse
+            logger.debug("Verdict cache tree identity unavailable: %s", e)
+            context.verdict_tree_subject = None
+            context.verdict_tree_subject_ready = True
 
     # Resolve set_model overrides once per pass
     overrides: Dict[str, str] = {}
@@ -699,6 +700,8 @@ def run_validators(
                             ),
                             cited_criteria=result.cited_criteria,
                             tool_access_missing=missing_access,
+                            reused=getattr(result, "reused", False),
+                            cache_provenance=getattr(result, "cache_provenance", None),
                         )
                     tool_access_refusal = (
                         isinstance(missing_access, dict)
@@ -722,6 +725,7 @@ def run_validators(
                             cited_criteria=result.cited_criteria,
                             severity_original=original_severity,
                             reused=getattr(result, "reused", False),
+                            cache_provenance=getattr(result, "cache_provenance", None),
                         )
                         if audit_log is not None:
                             _cap_data = {
@@ -751,6 +755,7 @@ def run_validators(
                                 cited_criteria=result.cited_criteria,
                                 severity_original=original_severity,
                                 reused=getattr(result, "reused", False),
+                                cache_provenance=getattr(result, "cache_provenance", None),
                             )
                             cap_originals[result.validator_id] = original_severity
                             if audit_log is not None:
@@ -803,6 +808,7 @@ def run_validators(
                         cited_criteria=result.cited_criteria,
                         severity_original=original_severity,
                         reused=getattr(result, "reused", False),
+                        cache_provenance=getattr(result, "cache_provenance", None),
                     )
                     cap_originals[result.validator_id] = original_severity
             if verdict_sink is not None:

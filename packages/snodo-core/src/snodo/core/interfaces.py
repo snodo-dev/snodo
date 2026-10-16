@@ -4,6 +4,7 @@ All other modules implement against these contracts.
 """
 
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -179,6 +180,9 @@ class ValidatorResult(BaseModel):
     #: judgement was reused instead of presenting it as newly made.  An error
     #: and a skipped pass are never stored or reused.
     reused: bool = False
+    #: The original question, cache key and gathering time for a reused verdict.
+    #: Contains identifiers and digests, never the task specification or credentials.
+    cache_provenance: Optional[Dict[str, Any]] = None
     #: False when the provider forced a non-deterministic parameter fallback.
     cacheable: bool = True
 
@@ -208,6 +212,9 @@ def result_record(result: Any) -> Dict[str, Any]:
     # so an audit reader can tell a reused judgement from a fresh one (#246).
     if getattr(result, "reused", False):
         out["reused"] = True
+        provenance = getattr(result, "cache_provenance", None)
+        if provenance is not None:
+            out["cache_provenance"] = deepcopy(provenance)
     return out
 
 

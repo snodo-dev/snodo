@@ -27,9 +27,12 @@ from snodo.validators.runner import (
     run_validators,
 )
 from snodo.validators.verdict_cache import (
+    SCHEMA_VERSION,
     VerdictCache,
     cache_for_project,
+    compute_verdict_question,
     default_cache_path,
+    question_key,
 )
 
 
@@ -177,6 +180,16 @@ def _run(
 def _cache(tmp_path):
     return VerdictCache(
         tmp_path / "verdict_cache.json", project_root=str(tmp_path)
+    )
+
+
+def _stored_question(validator_id="v", subject="fixture"):
+    """A complete safe question for tests exercising storage, not dispatch."""
+    return compute_verdict_question(
+        validator_id=validator_id, validator_type="security", criteria=["safe"],
+        tools=[], model="test-model", protocol_id="p_cache", protocol_version="1",
+        mode_id="producer", phase="pre_execute", subject=subject,
+        subject_kind="spec", subject_id="t1", max_tokens=1500, max_tool_turns=6,
     )
 
 
@@ -806,9 +819,11 @@ def test_cache_for_project_lives_under_the_project_snodo(tmp_path):
 
 def test_clear_deletes_the_file_and_is_idempotent(tmp_path):
     cache = _cache(tmp_path)
+    question = _stored_question()
     cache.put(
-        "k",
+        question_key(question),
         ValidatorResult(validator_id="v", severity="pass", justification="ok"),
+        question=question,
     )
     assert cache.path.exists()
 
@@ -823,17 +838,21 @@ def test_cache_evicts_least_recently_used(tmp_path):
     cache = VerdictCache(
         tmp_path / "c.json", project_root=str(tmp_path), max_entries=2
     )
-    for key in ("a", "b", "c"):
+    keys = {}
+    for label in ("a", "b", "c"):
+        question = _stored_question(validator_id=label)
+        keys[label] = question_key(question)
         cache.put(
-            key,
+            keys[label],
             ValidatorResult(
-                validator_id=key, severity="pass", justification="ok"
+                validator_id=label, severity="pass", justification="ok"
             ),
+            question=question,
         )
 
     assert len(cache) == 2
-    assert cache.get("a") is None
-    assert cache.get("c") is not None
+    assert cache.get(keys["a"]) is None
+    assert cache.get(keys["c"]) is not None
 
 
 def test_cache_ignores_schema_mismatch(tmp_path):
@@ -857,7 +876,7 @@ def test_cache_ignores_a_foreign_project(tmp_path):
     path.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": SCHEMA_VERSION,
                 "project": "/some/other/project",
                 "entries": {"k": {"severity": "pass"}},
             }
@@ -870,18 +889,18 @@ def test_cache_ignores_a_foreign_project(tmp_path):
 
 def test_cache_drops_malformed_entries(tmp_path):
     path = tmp_path / "c.json"
-    path.write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "project": str(tmp_path),
-                "entries": {"good": {"severity": "pass"}, "bad": "not a dict"},
-            }
-        ),
-        encoding="utf-8",
+    question = _stored_question()
+    key = question_key(question)
+    cache = VerdictCache(path, project_root=str(tmp_path))
+    cache.put(
+        key, ValidatorResult(validator_id="v", severity="pass", justification="ok"),
+        question=question,
     )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["entries"]["bad"] = "not a dict"
+    path.write_text(json.dumps(payload), encoding="utf-8")
     cache = VerdictCache(path, project_root=str(tmp_path))
 
     assert len(cache) == 1
-    assert cache.get("good") is not None
+    assert cache.get(key) is not None
     assert cache.get("bad") is None

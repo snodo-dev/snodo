@@ -1,5 +1,28 @@
 """LLM-driven protocol validation with bounded, read-only inspection.
 
+Uses the existing Coder adapter's LLM to evaluate tasks against
+protocol-defined criteria before execution.
+Judge prompt contract:
+- Input: task spec + validator criteria from protocol YAML
+- Output: JSON with {severity, justification}
+- Falls back to "warn" on any LLM or parse failure
+Tool-loop (capability-grant):
+- Runs iff validator_spec.tools is non-empty AND MCPs + completion_fn present.
+- Empty/absent tools => single-completion path (no loop, no tools).
+- Explicit grant only — never defaults to the full set.
+- Phase filters read_diff_between_refs (meaningful post-execute only) AND
+  reaches the prompt: the judge is told whether it is reviewing a proposal
+  (pre-execute) or inspecting a finished result (post-execute), so a
+  tool-enabled pre-execute judge cannot read "evaluate the task" as "check
+  whether this was done" (see ADR 019).
+- The produced change is context, not a capability (Fixes #267): every
+  post-execute judge — tool-loop or single-completion, granted the diff tool
+  or not — begins its turn with the change already in the prompt
+  (snodo.validators.change).  Pre-execute judges never receive it.
+- A turn whose tool calls are all repeat-read hits is not charged against the
+  turn budget; a small, separate streak counter still stops a judge that only
+  ever repeats itself, sooner than the real budget (Fixes #360, ADR 050).
+
 Tool grants and phase framing determine the judge's view. Every live
 submit_verdict must name the exact task under judgement (ADR 059); a missing
 or different subject is an operational error, not a finding or a warn.
@@ -62,6 +85,12 @@ _logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_TOOL_TURNS = 20
 _DEFAULT_MAX_TOKENS = 1500
+# A turn whose only tool calls were repeat-read hits made no progress and is
+# not charged against max_tool_turns (see _MAX_STALL_TURNS below and ADR 050)
+# — but a judge that only ever repeats itself must still be stopped, sooner
+# than the real budget rather than looping through it. This bounds how many
+# *consecutive* stalled turns are tolerated before the loop forces the same
+# verdict-only turn already used at the true end of budget.
 # Repeat reads are free, but a bounded consecutive stall forces a verdict.
 _MAX_STALL_TURNS = 3
 _RETRY_ATTEMPTS = 3
@@ -75,6 +104,10 @@ _READ_ONLY_TOOL_NAMES: Set[str] = {
 }
 _POST_EXECUTE_ONLY_TOOLS: Set[str] = {"read_diff_between_refs"}
 
+# The instruction that closes the reading window. The nudge after a prose
+# answer and the final turn are the same moment — the system has decided the
+# reading is over — so they say the same thing: the read tools are withdrawn,
+# decide now, and a verdict on a partial view is real ("warn" exists for it).
 _VERDICT_ONLY_INSTRUCTION = (
     "The read tools are no longer available. Return your verdict now by "
     "calling submit_verdict(task_id, severity, justification); do not narrate. A "
@@ -92,6 +125,14 @@ _UNFORCED_VERDICT_INSTRUCTION = (
 def _phase_frame(phase: str) -> str:
     """Distinguish a proposal from completed work (ADR 019).
 
+    The same criteria list reads differently depending on phase: at
+    pre-execute the judge is reviewing a proposal (the described work does not
+    exist yet, and its absence is never a finding); at post-execute it is
+    inspecting a finished result (absence of the described work *is* a
+    finding).  Without this frame, a tool-enabled pre-execute judge reads
+    "evaluate the task against the criteria" as "check whether this was done"
+    and blocks on work that cannot exist yet (see ADR 019).
+
     Before execution, missing implementation is expected, not evidence of a
     violation. After execution the same absence may be a legitimate finding.
     Keep that distinction explicit even when both phases offer read tools.
@@ -108,6 +149,8 @@ def _phase_frame(phase: str) -> str:
             "You are reviewing a mode transition. Judge whether the transition "
             "as described satisfies the criteria below."
         )
+    # pre_execute (and any unknown phase) — the safe default is the proposal
+    # frame: absence of implementation is expected and never a finding.
     return (
         "You are reviewing a PROPOSAL, before any of it has been built. The "
         "repository will NOT contain the described work; that is expected and "
@@ -127,6 +170,9 @@ class LLMValidator(ValidatorBase):
     boundary shared by every submit_verdict judge.
     """
 
+    #: A single-completion judge of the task spec.  This is the pre-execute
+    #: answer; the runner forces every post-execute judge (including a
+    #: subclass that leaves this inherited) onto the tree subject (#246).
     # The runner forces tool-using and all post-execute judges onto the tree.
     cache_subject = "spec"
     VALID_SEVERITIES = {"pass", "warn", "blocker"}
@@ -158,6 +204,13 @@ class LLMValidator(ValidatorBase):
         model_requested: str = "", response: Any = None,
     ) -> None:
         """Best-effort operational telemetry, not part of the audit chain.
+
+        Operational telemetry, not part of the audit chain (ADR 034). Never
+        raises — telemetry must not crash the tool loop.
+        ``model`` is the name sent in the request; ``served_model`` is the
+        provider's own name for what answered, beside it as provenance
+        (Fixes #381). None served means the provider reported nothing — not
+        a match, and not a substitution either.
 
         Observability failures must not change a judge's verdict. The runner
         records the canonical result independently of this per-turn detail.
@@ -218,6 +271,9 @@ class LLMValidator(ValidatorBase):
             self._depth = getattr(context.task, "depth", 0) or 0
             self._attempt = (getattr(context.task, "depth", 0) or 0) + 1
 
+        # Capability gate: tool-loop runs iff validator declares tools
+        # AND MCPs + completion_fn are present. Empty/absent tools =>
+        # single-completion path (no loop, no tools). Explicit grant only.
         from snodo.validators.runner import enrich_result_with_criteria
 
         declared_tools = getattr(self.validator_spec, "tools", None) or []
@@ -233,6 +289,11 @@ class LLMValidator(ValidatorBase):
             if self._completion_fn is None:
                 missing_dependencies.append("completion function")
             if missing_dependencies:
+                # Pre-execute validation may run before the execution context
+                # (workspace/git MCPs) exists. Preserve its ordinary
+                # single-completion behavior; post-execute judges must have
+                # their declared inspection tools or report infrastructure
+                # failure rather than inventing a verdict.
                 # Preserve pre-execute single-completion fallback; a post-execute
                 # judge must have its declared inspection infrastructure.
                 if getattr(context, "phase", "") == "post_execute":
@@ -250,6 +311,11 @@ class LLMValidator(ValidatorBase):
                 return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
 
         prompt = self._build_prompt(context)
+        # Try structured output when the model supports it.  Structured output
+        # must DEGRADE, not fail: a provider that rejects response_format (e.g.
+        # DeepSeek's "This response_format type is unavailable now") must not
+        # take the validator down — fall back to an unstructured call and parse
+        # the verdict from the content (Fixes #84).
         structured_rejected = False
         if self._completion_fn is not None and supports_response_schema(self.model):
             try:
@@ -267,6 +333,10 @@ class LLMValidator(ValidatorBase):
         try:
             response_text = self._call_llm(prompt)
             res = self._parse_response(response_text)
+            # If the provider rejected structured output AND the unstructured
+            # fallback did not parse, that is an operational fault, not a
+            # verdict — the provider refused the structured call and the
+            # fallback yielded nothing usable (Fixes #84).
             # A provider refusing structured output must not turn an unusable
             # fallback response into a warn that could participate in consensus.
             if structured_rejected and res.severity == "warn" \
@@ -281,6 +351,10 @@ class LLMValidator(ValidatorBase):
                     error=True,
                 )
         except Exception as e:
+            # The operational-fault path: an error=True result halts the run
+            # as validator_error, so the cause must travel with it. The type
+            # distinguishes provider rejections from code defects, and the
+            # message carries the provider's own words.
             _logger.warning(
                 "Validator %s (model=%s) hit an operational fault: %s: %s",
                 self.validator_spec.validator_id, self.model, type(e).__name__, e,
@@ -296,8 +370,17 @@ class LLMValidator(ValidatorBase):
             )
         return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
 
+    # ------------------------------------------------------------------
+    # Post-execute bounded tool-use loop
+    # ------------------------------------------------------------------
     def _evaluate_with_tools(self, context: ValidatorContext) -> ValidatorResult:
         """Run the bounded read-only loop in either evaluation phase.
+
+        Run a bounded read-only tool-use loop.
+        Activated by declared tools on the validator spec (not phase).
+        Phase filters read_diff_between_refs (meaningful post-execute only)
+        and reaches the prompt via ``_phase_frame``, so the judge knows
+        whether it is reviewing a proposal or inspecting a result.
 
         Only declared tools are offered, and post-execute diff inspection is
         withheld before execution. Reading ends with a verdict-only request;
@@ -309,6 +392,8 @@ class LLMValidator(ValidatorBase):
         phase = getattr(context, "phase", "")
         tool_turns = getattr(context, "max_tool_turns", None) or _DEFAULT_MAX_TOOL_TURNS
         completion_tokens = getattr(context, "max_tokens", None) or _DEFAULT_MAX_TOKENS
+        # Assemble toolset: intersect declared tools with read-only set,
+        # then strip post-execute-only tools if not in post-execute phase.
         declared = set(getattr(self.validator_spec, "tools", []) or [])
         active_names = declared & _READ_ONLY_TOOL_NAMES
         if phase != "post_execute":
@@ -319,6 +404,12 @@ class LLMValidator(ValidatorBase):
         )
         tools = self._build_tool_definitions(active_names) + plugin_definitions
         tools.append(self._SUBMIT_VERDICT_DEF)
+        # The produced change reaches the judge through its PHASE, not through
+        # a tool grant (Fixes #267): run_validators reads base_ref..HEAD once
+        # per pass and shares it on the context; ensure_change_context covers
+        # direct calls.  When the protocol granted read_diff_between_refs the
+        # judge may still call it — e.g. against another ref — but it never
+        # has to, because the change is already in the prompt.
         change = ensure_change_context(context)
         system_prompt = self._build_tool_loop_prompt(
             context, active_names, total_turns=tool_turns,
@@ -334,6 +425,10 @@ class LLMValidator(ValidatorBase):
             )
         messages: List[Dict[str, Any]] = [{"role": "user", "content": system_prompt}]
         retried_free_text = False
+        # Ongoing-work narration goes to the progress sink — never the verdict
+        # sink. Wrapping here keeps a raw callback safe on the direct path too;
+        # when the runner already wrapped it, the same sink (and its
+        # report-once state) is reused.
         cb = ensure_progress_sink(
             getattr(context, "progress_callback", None)
             or getattr(self, "progress_callback", None),
@@ -341,10 +436,24 @@ class LLMValidator(ValidatorBase):
         )
         start_time = time.monotonic()
         read_tracker = ReadMemoryTracker(getattr(workspace, "project_root", None))
+        # What the judge examined, in order. If the judge fails without ever
+        # deciding, this record of how far the inspection got travels on the
+        # error result rather than a state invented to hold it.
         examination: List[str] = []
         if change is not None and change.readable and change.diff.strip():
             examination.append(f"prompt: preloaded diff {change.label}")
 
+        # turns_used is what max_tool_turns bounds — it only advances on a
+        # turn that made some kind of progress. A turn whose only tool calls
+        # were repeat-read hits made none, so it is free (Fixes #360): the
+        # judge is not charged for being told to look at a turn it already
+        # has. stall_streak counts *consecutive* free turns and forces the
+        # verdict-only turn once it reaches _MAX_STALL_TURNS, so a judge that
+        # only ever repeats itself is still stopped — sooner than the real
+        # budget, rather than looping through it (ADR 050). The raw loop
+        # bound below is a defensive ceiling only: every branch that can be
+        # reached with is_final_turn or retried_free_text true returns
+        # unconditionally, so the loop always terminates well before it.
         # Only progress spends the reading budget. Consecutive repeat-read
         # stalls force the same final verdict-only turn (ADR 050).
         # The raw ceiling also bounds pathological sequences of otherwise free
@@ -356,6 +465,13 @@ class LLMValidator(ValidatorBase):
             is_final_turn = (
                 turns_used >= tool_turns - 1 or stall_streak >= _MAX_STALL_TURNS
             )
+            # Time is up on the final turn, and it is also up the moment the
+            # loop asks the judge for its verdict after a prose answer: the
+            # nudge and the final turn are the same moment. The read tools are
+            # withdrawn and the judge is asked for a verdict from the evidence
+            # it has. A verdict reached on incomplete reading is a real verdict
+            # — "warn" exists for exactly that — and the judge is given no way
+            # to keep reading (Fixes #285).
             if is_final_turn or retried_free_text:
                 offered_names: Set[str] = set()
                 turn_tools = [self._SUBMIT_VERDICT_DEF]
@@ -381,6 +497,11 @@ class LLMValidator(ValidatorBase):
                 }
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = 0.0
+                # When the offered tools are submit_verdict alone (the final
+                # turn, or the turn after prose narration), require that function
+                # via tool_choice so the judge is not free to answer in prose a
+                # second time (Fixes #296). On reading turns, leave tool_choice
+                # unset so the judge is free to read or decide.
                 if len(turn_tools) == 1 and turn_tools[0].get("function", {}).get("name") == "submit_verdict":
                     kwargs["tool_choice"] = {
                         "type": "function", "function": {"name": "submit_verdict"},
@@ -399,6 +520,9 @@ class LLMValidator(ValidatorBase):
                     ),
                 )
             except Exception as e:
+                # Provider fault on the tool-loop path: it halts as
+                # validator_error, so log the cause and carry its type into
+                # the surfaced justification alongside the message.
                 _logger.warning(
                     "Validator %s tool-loop hit an operational fault on turn %d "
                     "(model=%s): %s: %s",
@@ -438,6 +562,12 @@ class LLMValidator(ValidatorBase):
                 )
                 return verdict
 
+            # The judge was offered submit_verdict alone (the final turn, or
+            # the turn after the prose nudge). Anything else is a judge that
+            # did not decide — an error that fails closed. It is not given
+            # another turn, and a read call cannot be honoured: the tools were
+            # withdrawn precisely so it would state what it found on what it
+            # has.
             if is_final_turn or retried_free_text:
                 if tool_calls:
                     attempted = ", ".join(tc.function.name for tc in tool_calls)
@@ -466,6 +596,12 @@ class LLMValidator(ValidatorBase):
                         }} for tc in tool_calls
                     ],
                 })
+                # Whether this turn is charged against the budget: a turn
+                # whose only tool calls were repeat-read hits made no
+                # progress and is free (Fixes #360) — every other outcome
+                # (a fresh read, a refusal, an invalid submit_verdict) is
+                # unrelated to the repeat-read tracker and still charges as
+                # before.
                 turn_progressed = False
                 for tc in tool_calls:
                     tool_name = tc.function.name
@@ -474,12 +610,21 @@ class LLMValidator(ValidatorBase):
                     except (json.JSONDecodeError, TypeError):
                         args = {}
                     if tool_name == "submit_verdict":
+                        # submit_verdict present but not a valid verdict
+                        # (invalid severity or unparseable args) — feed back a
+                        # tool response so every tool_call_id is answered
+                        # before the next request.
                         result = self._submit_verdict_feedback(tc)
                         examination.append(
                             f"turn {turn + 1}: submit_verdict (rejected — invalid arguments)"
                         )
                         turn_progressed = True
                     elif tool_name not in offered_names:
+                        # The judge was not granted this tool (or it was
+                        # withdrawn on the final turn). A model can only call a
+                        # tool it was offered, but the boundary is enforced here
+                        # too so a hallucinated or undeclared tool can never
+                        # reach the workspace (Fixes #253).
                         available = ", ".join(sorted(offered_names)) or "(none)"
                         result = (
                             f"Tool '{tool_name}' is not available to this "
@@ -511,6 +656,10 @@ class LLMValidator(ValidatorBase):
                                 # failed inspection infrastructure is not a
                                 # finding about the work and must fail closed.
                                 if is_tool_argument_error(e):
+                                    # A refused path or a missing requested file is
+                                    # an ordinary inspection result, not a broken
+                                    # tool transport. Preserve the existing
+                                    # reasoned-refusal / model-evaluation contract.
                                     result = f"Tool error: {e}"
                                 else:
                                     _logger.warning(
@@ -557,6 +706,12 @@ class LLMValidator(ValidatorBase):
             if not has_content and not tool_calls:
                 msg.content = ""
                 has_content = True
+            # A judge that narrated is asked once more to use the tool — and
+            # that is the moment the reading window closes. The assistant's
+            # prose is recorded here; the next iteration sees
+            # retried_free_text set and withdraws the read tools, offering
+            # submit_verdict alone with the shared instruction. It is not
+            # handed the menu it just chose to keep reading from (Fixes #285).
             if has_content and not retried_free_text:
                 retried_free_text = True
                 turns_used += 1
@@ -566,6 +721,11 @@ class LLMValidator(ValidatorBase):
                 )
                 messages.append({"role": "assistant", "content": msg.content})
                 continue
+            # A judge that still returns nothing is an error, not a verdict.
+            # It takes the path errors already take — fail-closed — because an
+            # engine that cannot get a verdict out of its quorum must not
+            # proceed. What the judge examined before it failed travels with
+            # the error result; no state is invented to hold a missing verdict.
             return ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
                 severity="blocker",
@@ -575,6 +735,9 @@ class LLMValidator(ValidatorBase):
                 ),
                 error=True, examined=examination or None,
             )
+        # Unreachable: the final turn always returns above when no verdict is
+        # submitted. Kept as the same fail-closed error so a change to the loop
+        # bounds can never turn "no verdict" into a pass.
         return ValidatorResult(
             validator_id=self.validator_spec.validator_id,
             severity="blocker",
@@ -590,6 +753,15 @@ class LLMValidator(ValidatorBase):
         total_turns: int = _DEFAULT_MAX_TOOL_TURNS,
     ) -> str:
         """Build the phase-aware judge prompt; subclasses may change the remit.
+
+        Subclasses override this to change what the judge is asked to
+        evaluate (e.g. the acceptance validator judges the produced
+        artifacts against the task's acceptance criteria instead of
+        protocol criteria).
+        The change section is derived from the context, not passed in: a
+        post-execute judge always begins with the produced change, whatever
+        its protocol granted; a pre-execute judge never sees one
+        (Fixes #267).
 
         Subject instructions are appended by the caller so a specialized
         prompt, such as acceptance review, cannot omit the binding contract.
@@ -627,7 +799,12 @@ class LLMValidator(ValidatorBase):
 
     @staticmethod
     def _build_tool_definitions(tool_names: Set[str]) -> List[Dict[str, Any]]:
-        """Build definitions for exactly the declared read-only tools."""
+        """Build definitions for exactly the declared read-only tools.
+
+        Build OpenAI-format tool definitions for exactly the declared tools.
+        Never returns the full set — only the tools in *tool_names* that
+        are in the fixed read-only allowlist.
+        """
         all_defs = {
             "read_diff_between_refs": {
                 "type": "function", "function": {
@@ -755,6 +932,9 @@ class LLMValidator(ValidatorBase):
             try:
                 args = json.loads(tc.function.arguments)
             except (json.JSONDecodeError, TypeError) as e:
+                # A verdict the judge did deliver is being dropped here
+                # (the model is fed generic feedback instead); keep the
+                # parse failure's reason reachable.
                 _logger.debug(
                     "submit_verdict arguments unparseable for validator %s: %s: %s",
                     self.validator_spec.validator_id, type(e).__name__, e,
@@ -780,6 +960,12 @@ class LLMValidator(ValidatorBase):
     def _submit_verdict_feedback(self, tc: Any) -> str:
         """Answer malformed arguments before a correction request.
 
+        Build a tool response for a submit_verdict call that is not a valid
+        verdict (invalid severity or unparseable arguments).
+
+        The response is appended as a tool message so the tool_call_id is
+        always answered before the next request.
+
         Wrong-subject submissions never reach this correction path: returning
         one already ended the loop with an unusable-verdict error.
         """
@@ -799,6 +985,9 @@ class LLMValidator(ValidatorBase):
             "Call submit_verdict(task_id, severity, justification) with a valid severity."
         )
 
+    # ------------------------------------------------------------------
+    # Single-completion path (pre-execute, unchanged)
+    # ------------------------------------------------------------------
     def _build_prompt(self, context_or_task) -> str:
         """Build the legacy JSON prompt, retaining phase and change framing."""
         if isinstance(context_or_task, Task):
@@ -808,6 +997,9 @@ class LLMValidator(ValidatorBase):
         else:
             task = context_or_task.task
             phase = getattr(context_or_task, "phase", "") or ""
+            # The produced change reaches a single-completion post-execute
+            # judge too — the ones with no tools cannot call anything, so a
+            # tool grant could never have helped them (Fixes #267).
             change_block = change_block_for(context_or_task)
         criteria_text = "\n".join(
             f"  {i+1}. {c}" for i, c in enumerate(self.validator_spec.criteria)
@@ -836,6 +1028,14 @@ class LLMValidator(ValidatorBase):
         self, parameter_fallback_instruction: Optional[str] = None, **kwargs,
     ) -> Any:
         """Apply provider shape/parameter fallbacks and transient retries.
+
+        Retries each named provider-rejected parameter once, then retries up to
+        3 times on transient errors (5xx, 429, connection, DNS,
+        timeout). Raises the underlying exception if retries are exhausted or
+        the error is not transient (a 4xx other than 429 is a client error —
+        retrying it is not honest). The retry sleeps share a 30-second budget
+        per validator call so an unavailable provider cannot stall a run
+        indefinitely. Provider Retry-After hints take precedence.
 
         Request compatibility is separate from judging: a provider rejecting
         a parameter can be retried without asking a coder to repair the task.
@@ -896,9 +1096,24 @@ class LLMValidator(ValidatorBase):
                     raise
 
     def _call_llm(self, prompt: str) -> str:
-        """Request the legacy free-text JSON response with bounded diagnostics."""
+        """Request the legacy free-text JSON response with bounded diagnostics.
+
+        Call the LLM for a single completion.
+        Args:
+            prompt: The judge prompt
+        Returns:
+            Raw response text from the LLM
+        Raises:
+            Exception: If the LLM call fails
+        """
         # The completion partial binds model and api_base together (#237).
         kwargs = {
+            # No "model" here on purpose: the completion function is a partial
+            # with model AND api_base already bound together (#237). Passing a
+            # model kwarg overrides the bound model without its api_base, and
+            # the raw configured name ("ocgo/...") is not a litellm provider.
+            # _configured_model is popped by the header wrapper and never
+            # reaches litellm.
             "_configured_model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.completion_tokens,
@@ -918,8 +1133,20 @@ class LLMValidator(ValidatorBase):
         return content
 
     def _call_llm_structured(self, prompt: str) -> ValidatorResult:
-        """Use the provider's response schema and restore the configured judge ID."""
+        """Use the provider's response schema and restore the configured judge ID.
+
+        Call the LLM with response_format=ValidatorResult for structured output.
+        LiteLLM enforces JSON schema at the API level.  The response content
+        is guaranteed to be valid JSON matching the ValidatorResult schema.
+        Zero free-text parsing.
+        """
         kwargs = {
+            # No "model" here on purpose: the completion function is a partial
+            # with model AND api_base already bound together (#237). Passing a
+            # model kwarg overrides the bound model without its api_base, and
+            # the raw configured name ("ocgo/...") is not a litellm provider.
+            # _configured_model is popped by the header wrapper and never
+            # reaches litellm.
             "_configured_model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.completion_tokens,
@@ -942,6 +1169,13 @@ class LLMValidator(ValidatorBase):
 
     def _parse_response(self, response_text: str) -> ValidatorResult:
         """Parse the legacy response, including fenced or embedded JSON.
+
+        Attempts JSON parsing, with fallback regex extraction.
+        Falls back to "warn" if parsing fails entirely.
+        Args:
+            response_text: Raw LLM response text
+        Returns:
+            ValidatorResult with parsed severity and justification
 
         Its historical warn fallback is not used for tool-loop answers. Live
         submit_verdict submissions go through the exact subject check instead.
