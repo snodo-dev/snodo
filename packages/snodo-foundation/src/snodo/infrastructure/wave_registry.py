@@ -26,7 +26,11 @@ from filelock import FileLock
 from snodo.infrastructure.atomic_json import atomic_write_json
 from snodo.infrastructure.completion_headers import wrap_completion_fn_with_headers
 from snodo.infrastructure.config import ClassifierConfig, WaveConfig
-from snodo.infrastructure.llm_parameter_errors import rejected_parameter_name
+from snodo.infrastructure.llm_parameter_errors import (
+    apply_remembered_parameters,
+    remove_rejected_parameter,
+)
+from snodo.infrastructure.message_shape import reshape_messages_after_rejection
 
 _logger = logging.getLogger(__name__)
 _classifier_failure_streak = 0
@@ -287,6 +291,7 @@ class WaveRegistry:
         must not mint a wave.
         """
         removed_parameters: set[str] = set()
+        shaped_models: set[str] = set()
         kwargs: dict = {
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self._classifier.max_tokens,
@@ -294,6 +299,7 @@ class WaveRegistry:
         }
         for attempt in range(2):
             try:
+                apply_remembered_parameters(model, kwargs)
                 if completion_fn is None:
                     from litellm import completion as completion_fn
 
@@ -330,14 +336,16 @@ class WaveRegistry:
                         _classifier_failure_streak = 0
                         return parsed
             except Exception as e:
-                parameter = rejected_parameter_name(e)
-                if (
-                    parameter
-                    and parameter in kwargs
-                    and parameter not in removed_parameters
-                ):
-                    removed_parameters.add(parameter)
-                    del kwargs[parameter]
+                reshaped = reshape_messages_after_rejection(
+                    e, kwargs["messages"], model, shaped_models,
+                )
+                parameter = remove_rejected_parameter(
+                    e, kwargs, removed_parameters, model,
+                )
+                if reshaped is not None:
+                    kwargs["messages"] = reshaped
+                    continue
+                if parameter:
                     _logger.warning(
                         "Classifier provider rejected parameter %s (model=%s): %s; "
                         "retrying without it",
