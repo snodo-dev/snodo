@@ -65,6 +65,8 @@ class DummyCoder:
         class CodeArtifact:
             def __init__(self, files):
                 self.files = files
+                self.findings = None
+
         return CodeArtifact(self.files)
 
 
@@ -277,3 +279,273 @@ def test_delete_nonexistent_path_not_a_crash(sample_protocol, sample_task, mock_
 
     workspace_mcp.delete_file.assert_called_once_with("nonexistent.py")
     assert "nonexistent.py" in artifacts
+
+
+def _git(cwd, *args):
+    import subprocess
+
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def test_escape_detector_ignores_engine_managed_worktrees(tmp_path, sample_protocol):
+    from snodo.engine.loop import GraphBuilder
+    from snodo.infrastructure.worktree import worktree_dir
+    from snodo.tools.git import GitMCP
+
+    root = (tmp_path / "project").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+    managed = worktree_dir(str(root)) / "plan" / "task"
+    managed.parent.mkdir(parents=True)
+    _git(root, "worktree", "add", "-b", "task/plan/task/feature", str(managed))
+    builder = GraphBuilder(sample_protocol)
+    mcp = GitMCP(str(root))
+    try:
+        before = builder._repo_ref_snapshot(mcp)
+        (managed / "change.txt").write_text("managed")
+        _git(managed, "add", "change.txt")
+        _git(managed, "commit", "-m", "managed change")
+        assert builder._escaped_repo_commit(mcp, before, Task(id="task", spec="")) is None
+    finally:
+        mcp.repo.close()
+
+
+def test_escape_detector_names_external_checkout_and_changed_ref(tmp_path, sample_protocol):
+    from snodo.engine.loop import GraphBuilder
+    from snodo.tools.git import GitMCP
+
+    root = (tmp_path / "project").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+    external = (tmp_path / "external-checkout").resolve()
+    _git(root, "worktree", "add", "-b", "operator-branch", str(external))
+    builder = GraphBuilder(sample_protocol)
+    mcp = GitMCP(str(root))
+    try:
+        before = builder._repo_ref_snapshot(mcp)
+        (external / "escape.txt").write_text("escaped")
+        _git(external, "add", "escape.txt")
+        _git(external, "commit", "-m", "external change")
+        result = builder._escaped_repo_commit(mcp, before, Task(id="task", spec=""))
+        assert result is not None
+        assert str(external) in result
+        assert "operator-branch" in result
+    finally:
+        mcp.repo.close()
+
+
+# New tests for detector-level defensive paths
+
+
+def test_repo_ref_snapshot_best_effort_on_unreadable_heads(sample_protocol):
+    """_repo_ref_snapshot returns empty dict when heads enumeration fails.
+
+    The detector interacts only with the handle it is given; a stand-in with
+    a ``repo`` whose ``heads`` attribute raises exercises the best-effort
+    defensive path without mutating a real GitPython Repo.
+    """
+    builder = GraphBuilder(sample_protocol)
+
+    class BrokenRepo:
+        @property
+        def heads(self):  # pragma: no cover - trivial property
+            raise RuntimeError("cannot enumerate heads")
+
+    class Handle:
+        def __init__(self):
+            self.repo = BrokenRepo()
+
+    snapshot = builder._repo_ref_snapshot(Handle())
+    assert snapshot == {}
+
+
+def test_escaped_repo_commit_changed_non_task_ref_inside_managed_container_not_escape(tmp_path, sample_protocol):
+    """A changed non-task ref whose worktree is inside the managed container is not an escape.
+
+    The detector must reach its "no external checkouts" conclusion: the only
+    changed ref is a non-task branch whose worktree path resolves under the
+    engine-managed container directory, so the guard must classify it as
+    internal and report no escape.
+    """
+    from snodo.engine.loop import GraphBuilder
+    from snodo.infrastructure.worktree import worktree_dir
+    from snodo.tools.git import GitMCP
+
+    root = (tmp_path / "project").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+
+    # Create a non-task branch whose worktree lives under the managed
+    # container; this ensures the ref passes the "non-task" filter while the
+    # checkout path is classified as internal.
+    managed_container = worktree_dir(str(root)) / "plan" / "task"
+    managed_container.mkdir(parents=True, exist_ok=True)
+    feature_managed = managed_container / "feature-managed"
+    feature_managed.mkdir(parents=True, exist_ok=True)
+
+    _git(root, "worktree", "add", "-b", "feature-managed", str(feature_managed))
+
+    builder = GraphBuilder(sample_protocol)
+    mcp = GitMCP(str(root))
+    try:
+        before = builder._repo_ref_snapshot(mcp)
+        (feature_managed / "change.txt").write_text("managed change")
+        _git(feature_managed, "add", "change.txt")
+        _git(feature_managed, "commit", "-m", "managed change")
+
+        escaped = builder._escaped_repo_commit(mcp, before, Task(id="task", spec=""))
+        assert escaped is None
+    finally:
+        mcp.repo.close()
+
+
+def test_escaped_repo_commit_swallows_worktree_inspection_failure(tmp_path, sample_protocol):
+    """A failure while enumerating worktrees is swallowed, not surfaced as an escape.
+
+    The detector injects the failure at the collaborator it actually calls:
+    the ``repo.git.worktree`` method on the handle it is given. The rest of
+    the snapshotting and ref comparison run against a real temporary
+    repository so porcelain parsing stays exercised.
+    """
+    from snodo.engine.loop import GraphBuilder
+    from snodo.tools.git import GitMCP
+
+    root = (tmp_path / "project").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+
+    # Create an external worktree so that, absent the injected failure, the
+    # detector would classify the change as an escape.
+    external = (tmp_path / "external-checkout").resolve()
+    _git(root, "worktree", "add", "-b", "feature-external", str(external))
+
+    builder = GraphBuilder(sample_protocol)
+    base_mcp = GitMCP(str(root))
+
+    class FailingGit:
+        def __init__(self, real_git):
+            self._real_git = real_git
+
+        def __getattr__(self, name):  # pragma: no cover - delegation
+            return getattr(self._real_git, name)
+
+        def worktree(self, *args, **kwargs):  # pragma: no cover - trivial raise
+            raise RuntimeError("simulated worktree inspection failure")
+
+    class FailingHandle:
+        def __init__(self, real_mcp):
+            self.project_root = real_mcp.project_root
+            self.repo = real_mcp.repo
+            # Replace only the collaborator the detector calls.
+            self.repo.git = FailingGit(real_mcp.repo.git)
+
+    failing_mcp = FailingHandle(base_mcp)
+
+    try:
+        before = builder._repo_ref_snapshot(failing_mcp)
+        (external / "escape.txt").write_text("escaped")
+        _git(external, "add", "escape.txt")
+        _git(external, "commit", "-m", "external change")
+
+        escaped = builder._escaped_repo_commit(failing_mcp, before, Task(id="task", spec=""))
+        assert escaped is None
+    finally:
+        base_mcp.repo.close()
+
+
+def test_default_executor_halts_on_workspace_escape(tmp_path, sample_protocol):
+    """Executor raises when the escape detector reports an external checkout change (#941).
+
+    The coder produces no file operations and no findings, the task branch
+    remains untouched, a ref snapshot is captured before dispatch, and a
+    non-task ref whose checkout lives outside the managed container moves in
+    between. Under these preconditions the executor must surface the escape
+    as an ExecutionError whose message begins with "Workspace escape
+    detected".
+    """
+    from snodo.engine.loop import GraphBuilder
+    from snodo.tools.git import GitMCP
+
+    # Set up a real repository under a temporary project root.
+    root = (tmp_path / "project").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+
+    # Create an external (non-task) worktree as a sibling of the project root.
+    external = (tmp_path / "external-checkout").resolve()
+    _git(root, "worktree", "add", "-b", "operator-branch", str(external))
+
+    builder = GraphBuilder(sample_protocol)
+    git_mcp = GitMCP(str(root))
+
+    class NoOpCoder(DummyCoder):
+        def __init__(self):
+            super().__init__(files=[])
+
+        def implement(self, spec):
+            class CodeArtifact:
+                def __init__(self):
+                    self.files = []
+                    self.findings = None
+
+            return CodeArtifact()
+
+    coder = NoOpCoder()
+    coder.skip_engine_commit = False
+
+    # Use a real workspace MCP rooted at the project so that the executor can
+    # apply file operations if it ever had any (it does not in this scenario).
+    from snodo.tools.workspace import WorkspaceMCP
+
+    workspace_mcp = WorkspaceMCP(str(root))
+
+    # Capture the reference snapshot before the coder runs by calling the
+    # private helper the executor itself uses. This ensures the base snapshot
+    # exists even though the coder will not move any refs.
+    before = builder._repo_ref_snapshot(git_mcp)
+    assert before  # defensive: we expect at least "main" to be present
+
+    # Now move the external non-task ref so the detector can report an escape.
+    (external / "escape.txt").write_text("escaped")
+    _git(external, "add", "escape.txt")
+    _git(external, "commit", "-m", "external change")
+
+    # Patch the snapshot helper on this builder instance so that the executor
+    # reuses the "before" snapshot captured above instead of taking a fresh
+    # one that would see the updated ref as its baseline.
+    builder._repo_ref_snapshot = lambda mcp: before  # type: ignore[assignment]
+
+    with pytest.raises(ExecutionError) as excinfo:
+        builder._default_executor(Task(id="task_001", spec="Implement feature X"), MagicMock(), coder, workspace_mcp, git_mcp)
+
+    assert str(excinfo.value).startswith("Workspace escape detected")
+
+    git_mcp.repo.close()
+

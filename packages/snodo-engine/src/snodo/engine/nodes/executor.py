@@ -4,6 +4,7 @@ FILE: snodo/engine/nodes/executor.py
 """
 
 import logging
+from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from snodo.core.interfaces import Task, TaskSpec, ExecutionError, NoFileOperationsError
 from snodo.coders.base import (
@@ -17,6 +18,7 @@ from snodo.coders import LiteLLMAdapter, MockAdapter
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.tools.git import GitMCP
 from snodo.engine.state import _task_branch_name, _branch_exists
+from snodo.infrastructure.worktree import worktree_dir
 
 _logger = logging.getLogger(__name__)
 
@@ -352,6 +354,71 @@ class ExecutorMixin:
                 git_artifacts.append(f"git_error: {str(e)}")
         return git_artifacts
 
+    def _repo_ref_snapshot(self, git_mcp: Optional[Any]) -> Dict[str, str]:
+        """Snapshot local refs before a coder run, best-effort."""
+        if git_mcp is None:
+            return {}
+        try:
+            return {head.name: head.commit.hexsha for head in git_mcp.repo.heads}
+        except Exception as e:
+            _logger.debug("Could not snapshot repository refs: %s", e)
+            return {}
+
+    def _escaped_repo_commit(
+        self, git_mcp: Optional[Any], before: Dict[str, str], task: Task
+    ) -> Optional[str]:
+        """Describe changed non-task refs checked out outside Snodo worktrees."""
+        if git_mcp is None:
+            return None
+        try:
+            repo = git_mcp.repo
+            changed = [
+                head.name
+                for head in repo.heads
+                if before.get(head.name) != head.commit.hexsha
+            ]
+            prefix = self._task_branch_prefix() + "/"
+            changed = [ref for ref in changed if not ref.startswith(prefix)]
+            if not changed:
+                return None
+            root = Path(str(git_mcp.project_root)).resolve()
+            managed = worktree_dir(str(root)).resolve()
+            entries = repo.git.worktree("list", "--porcelain")
+            checkouts: List[tuple[Path, Optional[str]]] = []
+            path: Optional[str] = None
+            branch: Optional[str] = None
+            for line in (*entries.splitlines(), ""):
+                if not line:
+                    if path is not None:
+                        resolved = Path(path).resolve()
+                        # Exclude the project root itself and anything inside
+                        # the engine-managed worktree container; both are
+                        # internal checkouts.
+                        if resolved != root and not resolved.is_relative_to(managed):
+                            checkouts.append((resolved, branch))
+                    path = branch = None
+                elif line.startswith("worktree "):
+                    path = line.removeprefix("worktree ")
+                elif line.startswith("branch refs/heads/"):
+                    branch = line.removeprefix("branch refs/heads/")
+            if not checkouts:
+                return None
+            for ref in changed:
+                matching = next((p for p, b in checkouts if b == ref), None)
+                location = (
+                    str(matching)
+                    if matching is not None
+                    else "external checkout(s): "
+                    + ", ".join(str(p) for p, _ in checkouts)
+                )
+                return (
+                    f"Workspace escape detected: ref '{ref}' changed in {location}. "
+                    "Rescue the work and rerun."
+                )
+        except Exception as e:
+            _logger.debug("Could not inspect repository escape: %s", e)
+        return None
+
     def _default_executor(
         self,
         task: Task,
@@ -382,6 +449,7 @@ class ExecutorMixin:
         )
 
         self._ensure_task_branch(git_mcp, task)
+        refs_before = self._repo_ref_snapshot(git_mcp)
 
         try:
             code_artifact = coder.implement(spec)
@@ -389,7 +457,8 @@ class ExecutorMixin:
 
             # If workspace available, process file operations
             self._last_execution_writes = [
-                file_op.path for file_op in code_artifact.files
+                file_op.path
+                for file_op in code_artifact.files
                 if getattr(file_op, "action", "write") != "delete"
             ]
             # Paths the coder inspected this attempt (paths only, never
@@ -397,25 +466,51 @@ class ExecutorMixin:
             # looked instead of cold (#157 follow-up).
             self._last_execution_reads = {
                 "files": sorted(set(getattr(coder, "last_read_paths", []) or [])),
-                "directories": sorted(set(getattr(coder, "last_listed_dirs", []) or [])),
+                "directories": sorted(
+                    set(getattr(coder, "last_listed_dirs", []) or [])
+                ),
             }
             if workspace_mcp:
-                artifact_paths = self._apply_file_operations(workspace_mcp, coder, code_artifact, task)
+                artifact_paths = self._apply_file_operations(
+                    workspace_mcp, coder, code_artifact, task
+                )
                 if not artifact_paths:
                     # The coder produced no file operations. Before declaring a
                     # no_file_operations halt, ask whether the coder produced findings
                     # (investigation / survey tasks), or work already exists on the task branch:
                     has_findings = bool(
                         _is_real_findings(self._last_findings)
-                        or (code_artifact is not None and _is_real_findings(getattr(code_artifact, "findings", None)))
-                        or (code_artifact is not None and hasattr(code_artifact, "metadata") and isinstance(code_artifact.metadata, dict) and _is_real_findings(code_artifact.metadata.get("findings")))
-                        or (self._last_coder_report is not None and _is_real_findings(getattr(self._last_coder_report, "findings", None)))
+                        or (
+                            code_artifact is not None
+                            and _is_real_findings(
+                                getattr(code_artifact, "findings", None)
+                            )
+                        )
+                        or (
+                            code_artifact is not None
+                            and hasattr(code_artifact, "metadata")
+                            and isinstance(code_artifact.metadata, dict)
+                            and _is_real_findings(
+                                code_artifact.metadata.get("findings")
+                            )
+                        )
+                        or (
+                            self._last_coder_report is not None
+                            and _is_real_findings(
+                                getattr(self._last_coder_report, "findings", None)
+                            )
+                        )
                     )
                     if not has_findings:
                         existing = self._existing_task_branch_work(
                             git_mcp, getattr(task, "base", None)
                         )
                         if existing is None:
+                            escaped = self._escaped_repo_commit(
+                                git_mcp, refs_before, task
+                            )
+                            if escaped:
+                                raise ExecutionError(escaped)
                             # "Coder produced nothing" is the same fault whether the
                             # engine commits the artifacts (skip_engine_commit False)
                             # or the adapter commits them itself (skip_engine_commit
@@ -445,7 +540,9 @@ class ExecutorMixin:
                 else:
                     artifacts.extend(artifact_paths)
 
-                    git_artifacts = self._commit_artifacts(git_mcp, coder, artifact_paths, task)
+                    git_artifacts = self._commit_artifacts(
+                        git_mcp, coder, artifact_paths, task
+                    )
                     artifacts.extend(git_artifacts)
             else:
                 # No workspace, just return stub
@@ -469,7 +566,10 @@ class ExecutorMixin:
             # bounded turn-budget outcome under its own run-level halt rather
             # than a verdict about the code.
             recovered = self._recover_bounded_run_work(
-                git_mcp, coder, artifacts, turn_budget=True,
+                git_mcp,
+                coder,
+                artifacts,
+                turn_budget=True,
                 base_ref=getattr(task, "base", None),
             )
             if recovered is not None:

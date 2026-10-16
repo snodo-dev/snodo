@@ -835,6 +835,13 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             parts.append("")
 
         parts.append(f"## Task\n{spec.description}")
+        parts.extend([
+            "",
+            "## Workspace Confinement",
+            "The dispatched workspace is the only place your work counts. "
+            "Do not move this session or create another worktree; only changes "
+            "in the dispatched directory will be collected and reviewed.",
+        ])
 
         parts.extend(["", protected_paths_notice(
             self.protocol, self._workspace, self.protected_paths,
