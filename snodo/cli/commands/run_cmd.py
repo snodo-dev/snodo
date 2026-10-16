@@ -681,6 +681,14 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
         return 1
 
     attempt = failure.get("attempt", 0)
+    original_spec = failure.get("original_spec") or failure.get("spec", "")
+    plan_name = getattr(args, "plan", None)
+    if plan_name:
+        from snodo.cli.commands.plan_retry import resolve_retry_lineage
+        effective, should_reset = resolve_retry_lineage(project_root, plan_name, task_id, failure)
+        if should_reset:
+            attempt = 0
+            original_spec = effective
 
     protocol_path = Path(args.protocol)
     if not protocol_path.is_absolute():
@@ -705,8 +713,7 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
             session.session_id, "pending_decisions", pending,
         )
 
-    # Build augmented prompt
-    original_spec = failure.get("original_spec") or failure.get("spec", "")
+    # Build augmented prompt (attempt/speclineage already resolved above)
     guidance, replacement = _retry_spec_inputs(args, original_spec)
 
     if replacement:

@@ -409,6 +409,12 @@ def _plan_retry_decision(planner, args, protocol, task_id: str) -> str:
     if failure is None:
         return "fresh"
 
+    plan = getattr(args, "plan", None)
+    if plan:
+        from snodo.cli.commands.plan_retry import spec_was_replaced
+        if spec_was_replaced(planner, plan, task_id, failure):
+            return "retry"
+
     attempt = failure.get("attempt", 0)
     max_retries = getattr(protocol.execution, "max_retries", 3)
     if attempt >= max_retries:
