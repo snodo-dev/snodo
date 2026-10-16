@@ -97,7 +97,13 @@ class _Completion:
 
 
 class _ToolCompletion:
-    """A tool-loop completion double that immediately submits a verdict."""
+    """A tool-loop completion double that immediately submits a verdict.
+
+    Like a real judge, read the subject from the prompt, not telemetry metadata
+    or a fixed fixture ID. This also works when a caller supplies another task.
+    A missing subject is a broken request and should fail the test, not mint an
+    apparently favourable verdict that the real engine will rightly reject.
+    """
 
     def __init__(self, severity="pass", justification="ok"):
         self.severity = severity
@@ -106,13 +112,19 @@ class _ToolCompletion:
 
     def __call__(self, **kwargs):
         self.calls += 1
+        marker = "The task identifier under judgement is "
+        prompt = next(
+            message["content"] for message in kwargs["messages"]
+            if isinstance(message.get("content"), str) and marker in message["content"]
+        )
+        task_id, _ = json.JSONDecoder().raw_decode(prompt.rsplit(marker, 1)[1])
         resp = MagicMock()
         msg = MagicMock()
         msg.content = ""
         tool_call = MagicMock()
         tool_call.function.name = "submit_verdict"
         tool_call.function.arguments = json.dumps(
-            {"severity": self.severity, "justification": self.justification}
+            {"task_id": task_id, "severity": self.severity, "justification": self.justification}
         )
         msg.tool_calls = [tool_call]
         resp.choices = [MagicMock()]

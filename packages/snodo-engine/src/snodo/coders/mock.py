@@ -7,6 +7,11 @@ Returns deterministic outputs without making LLM calls.
 The mock exists to exercise the engine loop deterministically. Its output
 must satisfy the validators, including the quality validator's test runner.
 Language selection follows TaskSpec.project_context["language"].
+
+Mock mode is process-wide because engine-created completion functions and
+adapters must agree about whether a run is hermetic. The completion double
+speaks the same tool contracts as a real model; it must not bypass validation
+just because no network request is made.
 """
 
 import json
@@ -34,24 +39,35 @@ def is_mock_mode_active() -> bool:
 
 
 class MockChoiceMessage:
+    """The message-shaped portion of a completion consumed by the engine."""
+
     def __init__(self, content: str = "", tool_calls: Optional[list] = None):
         self.content = content
         self.tool_calls = tool_calls or []
 
 
 class MockChoice:
+    """A single deterministic choice, with the provider's finish-reason shape."""
+
     def __init__(self, message: MockChoiceMessage, finish_reason: str = "stop"):
         self.message = message
         self.finish_reason = finish_reason
 
 
 class MockModelResponse:
+    """Minimal model response shared by tool-loop and free-text consumers."""
+
     def __init__(self, content: str = "", tool_calls: Optional[list] = None, finish_reason: str = "stop"):
         self.choices = [MockChoice(MockChoiceMessage(content, tool_calls), finish_reason)]
 
 
 def mock_completion_fn(*args: Any, **kwargs: Any) -> MockModelResponse:
-    """Hermetic mock completion function. Never touches network or credentials."""
+    """Hermetic mock completion function. Never touches network or credentials.
+
+    Tool contracts take precedence over prompt heuristics: a judge must submit
+    a verdict and a tool-based coder must submit files. Only requests without
+    those tools use the legacy classifier/validator/spec response shapes.
+    """
     messages = kwargs.get("messages", [])
     tools = kwargs.get("tools", [])
     tool_names = set()
@@ -65,12 +81,13 @@ def mock_completion_fn(*args: Any, **kwargs: Any) -> MockModelResponse:
     if "submit_verdict" in tool_names:
         # Echo the subject from the same prompt a real judge sees, rather
         # than inventing a fixed identifier or borrowing another task's ID.
+        # JSON decoding preserves punctuation and escaping in task identifiers.
         marker = "The task identifier under judgement is "
         task_id = ""
         for message in messages:
             content = message.get("content", "") if isinstance(message, dict) else ""
             if isinstance(content, str) and marker in content:
-                task_id, _ = json.JSONDecoder().raw_decode(content.split(marker, 1)[1])
+                task_id, _ = json.JSONDecoder().raw_decode(content.rsplit(marker, 1)[1])
                 break
         tc = MagicMock()
         tc.id = "mock_val_call_1"
@@ -81,6 +98,8 @@ def mock_completion_fn(*args: Any, **kwargs: Any) -> MockModelResponse:
         return MockModelResponse(content="", tool_calls=[tc])
 
     if "submit_files" in tool_names:
+        # The tool-loop path needs a submission, not free-text JSON. The
+        # adapter below supplies runnable fixture artifacts for engine tests.
         tc = MagicMock()
         tc.id = "mock_coder_call_1"
         tc.function.name = "submit_files"
@@ -111,11 +130,16 @@ def mock_completion_fn(*args: Any, **kwargs: Any) -> MockModelResponse:
     return MockModelResponse(content=content)
 
 
+# Wrappers can preserve this marker without depending on function identity.
 mock_completion_fn._is_mock = True  # type: ignore[attr-defined]
 
 
 def is_mock_completion_fn(fn: Any) -> bool:
-    """Return True if fn is mock_completion_fn or marked with _is_mock."""
+    """Return True if fn is mock_completion_fn or marked with _is_mock.
+
+    Completion functions may be functools.partial instances; inspect their
+    underlying function as well as the wrapper before consulting mock mode.
+    """
     if fn is None:
         return False
     target = getattr(fn, "func", fn)
@@ -125,7 +149,12 @@ def is_mock_completion_fn(fn: Any) -> bool:
 
 
 class MockAdapter(CoderAdapter):
-    """Deterministic coder for testing without LLM calls."""
+    """Deterministic coder for testing without LLM calls.
+
+    Default artifacts include a real test in the project's language so the
+    ordinary quality gate can run. Explicit mock_files remain caller-owned;
+    language selection must never silently replace a test's supplied output.
+    """
 
     honoured_settings: frozenset[str] = frozenset({"mock_files"})
 
@@ -145,6 +174,7 @@ class MockAdapter(CoderAdapter):
         return ""
 
     def implement(self, spec: TaskSpec) -> CodeArtifact:
+        """Record the dispatch and return runnable, unprotected fixture files."""
         self.call_count += 1
         self.last_spec = spec
         language = spec.project_context.get("language", "").lower()
@@ -200,6 +230,8 @@ class MockAdapter(CoderAdapter):
             ]
         else:
             files = self.mock_files
+        # Hermetic execution is not permission to mutate governance state.
+        # Keep the same protected-path boundary as a live coder adapter.
         valid_files = [
             f for f in files
             if not is_protected_workspace_path(f.path, getattr(self, "workspace_dir", None) or Path.cwd())

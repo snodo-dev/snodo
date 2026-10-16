@@ -4,6 +4,13 @@ Tool grants and phase framing determine the judge's view. Every live
 submit_verdict must name the exact task under judgement (ADR 059); a missing
 or different subject is an operational error, not a finding or a warn.
 Single-completion JSON judges retain their existing contract.
+
+The tool loop and the legacy single-completion path deliberately have different
+response contracts. Tool-loop prose is never a verdict: the final submission
+is the boundary at which subject identity is checked, before severity or
+capability reports are interpreted. Operational errors remain errors through
+criteria enrichment and the runner, rather than becoming findings about work
+that a coder or spec author could repair.
 """
 
 import json
@@ -83,7 +90,12 @@ _UNFORCED_VERDICT_INSTRUCTION = (
 
 
 def _phase_frame(phase: str) -> str:
-    """Distinguish a proposal from completed work (ADR 019)."""
+    """Distinguish a proposal from completed work (ADR 019).
+
+    Before execution, missing implementation is expected, not evidence of a
+    violation. After execution the same absence may be a legitimate finding.
+    Keep that distinction explicit even when both phases offer read tools.
+    """
     if phase == "post_execute":
         return (
             "You are inspecting COMPLETED work. The described change has been "
@@ -107,7 +119,13 @@ def _phase_frame(phase: str) -> str:
 
 
 class LLMValidator(ValidatorBase):
-    """Evaluates tasks against protocol criteria using an LLM judge."""
+    """Evaluates tasks against protocol criteria using an LLM judge.
+
+    Declared tools select bounded repository inspection when infrastructure
+    is available. Judges without tools retain single-completion validation.
+    Subclasses can specialize the prompt without replacing the live verdict
+    boundary shared by every submit_verdict judge.
+    """
 
     # The runner forces tool-using and all post-execute judges onto the tree.
     cache_subject = "spec"
@@ -139,7 +157,11 @@ class LLMValidator(ValidatorBase):
         tokens_in: int, tokens_out: int, elapsed_ms: float,
         model_requested: str = "", response: Any = None,
     ) -> None:
-        """Best-effort operational telemetry, not part of the audit chain."""
+        """Best-effort operational telemetry, not part of the audit chain.
+
+        Observability failures must not change a judge's verdict. The runner
+        records the canonical result independently of this per-turn detail.
+        """
         try:
             from snodo.infrastructure.tool_telemetry import (
                 canonical_target_path, persist_tool_telemetry,
@@ -172,6 +194,12 @@ class LLMValidator(ValidatorBase):
         return "llm"
 
     def evaluate(self, context_or_task) -> ValidatorResult:
+        """Evaluate a task or the runner's richer phase-aware context.
+
+        Keep the Task entry point for direct callers. Runner context supplies
+        tools, budgets and attribution, but the task itself remains the source
+        of truth for the subject being judged, not telemetry's task_id.
+        """
         if isinstance(context_or_task, Task):
             context = ValidatorContext(
                 task=context_or_task, completion_fn=self._completion_fn, model=self.model,
@@ -239,6 +267,8 @@ class LLMValidator(ValidatorBase):
         try:
             response_text = self._call_llm(prompt)
             res = self._parse_response(response_text)
+            # A provider refusing structured output must not turn an unusable
+            # fallback response into a warn that could participate in consensus.
             if structured_rejected and res.severity == "warn" \
                     and "Could not parse" in res.justification:
                 res = ValidatorResult(
@@ -267,7 +297,13 @@ class LLMValidator(ValidatorBase):
         return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
 
     def _evaluate_with_tools(self, context: ValidatorContext) -> ValidatorResult:
-        """Run the bounded read-only loop in either evaluation phase."""
+        """Run the bounded read-only loop in either evaluation phase.
+
+        Only declared tools are offered, and post-execute diff inspection is
+        withheld before execution. Reading ends with a verdict-only request;
+        failing to submit a usable verdict is an operational error, not a
+        substitute judgement about the task.
+        """
         workspace = context.workspace_mcp
         git = context.git_mcp
         phase = getattr(context, "phase", "")
@@ -311,6 +347,8 @@ class LLMValidator(ValidatorBase):
 
         # Only progress spends the reading budget. Consecutive repeat-read
         # stalls force the same final verdict-only turn (ADR 050).
+        # The raw ceiling also bounds pathological sequences of otherwise free
+        # repeated reads without charging productive inspection twice.
         turns_used = 0
         stall_streak = 0
         max_raw_turns = tool_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 2
@@ -384,6 +422,9 @@ class LLMValidator(ValidatorBase):
                 tools_str = format_tool_call_summary(tool_calls)
                 cb(f"    [{elapsed_str}] Turn {turn + 1}: {tools_str}")
 
+            # Subject identity is checked before interpreting findings. A wrong
+            # subject is terminal, even if the same answer reports missing tool
+            # access: that report must not trigger a second penalty or rejudge.
             verdict = self._extract_submit_verdict(tool_calls, expected_task_id=context.task.id)
             if verdict is not None:
                 verdict.examined = examination or None
@@ -415,6 +456,8 @@ class LLMValidator(ValidatorBase):
                 )
 
             if tool_calls:
+                # Preserve the assistant call and a result for every tool ID;
+                # providers require a balanced tool transcript on the next turn.
                 messages.append({
                     "role": "assistant", "content": msg.content,
                     "tool_calls": [
@@ -464,6 +507,9 @@ class LLMValidator(ValidatorBase):
                                 else:
                                     result = execute_builtin_tool(tool_name, args, workspace, git)
                             except Exception as e:
+                                # Bad arguments are correctable by the judge;
+                                # failed inspection infrastructure is not a
+                                # finding about the work and must fail closed.
                                 if is_tool_argument_error(e):
                                     result = f"Tool error: {e}"
                                 else:
@@ -505,6 +551,8 @@ class LLMValidator(ValidatorBase):
                     stall_streak += 1
                 continue
 
+            # Give narration (including an empty response) one explicit nudge
+            # toward the submission tool. Never parse that prose as a verdict.
             has_content = msg.content is not None
             if not has_content and not tool_calls:
                 msg.content = ""
@@ -541,7 +589,11 @@ class LLMValidator(ValidatorBase):
         self, context: ValidatorContext, active_names: Set[str],
         total_turns: int = _DEFAULT_MAX_TOOL_TURNS,
     ) -> str:
-        """Build the phase-aware judge prompt; subclasses may change the remit."""
+        """Build the phase-aware judge prompt; subclasses may change the remit.
+
+        Subject instructions are appended by the caller so a specialized
+        prompt, such as acceptance review, cannot omit the binding contract.
+        """
         phase = getattr(context, "phase", "")
         criteria_text = "\n".join(
             f"  {i+1}. {c}" for i, c in enumerate(self.validator_spec.criteria)
@@ -726,7 +778,11 @@ class LLMValidator(ValidatorBase):
         return None
 
     def _submit_verdict_feedback(self, tc: Any) -> str:
-        """Answer malformed arguments before a correction request."""
+        """Answer malformed arguments before a correction request.
+
+        Wrong-subject submissions never reach this correction path: returning
+        one already ended the loop with an unusable-verdict error.
+        """
         try:
             args = json.loads(tc.function.arguments)
         except (json.JSONDecodeError, TypeError):
@@ -744,6 +800,7 @@ class LLMValidator(ValidatorBase):
         )
 
     def _build_prompt(self, context_or_task) -> str:
+        """Build the legacy JSON prompt, retaining phase and change framing."""
         if isinstance(context_or_task, Task):
             task = context_or_task
             phase = ""
@@ -778,7 +835,12 @@ class LLMValidator(ValidatorBase):
     def _call_completion_with_retry(
         self, parameter_fallback_instruction: Optional[str] = None, **kwargs,
     ) -> Any:
-        """Apply provider shape/parameter fallbacks and transient retries."""
+        """Apply provider shape/parameter fallbacks and transient retries.
+
+        Request compatibility is separate from judging: a provider rejecting
+        a parameter can be retried without asking a coder to repair the task.
+        Changed judge parameters make the resulting verdict non-cacheable.
+        """
         removed: Set[str] = set()
         shaped: Set[str] = set()
         apply_remembered_parameters(self.model, kwargs)
@@ -802,6 +864,11 @@ class LLMValidator(ValidatorBase):
                 raise
 
     def _call_completion_with_transient_retry(self, **kwargs) -> Any:
+        """Retry transient transport faults within attempt and elapsed budgets.
+
+        Respect provider retry hints when present, otherwise use exponential
+        backoff with jitter. Deterministic provider rejections are not transient.
+        """
         retry_deadline = time.monotonic() + _RETRY_BUDGET_SECONDS
         for attempt in range(_RETRY_ATTEMPTS):
             try:
@@ -829,6 +896,7 @@ class LLMValidator(ValidatorBase):
                     raise
 
     def _call_llm(self, prompt: str) -> str:
+        """Request the legacy free-text JSON response with bounded diagnostics."""
         # The completion partial binds model and api_base together (#237).
         kwargs = {
             "_configured_model": self.model,
@@ -850,6 +918,7 @@ class LLMValidator(ValidatorBase):
         return content
 
     def _call_llm_structured(self, prompt: str) -> ValidatorResult:
+        """Use the provider's response schema and restore the configured judge ID."""
         kwargs = {
             "_configured_model": self.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -872,6 +941,11 @@ class LLMValidator(ValidatorBase):
         return result.model_copy(update={"validator_id": self.validator_spec.validator_id})
 
     def _parse_response(self, response_text: str) -> ValidatorResult:
+        """Parse the legacy response, including fenced or embedded JSON.
+
+        Its historical warn fallback is not used for tool-loop answers. Live
+        submit_verdict submissions go through the exact subject check instead.
+        """
         parsed = self._try_json_parse(response_text)
         if parsed is None:
             parsed = self._try_extract_json(response_text)
@@ -893,6 +967,7 @@ class LLMValidator(ValidatorBase):
         )
 
     def _try_json_parse(self, text: str) -> Optional[dict]:
+        """Try the whole response first, retaining the parse failure in debug logs."""
         try:
             return json.loads(text.strip())
         except (json.JSONDecodeError, ValueError) as e:
@@ -903,6 +978,7 @@ class LLMValidator(ValidatorBase):
             return None
 
     def _try_extract_json(self, text: str) -> Optional[dict]:
+        """Recover legacy JSON wrapped in markdown or surrounding explanation."""
         match = re.search(r'```(?:json)?\s*\n?(.*?)```', text, re.DOTALL)
         if match:
             try:
@@ -925,6 +1001,7 @@ class LLMValidator(ValidatorBase):
 
 
 def _truncated_log(raw: str, max_chars: int = 2048) -> str:
+    """Bound raw-response diagnostics without changing the response we parse."""
     if len(raw) <= max_chars:
         return raw
     return raw[:max_chars] + "...<truncated>"
