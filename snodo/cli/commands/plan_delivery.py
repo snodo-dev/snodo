@@ -33,7 +33,12 @@ def deliver_healthy_plan_wave(project_root, integration_branch, plan_name,
             elif delivery_mode in {"push_branch", "change_request"}:
                 local_sha = repo.commit(integration_branch).hexsha
                 remote = getattr(protocol.execution, "delivery_remote", "origin")
-                already_delivered = _remote_branch_matches(repo, remote, integration_branch, local_sha)
+                # A matching remote ref proves a push, not that a review request
+                # exists. Providers expose creation but no portable lookup API.
+                already_delivered = (
+                    delivery_mode == "push_branch"
+                    and _remote_branch_matches(repo, remote, integration_branch, local_sha)
+                )
             else:
                 already_delivered = False
     except Exception:

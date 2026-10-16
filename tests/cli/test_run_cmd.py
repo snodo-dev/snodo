@@ -564,7 +564,8 @@ class TestRunPlan:
             mock_planner.get_status.return_value = {"tasks": {"t1": "pending"}}
 
             args = SimpleNamespace(protocol=".snodo/protocol.yml", model=None,
-                                   plan="myplan", wave=None, interactive=False)
+                                   plan="myplan", wave=None, interactive=False,
+                                   mock=True)
             result = _run_plan(args)
 
         assert result == 0
