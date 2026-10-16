@@ -49,12 +49,12 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
 
     def _build_argv(self, prompt: str, project_root: str, model: str) -> List[str]:
         if self._cli_major_version() >= 2:
-            # opencode 2.x dropped --dir and --dangerously-skip-permissions. The
-            # run already starts in project_root (cwd); --standalone keeps it on
-            # a private server rather than the shared background service, and
-            # --auto approves the edits the coder makes.
+            # 2.x has no documented run flag to name a project directory.
+            # SubprocessCoderAdapter starts in project_root (cwd). Standalone
+            # avoids attaching to a server from another tree; the per-process
+            # config permits workspace edits and denies relocation tools.
             argv = [
-                "opencode", "run", "--format", "json", "--standalone", "--auto",
+                "opencode", "run", "--format", "json", "--standalone",
                 prompt,
             ]
         else:
@@ -68,10 +68,15 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
 
     def _subprocess_env(self) -> dict[str, str]:
         env = subprocess_env_for_coder()
-        # OpenCode 2.x exposes session relocation and worktree creation as
-        # built-in tools. Deny them per process for dispatched task runs.
+        # `edit: deny` denies *every* edit, including files in the task tree.
+        # Use a path-scoped rule: the wildcard denies external paths while the
+        # absolute workspace glob allows edits under this task's own root.
+        root = self._workspace.resolve()
         confinement = {
-            "permission": {"edit": "deny"},
+            "permission": {
+                "edit": {"*": "deny", str(root / "**"): "allow"},
+                "external_directory": "deny",
+            },
             "tools": {"session_move": False, "worktree_create": False},
         }
         try:
