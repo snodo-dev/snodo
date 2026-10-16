@@ -899,9 +899,27 @@ def test_task_abandon_deletes_session_context_and_branch(tmp_path, monkeypatch, 
 
     res = task_abandon_command(SimpleNamespace(task_id="t1"))
     assert res == 0
-    assert "Task abandoned; removed branches: task/t1." in capsys.readouterr().out
+    assert "Task abandoned; cleared decisions: none; removed branches: task/t1." in capsys.readouterr().out
     mock_git.repo.git.branch.assert_called_with("-D", "task/t1")
     assert mock_git.repo.git.branch.call_count == 1
+
+
+def test_task_abandon_clears_failure_and_halt_records(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+    mgr.update_decision(session.session_id, "task_failure", {"t1": {"attempt": 3}, "other": {"attempt": 1}})
+    mgr.update_decision(session.session_id, "halt", {"t1": {"task_id": "t1"}, "other": {"task_id": "other"}})
+    mock_git = MagicMock()
+    mock_git.repo.heads = []
+    monkeypatch.setattr("snodo.tools.git.GitMCP", lambda p: mock_git)
+    monkeypatch.setattr("snodo.infrastructure.worktree.remove_worktree", lambda p, t: None)
+
+    assert task_abandon_command(SimpleNamespace(task_id="t1")) == 0
+    out = capsys.readouterr().out
+    assert "cleared decisions: task_failure, halt" in out
+    updated = mgr.load_session(session.session_id).checkpoint.decisions
+    assert "t1" not in updated["task_failure"] and "t1" not in updated["halt"]
+    assert "other" in updated["task_failure"] and "other" in updated["halt"]
 
 
 def test_task_abandon_git_exception(tmp_path, monkeypatch, capsys):

@@ -682,6 +682,14 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
 
     attempt = failure.get("attempt", 0)
 
+    plan_name = getattr(args, "plan", None)
+    if plan_name:
+        from snodo.cli.commands.plan_retry import current_plan_spec
+        disk_spec = spec_text(current_plan_spec(project_root, plan_name, task_id))
+        failed_spec = spec_text(failure.get("original_spec") or failure.get("spec", ""))
+        if disk_spec and disk_spec != failed_spec:
+            attempt = 0
+
     protocol_path = Path(args.protocol)
     if not protocol_path.is_absolute():
         protocol_path = Path(project_root) / args.protocol
@@ -707,6 +715,12 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
 
     # Build augmented prompt
     original_spec = failure.get("original_spec") or failure.get("spec", "")
+    if getattr(args, "plan", None):
+        from snodo.cli.commands.plan_retry import current_plan_spec
+        disk_spec = current_plan_spec(project_root, args.plan, task_id)
+        if disk_spec and spec_text(disk_spec) != spec_text(original_spec):
+            original_spec = disk_spec
+            attempt = 0
     guidance, replacement = _retry_spec_inputs(args, original_spec)
 
     if replacement:

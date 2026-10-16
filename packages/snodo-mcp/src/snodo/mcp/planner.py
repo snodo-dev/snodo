@@ -414,7 +414,7 @@ class PlannerMCP:
         spec_file = self._write_spec_and_update(
             plan_dir, wave_num, task_id, spec,
             status_file, status_data, tasks,
-            parent_task_ref, new_depth, spec_hash, module_id,
+            parent_task_ref, new_depth, spec_hash, module_id, old_spec_hash,
         )
 
         if old_spec_hash is not None:
@@ -566,6 +566,7 @@ class PlannerMCP:
         new_depth: int,
         spec_hash: str,
         module_id: Optional[str],
+        old_spec_hash: Optional[str] = None,
     ) -> Path:
         """Write the spec file, update plan.yml, and persist status.json.
 
@@ -602,9 +603,17 @@ class PlannerMCP:
             current = current_tasks.get(task_id)
             replacement = tasks[task_id].copy()
             if isinstance(current, dict):
-                replacement["status"] = current.get("status", replacement["status"])
+                changed_spec = old_spec_hash is not None and old_spec_hash != spec_hash
+                replacement["status"] = (
+                    "pending"
+                    if changed_spec and current.get("status") == "blocked"
+                    else current.get("status", replacement["status"])
+                )
                 replacement.update(
-                    {key: value for key, value in current.items() if key not in replacement}
+                    {
+                        key: value for key, value in current.items()
+                        if key not in replacement and not (changed_spec and key in {"attempt", "attempts"})
+                    }
                 )
             current_tasks[task_id] = replacement
 
