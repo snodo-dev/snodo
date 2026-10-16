@@ -65,6 +65,8 @@ class DummyCoder:
         class CodeArtifact:
             def __init__(self, files):
                 self.files = files
+                self.findings = None
+
         return CodeArtifact(self.files)
 
 
@@ -471,4 +473,79 @@ def test_escaped_repo_commit_swallows_worktree_inspection_failure(tmp_path, samp
         assert escaped is None
     finally:
         base_mcp.repo.close()
+
+
+def test_default_executor_halts_on_workspace_escape(tmp_path, sample_protocol):
+    """Executor raises when the escape detector reports an external checkout change (#941).
+
+    The coder produces no file operations and no findings, the task branch
+    remains untouched, a ref snapshot is captured before dispatch, and a
+    non-task ref whose checkout lives outside the managed container moves in
+    between. Under these preconditions the executor must surface the escape
+    as an ExecutionError whose message begins with "Workspace escape
+    detected".
+    """
+    from snodo.engine.loop import GraphBuilder
+    from snodo.tools.git import GitMCP
+
+    # Set up a real repository under a temporary project root.
+    root = (tmp_path / "project").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+
+    # Create an external (non-task) worktree as a sibling of the project root.
+    external = (tmp_path / "external-checkout").resolve()
+    _git(root, "worktree", "add", "-b", "operator-branch", str(external))
+
+    builder = GraphBuilder(sample_protocol)
+    git_mcp = GitMCP(str(root))
+
+    class NoOpCoder(DummyCoder):
+        def __init__(self):
+            super().__init__(files=[])
+
+        def implement(self, spec):
+            class CodeArtifact:
+                def __init__(self):
+                    self.files = []
+                    self.findings = None
+
+            return CodeArtifact()
+
+    coder = NoOpCoder()
+    coder.skip_engine_commit = False
+
+    # Use a real workspace MCP rooted at the project so that the executor can
+    # apply file operations if it ever had any (it does not in this scenario).
+    from snodo.tools.workspace import WorkspaceMCP
+
+    workspace_mcp = WorkspaceMCP(str(root))
+
+    # Capture the reference snapshot before the coder runs by calling the
+    # private helper the executor itself uses. This ensures the base snapshot
+    # exists even though the coder will not move any refs.
+    before = builder._repo_ref_snapshot(git_mcp)
+    assert before  # defensive: we expect at least "main" to be present
+
+    # Now move the external non-task ref so the detector can report an escape.
+    (external / "escape.txt").write_text("escaped")
+    _git(external, "add", "escape.txt")
+    _git(external, "commit", "-m", "external change")
+
+    # Patch the snapshot helper on this builder instance so that the executor
+    # reuses the "before" snapshot captured above instead of taking a fresh
+    # one that would see the updated ref as its baseline.
+    builder._repo_ref_snapshot = lambda mcp: before  # type: ignore[assignment]
+
+    with pytest.raises(ExecutionError) as excinfo:
+        builder._default_executor(Task(id="task_001", spec="Implement feature X"), MagicMock(), coder, workspace_mcp, git_mcp)
+
+    assert str(excinfo.value).startswith("Workspace escape detected")
+
+    git_mcp.repo.close()
 
