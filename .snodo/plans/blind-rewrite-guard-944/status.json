@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_blind_write_refused": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8533a392b61097d6"
+    }
+  }
+}

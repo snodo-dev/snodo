@@ -1,0 +1,9 @@
+intent: Coders have no way to consult git history, so tasks that ask them to recover
+  a previous revision are unsatisfiable (#961). Grant the coder a bounded, read-only
+  history surface through the declared capability mode.
+name: coder-history-surface-961
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_bounded_history_surface

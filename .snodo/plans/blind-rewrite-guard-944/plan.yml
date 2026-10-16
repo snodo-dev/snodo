@@ -1,0 +1,9 @@
+intent: 'Stop a coder from silently deleting code it never read (#944): refuse a whole-file
+  write of an existing file the coder only read part of, and add a diff backstop that
+  blocks a mass-deletion rewrite.'
+name: blind-rewrite-guard-944
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_blind_write_refused
