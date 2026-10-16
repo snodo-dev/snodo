@@ -8,7 +8,8 @@ from pathlib import Path
 import subprocess
 
 _TUNNEL_HOSTNAME_RE = re.compile(
-    r"\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.tunnel\.snodo\.dev\b", re.IGNORECASE,
+    r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.tunnel|"
+    r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-tunnel)\.snodo\.dev\b"
 )
 
 

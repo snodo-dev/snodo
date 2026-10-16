@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 
+- Recognize canonical managed tunnel hostnames under `snodo.dev`, including conflict recovery and warnings for unservable legacy names. (Fixes #918)
 - Deliver single-wave plan runs to their integration branch and refuse unsafe checkout-target merges. (Fixes #910)
 - Keep plan and queue wave coders and MCPs rooted in each task worktree, and fail loudly if dispatch workspace identity is lost. (Fixes #911)
 - Preserve partial test output and terminate subprocess trees when quality-gate commands time out. (Fixes #786)

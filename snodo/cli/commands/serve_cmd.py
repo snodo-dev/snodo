@@ -442,18 +442,9 @@ class TunnelAPIError(RuntimeError):
         self.existing_hostname = existing_hostname
 
 
-# Managed tunnel hostnames look like "<slug>-<mode>-<short>.tunnel.snodo.dev";
-# the name before the tunnel domain is ONE DNS label (the wildcard
-# certificate covers exactly one label, and a dot is a label separator, not
-# a character). The 409 body may carry it as JSON or inside free-form error
-# text. Embedded dots are deliberately NOT matched: a hostname carrying one
-# is the broken shape (issue #308), never a name to act on as valid.
-# The cloud's tunnel hostnames sit directly under tunnel.snodo.dev: the
-# wildcard certificate covers exactly the one label there. A leading portion
-# with an embedded dot (provisioned before the slug was constrained to one
-# label — issue #308) names something one level deeper, which no certificate
-# can ever match, so its clients are always refused.
-_TUNNEL_DOMAIN_SUFFIX = ".tunnel.snodo.dev"
+# The cloud issues one label ending in -tunnel directly under snodo.dev.
+# Keep the legacy suffix recognizable for cleanup of existing local records.
+_TUNNEL_DOMAIN_SUFFIX = ".snodo.dev"
 
 
 def _warn_if_unservable_hostname(hostname: str) -> bool:
@@ -467,13 +458,18 @@ def _warn_if_unservable_hostname(hostname: str) -> bool:
     delete-by-hostname path (which is unchanged here).
     """
     host = (hostname or "").strip().rstrip(".").lower()
-    if not host.endswith(_TUNNEL_DOMAIN_SUFFIX):
+    if host.endswith(".tunnel.snodo.dev"):
+        leading = host[: -len(".tunnel.snodo.dev")]
+        unservable = bool(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", leading))
+    elif host.endswith(_TUNNEL_DOMAIN_SUFFIX):
+        leading = host[: -len(_TUNNEL_DOMAIN_SUFFIX)]
+        unservable = not bool(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-tunnel", leading))
+    else:
         return False
-    leading = host[: -len(_TUNNEL_DOMAIN_SUFFIX)]
-    if "." not in leading:
+    if not unservable:
         return False
     print(f"Warning: the tunnel at {host!r} has a hostname that is more than "
-          "one DNS label before tunnel.snodo.dev.", file=sys.stderr)
+          "one DNS label ending in -tunnel before snodo.dev.", file=sys.stderr)
     print("  The wildcard certificate covers exactly one label there, so TLS "
           "can never match this name and clients will always be refused.",
           file=sys.stderr)
@@ -525,7 +521,7 @@ def _tunnel_project_slug(project_root: str) -> str:
     """Reduce a project directory name to a single valid DNS label.
 
     The tunnel slug becomes the leading label of
-    "<slug>-<mode>-<short>.tunnel.snodo.dev". A dot in that label is a label
+    "<slug>-<mode>-<short>-tunnel.snodo.dev". A dot in that label is a label
     separator, not a character: a directory named "droptrack.io" would
     otherwise ask the cloud to serve a name one level deeper than the
     wildcard certificate covers, and every TLS client would be refused

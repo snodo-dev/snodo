@@ -95,7 +95,7 @@ POST {cloud.tunnel_api_url}/tunnel/provision   # default https://app.snodo.dev
 
 ## .snodo/tunnel.json schema
 {
-  "hostname": "acme-api-prod-a3f7.tunnel.snodo.dev",
+  "hostname": "acme-api-prod-a3f7-tunnel.snodo.dev",
   "tunnel_token": "eyJ...",
   "created_at": "2026-06-07T..."
 }
