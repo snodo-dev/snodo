@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a model-provider overview and navigation for the eight provider guides. (Fixes #938; provider guides: #929, #930, #932, #933, #934, #935, #936, #937)
 - Make managed tunnels OAuth-only, enforce bearer checks for legacy tunnel records, and remove retired service-token rotation. (Fixes #901)
 ## [0.25.0] — 2026-10-15
 
