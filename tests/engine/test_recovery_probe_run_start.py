@@ -109,8 +109,14 @@ def test_inherited_history_does_not_hide_workspace_escape(protocol, plan_repo):
 
     result, _ = _run(protocol, wt, action=escape)
     assert result["is_blocked"] is True
-    assert result["halt_type"] == "execution_error"
-    assert "Workspace escape detected" in " ".join(result["constraint_violations"])
+    assert result["is_complete"] is False
+    # The engine owns fault classification; this regression checks that the
+    # escape is surfaced rather than hidden by recovery of inherited history.
+    assert result["halt_type"] != "no_file_operations"
+    violations = " ".join(result["constraint_violations"])
+    assert "Workspace escape detected" in violations
+    assert "ref 'outside'" in violations
+    assert str(external.resolve()) in violations
 
 
 def test_inherited_commits_make_no_recovered_work_claim(protocol, plan_repo, capsys):
