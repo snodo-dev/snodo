@@ -1482,8 +1482,8 @@ name = "httpcore2"
 version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/f3/1db7aa2bc2524062192bb0e0323969492d1883152a232fe36eea65f4e35c/httpcore2-2.13.1.tar.gz", hash = "sha256:e0aa977abe17e69a3b820a24542a6fa88702676d83880b8d194dcd18408e5103", size = 68071, upload-time = "2026-09-23T07:47:22.372Z" }
 wheels = [
@@ -1670,7 +1670,7 @@ wheels = [
 
 [[package]]
 name = "import-linter"
-version = "2.12"
+version = "2.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1678,9 +1678,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/23/a7/5ae6dc1caf8229f9bcd05b0dd71aba6d5b699b81e5d599fd05bb36046e2a/import_linter-2.12.tar.gz", hash = "sha256:217f0f0f0890b8625389765039d52c215f4c6d4a047f42ea78b6d00ceba1900e", size = 1173831, upload-time = "2026-06-23T08:58:35.313Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3c/81/1bb414f8c8bcd024499e91f112d317c36a86bc264da1fd43f9797fc2b7b0/import_linter-2.15.tar.gz", hash = "sha256:1da912bea5e172a82a3ce617b5543f75cf64dc0d8f4d9b46c5578b68ccb81590", size = 1405973, upload-time = "2026-09-04T14:47:56.097Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/00/2b/3d9ff17662d01aa83fad076f4881d95136c72781b6b7ef8bf0464a5037a7/import_linter-2.12-py3-none-any.whl", hash = "sha256:b346eeb30cabd5b0630773d42cca4eac8dd459ac5d507ac2ecadc3f99462f231", size = 637947, upload-time = "2026-06-23T08:58:33.969Z" },
+    { url = "https://files.pythonhosted.org/packages/08/31/4571c20652a4002ed9e500046386f3731a77e23d95a608ae8a87f1fbb2da/import_linter-2.15-py3-none-any.whl", hash = "sha256:9aaf16a88ac1e99d5a464cd7f66b6a05f7060bfa761162e0ed441773a267ed3b", size = 640512, upload-time = "2026-09-04T14:47:54.878Z" },
 ]
 
 [[package]]
@@ -3810,7 +3810,7 @@ name = "pyzmq"
 version = "27.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cffi", marker = "implementation_name == 'pypy'" },
+    { name = "cffi", marker = "implementation_name == 'pypy' and sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e7/8d/5b3d5631c2f4b4b8862f64cd0c9eb777b5710eeb5125b4be8dd0a200a4c0/pyzmq-27.2.0.tar.gz", hash = "sha256:54d4259d1bfae24ecdb5ca79f7acc2eac6c286a02d6a0ae617797cb45f0726d3", size = 292316, upload-time = "2026-08-20T19:08:21.19Z" }
 wheels = [
@@ -4326,7 +4326,7 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = "==6.168.5" },
-    { name = "import-linter", marker = "extra == 'dev'", specifier = "==2.12" },
+    { name = "import-linter", marker = "extra == 'dev'", specifier = "==2.15" },
     { name = "litellm", specifier = ">=1.80,<2" },
     { name = "marimo", marker = "extra == 'studies'", specifier = ">=0.9.0" },
     { name = "matplotlib", marker = "extra == 'studies'", specifier = ">=3.7.0" },
@@ -4360,7 +4360,7 @@ dev = [
     { name = "grimp", specifier = "==3.17" },
     { name = "httpx2", specifier = ">=2.4.0" },
     { name = "hypothesis", specifier = "==6.168.5" },
-    { name = "import-linter", specifier = "==2.12" },
+    { name = "import-linter", specifier = "==2.15" },
     { name = "paramiko", specifier = ">=3.0.0" },
     { name = "psutil", specifier = ">=7.0.0" },
     { name = "pytest", specifier = "==9.1.1" },
@@ -4468,7 +4468,7 @@ requires-dist = [
     { name = "filelock", specifier = ">=3.0.0" },
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "mcp", specifier = ">=1.28.1,<2" },
+    { name = "mcp", specifier = ">=1.28.1,<3" },
     { name = "psutil", specifier = ">=7.0.0" },
     { name = "pydantic", specifier = ">=2.12.0" },
     { name = "pyjwt", specifier = ">=2.15.0" },
@@ -4967,8 +4967,8 @@ name = "uvicorn"
 version = "0.52.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click" },
-    { name = "h11" },
+    { name = "click", marker = "sys_platform != 'emscripten'" },
+    { name = "h11", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f2/0f/3f86e61397dd33bf2ccf28188c40db6a740658aeebbbf6e7dbc101a1f487/uvicorn-0.52.4.tar.gz", hash = "sha256:73acfee47a0b133c5de13d219492d62d8a31e935f4fe6e41a232451a15379f86", size = 100627, upload-time = "2026-08-19T06:27:41.821Z" }
 wheels = [
