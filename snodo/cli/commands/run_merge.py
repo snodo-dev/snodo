@@ -337,6 +337,18 @@ def _merge_on_success(
 
     with merge_lock(project_root):
         target_ref = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if plan_name else None
+        if plan_name and not target_ref:
+            message = (
+                f"Plan task {task.id} has no integration branch target; refusing to merge into "
+                "the checked-out branch. Retry through `snodo plan run` after repairing plan integration state."
+            )
+            print(f"✗ {message}", file=sys.stderr)
+            if audit_log:
+                audit_log.append_event("merge_failed_escalated", {
+                    "op": "merge_failed_escalated", "task_ref": task.id,
+                    "branch": branch, "error": message, "session_id": session_id,
+                })
+            return 1, True, None
         base_sha = _merge_target_sha(project_root, target_ref)
 
         try:

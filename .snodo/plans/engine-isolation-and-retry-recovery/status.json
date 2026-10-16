@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_coder_executes_in_task_worktree": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ba92b8880ad4f368"
+    },
+    "2.1_wave_run_delivers_to_integration": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8108b176b9a8d844"
+    },
+    "3.1_spec_replacement_unblocks_task": {
+      "status": "in_progress",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "cba1c82cbe5c7322"
+    }
+  },
+  "integration": {
+    "branch": "plan/engine-isolation-and-retry-recovery/integration",
+    "base_sha": "1e1129657c1c609ae6141dfef2a87eb03b6e5bd7"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.2_protected_diff_uses_merge_base": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8e75c9898c31f2b3"
+    },
+    "1.1_cli_prompt_protected_paths": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c5954d0d3d304c48"
+    },
+    "2.1_record_decisions_and_docs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3cc63fc1f43a8341"
+    },
+    "1.3_container_coder_prompt_coverage": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6ad48bca6ce4dfbc"
+    }
+  },
+  "integration": {
+    "branch": "plan/protected-paths-preventive-cli/integration",
+    "base_sha": "3c652d393e4a6ad87925f1aabb7280e7441f33a6"
+  }
+}

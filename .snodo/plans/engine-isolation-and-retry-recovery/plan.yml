@@ -1,0 +1,20 @@
+intent: 'Make the engine trustworthy about *where* work happens and *how* a stalled
+  task can recover: coders and task merges never operate in the producer''s root checkout,
+  wave runs deliver through the plan integration branch, and replacing a blocked task''s
+  spec actually changes what the next attempt judges. Fixes #911, #910, #909.'
+name: engine-isolation-and-retry-recovery
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_coder_executes_in_task_worktree
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_wave_run_delivers_to_integration
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_spec_replacement_unblocks_task

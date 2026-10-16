@@ -1,0 +1,9 @@
+intent: The CLI recognises managed tunnel hostnames in the shape the cloud actually
+  issues, "<slug>-<mode>-<short>-tunnel.snodo.dev", so conflict replies name the blocking
+  tunnel and the unservable-name warning checks the right rule.
+name: tunnel-hostname-shape
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_hostname_shape

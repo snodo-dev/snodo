@@ -11,8 +11,10 @@ NOT artifact_paths or generated code snippets.
 """
 
 import logging
+import os
 import re
 import shlex
+import signal
 import subprocess
 import tempfile
 import threading
@@ -26,6 +28,7 @@ from snodo.validators.context import ValidatorBase
 from snodo.validators.registry import _default_registry
 
 logger = logging.getLogger(__name__)
+_Popen = subprocess.Popen
 
 # Auto-detection rules: (marker file, test command)
 _DETECT_RULES = [
@@ -337,17 +340,32 @@ class QualityValidator(ValidatorBase):
             return self._verification_moved_result(reason)
 
         try:
-            result = subprocess.run(  # noqa: S602 - command is an operator-authored shell string (tooling.test_command or auto-detect literal, e.g. "npm test" / "py.test && flake8"); compound commands require a shell. Source is the trusted protocol file (ADR 014 / #110), executed as the repo owner.
+            process = _Popen(  # noqa: S602 - command is an operator-authored shell string (tooling.test_command or auto-detect literal, e.g. "npm test" / "py.test && flake8"); compound commands require a shell. Source is the trusted protocol file (ADR 014 / #110), executed as the repo owner.
                 command,
                 shell=True,
                 cwd=str(self.working_directory),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
                 env=subprocess_env_without_job_context(),
             )
+            try:
+                stdout_bytes, stderr_bytes = process.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                # The shell command may have spawned descendants. Kill its
+                # entire process group so they cannot outlive this gate.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    process.kill()
+                stdout_bytes, stderr_bytes = process.communicate()
+                raise subprocess.TimeoutExpired(
+                    command, timeout, output=stdout_bytes, stderr=stderr_bytes
+                ) from exc
+            stdout = _decode(stdout_bytes)
+            stderr = _decode(stderr_bytes)
 
-            if result.returncode == 0:
+            if process.returncode == 0:
                 final_commit = self._resolve_commit_hash()
                 if final_commit != commit_hash:
                     reason = (
@@ -364,7 +382,7 @@ class QualityValidator(ValidatorBase):
                     # passed: no tests were executed. The `skipped` marker lets
                     # the engine surface the ungated run in normal output (a
                     # plain pass is only shown in verbose mode).
-                    summary = self._extract_summary(result.stdout)
+                    summary = self._extract_summary(stdout)
                     self._audit_verification(
                         context, command, commit_hash, 0, NO_TESTS_OUTCOME, summary
                     )
@@ -380,7 +398,7 @@ class QualityValidator(ValidatorBase):
                         ),
                         skipped=True,
                     )
-                summary = self._extract_summary(result.stdout)
+                summary = self._extract_summary(stdout)
                 self._audit_verification(
                     context, command, commit_hash, 0, "pass", summary
                 )
@@ -390,10 +408,9 @@ class QualityValidator(ValidatorBase):
                     justification=f"Tests passed: {summary}",
                 )
 
-            res = self._classify_failure(command, result.returncode,
-                                          result.stdout, result.stderr)
+            res = self._classify_failure(command, process.returncode, stdout, stderr)
             baseline = self._rerun_failed_tests_on_base(
-                command, result.stdout, result.stderr, context
+                command, stdout, stderr, context
             )
             if baseline is True:
                 # Keep the existing blocker/error vocabulary.  error=True is
@@ -420,9 +437,9 @@ class QualityValidator(ValidatorBase):
                     "remains the task's responsibility."
                 )
             outcome = "error" if getattr(res, "error", False) else "fail"
-            tail = self._output_tail(result.stdout, result.stderr)
+            tail = self._output_tail(stdout, stderr)
             self._audit_verification(
-                context, command, commit_hash, result.returncode, outcome, tail
+                context, command, commit_hash, process.returncode, outcome, tail
             )
             return res
 
@@ -457,8 +474,10 @@ class QualityValidator(ValidatorBase):
             )
         except subprocess.TimeoutExpired as e:
             tail = self._output_tail(_decode(e.stdout), _decode(e.stderr))
+            timeout_note = f"Timeout after {timeout}s"
+            tail = self._output_tail(tail, timeout_note)
             self._audit_verification(
-                context, command, commit_hash, -1, "error", f"Timeout after {timeout}s"
+                context, command, commit_hash, -1, "error", tail
             )
             return ValidatorResult(
                 validator_id=self.validator_id,
@@ -467,7 +486,7 @@ class QualityValidator(ValidatorBase):
                 justification=(
                     f"Test command timed out after {timeout}s: '{command}'. "
                     "Increase tooling.timeout or investigate why the suite "
-                    "is stalling."
+                    f"is stalling. Output: {tail}"
                 ),
             )
 
