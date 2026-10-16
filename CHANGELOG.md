@@ -9,7 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- Confine dispatched OpenCode runs to their task workspace and report escaped repository work as an execution fault. (Fixes #941)
+- Tell dispatched CLI coders that only their task workspace counts, deny OpenCode's session-move and worktree-create tools per run, and report escaped repository work as an execution fault, distinguishing engine-managed task worktrees from external checkouts. (Fixes #941)
 - Treat a replaced blocked-task spec as fresh validator input with a reset retry budget, and clear both task failure and halt records when abandoning a task. (Fixes #909)
 
 - Recognize canonical managed tunnel hostnames under `snodo.dev`, including conflict recovery and warnings for unservable legacy names. (Fixes #918)
