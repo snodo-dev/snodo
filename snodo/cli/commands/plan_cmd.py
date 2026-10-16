@@ -846,7 +846,7 @@ _TASK_ID_RE = re.compile(r"^\d+\.\d+_[A-Za-z0-9_-]+$")
 
 
 def _plan_add_task(planner, args) -> int:
-    """Add a task to a plan (Fixes #130)."""
+    """Add a task to a plan from a spec file (Fixes #130)."""
     from snodo.mcp.planner import PlannerError
 
     plan = getattr(args, "plan", "")

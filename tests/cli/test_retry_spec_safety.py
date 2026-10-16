@@ -678,18 +678,20 @@ def test_cli_retry_workspace_choice_preserves_spec_and_prior_work(
     from snodo.cli.commands.retry_workspace import setup_attempt, record_origin
     from snodo.infrastructure import worktree
 
-    mgr, session, audit = _real_cli_project(tmp_path, monkeypatch)
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    mgr, session, audit = _real_cli_project(project_root, monkeypatch)
     monkeypatch.setattr(worktree, "_prepare_task_environment", lambda *a: None)
     monkeypatch.delenv("SNODO_BENCHMARK", raising=False)
     monkeypatch.delenv("SNODO_JOB_ID", raising=False)
-    with Repo.init(tmp_path, initial_branch="main") as repo:
+    with Repo.init(project_root, initial_branch="main") as repo:
         with repo.config_writer() as config:
             config.set_value("user", "name", "Test")
             config.set_value("user", "email", "test@example.org")
-        (tmp_path / "base.txt").write_text("base")
+        (project_root / "base.txt").write_text("base")
         repo.index.add(["base.txt"])
         base = repo.index.commit("base").hexsha
-    project = str(tmp_path)
+    project = str(project_root)
     previous = setup_attempt(project, "task_abc", LONG_SPEC)
     with Repo(previous) as repo:
         (Path(previous) / "feature.txt").write_text("halted attempt")

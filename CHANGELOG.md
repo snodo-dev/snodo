@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a fresh-start choice for retries and record attempt provenance, including the starting revision and inherited work. (Fixes #948)
 - Require a validator verdict to name the task it judges, reject one that names another task instead of counting it as a pass, and record the subject a cached verdict was gathered for so a reused verdict is only served to that same subject; a malformed or unusable cache record is a miss rather than a validator error. (Fixes #951)
 - Add a Cloudflare AI Gateway provider guide covering configuration, model IDs, verification and troubleshooting. (Fixes #952)
 - Link the Cloudflare AI Gateway guide from the docs navigation, the providers overview and the Workers AI guide. (Fixes #953)
