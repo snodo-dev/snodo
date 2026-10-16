@@ -65,6 +65,8 @@ from snodo.validators.llm_provider_errors import (
     _is_transient_error,
     _remove_rejected_parameter,
     _reshape_rejected_messages,
+    apply_remembered_message_shape,
+    apply_remembered_parameters,
     _provider_retry_delay,
     _usage_tokens,
 )
@@ -1125,6 +1127,8 @@ class LLMValidator(ValidatorBase):
         """
         removed: Set[str] = set()
         shaped: Set[str] = set()
+        apply_remembered_parameters(self.model, kwargs)
+        kwargs["messages"] = apply_remembered_message_shape(kwargs.get("messages", []), self.model)
         while True:
             try:
                 return self._call_completion_with_transient_retry(**kwargs)

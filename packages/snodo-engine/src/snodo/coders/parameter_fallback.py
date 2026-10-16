@@ -2,8 +2,14 @@
 
 from typing import Any, Callable
 
-from snodo.infrastructure.llm_parameter_errors import remove_rejected_parameter
-from snodo.infrastructure.message_shape import reshape_messages_after_rejection
+from snodo.infrastructure.llm_parameter_errors import (
+    apply_remembered_parameters,
+    remove_rejected_parameter,
+)
+from snodo.infrastructure.message_shape import (
+    apply_remembered_message_shape,
+    reshape_messages_after_rejection,
+)
 
 
 def completion_without_rejected_parameters(
@@ -15,6 +21,8 @@ def completion_without_rejected_parameters(
 ) -> Any:
     """Retry named provider rejections and remember removed kwargs per run."""
     kwargs = {key: value for key, value in kwargs.items() if key not in removed}
+    apply_remembered_parameters(model, kwargs)
+    kwargs["messages"] = apply_remembered_message_shape(kwargs.get("messages", []), model)
     shaped: set[str] = set()
     while True:
         try:

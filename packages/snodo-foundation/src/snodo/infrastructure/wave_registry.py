@@ -30,7 +30,10 @@ from snodo.infrastructure.llm_parameter_errors import (
     apply_remembered_parameters,
     remove_rejected_parameter,
 )
-from snodo.infrastructure.message_shape import reshape_messages_after_rejection
+from snodo.infrastructure.message_shape import (
+    apply_remembered_message_shape,
+    reshape_messages_after_rejection,
+)
 
 _logger = logging.getLogger(__name__)
 _classifier_failure_streak = 0
@@ -277,7 +280,7 @@ class WaveRegistry:
         return "".join(parts)
 
     def _call_classifier(
-        self, prompt: str, completion_fn, model: str
+        self, prompt: str, completion_fn, model: str | None
     ) -> dict:
         """Call LLM classifier, validate required fields, retry once on failure.
 
@@ -297,9 +300,11 @@ class WaveRegistry:
             "max_tokens": self._classifier.max_tokens,
             "temperature": self._classifier.temperature,
         }
+        kwargs["messages"] = apply_remembered_message_shape(kwargs["messages"], model)
         for attempt in range(2):
             try:
-                apply_remembered_parameters(model, kwargs)
+                if model:
+                    apply_remembered_parameters(model, kwargs)
                 if completion_fn is None:
                     from litellm import completion as completion_fn
 

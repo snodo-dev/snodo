@@ -25,11 +25,11 @@ def message_shape_adapted_models() -> frozenset[str]:
 def reshape_messages_after_rejection(
     error: Exception,
     messages: list[dict[str, Any]],
-    model: str,
+    model: str | None,
     attempted_models: set[str],
 ) -> list[dict[str, Any]] | None:
     """Reshape messages after a matching rejection, once per run and model."""
-    if model in attempted_models or not is_message_shape_rejection(error):
+    if not model or model in attempted_models or not is_message_shape_rejection(error):
         return None
     attempted_models.add(model)
     _ADAPTED_MODELS.add(model)
@@ -47,3 +47,24 @@ def reshape_messages_after_rejection(
             copy["content"] = ""
         reshaped.append(copy)
     return reshaped
+
+
+def apply_remembered_message_shape(
+    messages: list[dict[str, Any]], model: str | None,
+) -> list[dict[str, Any]]:
+    """Apply a previously learned shape adaptation for this model."""
+    if not model or model not in _ADAPTED_MODELS:
+        return messages
+    result = []
+    for message in messages:
+        copy = dict(message)
+        content = copy.get("content")
+        if isinstance(content, list) and all(
+            isinstance(part, dict) and part.get("type") == "text"
+            and isinstance(part.get("text"), str) for part in content
+        ):
+            copy["content"] = "".join(part["text"] for part in content)
+        elif content is None and copy.get("role") == "assistant" and copy.get("tool_calls"):
+            copy["content"] = ""
+        result.append(copy)
+    return result

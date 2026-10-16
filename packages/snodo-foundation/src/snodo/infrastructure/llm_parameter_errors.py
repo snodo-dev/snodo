@@ -44,7 +44,15 @@ def is_provider_request_rejection(error: Exception) -> bool:
     except ImportError:
         pass
     status = getattr(error, "status_code", None)
-    return isinstance(status, int) and 400 <= status < 500 and status != 429
+    if isinstance(status, int) and 400 <= status < 500 and status != 429:
+        return True
+    # Lightweight fake completions and some SDK wrappers raise a plain
+    # exception for explicit unsupported-parameter responses. Require clear
+    # rejection wording; arbitrary provider errors remain non-adaptable.
+    text = str(error).lower()
+    return rejected_parameter_name(error) is not None and any(
+        phrase in text for phrase in ("not supported", "unsupported", "invalid")
+    )
 
 
 def apply_remembered_parameters(model: str, kwargs: dict[str, Any]) -> None:
