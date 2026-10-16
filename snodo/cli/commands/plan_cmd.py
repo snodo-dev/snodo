@@ -554,8 +554,9 @@ def _plan_create(planner, args) -> int:
 
     print(f"Plan created: {plan_name}")
     print(f"  Intent: {description}")
-    print(f"  Waves: {len(plan_data.get('waves', []))}")
-    print(f"  Tasks: {sum(len(w.get('tasks', [])) for w in plan_data.get('waves', []))}")
+    waves = plan_data.get("waves", [])
+    print(f"  Waves: {len(waves)}")
+    print(f"  Tasks: {sum(len(w.get('tasks', [])) for w in waves)}")
     return 0
 
 

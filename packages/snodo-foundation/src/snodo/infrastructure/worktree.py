@@ -13,6 +13,7 @@ important for standalone tasks and for tasks already in flight under the old
 naming scheme.
 """
 
+import hashlib
 import logging
 import json
 import re
@@ -94,9 +95,21 @@ def worktree_dir(project_root: str) -> Path:
 def worktree_path(
     project_root: str, task_id: str, plan_name: Optional[str] = None
 ) -> Path:
-    if plan_name:
-        return worktree_dir(project_root) / _name_component(plan_name) / task_id
-    return worktree_dir(project_root) / task_id
+    container = worktree_dir(project_root)
+    relative = Path(_name_component(plan_name)) / task_id if plan_name else Path(task_id)
+    requested = container / relative
+    # Sibling repositories share the container, not their task work. Retained
+    # checkouts can outlive the caller that created them; never adopt one just
+    # because a later project uses the same task id. Keep the traditional path
+    # where possible and leave a foreign checkout entirely untouched.
+    root = Path(project_root).resolve()
+    scope = hashlib.sha256(str(root).encode()).hexdigest()[:12]
+    scoped = container / f"{_name_component(root.name)}-{scope}" / relative
+    if scoped.exists():
+        return scoped
+    if requested.exists() and requested.resolve() not in _project_worktree_paths(project_root):
+        return scoped
+    return requested
 
 
 def _branch_exists(project_root: str, branch: str) -> bool:
@@ -153,7 +166,7 @@ def _task_identity(
     for candidate_path in (new_path,):
         try:
             from snodo.tools.git import open_repo
-            with open_repo(str(candidate_path)) as repo:
+            with open_repo(str(candidate_path), search_parent_directories=False) as repo:
                 branch = repo.active_branch.name
             if branch:
                 return candidate_path, branch
