@@ -115,6 +115,9 @@ class TestWorkspaceResolution:
 
         assert executed_kwargs["cwd"] == str(worktree)
         assert executed_kwargs["cwd"] != str(Path.cwd())
+        run_config = json.loads(executed_kwargs["env"]["OPENCODE_CONFIG_CONTENT"])
+        assert run_config["permission"]["edit"] == "deny"
+        assert run_config["tools"] == {"session_move": False, "worktree_create": False}
         dir_idx = executed_argv.index("--dir")
         assert executed_argv[dir_idx + 1] == str(worktree)
         assert executed_argv[dir_idx + 1] != str(Path.cwd())
@@ -405,6 +408,7 @@ class TestSnodoCloudProvider:
             env = adapter._subprocess_env()
 
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        assert config["permission"]["edit"] == "deny"
         assert config["tools"] == {"session_move": False, "worktree_create": False}
         provider = config["provider"]["snodo-cloud"]
         assert provider["options"]["baseURL"] == "https://gateway.example/v1"
@@ -416,6 +420,7 @@ class TestSnodoCloudProvider:
     def test_other_models_do_not_get_provider_injection(self, tmp_path):
         adapter = OpenCodeCLIAdapter(model="opencode-cli/openai/gpt-6-luna", workspace=tmp_path)
         config = json.loads(adapter._subprocess_env()["OPENCODE_CONFIG_CONTENT"])
+        assert config["permission"]["edit"] == "deny"
         assert config["tools"] == {"session_move": False, "worktree_create": False}
 
     def test_missing_cloud_credential_fails_with_login_guidance(self, tmp_path):

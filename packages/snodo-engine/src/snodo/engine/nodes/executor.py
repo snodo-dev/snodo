@@ -4,6 +4,8 @@ FILE: snodo/engine/nodes/executor.py
 """
 
 import logging
+import subprocess
+from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from snodo.core.interfaces import Task, TaskSpec, ExecutionError, NoFileOperationsError
 from snodo.coders.base import (
@@ -350,16 +352,40 @@ class ExecutorMixin:
             return {}
 
     def _escaped_repo_commit(self, git_mcp: Optional[Any], before: dict[str, str]) -> Optional[str]:
-        """Describe a new ref/commit in this repository that is outside its task tree."""
+        """Find new work in a non-engine checkout, ignoring concurrent task refs."""
         if git_mcp is None:
             return None
         try:
             repo = git_mcp.repo
+            prefix = self._task_branch_prefix().strip("/") + "/"
+            refs = []
             for ref in repo.refs:
+                # Other concurrent Snodo tasks legitimately create/change these.
+                if ref.name.startswith(prefix):
+                    continue
                 if ref.path not in before and ref.commit.hexsha:
-                    return f"{repo.working_tree_dir} (ref {ref.name} at {ref.commit.hexsha[:12]})"
-                if ref.path in before and ref.commit.hexsha != before[ref.path]:
-                    return f"{repo.working_tree_dir} (ref {ref.name} at {ref.commit.hexsha[:12]})"
+                    refs.append(ref)
+                elif ref.path in before and ref.commit.hexsha != before[ref.path]:
+                    refs.append(ref)
+            if not refs:
+                return None
+            # Only report when this repository has a linked checkout outside
+            # Snodo's managed task-worktree area; those checkouts are where
+            # registered-project routing can leak a run's writes.
+            worktrees = subprocess.run(
+                ["git", "worktree", "list", "--porcelain"],  # noqa: S607
+                cwd=repo.working_tree_dir, capture_output=True, text=True, check=True,
+            ).stdout.splitlines()
+            common_dir = Path(repo.git_dir).resolve()
+            while common_dir.name != ".git" and common_dir.parent != common_dir:
+                common_dir = common_dir.parent
+            managed_root = (common_dir.parent / ".snodo" / "worktrees").resolve()
+            external = [Path(line[9:]).resolve() for line in worktrees if line.startswith("worktree ")
+                        and Path(line[9:]).resolve() != Path(repo.working_tree_dir).resolve()
+                        and not Path(line[9:]).resolve().is_relative_to(managed_root)]
+            if external:
+                ref = refs[0]
+                return f"{external[0]} (ref {ref.name} at {ref.commit.hexsha[:12]})"
         except Exception:
             return None
         return None
@@ -444,8 +470,8 @@ class ExecutorMixin:
                         if existing is None:
                             escaped = self._escaped_repo_commit(git_mcp, refs_before_coder)
                             if escaped:
-                                raise AdapterError(
-                                    "Coder workspace_escape: repository "
+                                raise ExecutionError(
+                                    "Coder workspace escape: repository "
                                     f"gained work at {escaped}. Rescue it by inspecting/cherry-picking "
                                     "that ref, then rerun; the task workspace was left unchanged."
                                 )

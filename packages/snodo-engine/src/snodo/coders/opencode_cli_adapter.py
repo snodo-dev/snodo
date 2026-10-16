@@ -71,14 +71,25 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
         # OpenCode 2.x exposes session relocation and worktree creation as
         # built-in tools. Deny them per process (rather than changing the
         # operator's config or shared registry) for dispatched task runs.
-        confinement = {"tools": {"session_move": False, "worktree_create": False}}
+        confinement = {
+            "permission": {"edit": "deny"},
+            "tools": {"session_move": False, "worktree_create": False},
+        }
         try:
             existing = json.loads(env.get("OPENCODE_CONFIG_CONTENT", "{}"))
         except (TypeError, ValueError):
             existing = {}
-        if isinstance(existing, dict):
-            existing.update(confinement)
-            env["OPENCODE_CONFIG_CONTENT"] = json.dumps(existing)
+        if not isinstance(existing, dict):
+            existing = {}
+        existing_permission = existing.get("permission")
+        if not isinstance(existing_permission, dict):
+            existing_permission = {}
+        existing["permission"] = {**existing_permission, **confinement["permission"]}
+        existing_tools = existing.get("tools")
+        if not isinstance(existing_tools, dict):
+            existing_tools = {}
+        existing["tools"] = {**existing_tools, **confinement["tools"]}
+        env["OPENCODE_CONFIG_CONTENT"] = json.dumps(existing)
         if not self.model.startswith("opencode-cli/snodo-cloud/"):
             return env
 
@@ -97,17 +108,22 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
         base_url = cloud.get("models_url") if isinstance(cloud, dict) else None
         base_url = base_url.strip() if isinstance(base_url, str) and base_url.strip() else DEFAULT_CLOUD_MODELS_URL
         model_id = model.removeprefix("snodo-cloud/")
-        cloud_config = {
-            "provider": {
-                "snodo-cloud": {
-                    "npm": "@ai-sdk/openai-compatible",
-                    "name": "Snodo Cloud",
-                    "options": {"baseURL": base_url, "apiKey": credential},
-                    "models": {model_id: {"name": model_id}},
-                }
-            }
+        # The inline config carries hard-deny permissions because --auto only
+        # approves otherwise-unmatched actions. Do not isolate OpenCode's
+        # registry: a fresh registry loses the configured provider's model
+        # catalog, while a registered project can otherwise redirect a
+        # worktree run to the operator checkout.
+        cloud_config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        providers = cloud_config.get("provider")
+        if not isinstance(providers, dict):
+            providers = {}
+        providers["snodo-cloud"] = {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "Snodo Cloud",
+            "options": {"baseURL": base_url, "apiKey": credential},
+            "models": {model_id: {"name": model_id}},
         }
-        cloud_config.update(confinement)
+        cloud_config["provider"] = providers
         env["OPENCODE_CONFIG_CONTENT"] = json.dumps(cloud_config)
         return env
 
