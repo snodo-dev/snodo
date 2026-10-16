@@ -492,7 +492,6 @@ def call_agent(
     import litellm
     from snodo.infrastructure.model_provenance import served_model_of
     litellm.suppress_debug_info = True
-
     path_context = ", ".join(paths) if paths else "./"
     system_msg = (
         f"You are a codebase exploration agent. Your task is to understand "
@@ -505,12 +504,10 @@ def call_agent(
         {"role": "system", "content": system_msg},
         {"role": "user", "content": f"Query: {query}"},
     ]
-
     final_answer = ""
     served_model: Optional[str] = None
     usage_records: list[dict] = []
     started = time.monotonic()
-
     def _usage_record(outcome: str) -> dict:
         return {
             "agent": agent_label,
@@ -525,10 +522,8 @@ def call_agent(
             "duration_ms": round((time.monotonic() - started) * 1000, 2),
             "outcome": outcome,
         }
-
     input_tokens = output_tokens = cache_read_tokens = cache_write_tokens = None
     reported_cost = None
-
     def _record_response(response) -> None:
         nonlocal served_model, input_tokens, output_tokens
         nonlocal cache_read_tokens, cache_write_tokens, reported_cost
@@ -571,6 +566,7 @@ def call_agent(
     model_param = ConfigManager.resolve_litellm_model(model)
     extra_headers = ConfigManager.resolve_extra_headers(model, task_id="recon")
     api_key = ConfigManager().get_key_for_model(model)
+    attempted_shape_models: set[str] = set()
 
     def _complete(with_read_tools: bool, force_answer: bool = False):
         kwargs = {
@@ -589,7 +585,9 @@ def call_agent(
             kwargs["api_base"] = api_base
         if extra_headers:
             kwargs["extra_headers"] = extra_headers
-        return litellm.completion(**kwargs)
+        from snodo.recon.provider_adaptation import complete_with_adaptation
+
+        return complete_with_adaptation(litellm.completion, kwargs, model, attempted_shape_models)
 
     def _forced_answer(response):
         """Extract an answer from a forced-submit response, including providers

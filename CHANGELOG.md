@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Route recon completion requests through shared provider parameter and message-shape adaptation, including per-model reasoning-effort memory and recovery on later tool turns. (Fixes #926; related: #923, #924, #925)
 - Preserve partial test output and terminate subprocess trees when quality-gate commands time out. (Fixes #786)
 - Report remote gate slot waits, progress and timeout on stderr, and use signal-based pytest timeouts so hung tests leave tracebacks. (Fixes #787)
 - Bump the `mcp` dependency to 1.30.0 to clear GHSA-84m7-p3x7-pcfv (unbounded session accumulation in the StreamableHTTP transport).
