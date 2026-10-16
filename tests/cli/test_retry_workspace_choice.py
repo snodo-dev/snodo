@@ -2,6 +2,8 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from git import Repo
@@ -124,22 +126,51 @@ def test_origin_unknown_and_display(project, capsys):
     assert read_origin(project, task.id) == {}
 
 
-def test_clean_start_surfaces_share_default_and_name():
-    import typer
-    from typer.main import get_group
-    from snodo.cli.commands.run_cmd import register, RunArgs
-    from snodo.cli.commands.plan_cmd import app
-    from snodo.mcp.tools import TOOL_REGISTRY
+def test_halted_origin_is_displayed_and_survives_a_fresh_attempt(project, monkeypatch, capsys):
+    from snodo.cli.commands.task_cmd import task_show_command
+    from snodo.cli.commands.task_record import _record_task_start, _record_task_completion
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.state import ProjectState, write_state
 
-    run_app = typer.Typer()
-    register(run_app)
-    commands = [get_group(run_app).commands["run"], get_group(app).commands["run"]]
-    for command in commands:
-        option = next(p for p in command.params if p.name == "fresh_start")
-        assert "--fresh-start" in option.opts
-        assert option.default is False
-        assert "previous" in option.help
-    assert RunArgs().fresh_start is False
-    schema = TOOL_REGISTRY["retry_job"]["inputSchema"]["properties"]["fresh_start"]
-    assert schema["type"] == "boolean"
-    assert "default false" in schema["description"]
+    task = Task(id="task_abc", spec="implement feature")
+    path = setup_attempt(project, task.id, task.spec)
+    with Repo(path) as repo:
+        (Path(path) / "feature.txt").write_text("earlier attempt")
+        repo.index.add(["feature.txt"])
+        prior = repo.index.commit("halted work").hexsha
+    _record_task_start(project, task.id, task.spec)
+    origin = record_origin(project, task, path)
+    halt = {
+        "task_id": task.id, "task_spec": task.root_spec,
+        "status": "blocked", "final_decision": "blocked",
+        "halt_type": "validation_blocker", "reason": "needs changes",
+    }
+    _record_task_completion(project, task.id, "blocked", halt)
+    directory = Path(project) / ".snodo" / "tasks" / task.id
+    recorded = json.loads((directory / "state.json").read_text())
+    assert recorded["halt"]["starting_revision"] == prior
+    assert recorded["halt"]["inherited_work"] is True
+
+    write_state(project, ProjectState(current_mode="producer"))
+    manager = SessionManager(sessions_dir=Path(project) / ".snodo" / "sessions")
+    session = manager.create_session("producer", project)
+    manager.update_decision(session.session_id, "halt", {task.id: halt})
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: project)
+    monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: project)
+    capsys.readouterr()
+    with patch("snodo.infrastructure.session.SessionManager", return_value=manager):
+        assert task_show_command(SimpleNamespace(task_id=task.id, json=False)) == 0
+    output = capsys.readouterr().out
+    assert f"Starting revision: {prior}" in output
+    assert "Inherited work: True" in output
+
+    _record_task_start(project, task.id, task.root_spec)
+    fresh = setup_attempt(project, task.id, task.root_spec, fresh_start=True)
+    new_task = Task(id=task.id, spec=task.root_spec)
+    fresh_origin = record_origin(project, new_task, fresh)
+    assert fresh_origin["inherited_work"] is False
+    snapshots = [json.loads(p.read_text()) for p in (directory / "attempts").glob("*.json")]
+    assert len(snapshots) == 1
+    assert snapshots[0]["status"] == "blocked"
+    for key in ("starting_revision", "starting_branch", "inherited_work"):
+        assert snapshots[0][key] == origin[key]

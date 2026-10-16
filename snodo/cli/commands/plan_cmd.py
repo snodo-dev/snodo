@@ -554,9 +554,8 @@ def _plan_create(planner, args) -> int:
 
     print(f"Plan created: {plan_name}")
     print(f"  Intent: {description}")
-    waves = plan_data.get("waves", [])
-    print(f"  Waves: {len(waves)}")
-    print(f"  Tasks: {sum(len(w.get('tasks', [])) for w in waves)}")
+    print(f"  Waves: {len(plan_data.get('waves', []))}")
+    print(f"  Tasks: {sum(len(w.get('tasks', [])) for w in plan_data.get('waves', []))}")
     return 0
 
 
@@ -846,7 +845,7 @@ _TASK_ID_RE = re.compile(r"^\d+\.\d+_[A-Za-z0-9_-]+$")
 
 
 def _plan_add_task(planner, args) -> int:
-    """Add a task to a plan from a spec file (Fixes #130)."""
+    """Add a task to a plan (Fixes #130)."""
     from snodo.mcp.planner import PlannerError
 
     plan = getattr(args, "plan", "")

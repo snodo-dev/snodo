@@ -26,6 +26,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 
 from snodo.cli.commands import followup
 from snodo.cli.commands.run_cmd import RunArgs, _retry_task
@@ -665,3 +666,65 @@ def test_retry_help_names_the_default():
     assert "keeping its spec" in params["retry"].help
     assert "on top of" in params["append_spec"].help
     assert "replace" in params["replace_spec"].help.lower()
+
+
+@pytest.mark.parametrize("fresh_start", [False, True], ids=["continue", "fresh"])
+def test_cli_retry_workspace_choice_preserves_spec_and_prior_work(
+    tmp_path, monkeypatch, capsys, fresh_start,
+):
+    """The parsed choice reaches the lifecycle without deleting the old branch."""
+    from git import Repo
+    from snodo.cli.main import main
+    from snodo.cli.commands.retry_workspace import setup_attempt, record_origin
+    from snodo.infrastructure import worktree
+
+    mgr, session, audit = _real_cli_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(worktree, "_prepare_task_environment", lambda *a: None)
+    monkeypatch.delenv("SNODO_BENCHMARK", raising=False)
+    monkeypatch.delenv("SNODO_JOB_ID", raising=False)
+    with Repo.init(tmp_path, initial_branch="main") as repo:
+        with repo.config_writer() as config:
+            config.set_value("user", "name", "Test")
+            config.set_value("user", "email", "test@example.org")
+        (tmp_path / "base.txt").write_text("base")
+        repo.index.add(["base.txt"])
+        base = repo.index.commit("base").hexsha
+    project = str(tmp_path)
+    previous = setup_attempt(project, "task_abc", LONG_SPEC)
+    with Repo(previous) as repo:
+        (Path(previous) / "feature.txt").write_text("halted attempt")
+        repo.index.add(["feature.txt"])
+        prior = repo.index.commit("work before halt").hexsha
+        branch = repo.active_branch.name
+
+    received = []
+
+    def execute(args, protocol, task, model):
+        assert isinstance(args, RunArgs)
+        assert args.fresh_start is fresh_start
+        path = setup_attempt(project, task.id, task.spec, fresh_start=args.fresh_start)
+        origin = record_origin(project, task, path)
+        received.append((task, path, origin))
+        return 0
+
+    monkeypatch.setattr("snodo.cli.commands.run_cmd._execute_task", execute)
+    command = ["run", "--retry", "task_abc", "--mock"]
+    if fresh_start:
+        command.append("--fresh-start")
+    assert main(command) == 0
+    assert len(received) == 1
+    task, path, origin = received[0]
+    assert task.root_spec == LONG_SPEC
+    assert origin["starting_revision"] == (base if fresh_start else prior)
+    assert origin["inherited_work"] is (not fresh_start)
+    assert (path == previous) is (not fresh_start)
+    assert (Path(path) / "feature.txt").exists() is (not fresh_start)
+    assert ("Continuation of earlier attempt" in task.spec) is (not fresh_start)
+    with Repo(project) as repo:
+        assert repo.heads[branch].commit.hexsha == prior
+    assert (Path(previous) / "feature.txt").read_text() == "halted attempt"
+    failure = mgr.load_session(session.session_id).checkpoint.decisions["task_failure"]["task_abc"]
+    assert failure["original_spec"] == LONG_SPEC
+    assert failure["attempt"] == 1
+    if fresh_start:
+        assert "records left untouched" in capsys.readouterr().out
