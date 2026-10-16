@@ -6,6 +6,14 @@ repo_name: snodo-dev/snodo
 edit_uri: edit/main/docs/
 strict: true
 
+# Strict builds fail on unresolved or uncheckable local links, not just warnings
+# from navigation. Repository-only files must use explicit repository references.
+validation:
+  links:
+    not_found: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
 theme:
   name: material
   palette:
