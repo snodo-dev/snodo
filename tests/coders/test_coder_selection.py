@@ -20,6 +20,33 @@ from snodo.coders import (
 )
 from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.engine.loop import GraphBuilder, build_protocol_graph
+from snodo.engine.loop import _assert_task_workspace
+
+
+def test_isolated_dispatch_requires_coder_and_mcp_at_worktree(tmp_path):
+    worktree = tmp_path / "task-worktree"
+    worktree.mkdir()
+    coder = type("Coder", (), {"workspace": worktree})()
+    workspace_mcp = type("Workspace", (), {"project_root": worktree})()
+
+    _assert_task_workspace(worktree, workspace_mcp, coder)
+
+
+def test_workspace_mismatch_names_expected_and_actual_paths(tmp_path):
+    expected = tmp_path / "task-worktree"
+    actual = tmp_path / "producer-root"
+    workspace_mcp = type("Workspace", (), {"project_root": actual})()
+    coder = type("Coder", (), {"workspace": actual})()
+
+    with pytest.raises(ValueError, match="task workspace mismatch") as exc:
+        _assert_task_workspace(expected, workspace_mcp, coder)
+    assert str(expected) in str(exc.value)
+    assert str(actual) in str(exc.value)
+
+
+def test_degraded_dispatch_does_not_require_worktree_match(tmp_path):
+    _assert_task_workspace(None, object(), object())
+    _assert_task_workspace("", object(), object())
 
 
 def _make_protocol(mode_coder: str = None) -> Protocol:

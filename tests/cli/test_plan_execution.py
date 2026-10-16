@@ -62,6 +62,47 @@ def test_remote_branch_matches_only_when_remote_points_at_delivered_commit():
     assert not _remote_branch_matches(repo, "origin", "plan/integration", "abc123")
 
 
+def test_matching_remote_does_not_skip_change_request_creation(monkeypatch, tmp_path):
+    """A remote SHA match is not evidence that a review request exists."""
+    from snodo.cli.commands import plan_delivery
+
+    class Repo:
+        heads = {"plan/demo/integration"}
+
+        class git:
+            @staticmethod
+            def ls_remote(*_args):
+                return "abc123\trefs/heads/plan/demo/integration"
+
+        @staticmethod
+        def commit(_branch):
+            return SimpleNamespace(hexsha="abc123")
+
+    class RepoContext:
+        def __enter__(self):
+            return Repo()
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(plan_delivery, "open_repo", lambda *_args: RepoContext())
+    monkeypatch.setattr(plan_delivery, "worktree_dir", lambda *_args: tmp_path)
+    calls = []
+    monkeypatch.setattr(
+        plan_delivery, "_deliver_plan_integration",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or 0,
+    )
+    protocol = SimpleNamespace(
+        delivery_for=lambda _mode: "change_request",
+        execution=SimpleNamespace(delivery_remote="origin"),
+    )
+
+    assert not plan_delivery.deliver_healthy_plan_wave(
+        str(tmp_path), "plan/demo/integration", "demo", {}, protocol, "producer", None,
+    )
+    assert len(calls) == 1
+
+
 @pytest.fixture
 def plan_project_env(tmp_path, monkeypatch):
     """Fixture creating a valid project root with protocol and initialized PlannerMCP."""

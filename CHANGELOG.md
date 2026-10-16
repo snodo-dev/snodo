@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+
+- Deliver single-wave plan runs to their integration branch and refuse unsafe checkout-target merges. (Fixes #910)
+- Keep plan and queue wave coders and MCPs rooted in each task worktree, and fail loudly if dispatch workspace identity is lost. (Fixes #911)
 - Preserve partial test output and terminate subprocess trees when quality-gate commands time out. (Fixes #786)
 - Report remote gate slot waits, progress and timeout on stderr, and use signal-based pytest timeouts so hung tests leave tracebacks. (Fixes #787)
 - Bump the `mcp` dependency to 1.30.0 to clear GHSA-84m7-p3x7-pcfv (unbounded session accumulation in the StreamableHTTP transport).

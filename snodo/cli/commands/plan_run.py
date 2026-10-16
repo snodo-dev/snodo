@@ -1110,10 +1110,27 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                     integration={"branch": integration_branch, "base_sha": base_sha}
                 ), strict=True)
             except Exception as e:
-                # Some callers use the plan runner without a Git repository
-                # (for validation-only tests and embedded integrations).
-                _logger.info("Plan integration worktree unavailable: %s", e)
-                integration_branch = None
+                # Validation/mock and explicitly non-isolated runs are used
+                # without a Git checkout; they do not dispatch isolated task
+                # branches that could land on the producer checkout.
+                if getattr(args, "mock", False) or getattr(args, "no_isolation", False):
+                    _logger.info("Plan integration worktree unavailable for non-isolated run: %s", e)
+                    integration_branch = None
+                else:
+                    print(
+                        f"Error: Cannot establish the integration branch for plan '{args.plan}': {e}. "
+                        "Run this command from a writable Git checkout and repair the repository/worktree, then retry.",
+                        file=sys.stderr,
+                    )
+                    return 1
+        if not integration_branch and not (
+            getattr(args, "mock", False) or getattr(args, "no_isolation", False)
+        ):
+            print(
+                f"Error: Plan '{args.plan}' has no integration branch. Repair its integration state before dispatching tasks.",
+                file=sys.stderr,
+            )
+            return 1
         from snodo.infrastructure.state import read_state
         state = read_state(project_root)
         active_mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode

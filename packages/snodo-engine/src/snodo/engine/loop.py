@@ -56,6 +56,26 @@ from snodo.validators.context import ValidatorContext
 _logger = logging.getLogger(__name__)
 
 
+def _assert_task_workspace(worktree_path, workspace_mcp, coder) -> None:
+    """Ensure an isolated dispatch's MCPs and coder share the task worktree."""
+    if not worktree_path:
+        return
+    expected = Path(worktree_path).expanduser().resolve()
+    dispatch_root = Path(
+        getattr(workspace_mcp, "project_root", expected)
+    ).expanduser().resolve()
+    coder_workspace = getattr(coder, "workspace", None)
+    if coder_workspace is None:
+        coder_workspace = getattr(coder, "_workspace", None)
+    actual = (
+        Path(coder_workspace).expanduser().resolve()
+        if coder_workspace is not None
+        else dispatch_root
+    )
+    if dispatch_root != expected or actual != expected:
+        raise ValueError(f"task workspace mismatch: expected {expected}, got {actual}")
+
+
 from snodo.engine.nodes.context import ContextMixin  # noqa: E402
 from snodo.engine.nodes.executor import ExecutorMixin  # noqa: E402
 from snodo.engine.nodes.governance import GovernanceNodeMixin  # noqa: E402
@@ -1340,6 +1360,11 @@ def build_protocol_graph(
             model=resolved_model,
             **coder_kwargs,
         )
+
+    # In-place adapters have their own filesystem root.  When a task worktree
+    # is expected, fail before dispatch if that root drifted from the MCP root;
+    # otherwise post-run attribution would inspect a different checkout.
+    _assert_task_workspace(worktree_path, workspace_mcp, coder)
 
     if isinstance(wave_results, str):
         import json
