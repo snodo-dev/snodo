@@ -9,10 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- Route recon completion requests through shared provider parameter and message-shape adaptation, including per-model reasoning-effort memory and recovery on later tool turns. (Fixes #926; related: #923, #924, #925)
+- Route recon completion requests through shared provider parameter and message-shape adaptation, including per-model reasoning-effort memory, recovery on later tool turns, and the same adaptations applied in the validator, coder and classifier. (Fixes #926, #927; related: #923, #924, #925)
 - Reset the retry budget only when a blocked task's spec is replaced through the supported plan path (hash-keyed on the recorded spec, so hand-edits do not reset), rebuild the retry prompt from the current spec, and clear both task failure and halt records on `snodo task abandon`. (Fixes #909, Fixes #943)
-- Tell dispatched CLI coders that only their task workspace counts, deny OpenCode's session-move and worktree-create tools per run, and report escaped repository work as an execution fault, distinguishing engine-managed task worktrees from external checkouts. (Fixes #941)
-- Add a model-provider overview and navigation for the eight provider guides. (Fixes #938; provider guides: #929, #930, #932, #933, #934, #935, #936, #937)
+- Tell dispatched CLI coders that only their task workspace counts, deny OpenCode's session-move and worktree-create tools per run, and report escaped repository work as an execution fault, distinguishing engine-managed task worktrees from external checkouts; the escape-recovery tests no longer leave live `git cat-file` children behind for the #258 leak guard to fail on. (Fixes #941)
+- Add a model-provider overview and navigation for the eight provider guides, and link the existing documentation pages to them. (Fixes #938, #939; provider guides: #929, #930, #932, #933, #934, #935, #936, #937)
 - Treat a replaced blocked-task spec as fresh validator input with a reset retry budget, and clear both task failure and halt records when abandoning a task. (Fixes #909)
 - Recognize canonical managed tunnel hostnames under `snodo.dev`, including conflict recovery and warnings for unservable legacy names. (Fixes #918)
 - Deliver single-wave plan runs to their integration branch and refuse unsafe checkout-target merges. (Fixes #910)
