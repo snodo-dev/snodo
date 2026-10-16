@@ -9,7 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- Treat a replaced blocked-task spec as fresh validator input with a reset retry budget, and clear both task failure and halt records when abandoning a task. (Fixes #909)
+- Reset the retry budget only when a blocked task's spec is replaced through the supported plan path (hash-keyed on the recorded spec, so hand-edits do not reset), rebuild the retry prompt from the current spec, and clear both task failure and halt records on `snodo task abandon`. (Fixes #909, Fixes #943)
 
 - Recognize canonical managed tunnel hostnames under `snodo.dev`, including conflict recovery and warnings for unservable legacy names. (Fixes #918)
 - Deliver single-wave plan runs to their integration branch and refuse unsafe checkout-target merges. (Fixes #910)

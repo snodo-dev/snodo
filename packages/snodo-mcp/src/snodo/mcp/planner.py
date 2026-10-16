@@ -610,10 +610,7 @@ class PlannerMCP:
                     else current.get("status", replacement["status"])
                 )
                 replacement.update(
-                    {
-                        key: value for key, value in current.items()
-                        if key not in replacement and not (changed_spec and key in {"attempt", "attempts"})
-                    }
+                    {key: value for key, value in current.items() if key not in replacement}
                 )
             current_tasks[task_id] = replacement
 
