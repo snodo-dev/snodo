@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 - Add a Cloudflare AI Gateway provider guide covering configuration, model IDs, verification and troubleshooting. (Fixes #952)
+- Link the Cloudflare AI Gateway guide from the docs navigation, the providers overview and the Workers AI guide. (Fixes #953)
 
 ## [0.26.0] — 2026-10-16
 
