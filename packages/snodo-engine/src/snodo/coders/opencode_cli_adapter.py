@@ -68,6 +68,17 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
 
     def _subprocess_env(self) -> dict[str, str]:
         env = subprocess_env_for_coder()
+        # OpenCode 2.x exposes session relocation and worktree creation as
+        # built-in tools. Deny them per process (rather than changing the
+        # operator's config or shared registry) for dispatched task runs.
+        confinement = {"tools": {"session_move": False, "worktree_create": False}}
+        try:
+            existing = json.loads(env.get("OPENCODE_CONFIG_CONTENT", "{}"))
+        except (TypeError, ValueError):
+            existing = {}
+        if isinstance(existing, dict):
+            existing.update(confinement)
+            env["OPENCODE_CONFIG_CONTENT"] = json.dumps(existing)
         if not self.model.startswith("opencode-cli/snodo-cloud/"):
             return env
 
@@ -86,7 +97,7 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
         base_url = cloud.get("models_url") if isinstance(cloud, dict) else None
         base_url = base_url.strip() if isinstance(base_url, str) and base_url.strip() else DEFAULT_CLOUD_MODELS_URL
         model_id = model.removeprefix("snodo-cloud/")
-        env["OPENCODE_CONFIG_CONTENT"] = json.dumps({
+        cloud_config = {
             "provider": {
                 "snodo-cloud": {
                     "npm": "@ai-sdk/openai-compatible",
@@ -95,7 +106,9 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
                     "models": {model_id: {"name": model_id}},
                 }
             }
-        })
+        }
+        cloud_config.update(confinement)
+        env["OPENCODE_CONFIG_CONTENT"] = json.dumps(cloud_config)
         return env
 
     def _begin_subprocess_run(self) -> None:

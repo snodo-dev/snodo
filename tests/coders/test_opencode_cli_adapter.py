@@ -31,6 +31,8 @@ def test_opencode_cli_prompt_includes_engine_boundary_guidance(tmp_path):
     assert "docs/policy.md" in prompt
     assert ".snodo/" in prompt
     assert "not a sandbox" in prompt
+    assert "Workspace confinement" in prompt
+    assert "only place your work counts" in prompt
 
 _REAL_CLI_MAJOR_VERSION = OpenCodeCLIAdapter._cli_major_version
 
@@ -403,6 +405,7 @@ class TestSnodoCloudProvider:
             env = adapter._subprocess_env()
 
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        assert config["tools"] == {"session_move": False, "worktree_create": False}
         provider = config["provider"]["snodo-cloud"]
         assert provider["options"]["baseURL"] == "https://gateway.example/v1"
         assert provider["models"] == {"gpt-6-luna": {"name": "gpt-6-luna"}}
@@ -412,7 +415,8 @@ class TestSnodoCloudProvider:
 
     def test_other_models_do_not_get_provider_injection(self, tmp_path):
         adapter = OpenCodeCLIAdapter(model="opencode-cli/openai/gpt-6-luna", workspace=tmp_path)
-        assert "OPENCODE_CONFIG_CONTENT" not in adapter._subprocess_env()
+        config = json.loads(adapter._subprocess_env()["OPENCODE_CONFIG_CONTENT"])
+        assert config["tools"] == {"session_move": False, "worktree_create": False}
 
     def test_missing_cloud_credential_fails_with_login_guidance(self, tmp_path):
         adapter = OpenCodeCLIAdapter(model="opencode-cli/snodo-cloud/gpt-6-luna", workspace=tmp_path)

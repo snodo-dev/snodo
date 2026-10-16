@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Confine OpenCode CLI sessions to dispatched workspaces by disabling session relocation and worktree creation per run, and tell coders that work elsewhere is discarded. (Fixes #941)
 - Treat a replaced blocked-task spec as fresh validator input with a reset retry budget, and clear both task failure and halt records when abandoning a task. (Fixes #909)
 
 - Recognize canonical managed tunnel hostnames under `snodo.dev`, including conflict recovery and warnings for unservable legacy names. (Fixes #918)

@@ -840,6 +840,15 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             self.protocol, self._workspace, self.protected_paths,
         )])
 
+        parts.extend([
+            "",
+            "## Workspace confinement",
+            "The workspace provided to you is the only place your work counts. "
+            "Do not create or relocate into another checkout, worktree, or copy "
+            "of this repository. Edits made elsewhere are discarded by the "
+            "merge gate and will not be attributed to this task.",
+        ])
+
         if spec.constraints:
             parts.append("\n## Constraints")
             for c in spec.constraints:
