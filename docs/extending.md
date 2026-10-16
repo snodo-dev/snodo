@@ -10,7 +10,7 @@ From the Snodo repository root, check which Python the `snodo` command uses:
 sed -n '1p' "$(command -v snodo)"
 ```
 
-For Snodo installed with `uv tool install`, install the runnable [`snodo-hello-validator` example](../examples/snodo-hello-validator/) into Snodo's tool environment:
+For Snodo installed with `uv tool install`, install the runnable `snodo-hello-validator` example from `examples/snodo-hello-validator/` in the [Snodo repository](https://github.com/snodo-dev/snodo) into Snodo's tool environment. The examples are repository files, not pages on this documentation site:
 
 ```sh
 uv pip install --python ~/.local/share/uv/tools/snodo/bin/python -e ./examples/snodo-hello-validator
@@ -53,7 +53,7 @@ For an activated virtualenv or pip installation:
 python -m pip uninstall snodo-hello-validator
 ```
 
-See the [example README](../examples/snodo-hello-validator/) for details.
+See `examples/snodo-hello-validator/README.md` in the [Snodo repository](https://github.com/snodo-dev/snodo) for details.
 
 ## 1. Custom validators
 
@@ -311,7 +311,7 @@ def handle_count(arguments: dict, context: ValidatorToolContext) -> str:
     ...
 ```
 
-`ValidatorToolContext` provides `workspace_root`, `spec_text`, `validator_id`, configured `tool_options`, and optional `diff_refs` and `diff_accessor`. Treat workspace inputs as read-only; handlers must not modify the workspace or `.snodo/`. Built-in validator tool names are reserved. See the [diff-line counter example](../examples/snodo-diff-line-tool/) for a complete local implementation.
+`ValidatorToolContext` provides `workspace_root`, `spec_text`, `validator_id`, configured `tool_options`, and optional `diff_refs` and `diff_accessor`. Treat workspace inputs as read-only; handlers must not modify the workspace or `.snodo/`. Built-in validator tool names are reserved. See `examples/snodo-diff-line-tool/README.md` in the [Snodo repository](https://github.com/snodo-dev/snodo) for a complete local diff-line counter implementation.
 
 ### Registration
 
