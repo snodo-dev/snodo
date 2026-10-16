@@ -1,0 +1,11 @@
+intent: Multi-wave plans must not mistake inherited work for a successful attempt,
+  and retries must say what they inherited and let the operator choose
+name: recovery-probe-and-retry-control-947
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_recovery_probe_judges_this_run
+- id: 2
+  tasks:
+  - 2.1_retry_control_and_provenance

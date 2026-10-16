@@ -1,0 +1,11 @@
+intent: Judges must hold the operator's spec to account, and the loop must see when
+  an attempt deletes coverage or explanation
+name: retry-input-and-coverage-accountability-931
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_pre_execute_judges_the_spec
+- id: 2
+  tasks:
+  - 2.1_lost_coverage_is_surfaced
