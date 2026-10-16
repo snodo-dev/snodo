@@ -36,6 +36,7 @@ def test_opencode_cli_prompt_includes_engine_boundary_guidance(tmp_path):
 
 _REAL_CLI_MAJOR_VERSION = OpenCodeCLIAdapter._cli_major_version
 
+
 @pytest.fixture(autouse=True)
 def _opencode_v1_by_default():
     """Pin the host CLI generation so argv tests never depend on the installed opencode."""
@@ -44,6 +45,7 @@ def _opencode_v1_by_default():
 
 
 # ========== WORKSPACE PARAM RESOLUTION ==========
+
 
 class TestWorkspaceResolution:
     """OpenCodeCLIAdapter accepts workspace from multiple sources and refuses missing/invalid."""
@@ -125,6 +127,7 @@ class TestWorkspaceResolution:
 
 # ========== BARE MODEL ==========
 
+
 class TestBareModel:
     """_bare_model strips this adapter's prefix, and drops anything else."""
 
@@ -183,6 +186,7 @@ class TestJsonOutputUsage:
 
 # ========== GIT-DIFF READBACK ==========
 
+
 class TestGitReadback:
     """_read_changes_from_disk detects file changes via git."""
 
@@ -237,6 +241,7 @@ class TestGitReadback:
 
 # ========== DIFF-TO-ARTIFACT ==========
 
+
 class TestDiffToArtifact:
     """_diff_to_artifact re-reads on-disk content."""
 
@@ -269,6 +274,7 @@ class TestDiffToArtifact:
 
 
 # ========== SUBPROCESS INVOCATION ==========
+
 
 class TestSubprocessInvocation:
     """implement() shells opencode run with the right args."""
@@ -353,26 +359,31 @@ class TestSubprocessInvocation:
 
 # ========== ADAPTER REGISTRATION ==========
 
+
 class TestRegistration:
     """OpenCodeCLIAdapter is registered in the coder registry."""
 
     def test_registry_contains_opencode_cli(self):
         from snodo.coders import CODER_REGISTRY
+
         assert "opencode-cli" in CODER_REGISTRY
 
     def test_resolve_adapter_class_routes_opencode_cli(self):
         from snodo.coders import resolve_adapter_class
+
         cls = resolve_adapter_class("opencode-cli/deepseek/deepseek-chat")
         assert cls is OpenCodeCLIAdapter
 
     def test_container_opencode_still_routes_to_container_adapter(self):
         from snodo.coders import resolve_adapter_class
         from snodo.coders.opencode_adapter import OpenCodeAdapter
+
         cls = resolve_adapter_class("opencode/deepseek/deepseek-chat")
         assert cls is OpenCodeAdapter
 
     def test_get_coder_opencode_cli(self):
         from snodo.coders import get_coder
+
         coder = get_coder("opencode-cli", model="opencode-cli/deepseek/deepseek-chat", workspace=Path("/tmp"))
         assert isinstance(coder, OpenCodeCLIAdapter)
         assert coder.model == "opencode-cli/deepseek/deepseek-chat"
@@ -380,6 +391,7 @@ class TestRegistration:
 
 
 # ========== OPENCODE 2.x ==========
+
 
 class TestOpenCodeV2:
     """opencode 2.x removed --dir and --dangerously-skip-permissions."""
@@ -459,3 +471,91 @@ class TestSnodoCloudProvider:
         assert tail.splitlines() == [
             "[patch] patch", "Created hello.txt", "[error] No endpoints found that support tool use.",
         ]
+
+
+# ========== OPENCODE CONFIG CONFINEMENT MERGE ==========
+
+
+class TestOpenCodeConfigConfinement:
+    """_subprocess_env merges confinement into OPENCODE_CONFIG_CONTENT safely."""
+
+    @pytest.mark.parametrize("inherited", [
+        "not-json",
+        "[]",
+        "null",
+    ])
+    def test_malformed_or_non_object_config_still_gets_confinement(self, tmp_path, inherited):
+        """Non-mergeable OPENCODE_CONFIG_CONTENT values are replaced with confined object.
+
+        The adapter must still deny edits and disable tools even when the
+        inherited value cannot be merged into (invalid JSON or non-object).
+        """
+        adapter = OpenCodeCLIAdapter(model="opencode-cli/test", workspace=tmp_path)
+
+        with patch("snodo.coders.opencode_cli_adapter.subprocess_env_for_coder") as env_factory:
+            env_factory.return_value = {"OPENCODE_CONFIG_CONTENT": inherited}
+            env = adapter._subprocess_env()
+
+        config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        assert isinstance(config, dict)
+        assert config["permission"]["edit"] == "deny"
+        assert config["tools"] == {"session_move": False, "worktree_create": False}
+
+    def test_object_config_keeps_unrelated_keys_when_confinement_added(self, tmp_path):
+        """Existing sibling keys survive when confinement is merged into object config."""
+        adapter = OpenCodeCLIAdapter(model="opencode-cli/test", workspace=tmp_path)
+        existing = {
+            "unrelated": {"keep": True},
+            "permission": {"other": "value"},
+            "tools": {"other_tool": True},
+        }
+
+        with patch("snodo.coders.opencode_cli_adapter.subprocess_env_for_coder") as env_factory:
+            env_factory.return_value = {
+                "OPENCODE_CONFIG_CONTENT": json.dumps(existing),
+            }
+            env = adapter._subprocess_env()
+
+        config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        assert config["unrelated"] == {"keep": True}
+        # Existing permission/tools keys are merged with confinement rules.
+        assert config["permission"]["edit"] == "deny"
+        assert config["permission"]["other"] == "value"
+        assert config["tools"]["session_move"] is False
+        assert config["tools"]["worktree_create"] is False
+        assert config["tools"]["other_tool"] is True
+
+    def test_cloud_provider_merge_survives_non_dict_provider_key(self, tmp_path):
+        """Cloud provider injection overwrites non-dict provider while keeping confinement."""
+        adapter = OpenCodeCLIAdapter(
+            model="opencode-cli/snodo-cloud/gpt-6-luna", workspace=tmp_path,
+        )
+
+        # Start with a non-dict provider plus some unrelated configuration.
+        base_config = {
+            "provider": "unexpected-string",
+            "unrelated": {"keep": True},
+        }
+
+        manager = Mock()
+        manager.get_key_for_model.return_value = "secret-token"
+        manager.load.return_value = {"cloud": {"models_url": "https://gateway.example/v1"}}
+
+        with patch("snodo.coders.opencode_cli_adapter.subprocess_env_for_coder") as env_factory, \
+                patch("snodo.coders.opencode_cli_adapter.ConfigManager", return_value=manager):
+            env_factory.return_value = {
+                "OPENCODE_CONFIG_CONTENT": json.dumps(base_config),
+            }
+            env = adapter._subprocess_env()
+
+        config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        # Confinement keys remain present.
+        assert config["permission"]["edit"] == "deny"
+        assert config["tools"] == {"session_move": False, "worktree_create": False}
+        # Unrelated keys survive.
+        assert config["unrelated"] == {"keep": True}
+        # Provider block is now a dict with snodo-cloud entry, replacing the non-dict.
+        provider = config["provider"]["snodo-cloud"]
+        assert provider["options"]["baseURL"] == "https://gateway.example/v1"
+        assert provider["options"]["apiKey"] == "secret-token"
+        assert provider["models"] == {"gpt-6-luna": {"name": "gpt-6-luna"}}
