@@ -1,0 +1,23 @@
+intent: Every model provider snodo supports has a step-by-step setup guide (key, permissions,
+  config block, model ids, verify, troubleshooting), so a user can get from nothing
+  to a passing `snodo models --check` without guessing; Cloudflare's guide covers
+  the account, key-precedence and routing traps users actually hit.
+name: provider-guides
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_cloudflare
+  - 1.2_ollama
+  - 1.3_opencode_go
+  - 1.4_anthropic
+  - 1.5_openai
+  - 1.6_google
+  - 1.7_openrouter
+  - 1.8_deepseek
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_providers_index
+  - 2.2_provider_links

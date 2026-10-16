@@ -1,0 +1,20 @@
+intent: 'Every LLM call snodo makes (validators, recon, coder, classifier, models
+  --check) adapts to what a provider says it needs instead of failing: it applies
+  a provider-requested parameter value such as reasoning_effort "none", reshapes messages
+  for strict OpenAI-compatible servers when they reject the shape, remembers the adaptation
+  per model, and models --check exercises the real multi-turn tool exchange so these
+  failures show up before a run.'
+name: provider-request-adapt
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_requested_param_value
+  - 1.2_message_shape
+  - 1.3_check_two_turns
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_recon_adapts
+  - 2.2_validator_coder_adapt

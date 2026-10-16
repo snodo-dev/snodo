@@ -1,0 +1,68 @@
+{
+  "tasks": {
+    "1.1_cloudflare": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6a06e3f4eedfb750"
+    },
+    "1.2_ollama": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fd08c60006b155a8"
+    },
+    "1.3_opencode_go": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "47d034538299962c"
+    },
+    "1.4_anthropic": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2b331f4744e99717"
+    },
+    "1.5_openai": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "41fd358f05d7ae3e"
+    },
+    "1.6_google": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5b522d8b9aac1a26"
+    },
+    "1.7_openrouter": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5983f45942a9888f"
+    },
+    "1.8_deepseek": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "82d1a62b8959007a"
+    },
+    "2.1_providers_index": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7f8a36894064020e"
+    },
+    "2.2_provider_links": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1544170bb11d19b9"
+    }
+  },
+  "integration": {
+    "branch": "plan/provider-guides/integration",
+    "base_sha": "1e1129657c1c609ae6141dfef2a87eb03b6e5bd7"
+  }
+}

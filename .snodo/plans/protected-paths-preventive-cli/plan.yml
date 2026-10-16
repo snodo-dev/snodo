@@ -1,0 +1,17 @@
+intent: A CLI coder is told, before it runs, which repository paths the project's
+  protocol declares off-limits, so it stops burning a full run on work that will only
+  be halted after the fact. Separately, the post-hoc protected-path guard stops blaming
+  a task for commits that arrived from the base branch via a rebase.
+name: protected-paths-preventive-cli
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.2_protected_diff_uses_merge_base
+  - 1.1_cli_prompt_protected_paths
+  - 1.3_container_coder_prompt_coverage
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_record_decisions_and_docs

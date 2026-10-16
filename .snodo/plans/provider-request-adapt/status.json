@@ -1,0 +1,38 @@
+{
+  "tasks": {
+    "1.1_requested_param_value": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2d93c7f71c548d2e"
+    },
+    "1.2_message_shape": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8ef797249b2ce0ef"
+    },
+    "1.3_check_two_turns": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0b04ee4bdde8a608"
+    },
+    "2.1_recon_adapts": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "546d367f0a48d1a4"
+    },
+    "2.2_validator_coder_adapt": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4106defb031e3800"
+    }
+  },
+  "integration": {
+    "branch": "plan/provider-request-adapt/integration",
+    "base_sha": "e84ac127bbb85b1f7e1ba636280cb2e23bf412ae"
+  }
+}

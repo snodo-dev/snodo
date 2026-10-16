@@ -1,0 +1,12 @@
+intent: 'Land the three still-open operator-visibility bugs from the stale default
+  queue: a quality-gate timeout that records no output (#786), a remote gate that
+  waits silently for a slot and burns its whole window on one hung test (#787), and
+  the real-PTY wave test that fails under load for timing reasons (#802).'
+name: gate-output-and-pty-resilience
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_gate_timeout_keeps_output
+  - 1.2_gate_narrates_waits_and_bounds_tests
+  - 1.3_pty_wave_test_resilient_under_load
