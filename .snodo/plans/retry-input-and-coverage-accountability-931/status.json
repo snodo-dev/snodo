@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_pre_execute_judges_the_spec": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "db048caf4904db00"
+    },
+    "2.1_lost_coverage_is_surfaced": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ffec05cae29474a5"
+    }
+  },
+  "integration": {
+    "branch": "plan/retry-input-and-coverage-accountability-931/integration",
+    "base_sha": "e9fd1a83cdcd7b9dff6d5d456062aa53dad69940"
+  }
+}
