@@ -339,6 +339,31 @@ class ExecutorMixin:
         prefix = self._task_branch_prefix()
         return branch == prefix or branch.startswith(prefix + "/")
 
+    @staticmethod
+    def _repo_ref_snapshot(git_mcp: Optional[Any]) -> dict[str, str]:
+        """Snapshot refs in the dispatched repository without starting git subprocesses."""
+        if git_mcp is None:
+            return {}
+        try:
+            return {ref.path: ref.commit.hexsha for ref in git_mcp.repo.refs}
+        except Exception:
+            return {}
+
+    def _escaped_repo_commit(self, git_mcp: Optional[Any], before: dict[str, str]) -> Optional[str]:
+        """Describe a new ref/commit in this repository that is outside its task tree."""
+        if git_mcp is None:
+            return None
+        try:
+            repo = git_mcp.repo
+            for ref in repo.refs:
+                if ref.path not in before and ref.commit.hexsha:
+                    return f"{repo.working_tree_dir} (ref {ref.name} at {ref.commit.hexsha[:12]})"
+                if ref.path in before and ref.commit.hexsha != before[ref.path]:
+                    return f"{repo.working_tree_dir} (ref {ref.name} at {ref.commit.hexsha[:12]})"
+        except Exception:
+            return None
+        return None
+
     def _commit_artifacts(self, git_mcp: Optional[Any], coder: Any, artifact_paths: List[str], task: Task) -> List[str]:
         """Commit modified artifact files to repository."""
         git_artifacts = []
@@ -382,6 +407,7 @@ class ExecutorMixin:
         )
 
         self._ensure_task_branch(git_mcp, task)
+        refs_before_coder = self._repo_ref_snapshot(git_mcp)
 
         try:
             code_artifact = coder.implement(spec)
@@ -416,6 +442,13 @@ class ExecutorMixin:
                             git_mcp, getattr(task, "base", None)
                         )
                         if existing is None:
+                            escaped = self._escaped_repo_commit(git_mcp, refs_before_coder)
+                            if escaped:
+                                raise AdapterError(
+                                    "Coder workspace_escape: repository "
+                                    f"gained work at {escaped}. Rescue it by inspecting/cherry-picking "
+                                    "that ref, then rerun; the task workspace was left unchanged."
+                                )
                             # "Coder produced nothing" is the same fault whether the
                             # engine commits the artifacts (skip_engine_commit False)
                             # or the adapter commits them itself (skip_engine_commit
