@@ -1453,11 +1453,11 @@ class TestTunnelProvisioning:
         from snodo.cli.commands.serve_cmd import _extract_existing_hostname
 
         assert _extract_existing_hostname(
-            '{"error": "exists", "hostname": "ghost-all-abc123.tunnel.snodo.dev"}'
-        ) == "ghost-all-abc123.tunnel.snodo.dev"
+            '{"error": "exists", "hostname": "ghost-all-abc123-tunnel.snodo.dev"}'
+        ) == "ghost-all-abc123-tunnel.snodo.dev"
         assert _extract_existing_hostname(
-            'Error: project already has tunnel ghost-all-abc123.tunnel.snodo.dev for mode all'
-        ) == "ghost-all-abc123.tunnel.snodo.dev"
+            'Error: project already has tunnel ghost-all-abc123-tunnel.snodo.dev for mode all'
+        ) == "ghost-all-abc123-tunnel.snodo.dev"
         assert _extract_existing_hostname('{"error": "conflict"}') is None
 
     def test_provision_conflict_carries_blocking_hostname(self, tmp_path, monkeypatch):
@@ -1477,14 +1477,14 @@ class TestTunnelProvisioning:
 
         resp = MagicMock()
         resp.status_code = 409
-        resp.text = '{"error": "tunnel exists", "hostname": "ghost-all-abc123.tunnel.snodo.dev"}'
+        resp.text = '{"error": "tunnel exists", "hostname": "ghost-all-abc123-tunnel.snodo.dev"}'
         monkeypatch.setattr(httpx, "post", lambda url, **kw: resp)
 
         with pytest.raises(TunnelAPIError) as excinfo:
             serve_cmd._provision_tunnel("k", "proj", "all", "abc123", "1.2.3")
 
         assert excinfo.value.status_code == 409
-        assert excinfo.value.existing_hostname == "ghost-all-abc123.tunnel.snodo.dev"
+        assert excinfo.value.existing_hostname == "ghost-all-abc123-tunnel.snodo.dev"
 
 
 class TestTunnelRunErrors:
@@ -1707,9 +1707,9 @@ class TestTunnelRunErrors:
 
         err = TunnelAPIError(
             "Tunnel provisioning failed: POST https://app.snodo.dev/tunnel/provision "
-            "returned HTTP 409: {\"hostname\": \"ghost-all-abc123.tunnel.snodo.dev\"}",
+            "returned HTTP 409: {\"hostname\": \"ghost-all-abc123-tunnel.snodo.dev\"}",
             status_code=409,
-            existing_hostname="ghost-all-abc123.tunnel.snodo.dev",
+            existing_hostname="ghost-all-abc123-tunnel.snodo.dev",
         )
 
         with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
@@ -1720,9 +1720,9 @@ class TestTunnelRunErrors:
 
         assert result == 1
         stderr_text = capsys.readouterr().err
-        assert "Blocking tunnel: ghost-all-abc123.tunnel.snodo.dev" in stderr_text
+        assert "Blocking tunnel: ghost-all-abc123-tunnel.snodo.dev" in stderr_text
         assert ("snodo serve --tunnel --delete --hostname "
-                "ghost-all-abc123.tunnel.snodo.dev") in stderr_text
+                "ghost-all-abc123-tunnel.snodo.dev") in stderr_text
         assert "cloud connect" not in stderr_text
 
     def test_conflict_without_named_host_says_so(self, capsys):

@@ -1,0 +1,35 @@
+{
+  "tasks": {
+    "1.1_gate_timeout_keeps_output": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "57374c8989753735",
+      "completed_by": "starlitlog",
+      "completed_at": "2026-10-15T20:28:41.233006+00:00",
+      "judged": false
+    },
+    "1.2_gate_narrates_waits_and_bounds_tests": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "17004419db0b69cc",
+      "completed_by": "starlitlog",
+      "completed_at": "2026-10-15T20:28:44.886836+00:00",
+      "judged": false
+    },
+    "1.3_pty_wave_test_resilient_under_load": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "01229c5fd13e2af1",
+      "completed_by": "starlitlog",
+      "completed_at": "2026-10-15T20:28:41.233036+00:00",
+      "judged": false
+    }
+  },
+  "integration": {
+    "branch": "plan/gate-output-and-pty-resilience/integration",
+    "base_sha": "1e1129657c1c609ae6141dfef2a87eb03b6e5bd7"
+  }
+}

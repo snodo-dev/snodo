@@ -769,7 +769,7 @@ def task_abandon_command(args) -> int:
         )
         return 1
 
-    # Clear failure context from session
+    # Clear both retry sources so the next run cannot reconstruct stale context.
     from snodo.infrastructure.state import read_state
     from snodo.infrastructure.session import SessionManager
 
@@ -779,17 +779,12 @@ def task_abandon_command(args) -> int:
         mgr = SessionManager()
         session = mgr.get_active_session(mode, project_root)
         if session:
-            task_failures = session.checkpoint.decisions.get("task_failure", {})
-            if isinstance(task_failures, dict) and task_id in task_failures:
-                del task_failures[task_id]
-                try:
-                    mgr.update_decision(
-                        session.session_id, "task_failure", task_failures,
-                    )
-                except Exception as e:
-                    _logger.warning(
-                        "Could not clear failure context for task %s: %s", task_id, e,
-                    )
+            from snodo.cli.commands.task_cleanup import clear_task_decisions
+            cleared = clear_task_decisions(session, mgr, task_id, logger=_logger)
+        else:
+            cleared = []
+    else:
+        cleared = []
 
     # Remove worktree
     try:
@@ -806,7 +801,10 @@ def task_abandon_command(args) -> int:
         except Exception as e:
             _logger.warning("Could not delete branch %s: %s", branch, e)
 
-    print(f"Task abandoned; removed branches: {', '.join(removed) or 'none'}.")
+    print(
+        f"Task abandoned; cleared decisions: {', '.join(cleared) or 'none'}; "
+        f"removed branches: {', '.join(removed) or 'none'}."
+    )
     return 0
 
 

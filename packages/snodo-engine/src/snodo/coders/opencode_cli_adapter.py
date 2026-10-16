@@ -68,6 +68,22 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
 
     def _subprocess_env(self) -> dict[str, str]:
         env = subprocess_env_for_coder()
+        # OpenCode 2.x exposes session relocation and worktree creation as
+        # built-in tools. Deny them per process for dispatched task runs.
+        confinement = {
+            "permission": {"edit": "deny"},
+            "tools": {"session_move": False, "worktree_create": False},
+        }
+        try:
+            existing = json.loads(env.get("OPENCODE_CONFIG_CONTENT", "{}"))
+        except (TypeError, ValueError):
+            existing = {}
+        if not isinstance(existing, dict):
+            existing = {}
+        for key, rules in confinement.items():
+            prior = existing.get(key)
+            existing[key] = {**(prior if isinstance(prior, dict) else {}), **rules}
+        env["OPENCODE_CONFIG_CONTENT"] = json.dumps(existing)
         if not self.model.startswith("opencode-cli/snodo-cloud/"):
             return env
 
@@ -86,16 +102,18 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
         base_url = cloud.get("models_url") if isinstance(cloud, dict) else None
         base_url = base_url.strip() if isinstance(base_url, str) and base_url.strip() else DEFAULT_CLOUD_MODELS_URL
         model_id = model.removeprefix("snodo-cloud/")
-        env["OPENCODE_CONFIG_CONTENT"] = json.dumps({
-            "provider": {
-                "snodo-cloud": {
-                    "npm": "@ai-sdk/openai-compatible",
-                    "name": "Snodo Cloud",
-                    "options": {"baseURL": base_url, "apiKey": credential},
-                    "models": {model_id: {"name": model_id}},
-                }
-            }
-        })
+        cloud_config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        providers = cloud_config.get("provider")
+        if not isinstance(providers, dict):
+            providers = {}
+        providers["snodo-cloud"] = {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "Snodo Cloud",
+            "options": {"baseURL": base_url, "apiKey": credential},
+            "models": {model_id: {"name": model_id}},
+        }
+        cloud_config["provider"] = providers
+        env["OPENCODE_CONFIG_CONTENT"] = json.dumps(cloud_config)
         return env
 
     def _begin_subprocess_run(self) -> None:

@@ -60,6 +60,12 @@ Snodo user-config settings; current callers do not read them.
 
 ## Providers
 
+For step-by-step setup, see the guides for [Cloudflare](providers/cloudflare.md),
+[Ollama](providers/ollama.md), [OpenCode Go](providers/opencode-go.md),
+[Anthropic](providers/anthropic.md), [OpenAI](providers/openai.md),
+[Google](providers/google.md), [OpenRouter](providers/openrouter.md), and
+[DeepSeek](providers/deepseek.md).
+
 Each entry under `providers` is keyed by a provider name. Built-in entries are
 `anthropic`, `openai`, `openrouter`, `google`, `cloudflare`, and `deepseek`;
 unlisted entries can configure custom/OpenAI-compatible providers. For a

@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_hostname_shape": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ad92e148b31787c0"
+    }
+  },
+  "integration": {
+    "branch": "plan/tunnel-hostname-shape/integration",
+    "base_sha": "1e1129657c1c609ae6141dfef2a87eb03b6e5bd7"
+  }
+}

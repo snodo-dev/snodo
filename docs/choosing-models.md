@@ -17,7 +17,12 @@ model will complete every task.
 ## Discover configured models
 
 Call `list_models` to inspect the models discovered from Snodo's configured
-providers. It returns an object with a `models` array. Each item contains:
+providers. For setup instructions, see the guides for [Cloudflare](providers/cloudflare.md),
+[Ollama](providers/ollama.md), [OpenCode Go](providers/opencode-go.md),
+[Anthropic](providers/anthropic.md), [OpenAI](providers/openai.md),
+[Google](providers/google.md), [OpenRouter](providers/openrouter.md), and
+[DeepSeek](providers/deepseek.md). It returns an object with a `models` array.
+Each item contains:
 
 - `provider`: the provider that supplied the model;
 - `id`: the provider-normalized model id;
