@@ -1,0 +1,14 @@
+intent: A user with a Cloudflare AI Gateway gets from nothing to a passing snodo models
+  --check by following one guide, and can find that guide from the provider docs navigation,
+  the providers overview and the Workers AI guide.
+name: provider-guide-cf-gateway
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_gateway_guide
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_gateway_links

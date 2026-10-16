@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_gateway_guide": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "99adcb5cb6c5b454"
+    },
+    "2.1_gateway_links": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8445f845d5aedb99"
+    }
+  },
+  "integration": {
+    "branch": "plan/provider-guide-cf-gateway/integration",
+    "base_sha": "7f31ca980e4bc2396a0634d8e4e2884748c0a122"
+  }
+}
