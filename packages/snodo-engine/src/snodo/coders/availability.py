@@ -58,6 +58,24 @@ def read_binary_version(
     return lines[-1] if lines else ""
 
 
+
+def read_binary_output(binary_path: str, args: tuple) -> str:
+    """Return bounded stdout/stderr from a fixed-argument host-binary probe."""
+    if not binary_path or not args:
+        return ""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list (no shell); resolved absolute path plus fixed flags
+            [binary_path, *args], capture_output=True,
+            env=subprocess_env_without_job_context(), text=True,
+            errors="replace", timeout=5, check=False,
+        )
+    except Exception:  # noqa: BLE001 — best-effort host probe must never break readiness
+        _logger.debug("Could not probe %s", binary_path, exc_info=True)
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return (proc.stdout or "").strip() or (proc.stderr or "").strip()
+
 def check_coder_available(coder_name: str) -> Optional[Tuple[str, str]]:
     """Return ``(missing_binary, remediation)`` if *coder_name* cannot run here.
 

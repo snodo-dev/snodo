@@ -121,6 +121,7 @@ def ready_command(args) -> int:
     _append_mcp_install_findings(assessment)
     _append_provider_findings(assessment, project_root, protocol)
     _append_cloud_sync_finding(assessment)
+    _append_opencode_cli_findings(assessment)
     extension_status = _extension_plugin_status()
     protocol_warnings = unknown_capability_warnings(protocol)
 
@@ -389,3 +390,42 @@ def _extension_plugin_status() -> dict:
         "snodo.predicates": predicates.plugin_status(),
         "snodo.coders": coder_plugin_status(),
     }
+
+
+def _append_opencode_cli_findings(assessment) -> None:
+    """Report OpenCode CLI versions or flags unsupported by Snodo adapters."""
+    import re
+    import shutil
+    from snodo.coders.availability import read_binary_version, read_binary_output
+    from snodo.coders.opencode_cli_adapter import OPENCODE_CLI_ADAPTERS
+    from snodo.readiness.models import FindingSeverity, ReadinessFinding, ReadinessKind
+
+    binary = shutil.which("opencode")
+    if not binary:
+        return
+    version = read_binary_version(binary)
+    match = re.search(r"(\d+)\.\d+", version)
+    if not match:
+        return
+    major = int(match.group(1))
+    supported = sorted(OPENCODE_CLI_ADAPTERS)
+    if major not in OPENCODE_CLI_ADAPTERS:
+        assessment.workstation_findings.append(ReadinessFinding(
+            id="opencode_cli_unsupported_major", kind=ReadinessKind.WORKSTATION,
+            severity=FindingSeverity.WARN, modes=["all"],
+            description=f"Installed OpenCode CLI version {version} is unsupported; Snodo supports majors: {', '.join(map(str, supported))}.",
+            remediation="Install an OpenCode CLI major supported by Snodo.", fix_cost=1,
+        ))
+        return
+    help_text = read_binary_output(binary, ("run", "--help"))
+    if not help_text:
+        return
+    flags = ("--dangerously-skip-permissions",) if major == 1 else ("--standalone", "--auto")
+    missing = next((flag for flag in flags if flag not in help_text), None)
+    if missing:
+        assessment.workstation_findings.append(ReadinessFinding(
+            id="opencode_cli_flag_missing", kind=ReadinessKind.WORKSTATION,
+            severity=FindingSeverity.WARN, modes=["all"],
+            description=f"Installed OpenCode CLI version {version} does not advertise the {missing} flag required by Snodo.",
+            remediation="Install a compatible OpenCode CLI version, then re-run 'snodo ready'.", fix_cost=1,
+        ))
