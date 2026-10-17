@@ -15,6 +15,6 @@
   },
   "integration": {
     "branch": "plan/coder-worktree-visibility-975/integration",
-    "base_sha": "7e04c5d8c8e57864041b1c1dc300fa4eff268052"
+    "base_sha": "f4904abe92c61bed680ae7ae8b9af17cc8a887df"
   }
 }
