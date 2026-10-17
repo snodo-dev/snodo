@@ -19,7 +19,6 @@ import logging
 import re
 import shlex
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -300,16 +299,10 @@ def _check_opencode_cli_contract(
         ))
         return
 
-    try:
-        result = subprocess.run(
-            [binary_path, "run", "--help"], capture_output=True, text=True,
-            errors="replace", timeout=5,
-        )
-        help_text = (result.stdout or "") + "\n" + (result.stderr or "")
-    except Exception:  # noqa: BLE001 — help probing must never fail readiness
-        _logger.debug("Could not read OpenCode CLI run help", exc_info=True)
-        return
-    if result.returncode != 0 or not help_text.strip():
+    from snodo.coders.availability import read_binary_output
+
+    help_text = read_binary_output(binary_path, ("run", "--help"))
+    if not help_text:
         return
     flags = [arg for arg in OPENCODE_CLI_ADAPTERS[major].build_launch_argv("PROMPT", "PROJECT", "") if arg.startswith("--")]
     for flag in flags:

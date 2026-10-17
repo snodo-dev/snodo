@@ -591,16 +591,15 @@ def test_plaintext_api_key_reported_in_workstation_findings(git_repo: Path, tmp_
 
 
 def test_opencode_cli_readiness_flags_are_checked_best_effort(monkeypatch):
-    from types import SimpleNamespace
     from snodo.readiness.checker import _check_opencode_cli_contract
 
     def check(version, output=None, error=None):
         findings = []
-        def run(*args, **kwargs):
+        def probe(path, args):
             if error:
-                raise error
-            return SimpleNamespace(returncode=0, stdout=output or "", stderr="")
-        monkeypatch.setattr("snodo.readiness.checker.subprocess.run", run)
+                return ""
+            return output or ""
+        monkeypatch.setattr("snodo.coders.availability.read_binary_output", probe)
         _check_opencode_cli_contract(findings, "build", "/usr/bin/opencode", version)
         return findings
 
