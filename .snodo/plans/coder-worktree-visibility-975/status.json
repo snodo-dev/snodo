@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_coder_observes_its_worktree": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1db81302d304c748"
+    },
+    "2.1_tree_mismatch_is_an_environment_fault": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0f2f969c3043d892"
+    }
+  },
+  "integration": {
+    "branch": "plan/coder-worktree-visibility-975/integration",
+    "base_sha": "7e04c5d8c8e57864041b1c1dc300fa4eff268052"
+  }
+}

@@ -1,0 +1,9 @@
+intent: The docs link-validation gate shipped without the automated canary the project
+  requires for a new gate, and the manual recipe used to check it fails for an unrelated
+  nav warning
+name: docs-link-gate-canary-966
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_prove_link_gate_fails_closed

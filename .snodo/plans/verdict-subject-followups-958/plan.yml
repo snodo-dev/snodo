@@ -1,0 +1,7 @@
+intent: The verdict subject rule must be taught, defaulted and tested consistently
+name: verdict-subject-followups-958
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_instructions_match_the_rule

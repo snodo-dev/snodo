@@ -1,0 +1,14 @@
+intent: 'A host-CLI coder dispatched into a task worktree reads and writes the producer''s
+  root checkout instead (#975, a regression of the closed #911). First prove which
+  tree the coder observes, then pin it; then make the engine halt an observed-tree
+  mismatch as an environment fault instead of validating a previous attempt''s stale
+  work.'
+name: coder-worktree-visibility-975
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_coder_observes_its_worktree
+- id: 2
+  tasks:
+  - 2.1_tree_mismatch_is_an_environment_fault

@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_instructions_match_the_rule": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "737aba1e28838770"
+    }
+  }
+}
