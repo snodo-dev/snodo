@@ -1,0 +1,10 @@
+# Reconstructed from the OpenCode 1.x adapter contract; replace with a real capture.
+Usage: opencode run [options] [message]
+
+Options:
+  --help
+  --version
+  --format <format>
+  --dir <directory>
+  --dangerously-skip-permissions
+  -m, --model <model>
