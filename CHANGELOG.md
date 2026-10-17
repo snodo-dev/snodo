@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 - Surface non-blocking post-execute findings when test cases or substantial explanatory comments/docstrings disappear without being requested. (Fixes #959)
+- Pin dispatched OpenCode CLI runs to the task worktree with an explicit project directory, expose the read-tree boundary in run output, and cover branch-divergent linked-worktree reads. (Fixes #975; regression to #911)
 
 - Require a validator verdict to name the task it judges, reject one that names another task instead of counting it as a pass, and record the subject a cached verdict was gathered for so a reused verdict is only served to that same subject; a malformed or unusable cache record is a miss rather than a validator error. (Fixes #951)
 - Add a Cloudflare AI Gateway provider guide covering configuration, model IDs, verification and troubleshooting. (Fixes #952)
