@@ -1,0 +1,23 @@
+$ opencode run --help
+Usage: opencode run [options] [message]
+
+Options:
+  --help
+  --version
+  --print-logs
+  --log-level <level>
+  --command <command>
+  --continue
+  --session <session>
+  --fork
+  --share
+  -m, --model <model>
+  --agent <agent>
+  --format <format>
+  -f, --file <file>
+  --title <title>
+  --attach <url>
+  --standalone
+  --auto
+  --variant <variant>
+  --thinking <thinking>
