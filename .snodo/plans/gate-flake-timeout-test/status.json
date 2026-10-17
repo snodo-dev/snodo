@@ -1,7 +1,7 @@
 {
   "tasks": {
     "1.1_gate_kill_assertion_waits": {
-      "status": "errored",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "d359ca9e4d46cfd3"
