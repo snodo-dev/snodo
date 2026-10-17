@@ -588,3 +588,33 @@ def test_plaintext_api_key_reported_in_workstation_findings(git_repo: Path, tmp_
     assert "openai" in pt_findings[0].description
     assert "google" not in pt_findings[0].description
     assert pt_findings[0].remediation.count("snodo config --encrypt-provider-keys") == 1
+
+
+def test_opencode_cli_readiness_flags_are_checked_best_effort(monkeypatch):
+    from types import SimpleNamespace
+    from snodo.readiness.checker import _check_opencode_cli_contract
+
+    def check(version, output=None, error=None):
+        findings = []
+        def run(*args, **kwargs):
+            if error:
+                raise error
+            return SimpleNamespace(returncode=0, stdout=output or "", stderr="")
+        monkeypatch.setattr("snodo.readiness.checker.subprocess.run", run)
+        _check_opencode_cli_contract(findings, "build", "/usr/bin/opencode", version)
+        return findings
+
+    unsupported = check("3.0.0")
+    assert len(unsupported) == 1
+    assert "3.0.0" in unsupported[0].description
+    assert "1, 2" in unsupported[0].description
+
+    missing = check("2.1.0", "--format --standalone")
+    assert len(missing) == 1
+    assert "--auto" in missing[0].description
+    assert "2.1.0" in missing[0].description
+
+    complete = check("2.1.0", "--format --standalone --auto")
+    assert complete == []
+    assert check("2.1.0", error=TimeoutError()) == []
+    assert check("2.1.0") == []

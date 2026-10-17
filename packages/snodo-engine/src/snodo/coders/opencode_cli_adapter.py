@@ -37,6 +37,9 @@ class OpenCodeCLI2Adapter:
         return argv
 
 
+OPENCODE_CLI_ADAPTERS = {1: OpenCodeCLI1Adapter, 2: OpenCodeCLI2Adapter}
+
+
 class OpenCodeCLIAdapter(SubprocessCoderAdapter):
     """Coder adapter backed by the host ``opencode run`` CLI."""
 
@@ -74,7 +77,7 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
 
     def _build_argv(self, prompt: str, project_root: str, model: str) -> List[str]:
         major = self._cli_major_version()
-        adapter = {1: OpenCodeCLI1Adapter, 2: OpenCodeCLI2Adapter}.get(major)
+        adapter = OPENCODE_CLI_ADAPTERS.get(major)
         if adapter is None:
             raise CoderUnavailableError(
                 self.coder_name,

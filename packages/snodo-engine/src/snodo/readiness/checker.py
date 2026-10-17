@@ -19,6 +19,7 @@ import logging
 import re
 import shlex
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -242,7 +243,7 @@ def _record_resolved_binary(
     coder_name: str,
     binary_path: str,
     version_args: Tuple[str, ...] = ("--version",),
-) -> None:
+) -> str:
     """Report which install and version PATH resolution picked for a coder.
 
     A bare existence check (``shutil.which``) answers "is a binary named
@@ -278,6 +279,47 @@ def _record_resolved_binary(
             fix_cost=1,
         )
     )
+    return version
+
+
+def _check_opencode_cli_contract(
+    findings: List[ReadinessFinding], mode_id: str, binary_path: str, version: str,
+) -> None:
+    """Best-effort check that the installed OpenCode CLI accepts adapter flags."""
+    from snodo.coders.opencode_cli_adapter import OPENCODE_CLI_ADAPTERS
+
+    match = re.search(r"(\d+)\.\d+", version)
+    major = int(match.group(1)) if match else None
+    supported = ", ".join(str(item) for item in OPENCODE_CLI_ADAPTERS)
+    if major not in OPENCODE_CLI_ADAPTERS:
+        findings.append(ReadinessFinding(
+            id="opencode_cli_unsupported_major", kind=ReadinessKind.WORKSTATION,
+            severity=FindingSeverity.WARN, modes=[mode_id],
+            description=f"OpenCode CLI version {version or 'unknown'} has no snodo adapter; supported majors: {supported}.",
+            remediation="Install an OpenCode CLI major supported by snodo.", fix_cost=2,
+        ))
+        return
+
+    try:
+        result = subprocess.run(
+            [binary_path, "run", "--help"], capture_output=True, text=True,
+            errors="replace", timeout=5,
+        )
+        help_text = (result.stdout or "") + "\n" + (result.stderr or "")
+    except Exception:  # noqa: BLE001 — help probing must never fail readiness
+        _logger.debug("Could not read OpenCode CLI run help", exc_info=True)
+        return
+    if result.returncode != 0 or not help_text.strip():
+        return
+    flags = [arg for arg in OPENCODE_CLI_ADAPTERS[major].build_launch_argv("PROMPT", "PROJECT", "") if arg.startswith("--")]
+    for flag in flags:
+        if flag not in help_text:
+            findings.append(ReadinessFinding(
+                id=f"opencode_cli_missing_flag:{flag}", kind=ReadinessKind.WORKSTATION,
+                severity=FindingSeverity.WARN, modes=[mode_id],
+                description=f"OpenCode CLI version {version} does not list {flag} in 'opencode run --help', but snodo sends it.",
+                remediation="Install a compatible OpenCode CLI version.", fix_cost=2,
+            ))
 
 
 def _resolve_model_provider_env(model_name: str) -> Optional[Tuple[str, str]]:
@@ -734,10 +776,11 @@ def assess_readiness(
                 # Which install, and what version: the operator whose coder runs
                 # an already-uninstalled opencode needs THIS line to see it
                 # (Fixes #290).
-                _record_resolved_binary(
+                version = _record_resolved_binary(
                     workstation_findings, mode_id, "opencode", opencode_path,
                     version_args=("--version",),
                 )
+                _check_opencode_cli_contract(workstation_findings, mode_id, opencode_path, version)
 
         elif coder_name == "opencode":
             if not shutil.which("docker"):
