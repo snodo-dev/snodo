@@ -1,10 +1,14 @@
 {
   "tasks": {
     "1.1_gate_kill_assertion_waits": {
-      "status": "pending",
+      "status": "errored",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "96baedfd3738e6ae"
+      "spec_hash": "d359ca9e4d46cfd3"
     }
+  },
+  "integration": {
+    "branch": "plan/gate-flake-timeout-test/integration",
+    "base_sha": "a4e5dfa416ad95949a10389693bb57de5802f9fc"
   }
 }
