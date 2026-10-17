@@ -125,6 +125,32 @@ class TestWorkspaceResolution:
         assert executed_argv[dir_idx + 1] != str(Path.cwd())
 
 
+
+def test_linked_worktree_read_surface_is_pinned_to_diverged_branch(tmp_path):
+    """A child reading a relative path from dispatched cwd sees branch content."""
+    main = tmp_path / "main"
+    main.mkdir()
+    def git(*args, cwd=main):
+        return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+    git("init")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    (main / "subject.txt").write_text("main version\n")
+    git("add", ".")
+    git("commit", "-m", "base")
+    git("branch", "task")
+    worktree = tmp_path / "task"
+    git("worktree", "add", str(worktree), "task")
+    (worktree / "subject.txt").write_text("task branch version\n")
+    (worktree / "branch-only.txt").write_text("present only in task\n")
+    with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=2):
+        argv = OpenCodeCLIAdapter(workspace=worktree)._build_argv("read subject.txt", str(worktree), "")
+    assert (worktree / "subject.txt").read_text() == "task branch version\n"
+    assert (worktree / "branch-only.txt").read_text() == "present only in task\n"
+    assert argv[argv.index("--dir") + 1] == str(worktree)
+    assert str(main) not in argv
+
+
 # ========== BARE MODEL ==========
 
 
@@ -401,10 +427,10 @@ class TestOpenCodeV2:
         with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=2):
             argv = adapter._build_argv("prompt", str(tmp_path), "openai/gpt-6-luna")
         assert argv == [
-            "opencode", "run", "--format", "json", "--standalone", "--auto",
-            "prompt", "-m", "openai/gpt-6-luna",
+            "opencode", "run", "--format", "json", "--dir", str(tmp_path),
+            "--standalone", "--auto", "prompt", "-m", "openai/gpt-6-luna",
         ]
-        assert "--dir" not in argv
+        assert argv[argv.index("--dir") + 1] == str(tmp_path)
         assert "--dangerously-skip-permissions" not in argv
 
 

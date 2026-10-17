@@ -49,13 +49,12 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
 
     def _build_argv(self, prompt: str, project_root: str, model: str) -> List[str]:
         if self._cli_major_version() >= 2:
-            # opencode 2.x dropped --dir and --dangerously-skip-permissions. The
-            # run already starts in project_root (cwd); --standalone keeps it on
-            # a private server rather than the shared background service, and
-            # --auto approves the edits the coder makes.
+            # OpenCode 2.x still supports `run --dir`; pass it as well as
+            # subprocess cwd so its project/tool root cannot silently differ.
+            # --standalone avoids attaching to a server rooted elsewhere.
             argv = [
-                "opencode", "run", "--format", "json", "--standalone", "--auto",
-                prompt,
+                "opencode", "run", "--format", "json", "--dir", project_root,
+                "--standalone", "--auto", prompt,
             ]
         else:
             argv = [
