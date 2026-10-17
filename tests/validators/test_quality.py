@@ -16,6 +16,7 @@ import os
 import shlex
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -165,7 +166,7 @@ class TestEvaluationPhase:
 
 class TestToolingField:
     def test_tooling_default_empty(self):
-        v = Validator(validator_id="v1", validator_type="security")
+        v = Validator(validator_id="v1", validator_type="quality")
         assert v.tooling == {}
 
     def test_tooling_with_test_command(self):
@@ -598,7 +599,6 @@ class TestQualityValidatorEvaluate:
             assert "timed out" in result.justification
 
     def test_timeout_preserves_output_and_kills_process_group(self, project_dir):
-        import time
         from snodo.infrastructure.audit import AuditLog
 
         child_pid_file = Path(project_dir) / "child.pid"
@@ -625,8 +625,8 @@ class TestQualityValidatorEvaluate:
         assert "Timeout after 0.3s" in event.data["output_tail"]
         child_pid = int(child_pid_file.read_text())
         deadline = time.monotonic() + 5.0
-        # SIGKILL delivery and orphan reaping may lag behind evaluate() under load.
-        # Require the same absence as before, but allow time for it to become visible.
+        # A signalled process still answers a liveness probe until it is reaped,
+        # so wait for it to disappear instead of sampling once.
         while True:
             try:
                 os.kill(child_pid, 0)
@@ -649,7 +649,7 @@ class TestQualityValidatorEvaluate:
         assert "No tests executed" in result.justification
 
     def test_noop_records_no_tests_audit_outcome(self, quality_spec_no_tooling, project_dir):
-        """An ungated run records `no_tests` audit outcome — never
+        """An ungated run records outcome 'no_tests' in the audit trail — never
         a pass — so operators and the cloud can tell a real pass from a run
         that executed no tests."""
         from snodo.core.interfaces import Task
@@ -836,7 +836,7 @@ class TestLoopPhases:
         assert call_log[0] == ["security"]
 
     def test_post_validate_runs_post_execute_validators(self, phased_protocol, project_dir):
-        """post_validate runs post_execute validators."""
+        """post_validate node runs post_execute validators."""
         call_log = []
 
         def tracking_validator(task, validators, shell_mcp, current_mode="", **kwargs):
@@ -1143,6 +1143,7 @@ class TestQualityDispatch:
                 Validator(
                     validator_id="quality",
                     validator_type="quality",
+                    evaluation_phase="post_execute",
                     tooling={"test_command": "pytest"},
                 ),
             ],
