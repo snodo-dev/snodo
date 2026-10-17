@@ -1,0 +1,8 @@
+intent: Explain and document the recovery probe's escape checks, and remove a stale
+  validation warning left at the repository root (#964)
+name: recovery-probe-documentation-964
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_explain_escape_checks

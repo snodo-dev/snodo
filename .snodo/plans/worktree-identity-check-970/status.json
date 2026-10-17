@@ -1,16 +1,10 @@
 {
   "tasks": {
-    "1.1_verify_worktree_identity": {
-      "status": "pending",
-      "parent_task_ref": null,
-      "depth": 0,
-      "spec_hash": "36f27aded25dd202"
-    },
     "1.1_prove_worktree_ownership_before_reuse": {
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "811b81d4a416a138"
+      "spec_hash": "050713ddbe5bb51a"
     }
   }
 }

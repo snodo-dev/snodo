@@ -1,0 +1,11 @@
+intent: 'The review of the recovery-probe delivery found the change under-explained:
+  two of three places that consult the workspace-escape check on a recovery path say
+  nothing about why, the architecture description still presents the probe as executor
+  behaviour, and a scratch validation note left at the repository root now warns against
+  a change that has since been verified and delivered'
+name: recovery-probe-docs-964
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_explain_escape_checks

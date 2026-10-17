@@ -6,5 +6,4 @@ waves:
 - depends_on: []
   id: 1
   tasks:
-  - 1.1_verify_worktree_identity
   - 1.1_prove_worktree_ownership_before_reuse

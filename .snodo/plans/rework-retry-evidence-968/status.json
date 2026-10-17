@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "1.1_judged_subject_explicit": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ea1632a0240fd484"
+    },
+    "1.2_retire_stale_payload_field": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d6aaf30ce2017f84"
+    },
+    "2.1_key_verdict_cache_on_subject": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b4487ca236a51b01"
+    }
+  }
+}
