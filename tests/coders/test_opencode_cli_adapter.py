@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import git  # noqa: F401 - initialize before tests mock subprocess.Popen.
 import pytest
 from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
 from snodo.core.interfaces import TaskSpec
@@ -89,7 +90,8 @@ class TestWorkspaceResolution:
         assert adapter._workspace == Path("/explicit")
         assert adapter.workspace == Path("/explicit")
 
-    def test_task_worktree_granted_to_cli_distinct_from_cwd(self, tmp_path):
+    @pytest.mark.parametrize("major", [1, 2])
+    def test_task_worktree_granted_to_cli_distinct_from_cwd(self, tmp_path, major):
         """When task worktree differs from Path.cwd(), the granted dir and cwd for CLI is the worktree."""
         worktree = tmp_path / "task_worktree"
         worktree.mkdir()
@@ -112,17 +114,25 @@ class TestWorkspaceResolution:
             return proc
 
         spec = TaskSpec(description="test task", constraints=[])
-        with patch("subprocess.Popen", side_effect=fake_popen):
+        with patch("subprocess.Popen", side_effect=fake_popen), \
+                patch.object(adapter, "_cli_major_version", return_value=major):
             adapter.implement(spec)
 
         assert executed_kwargs["cwd"] == str(worktree)
         inline = json.loads(executed_kwargs["env"]["OPENCODE_CONFIG_CONTENT"])
-        assert inline["permission"]["edit"] == "deny"
+        assert inline["permission"] == {
+            "edit": {"*": "deny", str(worktree.resolve() / "**"): "allow"},
+            "external_directory": "deny",
+        }
         assert inline["tools"] == {"session_move": False, "worktree_create": False}
         assert executed_kwargs["cwd"] != str(Path.cwd())
-        dir_idx = executed_argv.index("--dir")
-        assert executed_argv[dir_idx + 1] == str(worktree)
-        assert executed_argv[dir_idx + 1] != str(Path.cwd())
+        if major == 1:
+            dir_idx = executed_argv.index("--dir")
+            assert executed_argv[dir_idx + 1] == str(worktree)
+        else:
+            assert "--standalone" in executed_argv
+            assert "--attach" not in executed_argv
+            assert "--dir" not in executed_argv
 
 
 # ========== BARE MODEL ==========
@@ -396,12 +406,12 @@ class TestRegistration:
 class TestOpenCodeV2:
     """opencode 2.x removed --dir and --dangerously-skip-permissions."""
 
-    def test_v2_argv_uses_standalone_and_auto(self, tmp_path):
+    def test_v2_argv_uses_standalone(self, tmp_path):
         adapter = OpenCodeCLIAdapter(model="", workspace=tmp_path)
         with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=2):
             argv = adapter._build_argv("prompt", str(tmp_path), "openai/gpt-6-luna")
         assert argv == [
-            "opencode", "run", "--format", "json", "--standalone", "--auto",
+            "opencode", "run", "--format", "json", "--standalone",
             "prompt", "-m", "openai/gpt-6-luna",
         ]
         assert "--dir" not in argv
@@ -423,7 +433,8 @@ class TestSnodoCloudProvider:
         provider = config["provider"]["snodo-cloud"]
         assert provider["options"]["baseURL"] == "https://gateway.example/v1"
         assert provider["models"] == {"gpt-6-luna": {"name": "gpt-6-luna"}}
-        assert config["permission"]["edit"] == "deny"
+        assert config["permission"]["edit"] == {"*": "deny", str(tmp_path.resolve() / "**"): "allow"}
+        assert config["permission"]["external_directory"] == "deny"
         assert config["tools"] == {"session_move": False, "worktree_create": False}
         argv = adapter._build_argv("prompt", str(tmp_path), adapter._bare_model())
         assert argv[-2:] == ["-m", "snodo-cloud/gpt-6-luna"]
@@ -432,7 +443,8 @@ class TestSnodoCloudProvider:
     def test_other_models_do_not_get_provider_injection(self, tmp_path):
         adapter = OpenCodeCLIAdapter(model="opencode-cli/openai/gpt-6-luna", workspace=tmp_path)
         config = json.loads(adapter._subprocess_env()["OPENCODE_CONFIG_CONTENT"])
-        assert config["permission"]["edit"] == "deny"
+        assert config["permission"]["edit"] == {"*": "deny", str(tmp_path.resolve() / "**"): "allow"}
+        assert config["permission"]["external_directory"] == "deny"
         assert config["tools"] == {"session_move": False, "worktree_create": False}
 
     def test_missing_cloud_credential_fails_with_login_guidance(self, tmp_path):
@@ -487,7 +499,7 @@ class TestOpenCodeConfigConfinement:
     def test_malformed_or_non_object_config_still_gets_confinement(self, tmp_path, inherited):
         """Non-mergeable OPENCODE_CONFIG_CONTENT values are replaced with confined object.
 
-        The adapter must still deny edits and disable tools even when the
+        The adapter must still confine edits and disable relocation tools even when the
         inherited value cannot be merged into (invalid JSON or non-object).
         """
         adapter = OpenCodeCLIAdapter(model="opencode-cli/test", workspace=tmp_path)
@@ -498,7 +510,8 @@ class TestOpenCodeConfigConfinement:
 
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
         assert isinstance(config, dict)
-        assert config["permission"]["edit"] == "deny"
+        assert config["permission"]["edit"] == {"*": "deny", str(tmp_path.resolve() / "**"): "allow"}
+        assert config["permission"]["external_directory"] == "deny"
         assert config["tools"] == {"session_move": False, "worktree_create": False}
 
     def test_object_config_keeps_unrelated_keys_when_confinement_added(self, tmp_path):
@@ -519,7 +532,8 @@ class TestOpenCodeConfigConfinement:
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
         assert config["unrelated"] == {"keep": True}
         # Existing permission/tools keys are merged with confinement rules.
-        assert config["permission"]["edit"] == "deny"
+        assert config["permission"]["edit"] == {"*": "deny", str(tmp_path.resolve() / "**"): "allow"}
+        assert config["permission"]["external_directory"] == "deny"
         assert config["permission"]["other"] == "value"
         assert config["tools"]["session_move"] is False
         assert config["tools"]["worktree_create"] is False
@@ -550,7 +564,8 @@ class TestOpenCodeConfigConfinement:
 
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
         # Confinement keys remain present.
-        assert config["permission"]["edit"] == "deny"
+        assert config["permission"]["edit"] == {"*": "deny", str(tmp_path.resolve() / "**"): "allow"}
+        assert config["permission"]["external_directory"] == "deny"
         assert config["tools"] == {"session_move": False, "worktree_create": False}
         # Unrelated keys survive.
         assert config["unrelated"] == {"keep": True}

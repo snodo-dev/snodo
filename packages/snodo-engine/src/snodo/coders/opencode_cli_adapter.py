@@ -68,7 +68,8 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
 
     def _subprocess_env(self) -> dict[str, str]:
         env = subprocess_env_for_coder()
-        # `edit: deny` denies *every* edit, including files in the task tree.
+        # https://opencode.ai/docs/permissions/#granular-rules-object-syntax
+        # Last matching rule wins; `edit: deny` blocks even in-tree edits.
         # Use a path-scoped rule: the wildcard denies external paths while the
         # absolute workspace glob allows edits under this task's own root.
         root = self._workspace.resolve()
