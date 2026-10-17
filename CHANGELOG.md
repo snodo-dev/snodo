@@ -11,6 +11,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Pin dispatched OpenCode CLI runs to the task worktree and expose the read-tree boundary in run output. OpenCode 2.x `opencode run` takes no directory at all — no `--dir` flag, no directory positional (its only positional is the message), no directory env var — so a 2.x run is pinned by the subprocess cwd with session-move and worktree-create denied, while 1.x keeps `--dir`; a path passed as a 2.x positional is read as prompt text and is now covered by a test. (Fixes #975; regression to #911)
 
+- Wait briefly for a timed-out quality gate's process group to disappear before asserting it is gone, so the test measures the kill rather than scheduler luck.
 - Require a validator verdict to name the task it judges, reject one that names another task instead of counting it as a pass, and record the subject a cached verdict was gathered for so a reused verdict is only served to that same subject; a malformed or unusable cache record is a miss rather than a validator error. (Fixes #951)
 - Add a Cloudflare AI Gateway provider guide covering configuration, model IDs, verification and troubleshooting. (Fixes #952)
 - Link the Cloudflare AI Gateway guide from the docs navigation, the providers overview and the Workers AI guide. (Fixes #953)
