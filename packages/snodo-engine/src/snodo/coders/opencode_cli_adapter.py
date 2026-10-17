@@ -49,13 +49,16 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
 
     def _build_argv(self, prompt: str, project_root: str, model: str) -> List[str]:
         if self._cli_major_version() >= 2:
-            # Keep the project root explicit as well as setting subprocess cwd:
-            # OpenCode can resolve a project/session independently of the shell
-            # directory. --dir is the CLI's project-directory selector.
+            # `opencode run` in 2.x accepts no directory: it has no --dir flag,
+            # its only positional slot is the message (so a path there is sent
+            # to the model as text), and it reads no directory env var. The
+            # subprocess cwd is therefore the entire containment guarantee, and
+            # _subprocess_env denies session_move/worktree_create so a run
+            # cannot relocate itself out of that cwd.
             # --standalone avoids attaching to a server started for another tree.
             argv = [
-                "opencode", "run", "--format", "json", "--dir", project_root,
-                "--standalone", "--auto", prompt,
+                "opencode", "run", "--format", "json", "--standalone", "--auto",
+                prompt,
             ]
         else:
             argv = [
