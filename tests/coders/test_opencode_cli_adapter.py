@@ -559,3 +559,46 @@ class TestOpenCodeConfigConfinement:
         assert provider["options"]["baseURL"] == "https://gateway.example/v1"
         assert provider["options"]["apiKey"] == "secret-token"
         assert provider["models"] == {"gpt-6-luna": {"name": "gpt-6-luna"}}
+
+@pytest.mark.parametrize("major", [1, 2])
+def test_dispatched_linked_worktree_is_pinned_and_read_side_sees_branch(tmp_path, major):
+    """A CLI reading by relative path sees the divergent task branch, not main."""
+    import os
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True).stdout
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / "subject.txt").write_text("main tree\n")
+    subprocess.run(["git", "add", "subject.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
+    worktree = tmp_path / "task-worktree"
+    subprocess.run(["git", "worktree", "add", "-b", "task", str(worktree)], cwd=repo, check=True, capture_output=True)
+    (worktree / "subject.txt").write_text("task branch\n")
+    (worktree / "branch-only.txt").write_text("present only on task\n")
+
+    adapter = OpenCodeCLIAdapter(model="", workspace=worktree)
+    observed = {}
+    def fake_popen(argv, **kwargs):
+        observed["cwd"] = kwargs["cwd"]
+        observed["argv"] = argv
+        # Mimic the CLI's actual relative-path read surface.
+        observed["content"] = (Path(kwargs["cwd"]) / "subject.txt").read_text()
+        observed["branch_only"] = (Path(kwargs["cwd"]) / "branch-only.txt").read_text()
+        proc = Mock(pid=12345, returncode=0, stdout=io.StringIO(""), stderr=io.StringIO(""))
+        return proc
+
+    with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=major), \
+         patch.object(adapter, "_record_binary_provenance"), \
+         patch("subprocess.Popen", side_effect=fake_popen):
+        adapter.implement(TaskSpec(description="read subject", constraints=[]))
+
+    assert observed["content"] == "task branch\n"
+    assert observed["branch_only"] == "present only on task\n"
+    assert Path(observed["cwd"]).resolve() == worktree.resolve()
+    dir_index = observed["argv"].index("--dir")
+    assert Path(observed["argv"][dir_index + 1]).resolve() == worktree.resolve()
