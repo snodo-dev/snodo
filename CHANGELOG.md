@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Surface non-blocking post-execute findings when test cases or substantial explanatory comments/docstrings disappear without being requested. (Fixes #959)
 - Pin dispatched OpenCode CLI runs to the task worktree with an explicit project directory, expose the read-tree boundary in run output, and cover branch-divergent linked-worktree reads. (Fixes #975; regression to #911)
+- Split OpenCode CLI launch handling by major version and refuse undescribed versions rather than using a mismatched launch shape. (Fixes #982)
+
 - Pin dispatched OpenCode CLI runs to the task worktree and expose the read-tree boundary in run output. OpenCode 2.x `opencode run` takes no directory at all — no `--dir` flag, no directory positional (its only positional is the message), no directory env var — so a 2.x run is pinned by the subprocess cwd with session-move and worktree-create denied, while 1.x keeps `--dir`; a path passed as a 2.x positional is read as prompt text and is now covered by a test. (Fixes #975; regression to #911)
 
 - Wait briefly for a timed-out quality gate's process group to disappear before asserting it is gone, so the test measures the kill rather than scheduler luck.
