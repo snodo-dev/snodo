@@ -346,32 +346,34 @@ class ExecutorMixin:
                             )
                         )
                     )
-                    if not has_findings:
-                        existing = self._existing_task_branch_work(
-                            git_mcp, getattr(task, "base", None),
-                            refs_before=refs_before, task=task,
+                    existing = self._existing_task_branch_work(
+                        git_mcp, getattr(task, "base", None),
+                        refs_before=refs_before, task=task,
+                    )
+                    # Even a retry with recoverable work must not hide a
+                    # coder that escaped to another checkout this run.
+                    escaped = self._escaped_repo_commit(
+                        git_mcp, refs_before, task
+                    )
+                    if escaped:
+                        raise ExecutionError(escaped)
+                    if existing is None and not has_findings:
+                        raise NoFileOperationsError(
+                            "Coder produced no file operations: it exited 0 "
+                            "having written nothing. output_tail carries the "
+                            "closing lines of BOTH stdout and stderr: a "
+                            "closing explanation that no change was needed is "
+                            "a different fault from a run that stopped before "
+                            "writing (budget, rate-limit and provider errors "
+                            "land on stderr while stdout narrates), and the "
+                            "engine does not parse coder output to tell them "
+                            "apart (ADR 034)."
                         )
-                        # Even a retry with recoverable work must not hide a
-                        # coder that escaped to another checkout this run.
-                        escaped = self._escaped_repo_commit(
-                            git_mcp, refs_before, task
-                        )
-                        if escaped:
-                            raise ExecutionError(escaped)
-                        if existing is None:
-                            raise NoFileOperationsError(
-                                "Coder produced no file operations: it exited 0 "
-                                "having written nothing. output_tail carries the "
-                                "closing lines of BOTH stdout and stderr: a "
-                                "closing explanation that no change was needed is "
-                                "a different fault from a run that stopped before "
-                                "writing (budget, rate-limit and provider errors "
-                                "land on stderr while stdout narrates), and the "
-                                "engine does not parse coder output to tell them "
-                                "apart (ADR 034)."
-                            )
+                    if existing is not None:
                         # Nothing new to stage: post-execute judges still
-                        # examine the committed branch as before.
+                        # examine the committed branch as before. Preserve the
+                        # provenance even when findings exist so validation can
+                        # check any absence claims against this HEAD.
                         self._last_existing_work_base_ref = existing[0]
                         artifacts.extend(existing[1])
                 else:
