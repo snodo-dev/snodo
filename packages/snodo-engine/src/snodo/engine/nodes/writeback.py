@@ -489,9 +489,15 @@ class WritebackMixin:
             phase = loop_state.pending_disagreement.get("phase", phase) if loop_state.pending_disagreement else phase
 
         # This is the recorded failure sequence, not the judged-coding count
-        # narrated by _build_attempt_summary. A phase label alone cannot tell
-        # whether a coder was dispatched.
-        attempt = existing.get("attempt", 0) + 1
+        # narrated by _build_attempt_summary. Environment halts are operational
+        # faults, not coder failures, so they retain the current retry budget.
+        # Use the canonical mapping so all existing environment outcomes share
+        # this accounting without changing non-environment halt semantics.
+        raw_halt_type = getattr(loop_state, "halt_type", None)
+        if _CANONICAL_HALT.get(raw_halt_type, raw_halt_type) == "environment_error":
+            attempt = existing.get("attempt", 0)
+        else:
+            attempt = existing.get("attempt", 0) + 1
 
         failed_validators = [
             {
