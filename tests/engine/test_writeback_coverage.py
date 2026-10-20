@@ -161,6 +161,25 @@ class TestAutoWriteFailureContext:
         assert len(entry["failed_validators"]) == 1
         assert entry["files_changed"] == ["src/main.py"]
 
+    @pytest.mark.parametrize("halt_type, initial_attempt, expected_attempt", [
+        ("environment_error", 2, 2),
+        ("blocked", 2, 3),
+    ])
+    def test_attempt_budget_depends_on_halt_outcome(
+        self, halt_type, initial_attempt, expected_attempt,
+    ):
+        builder, mgr, session = _make_builder_with_session()
+        session.checkpoint.decisions = {
+            "task_failure": {"t1": {"attempt": initial_attempt, "spec": "do something"}}
+        }
+        state = _make_loop_state()
+        state.halt_type = halt_type
+
+        builder._auto_write_failure_context(state, [])
+
+        failures = mgr.update_decision.call_args[0][2]
+        assert failures["t1"]["attempt"] == expected_attempt
+
     def test_increments_attempt_on_retry(self):
         builder, mgr, session = _make_builder_with_session()
         session.checkpoint.decisions = {
