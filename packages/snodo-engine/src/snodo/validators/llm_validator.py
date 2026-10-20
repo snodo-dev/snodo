@@ -482,9 +482,10 @@ class LLMValidator(ValidatorBase):
 
             turn_start = time.monotonic()
             try:
-                from snodo.config import ConfigManager
+                # The completion partial binds model and provider credentials as
+                # one unit (#237); keep the configured name only for task-scoped
+                # header lookup, never as a per-request model override.
                 kwargs = {
-                    "model": ConfigManager.resolve_litellm_model(self.model),
                     "_configured_model": self.model,
                     "messages": messages,
                     "tools": turn_tools,
@@ -558,7 +559,7 @@ class LLMValidator(ValidatorBase):
                     tokens_in=_usage_tokens(response, "prompt"),
                     tokens_out=_usage_tokens(response, "completion"),
                     elapsed_ms=(time.monotonic() - turn_start) * 1000,
-                    model_requested=kwargs.get("model", ""), response=response,
+                    model_requested=self.model, response=response,
                 )
                 return verdict
 
@@ -687,7 +688,7 @@ class LLMValidator(ValidatorBase):
                             tokens_in=_usage_tokens(response, "prompt"),
                             tokens_out=_usage_tokens(response, "completion"),
                             elapsed_ms=(time.monotonic() - turn_start) * 1000,
-                            model_requested=kwargs.get("model", ""), response=response,
+                            model_requested=self.model, response=response,
                         )
                     messages.append({
                         "role": "tool", "tool_call_id": tc.id,
