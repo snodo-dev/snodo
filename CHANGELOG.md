@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Probe for committed task-branch work after empty-artifact coder runs even when the coder reports findings, so contradictory file-absence claims halt as environment faults. (Fixes #996)
 - Halt as an environment fault when a coder says a named file is absent but it is present at the dispatched workspace HEAD, rather than validating stale work. (Fixes #992)
 - Route validators with model overrides through that model's configured provider credentials and task-scoped headers. (Fixes #990)
 - Split OpenCode CLI launch handling by major version and refuse undescribed versions rather than using a mismatched launch shape. (Fixes #982)>>>>>>> main
