@@ -559,7 +559,7 @@ class LLMValidator(ValidatorBase):
                     tokens_in=_usage_tokens(response, "prompt"),
                     tokens_out=_usage_tokens(response, "completion"),
                     elapsed_ms=(time.monotonic() - turn_start) * 1000,
-                    model_requested=kwargs.get("model", ""), response=response,
+                    model_requested=self.model, response=response,
                 )
                 return verdict
 
@@ -688,7 +688,7 @@ class LLMValidator(ValidatorBase):
                             tokens_in=_usage_tokens(response, "prompt"),
                             tokens_out=_usage_tokens(response, "completion"),
                             elapsed_ms=(time.monotonic() - turn_start) * 1000,
-                            model_requested=kwargs.get("model", ""), response=response,
+                            model_requested=self.model, response=response,
                         )
                     messages.append({
                         "role": "tool", "tool_call_id": tc.id,

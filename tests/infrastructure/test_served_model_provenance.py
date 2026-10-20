@@ -210,7 +210,12 @@ class TestValidatorTurnTelemetry:
         )
         result = validator._evaluate_with_tools(ctx)
         assert result.severity == "pass"
-        requested = validator._completion_fn.call_args_list[0].kwargs["model"]
+        calls = validator._completion_fn.call_args_list
+        requested = validator.model
+        assert len(calls) == 2
+        for call in calls:
+            assert "model" not in call.kwargs
+            assert call.kwargs["_configured_model"] == requested
         return _read_telemetry(project_root, job_id), requested
 
     def test_substituted_model_appears_beside_requested(self, tmp_path, monkeypatch):
