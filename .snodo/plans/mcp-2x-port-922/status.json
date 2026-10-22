@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "1.1_port_transport_to_mcp_2x": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3c9114f73ca21fc1"
+    },
+    "2.1_carry_mcp_surfaces": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0c9e6a3f132a838d"
+    },
+    "3.1_release_pin_retire_workarounds": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "29e95cdf61cbe77e"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_recovery_probe_judges_this_run": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "02f60a5726c96aee"
+    },
+    "2.1_retry_control_and_provenance": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "904b16a5318809e2"
+    }
+  },
+  "integration": {
+    "branch": "plan/recovery-probe-and-retry-control-947/integration",
+    "base_sha": "e9fd1a83cdcd7b9dff6d5d456062aa53dad69940"
+  }
+}

@@ -9,9 +9,35 @@ import json
 import re
 from typing import Any, List, Optional
 
+from snodo.coders.base import CoderUnavailableError
 from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
 from snodo.config import ConfigManager, DEFAULT_CLOUD_MODELS_URL
 from snodo.paths import subprocess_env_for_coder
+
+
+class OpenCodeCLI1Adapter:
+    """OpenCode 1.x launch contract."""
+
+    @staticmethod
+    def build_launch_argv(prompt: str, project_root: str, model: str) -> List[str]:
+        argv = ["opencode", "run", "--format", "json", "--dir", project_root, "--dangerously-skip-permissions", prompt]
+        if model:
+            argv.extend(["-m", model])
+        return argv
+
+
+class OpenCodeCLI2Adapter:
+    """OpenCode 2.x launch contract."""
+
+    @staticmethod
+    def build_launch_argv(prompt: str, project_root: str, model: str) -> List[str]:
+        argv = ["opencode", "run", "--format", "json", "--standalone", "--auto", prompt]
+        if model:
+            argv.extend(["-m", model])
+        return argv
+
+
+OPENCODE_CLI_ADAPTERS = {1: OpenCodeCLI1Adapter, 2: OpenCodeCLI2Adapter}
 
 
 class OpenCodeCLIAdapter(SubprocessCoderAdapter):
@@ -39,32 +65,29 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
             "cost": None,
         }
 
-    def _cli_major_version(self) -> int:
-        """Return the host opencode's major version, or 1 when it will not say."""
+    def _reported_cli_version(self) -> str:
         from snodo.coders.availability import read_binary_version
+        return read_binary_version(self._resolve_binary_path(), self.version_args)
 
-        reported = read_binary_version(self._resolve_binary_path(), self.version_args)
+    def _cli_major_version(self) -> int:
+        """Return the host opencode major, defaulting to 1 if unreadable."""
+        reported = self._reported_cli_version()
         match = re.search(r"(\d+)\.\d+", reported)
         return int(match.group(1)) if match else 1
 
     def _build_argv(self, prompt: str, project_root: str, model: str) -> List[str]:
-        if self._cli_major_version() >= 2:
-            # opencode 2.x dropped --dir and --dangerously-skip-permissions. The
-            # run already starts in project_root (cwd); --standalone keeps it on
-            # a private server rather than the shared background service, and
-            # --auto approves the edits the coder makes.
-            argv = [
-                "opencode", "run", "--format", "json", "--standalone", "--auto",
-                prompt,
-            ]
-        else:
-            argv = [
-                "opencode", "run", "--format", "json", "--dir", project_root,
-                "--dangerously-skip-permissions", prompt,
-            ]
-        if model:
-            argv.extend(["-m", model])
-        return argv
+        major = self._cli_major_version()
+        adapter = OPENCODE_CLI_ADAPTERS.get(major)
+        if adapter is None:
+            raise CoderUnavailableError(
+                self.coder_name,
+                message=f"OpenCode CLI version {self._reported_cli_version()} is unsupported; supported majors: 1, 2",
+            )
+        return adapter.build_launch_argv(prompt, project_root, model)
+
+    def _reported_cli_version(self) -> str:
+        from snodo.coders.availability import read_binary_version
+        return read_binary_version(self._resolve_binary_path(), self.version_args)
 
     def _subprocess_env(self) -> dict[str, str]:
         env = subprocess_env_for_coder()

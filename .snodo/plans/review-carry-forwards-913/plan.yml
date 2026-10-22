@@ -1,0 +1,8 @@
+intent: 'Close the rework items the automated reviews left open on the gate and protected-paths
+  work (#913, #917)'
+name: review-carry-forwards-913
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_review_carry_forwards

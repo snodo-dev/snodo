@@ -49,9 +49,9 @@ class ValidatorContext:
     #: previous unrelated commit when HEAD did not move.
     base_ref: Optional[str] = None
     #: The produced change (base_ref..HEAD), read ONCE per validate pass by the
-    #: runner and shared by every post-execute judge (Fixes #267).  A
+    #: runner and shared by every post-execute judge (Fixes #267). A
     #: post-execute judge must begin its turn knowing which files changed;
-    #: a pre-execute judge never gets one.  Phase decides, never tool grants.
+    #: a pre-execute judge never gets one. Phase decides, never tool grants.
     change_context: Optional[ChangeContext] = None
     #: CodeArtifact produced by coder implementation
     code_artifact: Optional[Any] = None
@@ -65,9 +65,9 @@ class ValidatorContext:
     #: the wave rather than only the current task.
     wave_specs: Optional[List[str]] = None
     #: Tree subject for verdict caching, computed ONCE per validate pass
-    #: before the validator pool starts (#246).  The tree does not move within
+    #: before the validator pool starts (#246). The tree does not move within
     #: a pass, so every tree-reading judge must share one digest rather than
-    #: each cost a git diff.  ``verdict_tree_subject_ready`` distinguishes
+    #: each cost a git diff. ``verdict_tree_subject_ready`` distinguishes
     #: "not computed" from a computed None (the tree identity could not be
     #: established, so tree-reading verdicts are not cached).
     verdict_tree_subject: Optional[str] = None
@@ -75,6 +75,25 @@ class ValidatorContext:
     #: Results from independent execution/quality validators, supplied only to
     #: post-execute acceptance judges after those validators have completed.
     execution_evidence: List[ValidatorResult] = field(default_factory=list)
+    #: The composed coder input, kept separate from the operator's proposal.
+    retry_evidence: str = ""
+
+    def __post_init__(self) -> None:
+        if self.phase != "pre_execute" or self.task.root_spec is None:
+            return
+        if self.task.spec == self.task.root_spec:
+            return
+        from snodo.validators.retry_evidence import with_retry_evidence
+
+        self.retry_evidence = self.task.spec
+        # Never mutate the task dispatched to the coder or the post-execute
+        # subject. All pre-execute backends, including plugin tools, see the
+        # authoritative proposal through context.task.spec.
+        self.task = self.task.model_copy(update={"spec": self.task.root_spec})
+        self.completion_fn = with_retry_evidence(self.completion_fn, self)
+        # Existing cache keys do not cover the separately supplied evidence.
+        # Judge retries fresh rather than reuse a verdict on different input.
+        self.verdict_cache = None
 
 
 class ValidatorBase(ABC):
@@ -84,13 +103,11 @@ class ValidatorBase(ABC):
     """
 
     #: How this validator's verdict depends on its inputs, for verdict
-    #: caching (#246).  ``"spec"`` = a single-completion judge of the task
+    #: caching (#246). ``"spec"`` = a single-completion judge of the task
     #: specification; ``"tree"`` = a judge of repository state (tool-using or
-    #: post-execute).  ``None`` = the dependency is not established, so the
-    #: verdict is never cached.  A judge that reads the tree must never be
-    #: keyed on the spec alone; the runner forces the tree subject whenever the
-    #: tool loop is active and for EVERY post-execute judge, so an inherited
-    #: ``"spec"`` cannot key a judgement of produced work.
+    #: post-execute). None = the dependency is not established, so the
+    #: verdict is never cached. The runner forces the tree subject whenever
+    #: the tool loop is active and for EVERY post-execute judge.
     cache_subject: Optional[str] = None
 
     @abstractmethod

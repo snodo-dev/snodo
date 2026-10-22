@@ -291,17 +291,38 @@ class TestTransitionDriven:
         """
         root, _ = project
         posts = _Posts()
+        # Drive the clock and the actual scheduled callback explicitly. A
+        # short sleep is not an upper bound on elapsed time under the full
+        # parallel gate: another legitimate interval may pass before waking.
         with patch("httpx.post", posts), \
-                patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.05):
+                patch.object(cloud_liveness, "time", wraps=time) as clock, \
+                patch.object(cloud_liveness.threading, "Timer") as timer, \
+                patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 10.0):
+            clock.monotonic.return_value = 100.0
             assert cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
             assert len(posts.calls) == 1
-            assert _wait_until(lambda: len(posts.calls) > 1), \
+            timer.assert_called_once()
+            delay, callback = timer.call_args.args
+            callback_args = timer.call_args.kwargs["args"]
+            assert delay == 10.0
+            timer.return_value.start.assert_called_once()
+
+            clock.monotonic.return_value = 109.0
+            assert not cloud_liveness.request_liveness_push("sess_test_1", str(root))
+            assert len(posts.calls) == 1
+
+            clock.monotonic.return_value = 110.0
+            callback(*callback_args)
+            cloud_liveness.wait_for_pushes()
+            assert len(posts.calls) == 2, \
                 "a running session was not heard from again without a transition"
-            # The ceiling holds too: no second push inside the interval.
-            settled = len(posts.calls)
-            time.sleep(0.01)
-            assert len(posts.calls) == settled
+            assert timer.call_count == 2  # the next interval is armed too
+
+            # The ceiling holds after the floor push as well.
+            clock.monotonic.return_value = 111.0
+            assert not cloud_liveness.request_liveness_push("sess_test_1", str(root))
+            assert len(posts.calls) == 2
 
     def test_engine_transition_event_triggers_a_push(self, project):
         """An audit append of a trigger event pushes; a non-trigger does not."""
@@ -343,8 +364,7 @@ class TestTransitionDriven:
             mock_cm.return_value.load.return_value = disabled
             cloud_liveness.reset_liveness_state()
             cloud_liveness.install()
-            log = AuditLog(str(root / ".snodo" / "audit.log"),
-                           project_id="local:test123")
+            log = AuditLog(str(root / ".snodo" / "audit.log"), project_id="local:test123")
             with patch("httpx.post", posts):
                 cloud_liveness.request_liveness_push("sess_test_1", str(root))
                 log.append_event("dispatch", {"task_ref": "t_alpha",

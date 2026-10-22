@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_prove_link_gate_fails_closed": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d4dc96d88d65dda4"
+    }
+  }
+}

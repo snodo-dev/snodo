@@ -144,16 +144,11 @@ def _attempt_verdicts(loop_state: Any) -> Optional[List[Any]]:
 
 
 def _build_attempt_summary(loop_state: Any, phase: str) -> dict:
-    """Summarise every attempt the task took, from the accumulated history.
+    """Summarise judged coding attempts, excluding pre-execute refusals.
 
-    The final validator results say what happened last; this says how the task
-    got there. The recovery subtasks that preceded this one are carried on the
-    task as ``prior_failures`` tagged with their 1-based attempt number.
-
-    An attempt is one judged pass over a code state. The root is attempt 1 and
-    each recovery subtask is the next attempt. ``total`` is exact; ``history``
-    is capped at ``_MAX_ATTEMPT_HISTORY`` most-recent entries with the omitted
-    count reported.
+    Recovery history is numbered by the coding pass that produced it. A
+    refusal before the next dispatch does not append a fictional code state.
+    Counts stay exact while history is bounded to the most recent entries.
     """
     depth = getattr(loop_state.task, "depth", 0) or 0
     prior = getattr(loop_state.task, "prior_failures", None) or []
@@ -165,19 +160,18 @@ def _build_attempt_summary(loop_state: Any, phase: str) -> dict:
 
     history: List[dict] = []
 
-    # Attempts 1..depth are the recovery subtasks that preceded this one; each
-    # produced the failures that spawned the next.
     for number in range(1, depth + 1):
         history.append({
             "attempt": number,
             "outcome": _verdict_outcome(by_attempt.get(number, [])),
         })
 
-    if getattr(loop_state, "halt_type", None) in _ATTEMPT_ERROR_HALTS:
-        final_outcome = _ATTEMPT_ERROR
-    else:
-        final_outcome = _verdict_outcome(_attempt_verdicts(loop_state))
-    history.append({"attempt": len(history) + 1, "outcome": final_outcome})
+    if phase != "pre_execute":
+        if getattr(loop_state, "halt_type", None) in _ATTEMPT_ERROR_HALTS:
+            final_outcome = _ATTEMPT_ERROR
+        else:
+            final_outcome = _verdict_outcome(_attempt_verdicts(loop_state))
+        history.append({"attempt": len(history) + 1, "outcome": final_outcome})
 
     summary: Dict[str, Any] = {
         "total": len(history),
@@ -190,9 +184,8 @@ def _build_attempt_summary(loop_state: Any, phase: str) -> dict:
     return summary
 
 
-# The three fix targets a blocker can have.  The hint names only the ones that
-# apply to the halt in hand (Fixes #38); a hint that lists all three every time
-# is no better than one that names one.
+# The three fix targets a blocker can have. The hint names only the ones that
+# apply to the halt in hand (Fixes #38).
 _BLOCKER_FIX_TARGETS = {
     "code": (
         "Fix the produced code and re-run"
@@ -239,13 +232,11 @@ def _blocker_fix_targets(
         return ["spec", "policy"]
     if halt_type == "head_not_moved":
         # The coder claimed a commit it did not make — the produced code is
-        # what must change (the adapter must actually commit), so this is a
-        # code fix, not a spec or policy problem.
+        # what must change (the adapter must actually commit).
         return ["code"]
     if halt_type == "no_file_operations":
         # The coder completed successfully (exit 0) but produced no file
-        # operations. There is no produced code to fix; the fix targets are
-        # the task spec and the coder backend or its configuration (Fixes #203).
+        # operations. There is no produced code to fix (Fixes #203).
         return ["spec", "config"]
     if phase == "post_execute":
         return ["code"]
@@ -336,10 +327,7 @@ def _build_hint(
     adjudicable: bool = False,
 ) -> str:
     if halt == "escalate":
-        # The escape hatch is named only when a decision is actually waiting:
-        # `snodo authorize` answers "No pending decision" otherwise, and a hint
-        # that sends the operator looking for a hatch that is not there costs
-        # the time the halt itself needed (Fixes #288).
+        # Name the escape hatch only when a decision is actually waiting.
         if adjudicable:
             return (
                 "Address the blocking concerns and re-run a revised task. "
@@ -358,18 +346,12 @@ def _build_hint(
             "problem). Retry the task or inspect the logs."
         )
     if halt == "environment_error":
-        # The reason carries the coder's own message, which includes the
-        # install command the adapter declares — the operator must see THAT
-        # here, not a fix hint about a spec that passed every validator.
         detail = reason or (
             "the coder call could not be completed"
             if halt_type == "execution_error"
             else "the program the coder needs could not be invoked in the execution environment"
         )
         if timed_out:
-            # A timeout is an operational halt too, but the fix is not an
-            # install: the program ran and the run ended on the clock. Say what
-            # actually happened instead of pointing at an install (Fixes #281).
             return (
                 "This halt is about the run, not about the task: the coder was "
                 "invoked and did not finish within its time budget. "
@@ -379,11 +361,6 @@ def _build_hint(
                 "this halt."
             )
         if turn_budget_exhausted:
-            # A bounded turn-budget outcome is an operational halt as well, but
-            # the fix is not an install: the coder ran and used every turn
-            # before submitting. Name what actually happened and point the
-            # operator at the turn budget, not the spec, the code or an
-            # install (Fixes #282).
             return (
                 "This halt is about the run, not about the task: the coder was "
                 "invoked and used its full turn budget without submitting. "
@@ -394,9 +371,6 @@ def _build_hint(
                 "before this halt."
             )
         if halt_type == "execution_error":
-            # An operational coder fault (unreachable provider, failed session,
-            # broken call) is an operational halt, not a verdict about the code.
-            # Name the real cause rather than the coder configuration (Fixes #301).
             return (
                 "This halt is about the run, not about the task: the coder "
                 f"call failed operationally ({detail}). Nothing about the spec, "
@@ -489,11 +463,9 @@ class WritebackMixin:
             failures = {}
 
         existing = failures.get(task_id, {}) if isinstance(failures.get(task_id), dict) else {}
-        attempt = existing.get("attempt", 0) + 1
 
         # Preserve the root/original spec across retries so the retry prompt and
         # task metadata never wrap or accumulate previous prompt wrappers.
-        # Check task.root_spec first, then existing failure context, then loop_state.
         raw_spec = loop_state.task.spec
         original_spec = (
             getattr(loop_state.task, "root_spec", None)
@@ -515,6 +487,17 @@ class WritebackMixin:
             phase = "post_execute"
         if getattr(loop_state, "halt_type", None) == "escalated":
             phase = loop_state.pending_disagreement.get("phase", phase) if loop_state.pending_disagreement else phase
+
+        # This is the recorded failure sequence, not the judged-coding count
+        # narrated by _build_attempt_summary. Environment halts are operational
+        # faults, not coder failures, so they retain the current retry budget.
+        # Use the canonical mapping so all existing environment outcomes share
+        # this accounting without changing non-environment halt semantics.
+        raw_halt_type = getattr(loop_state, "halt_type", None)
+        if _CANONICAL_HALT.get(raw_halt_type, raw_halt_type) == "environment_error":
+            attempt = existing.get("attempt", 0)
+        else:
+            attempt = existing.get("attempt", 0) + 1
 
         failed_validators = [
             {
@@ -545,13 +528,7 @@ class WritebackMixin:
             "files_changed": list(loop_state.artifacts),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        # A replaced spec must stay recoverable: this record is rewritten every
-        # attempt and would otherwise drop the spec the previous attempt carried
-        # the moment a retry replaces it. Anything superseded earlier is
-        # carried forward, and a spec that has just been displaced by a new
-        # authoritative one joins the history here too (the CLI records the
-        # same event when it replaces a spec, so this is the backstop for any
-        # path that reached the engine with a changed spec and no CLI).
+        # A replaced spec must stay recoverable across rewritten records.
         superseded = existing.get("superseded_specs")
         superseded = list(superseded) if isinstance(superseded, list) else []
         displaced = existing.get("original_spec") or existing.get("spec")
@@ -572,12 +549,11 @@ class WritebackMixin:
         )
 
     def _clear_failure_context(self, loop_state: Any) -> None:
-        """Remove failure context and pending decisions for a task when it
-        completes.
+        """Remove failure context and pending decisions for a completed task.
 
-        A completed task must not leave an open adjudication request behind: a
-        pending decision recorded by an earlier failed attempt is a standing
-        proposal to proceed past a blocker that no longer exists (Fixes #148).
+        A completed task must not leave an open adjudication request behind:
+        an earlier failed attempt's pending decision is a standing proposal
+        to proceed past a blocker that no longer exists (Fixes #148).
         """
         if not self._session_manager or not self._session_id:
             return
@@ -636,12 +612,9 @@ class WritebackMixin:
     def _merge_into_job_state(self, updates: dict) -> None:
         """Atomically merge *updates* into the job's state.json (direct write).
 
-        state.json is the job's own record. A corrupt read is never resolved
-        by overwriting it: the corrupt file is preserved under a
-        ``state.json.corrupt-<timestamp>`` name, the fault is recorded in the
-        audit log, and ``JobStateError`` is raised so the caller learns the
-        merge did not happen. Callers that must tolerate a corrupt job state
-        have to catch it explicitly — the default is refusal.
+        A corrupt read is never resolved by overwriting it: preserve the file,
+        audit the fault, and raise JobStateError so the caller learns the
+        merge did not happen.
         """
         if not self._job_id or not self._project_root:
             return
@@ -673,8 +646,6 @@ class WritebackMixin:
                 )
         state.update(updates)
         atomic_write_json(state_path, state)
-
-
 
     def _build_coder_report_payload(self, report: Any, loop_state: Any) -> dict:
         """Build the structured coder report section of the halt payload.
@@ -715,7 +686,6 @@ class WritebackMixin:
         if findings is not None:
             report_dict["findings"] = findings
 
-        # Worktree files as recorded by the engine
         artifacts = getattr(loop_state, "artifacts", []) or []
         worktree_files: List[str] = []
         for a in artifacts:
@@ -780,17 +750,12 @@ class WritebackMixin:
         }
         return report_dict
 
-
     def _build_halt_payload(self, loop_state: Any) -> dict:
-        """Construct the structured halt payload from the loop state.
+        """Construct the single authoritative halt payload from this run.
 
-        This is the SINGLE authoritative halt payload, emitted by the CLI and
-        persisted to job state / session.  ``final_decision`` always equals
-        ``halt_type``, which always equals ``raw_halt_type`` (canonical
-        outcome vocabulary; see ADR 015). The engine's specific reason (e.g.
-        which constraint, or which validator) is preserved in ``reason`` /
-        ``constraint_violations``, never silently remapped to another member of
-        the vocabulary.
+        final_decision, halt_type and raw_halt_type use the canonical outcome
+        vocabulary (ADR 015). Specific reasons remain in reason and
+        constraint_violations, never silently remapped to another outcome.
         """
         meta = loop_state.metadata
         phase = "unknown"
@@ -823,46 +788,23 @@ class WritebackMixin:
 
         judging_model = getattr(self, "_default_model", None)
 
-        # Which binary, specifically, produced this run. Two installations of
-        # the same tool — an old one earlier on a long-running server's PATH,
-        # a newer one on the operator's — are otherwise indistinguishable in an
-        # audit trail that cannot then explain why the same task passed on one
-        # machine and failed on another (Fixes #290). Empty for coders that
-        # invoke no program (litellm, mock).
+        # Record which installed binary produced this run (Fixes #290).
         coder_binary = getattr(self, "_last_coder_binary", "") or None
         coder_version = getattr(self, "_last_coder_version", "") or None
 
-        # Prefer original / root spec for task_spec in the halt payload
         authoritative_spec = getattr(loop_state.task, "root_spec", None) or loop_state.task.spec
 
-        # Every field below is read from THIS run's state. The builder's
-        # ``_last_*`` attributes are per-run scratch and must not be consulted
-        # here: a halt payload a human reads must never carry a previous
-        # attempt's output (Fixes #281).
+        # Per-run facts only, never a previous attempt's scratch attributes.
         timed_out = bool(meta.get("timed_out"))
-        # A bounded turn-budget run is reported as an operational halt, not a
-        # verdict about the code, so the hint must name the run fact. Derive it
-        # from THIS run's own raw halt type and metadata, never a builder
-        # scratch attribute a previous attempt could have left behind
-        # (Fixes #282). A run whose recovered work passed carries the metadata
-        # flag, so the bound is visible even when the work is green.
         turn_budget_exhausted = bool(
             loop_state.halt_type == "turn_budget_exhausted"
             or meta.get("turn_budget_exhausted")
         )
 
-        # Whether `snodo authorize` would find a decision to sign for this task.
-        # Derived from the session that actually holds the pending proposals, so
-        # the hint and the CLI follow-up name an escape hatch only when it
-        # answers (Fixes #288).
         adjudicable = _has_adjudicable_decision(
             self._session_manager, self._session_id, loop_state.task.id,
         )
 
-        # Whether `snodo run --retry` would find failure context to retry.
-        # Derived from the session that actually holds the failure context, so
-        # the CLI follow-up offers a retry only when it will answer (Fixes #301).
-        # Operational halts never offer retry.
         if halt in ("environment_error", "internal_error", "validator_error"):
             retryable = False
         else:
@@ -887,16 +829,9 @@ class WritebackMixin:
             "coder_binary": coder_binary,
             "coder_version": coder_version,
             "judging_model": judging_model,
-            # record(): the halt payload is what the orchestrator reads to
-            # learn what happened; an abstention must not read as a pass
-            # (Fixes #252).
             "validator_results": [
                 result_record(r) for r in loop_state.validation_results
             ],
-            # The history that precedes the results above: every attempt the
-            # task took, canonical-outcome encoded so a clean pass and a
-            # hard-won one are distinguishable without reading the logs
-            # (Fixes #271).
             "attempts": _build_attempt_summary(loop_state, phase),
             "policy_decision": policy_decision_to_dict(loop_state.policy_decision),
             "hint": _build_hint(
@@ -912,14 +847,13 @@ class WritebackMixin:
             "blocker_reason": blocker_reason,
             "artifacts_count": len(loop_state.artifacts),
         }
-        # A decision waiting to be signed is what makes `snodo authorize` a
-        # follow-up rather than a dead end; the CLI reads this instead of
-        # re-deriving it (Fixes #288).
+        if phase == "pre_execute":
+            payload["hint"] = (
+                "Blocked before coding: the coder was not dispatched; "
+                "no coder attempt was consumed. " + payload["hint"]
+            )
         if adjudicable:
             payload["adjudicable"] = True
-        # Failure context waiting to be retried is what makes `snodo run --retry`
-        # a follow-up rather than a dead end; the CLI reads this instead of
-        # re-deriving it (Fixes #301).
         if retryable:
             payload["retryable"] = True
         if timed_out:
@@ -928,8 +862,6 @@ class WritebackMixin:
             if meta.get("timeout_limit") is not None:
                 payload["timeout_limit"] = meta["timeout_limit"]
         if turn_budget_exhausted:
-            # A run that ran out of turns is worth knowing about even when its
-            # recovered work passes (Fixes #282).
             payload["turn_budget_exhausted"] = True
         if commit_reason is not None:
             payload["commit_reason"] = commit_reason
@@ -945,7 +877,7 @@ class WritebackMixin:
                 payload["coder_report"] = self._build_coder_report_payload(parsed, loop_state)
         findings = meta.get("findings")
         if findings is None and payload.get("coder_report"):
-            findings = payload["coder_report"].get("findings")
+            findings = payload.get("coder_report").get("findings")
         if findings is not None:
             payload["findings"] = findings
         return payload
@@ -953,23 +885,19 @@ class WritebackMixin:
     def _auto_write_halt_payload(self, loop_state: Any) -> None:
         """Persist halt payload — dual-write: session checkpoint + job state.json.
 
-        Also attaches the payload to ``loop_state.metadata["halt_payload"]`` so
-        it flows through the graph state to the closure driver and the CLI (single
-        source of truth — the CLI does not re-derive it).
+        Also attaches it to metadata so it flows through graph state to the
+        closure driver and CLI (single source of truth).
         """
         halt_payload = self._build_halt_payload(loop_state)
 
-        # Attach to state so the closure driver / CLI can emit it.
         loop_state.metadata["halt_payload"] = halt_payload
 
-        # Direct write to job state.json
         job_updates: Dict[str, Any] = {"halt": halt_payload}
         findings = halt_payload.get("findings")
         if findings is not None:
             job_updates["findings"] = findings
         self._merge_into_job_state(job_updates)
 
-        # Direct write to task state.json if task directory exists under .snodo/tasks/
         if getattr(self, "_project_root", None) and getattr(loop_state, "task", None):
             task_id = getattr(loop_state.task, "id", None)
             if task_id:
@@ -989,8 +917,6 @@ class WritebackMixin:
                         task_state["findings"] = findings
                     atomic_write_json(task_state_path, task_state)
 
-
-        # Dual-write to session for orchestrator / dashboard
         if not self._session_manager or not self._session_id:
             return
         task_id = loop_state.task.id
@@ -1001,8 +927,7 @@ class WritebackMixin:
         halt = session.checkpoint.decisions.get("halt", {})
         if not isinstance(halt, dict):
             halt = {}
-        # The session checkpoint is transmitted over the wire (emits session_decision_updated).
-        # Strip output_tail so raw coder output never enters the audit log.
+        # Strip raw coder output before transmitting session checkpoint data.
         wire_payload = dict(halt_payload)
         wire_payload.pop("output_tail", None)
         halt[task_id] = wire_payload
@@ -1015,7 +940,6 @@ class WritebackMixin:
         flow_type = loop_state.task.flow_type
         wave_id = loop_state.task.wave_id
 
-        # Direct write to job state.json
         updates = {}
         if flow_type:
             updates["flow_type"] = flow_type
@@ -1024,7 +948,6 @@ class WritebackMixin:
         if updates:
             self._merge_into_job_state(updates)
 
-        # Dual-write to session
         if not self._session_manager or not self._session_id:
             return
         task_id = loop_state.task.id
@@ -1078,9 +1001,6 @@ class WritebackMixin:
 
         llm_cfg = load_llm_config()
         adapter_cls = resolve_adapter_class(new_model)
-        # The override just selected a different coder; a setting the operator
-        # wrote for the old one may be inert for the new one, and the moment to
-        # say so is this selection, not the next halted run (Fixes #311).
         report_inert_coder_settings(
             resolve_coder_name(model=new_model),
             explicit_coder_settings(llm_cfg.coder),
@@ -1102,7 +1022,6 @@ class WritebackMixin:
                               getattr(fresh_coder, "completion_fn", None)
         self._default_model = new_model
 
-        # Keep the validator runner completion function in sync
         if self._completion_fn is not None:
             self._validator_runner._completion_fn = self._completion_fn
 

@@ -1983,6 +1983,9 @@ class TestPostExecuteToolLoop:
         assert result.error is False
         assert result.severity == "pass"
         assert len(tool_choice_per_turn) == 2
+        assert all("model" not in call.kwargs for call in completion_fn.call_args_list)
+        assert all(call.kwargs["_configured_model"] == validator.model
+                   for call in completion_fn.call_args_list)
         # Reading turn must NOT require submit_verdict
         assert tool_choice_per_turn[0] is None
         # Final verdict-only turn MUST require submit_verdict

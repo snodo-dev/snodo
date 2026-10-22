@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import git as _gitpython  # noqa: F401  # GitPython must initialize before any test mocks subprocess.Popen
 import pytest
 from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
 from snodo.core.interfaces import TaskSpec
@@ -89,8 +90,9 @@ class TestWorkspaceResolution:
         assert adapter._workspace == Path("/explicit")
         assert adapter.workspace == Path("/explicit")
 
-    def test_task_worktree_granted_to_cli_distinct_from_cwd(self, tmp_path):
-        """When task worktree differs from Path.cwd(), the granted dir and cwd for CLI is the worktree."""
+    @pytest.mark.parametrize("major", [1, 2])
+    def test_task_worktree_granted_to_cli_distinct_from_cwd(self, tmp_path, major):
+        """When task worktree differs from Path.cwd(), the CLI runs in the worktree."""
         worktree = tmp_path / "task_worktree"
         worktree.mkdir()
         adapter = OpenCodeCLIAdapter(model="opencode-cli/test", workspace=worktree)
@@ -112,7 +114,8 @@ class TestWorkspaceResolution:
             return proc
 
         spec = TaskSpec(description="test task", constraints=[])
-        with patch("subprocess.Popen", side_effect=fake_popen):
+        with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=major), \
+             patch("subprocess.Popen", side_effect=fake_popen):
             adapter.implement(spec)
 
         assert executed_kwargs["cwd"] == str(worktree)
@@ -120,9 +123,14 @@ class TestWorkspaceResolution:
         assert inline["permission"]["edit"] == "deny"
         assert inline["tools"] == {"session_move": False, "worktree_create": False}
         assert executed_kwargs["cwd"] != str(Path.cwd())
-        dir_idx = executed_argv.index("--dir")
-        assert executed_argv[dir_idx + 1] == str(worktree)
-        assert executed_argv[dir_idx + 1] != str(Path.cwd())
+        if major >= 2:
+            # 2.x has no directory selector on `run`; cwd alone carries the pin.
+            assert "--dir" not in executed_argv
+            assert str(worktree) not in executed_argv
+        else:
+            dir_idx = executed_argv.index("--dir")
+            assert executed_argv[dir_idx + 1] == str(worktree)
+            assert executed_argv[dir_idx + 1] != str(Path.cwd())
 
 
 # ========== BARE MODEL ==========
@@ -152,7 +160,9 @@ class TestBareModel:
 class TestJsonOutputUsage:
     def test_opencode_argv_requests_json(self, tmp_path):
         adapter = OpenCodeCLIAdapter(model="", workspace=tmp_path)
-        assert adapter._build_argv("prompt", str(tmp_path), "") == [
+        with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=1):
+            argv = adapter._build_argv("prompt", str(tmp_path), "")
+        assert argv == [
             "opencode", "run", "--format", "json", "--dir", str(tmp_path),
             "--dangerously-skip-permissions", "prompt",
         ]
@@ -314,7 +324,8 @@ class TestSubprocessInvocation:
         mock_proc.stderr = io.StringIO("")
 
         with patch.object(adapter, "_build_prompt", return_value="test prompt"):
-            with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+            with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=1), \
+                 patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
                 adapter.implement(spec)
 
                 call_args = mock_popen.call_args[0][0]
@@ -559,3 +570,51 @@ class TestOpenCodeConfigConfinement:
         assert provider["options"]["baseURL"] == "https://gateway.example/v1"
         assert provider["options"]["apiKey"] == "secret-token"
         assert provider["models"] == {"gpt-6-luna": {"name": "gpt-6-luna"}}
+
+@pytest.mark.parametrize("major", [1, 2])
+def test_dispatched_linked_worktree_is_pinned_and_read_side_sees_branch(tmp_path, major):
+    """A CLI reading by relative path sees the divergent task branch, not main."""
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True).stdout
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / "subject.txt").write_text("main tree\n")
+    subprocess.run(["git", "add", "subject.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
+    worktree = tmp_path / "task-worktree"
+    subprocess.run(["git", "worktree", "add", "-b", "task", str(worktree)], cwd=repo, check=True, capture_output=True)
+    (worktree / "subject.txt").write_text("task branch\n")
+    (worktree / "branch-only.txt").write_text("present only on task\n")
+
+    adapter = OpenCodeCLIAdapter(model="", workspace=worktree)
+    observed = {}
+    def fake_popen(argv, **kwargs):
+        observed["cwd"] = kwargs["cwd"]
+        observed["argv"] = argv
+        # Mimic the CLI's actual relative-path read surface.
+        observed["content"] = (Path(kwargs["cwd"]) / "subject.txt").read_text()
+        observed["branch_only"] = (Path(kwargs["cwd"]) / "branch-only.txt").read_text()
+        proc = Mock(pid=12345, returncode=0, stdout=io.StringIO(""), stderr=io.StringIO(""))
+        return proc
+
+    with patch.object(OpenCodeCLIAdapter, "_cli_major_version", return_value=major), \
+         patch.object(adapter, "_record_binary_provenance"), \
+         patch("subprocess.Popen", side_effect=fake_popen):
+        adapter.implement(TaskSpec(description="read subject", constraints=[]))
+
+    assert observed["content"] == "task branch\n"
+    assert observed["branch_only"] == "present only on task\n"
+    assert Path(observed["cwd"]).resolve() == worktree.resolve()
+    if major >= 2:
+        # `opencode run` 2.x has no directory selector, and its only positional
+        # slot is the message, so a path in argv would be read as prompt text.
+        assert "--dir" not in observed["argv"]
+        assert str(worktree) not in observed["argv"]
+    else:
+        dir_index = observed["argv"].index("--dir")
+        assert Path(observed["argv"][dir_index + 1]).resolve() == worktree.resolve()

@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_argv_matches_installed_cli": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "eb12dc2c580fdf66"
+    }
+  },
+  "integration": {
+    "branch": "plan/opencode-launch-flag-976/integration",
+    "base_sha": "8c11230b73bb92307061aa195c8dcc91a91f5f66"
+  }
+}

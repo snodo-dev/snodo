@@ -1,0 +1,17 @@
+intent: The producer MCP server must start and serve its full tool surface under mcp
+  2.x, where mcp.server.fastmcp was renamed to mcp.server.mcpserver, so that a dependency
+  bump no longer takes the whole orchestration interface down
+name: mcp-2x-port-922
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_port_transport_to_mcp_2x
+- depends_on: []
+  id: 2
+  tasks:
+  - 2.1_carry_mcp_surfaces
+- depends_on: []
+  id: 3
+  tasks:
+  - 3.1_release_pin_retire_workarounds

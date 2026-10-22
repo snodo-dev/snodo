@@ -10,9 +10,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 - Add a fresh-start choice for retries and record attempt provenance, including the starting revision and inherited work. (Fixes #948)
+- Report a validator error instead of silently using the default provider when an overridden model cannot be rebound. (Fixes #993)
+- Probe for committed task-branch work after empty-artifact coder runs even when the coder reports findings, so contradictory file-absence claims halt as environment faults. (Fixes #996)
+- Halt as an environment fault when a coder says a named file is absent but it is present at the dispatched workspace HEAD, rather than validating stale work. (Fixes #992)
+- Route validators with model overrides through that model's configured provider credentials and task-scoped headers. (Fixes #990)
+- Split OpenCode CLI launch handling by major version and refuse undescribed versions rather than using a mismatched launch shape. (Fixes #982)
+- Pin dispatched OpenCode CLI runs to the task worktree and expose the read-tree boundary in run output. OpenCode 2.x `opencode run` takes no directory at all — no `--dir` flag, no directory positional (its only positional is the message), no directory env var — so a 2.x run is pinned by the subprocess cwd with session-move and worktree-create denied, while 1.x keeps `--dir`; a path passed as a 2.x positional is read as prompt text and is now covered by a test. (Fixes #975; regression to #911)
+- Wait briefly for a timed-out quality gate's process group to disappear before asserting it is gone, so the test measures the kill rather than scheduler luck.
 - Require a validator verdict to name the task it judges, reject one that names another task instead of counting it as a pass, and record the subject a cached verdict was gathered for so a reused verdict is only served to that same subject; a malformed or unusable cache record is a miss rather than a validator error. (Fixes #951)
 - Add a Cloudflare AI Gateway provider guide covering configuration, model IDs, verification and troubleshooting. (Fixes #952)
 - Link the Cloudflare AI Gateway guide from the docs navigation, the providers overview and the Workers AI guide. (Fixes #953)
+- Judge a recovery probe against the attempt it resumes rather than the plan's base branch, so a coder run that changes nothing is no longer promoted to a pass because earlier waves left work on the task branch; a multi-wave plan can no longer advance, deliver or merge on an inherited diff. (Fixes #947)
+- Supply the previous attempt's failure report to pre-execute validators as clearly separated evidence instead of concatenating it into the task description, so a retry is no longer refused for the content of its own failure record, and a pre-execute refusal that never reached the coder no longer spends a coder attempt. (Fixes #931)
+- Fix the stale and unresolvable links in the published documentation and make the docs build fail on broken links, absolute links and unrecognized references. (#955; in-page anchors still unvalidated)
 
 ## [0.26.0] — 2026-10-16
 

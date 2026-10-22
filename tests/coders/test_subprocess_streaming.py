@@ -318,4 +318,13 @@ class TestDiagnosticTailStillFedByTheStream:
 
         assert artifact.files == []
         assert artifact.metadata["output_tail"] == "rate limit reached"
-        assert streamed == ["rate limit reached"]
+        # The engine announces the read-tree boundary on this same progress
+        # channel before the process starts, so the coder's own stderr is the
+        # stream minus that one boundary line — still verbatim and unlabeled.
+        boundary = [
+            line for line in streamed
+            if line.startswith("  Coder tools will read project tree:")
+        ]
+        assert len(boundary) == 1
+        assert Path(boundary[0].split(": ", 1)[1]).resolve() == root.resolve()
+        assert [line for line in streamed if line not in boundary] == ["rate limit reached"]

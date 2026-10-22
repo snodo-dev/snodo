@@ -1,0 +1,9 @@
+intent: The workspace builder reuses any directory already sitting at a task's identity
+  path without checking that it belongs to the repository being worked on, so two
+  projects sharing a parent directory and a task id silently get each other's workspace
+name: worktree-identity-check-970
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_prove_worktree_ownership_before_reuse

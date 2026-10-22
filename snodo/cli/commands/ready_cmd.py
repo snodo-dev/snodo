@@ -389,3 +389,4 @@ def _extension_plugin_status() -> dict:
         "snodo.predicates": predicates.plugin_status(),
         "snodo.coders": coder_plugin_status(),
     }
+

@@ -1,0 +1,11 @@
+intent: Published documentation must not link to paths the site does not serve
+name: published-doc-links-955
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_links_resolve_on_the_site
+- depends_on: []
+  id: 2
+  tasks:
+  - 2.1_anchor_check

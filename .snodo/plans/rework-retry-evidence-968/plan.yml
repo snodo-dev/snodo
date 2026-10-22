@@ -1,0 +1,15 @@
+intent: 'The fix-forward review of the #931 delivery found that the pre-execute judged
+  subject cannot tell an operator retry from an engine recovery, that the verdict
+  cache is disabled wholesale instead of keyed on the real subject, and that the halt
+  payload still emits a field ADR 045 removed'
+name: rework-retry-evidence-968
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_judged_subject_explicit
+  - 1.2_retire_stale_payload_field
+- depends_on: []
+  id: 2
+  tasks:
+  - 2.1_key_verdict_cache_on_subject

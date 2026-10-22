@@ -13,6 +13,7 @@ from snodo.infrastructure.tokens import TokenStoreError
 from snodo.tools.git import resolve_base_branch
 from snodo.engine.policy import PolicyAction, policy_decision_to_dict
 from snodo.engine.nodes.writeback import _coder_registry_name
+from snodo.engine.absent_claims import detect_absent_claims
 
 
 def _resolved_base_branch(project_root: Any) -> str:
@@ -518,6 +519,28 @@ class ValidationNodeMixin:
             # intentionally-unchanged HEAD for a claimed-but-missing commit.
             existing_base_ref = self._last_existing_work_base_ref
             if existing_base_ref:
+                report = getattr(self, "_last_coder_report", None)
+                findings = getattr(report, "findings", None)
+                workspace = getattr(self.workspace_mcp, "project_root", None)
+                contradiction = detect_absent_claims(str(findings or ""), workspace) if workspace else None
+                if contradiction:
+                    try:
+                        branch = self.git_mcp.repo.active_branch.name
+                    except Exception:
+                        branch = "unknown"
+                    reason = (
+                        f"Coder reported {', '.join(contradiction.paths)} absent, but they are present "
+                        f"at HEAD {contradiction.head} in workspace {workspace} (branch {branch}). "
+                        "This is an environment fault; fix the dispatched workspace and retry, "
+                        "rather than rewriting the spec."
+                    )
+                    loop_state.is_blocked = True
+                    loop_state.halt_type = "environment_error"
+                    loop_state.constraint_violations.append(reason)
+                    loop_state.metadata["post_validation"] = {"outcome": "skipped", "reason": reason}
+                    loop_state.metadata["coder_report"] = report.model_dump() if report else {}
+                    self._auto_write_failure_context(loop_state, [])
+                    return self._state_to_dict(loop_state)
                 self._last_existing_work_base_ref = None
                 loop_state.base_ref = existing_base_ref
                 work_files = sorted({str(a) for a in loop_state.artifacts})

@@ -16,6 +16,7 @@ import os
 import shlex
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -622,8 +623,18 @@ class TestQualityValidatorEvaluate:
         assert event.data["outcome"] == "error"
         assert "gate reached slow step" in event.data["output_tail"]
         assert "Timeout after 0.3s" in event.data["output_tail"]
-        with pytest.raises(ProcessLookupError):
-            os.kill(int(child_pid_file.read_text()), 0)
+        child_pid = int(child_pid_file.read_text())
+        deadline = time.monotonic() + 5.0
+        # A signalled process still answers a liveness probe until it is reaped,
+        # so wait for it to disappear instead of sampling once.
+        while True:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                break
+            if time.monotonic() >= deadline:
+                pytest.fail(f"Process group was not killed: grandchild {child_pid} still exists after 5s")
+            time.sleep(0.05)
 
     def test_no_test_command_runs_noop_and_records_no_tests(self, quality_spec_no_tooling, project_dir):
         """When no test command can be determined, the shipped no-op default

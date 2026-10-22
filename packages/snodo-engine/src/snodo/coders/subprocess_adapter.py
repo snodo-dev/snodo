@@ -627,6 +627,12 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         # name; the child's PATH resolves it, and that resolution is normally
         # correct — what was missing was any record of its result (Fixes #290).
         self._record_binary_provenance()
+        progress = getattr(self, "progress_callback", None)
+        if progress is not None:
+            try:
+                progress(f"  Coder tools will read project tree: {Path(project_root).resolve()}")
+            except Exception:
+                _logger.debug("Could not emit coder workspace boundary", exc_info=True)
         _logger.info(
             "%s: executing with containment boundary at %s (binary=%s version=%s)",
             self.binary, project_root,

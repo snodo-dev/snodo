@@ -1,0 +1,8 @@
+intent: 'Newly dispatched opencode-cli tasks cannot launch: the adapter passes --dir,
+  which opencode 2.x does not accept, so every fresh worktree halts at dispatch (#976).'
+name: opencode-launch-flag-976
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_argv_matches_installed_cli
