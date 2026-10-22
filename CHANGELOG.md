@@ -13,6 +13,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Pin dispatched OpenCode CLI runs to the task worktree with an explicit project directory, expose the read-tree boundary in run output, and cover branch-divergent linked-worktree reads. (Fixes #975; regression to #911)
 - Split OpenCode CLI launch handling by major version and refuse undescribed versions rather than using a mismatched launch shape. (Fixes #982)
 
+- Add a fresh-start choice for retries and record attempt provenance, including the starting revision and inherited work. (Fixes #948)
 - Report a validator error instead of silently using the default provider when an overridden model cannot be rebound. (Fixes #993)
 - Probe for committed task-branch work after empty-artifact coder runs even when the coder reports findings, so contradictory file-absence claims halt as environment faults. (Fixes #996)
 - Halt as an environment fault when a coder says a named file is absent but it is present at the dispatched workspace HEAD, rather than validating stale work. (Fixes #992)

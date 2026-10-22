@@ -90,3 +90,43 @@ def test_plan_run_only_offers_shared_options():
     assert not unexpected, (
         f"`snodo plan run` offers options `snodo run` does not: {sorted(unexpected)}"
     )
+
+
+def test_fresh_start_matches_mcp_retry_choice():
+    """All retry surfaces opt in to fresh work, never discard it by default."""
+    from snodo.cli.commands.run_cmd import RunArgs
+    from snodo.mcp.tools import TOOL_REGISTRY
+
+    schema = TOOL_REGISTRY["retry_job"]["inputSchema"]["properties"]["fresh_start"]
+    assert schema["type"] == "boolean"
+    assert "default false" in schema["description"]
+    assert "previous attempt" in schema["description"]
+    assert RunArgs().fresh_start is False
+    for command in (_run_command(), _plan_run_command()):
+        option = next(p for p in command.params if p.name == "fresh_start")
+        assert option.opts == ["--fresh-start"]
+        assert option.default is False
+        assert "base revision" in option.help
+        assert "previous" in option.help
+        assert "preserve" in option.help
+
+
+def test_plan_fresh_start_uses_the_shared_arguments_object(monkeypatch):
+    """Fresh-start takes the same route as retain-worktree and no-isolation."""
+    from typer.testing import CliRunner
+    from snodo.cli.commands import plan_cmd
+    from snodo.cli.commands.run_cmd import RunArgs
+
+    received = []
+    monkeypatch.setattr(plan_cmd, "_plan_run", lambda args: received.append(args) or 0)
+    result = CliRunner().invoke(plan_app, [
+        "run", "example", "--fresh-start", "--retain-worktree", "--no-isolation",
+    ])
+    assert result.exit_code == 0, result.output
+    assert len(received) == 1
+    args = received[0]
+    assert isinstance(args, RunArgs)
+    assert args.plan == "example"
+    assert args.fresh_start is True
+    assert args.retain_worktree is True
+    assert args.no_isolation is True

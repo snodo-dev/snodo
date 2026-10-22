@@ -7,6 +7,12 @@ _SPEC_DISPLAY_LIMIT = 400
 
 def print_spec_block(spec: str, *, task_id: str, prefix: str = "  ") -> None:
     """Print one specification, truncating long text consistently."""
+    from snodo.infrastructure.paths import resolve_project_root
+    from snodo.cli.commands.retry_workspace import read_origin, print_origin
+
+    root = resolve_project_root()
+    if root:
+        print_origin(read_origin(root, task_id))
     if len(spec) > _SPEC_DISPLAY_LIMIT:
         print(f"{prefix}{spec[:_SPEC_DISPLAY_LIMIT]}…")
         print(f"{prefix}(truncated — full spec: snodo task show {task_id} --json)")

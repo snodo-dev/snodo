@@ -2329,7 +2329,7 @@ class TestResolveSessionProjectAnnounced:
 
 
 def test_persist_job_task_id_uses_locked_atomic_update(tmp_path):
-    from snodo.cli.commands.run_cmd import _persist_job_task_id
+    from snodo.cli.commands.retry_workspace import _persist_job_task_id
     from snodo.infrastructure.state import atomic_update_json
 
     job_dir = tmp_path / "job"
