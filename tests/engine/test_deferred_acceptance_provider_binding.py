@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from snodo.compiler.models import Validator
-from snodo.core.interfaces import Task
+from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.validators import ValidatorRunner
 from snodo.validators import llm_validator
 
@@ -34,15 +34,15 @@ def test_deferred_acceptance_uses_its_pinned_provider(monkeypatch):
 
     calls = []
 
-    def completion(model=DEFAULT_MODEL, api_base=DEFAULT_BASE, api_key=DEFAULT_KEY, **kwargs):
-        calls.append({"model": model, "api_base": api_base, "api_key": api_key, **kwargs})
+    def completion(**kwargs):
+        calls.append(kwargs)
         message = SimpleNamespace(
             content='{"severity":"pass","justification":"criteria met"}',
             tool_calls=[],
         )
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
-    completion_fn = completion
+    completion_fn = MagicMock(side_effect=completion)
     bound_completion = partial(
         completion_fn, model=DEFAULT_MODEL, api_base=DEFAULT_BASE, api_key=DEFAULT_KEY
     )
@@ -53,24 +53,40 @@ def test_deferred_acceptance_uses_its_pinned_provider(monkeypatch):
         SimpleNamespace(max_tokens=128, max_tool_turns=3),
         None, MagicMock(), MagicMock(), None,
     )
+
+    # Quality is required to put acceptance on the deferred pass; neutralize its execution.
+    dispatch = runner._dispatch_one
+
+    def dispatch_with_quality_stub(validator, context, registry):
+        if validator.validator_type == "quality":
+            return ValidatorResult(
+                validator_id=validator.validator_id, severity="pass", justification="stubbed"
+            )
+        return dispatch(validator, context, registry)
+
+    monkeypatch.setattr(runner, "_dispatch_one", dispatch_with_quality_stub)
+
     quality = Validator(
         validator_id="quality", validator_type="quality", criteria=["passes tests"]
+    )
+    default = Validator(
+        validator_id="default", validator_type="security", criteria=["check default"]
     )
     acceptance = Validator(
         validator_id="acceptance", validator_type="acceptance",
         model=PINNED_MODEL, criteria=["meets requirements"],
     )
 
-    results = runner.run(
+    runner.run(
         Task(id="task-1", spec="Acceptance criteria: meets requirements"),
-        [quality, acceptance], None, current_mode="producer", phase="post_execute",
+        [quality, default, acceptance], None, current_mode="producer", phase="post_execute",
     )
 
-    quality_calls = [call for call in calls if call.get("model") == DEFAULT_MODEL]
+    default_calls = [call for call in calls if call.get("model") == DEFAULT_MODEL]
     acceptance_calls = [call for call in calls if call.get("model") == PINNED_MODEL]
-    assert quality_calls, (results, calls)
-    assert all(call["api_base"] == DEFAULT_BASE for call in quality_calls)
-    assert all(call["api_key"] == DEFAULT_KEY for call in quality_calls)
+    assert default_calls
+    assert all(call["api_base"] == DEFAULT_BASE for call in default_calls)
+    assert all(call["api_key"] == DEFAULT_KEY for call in default_calls)
     assert acceptance_calls
     assert all(call["api_base"] == PINNED_BASE for call in acceptance_calls)
     assert all(call["api_key"] == PINNED_KEY for call in acceptance_calls)
