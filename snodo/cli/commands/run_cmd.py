@@ -20,7 +20,7 @@ from snodo.core.spec import same_spec, spec_text, spec_with_guidance
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol, followup
 from snodo.infrastructure import cloud_liveness, worktree
-from snodo.cli.commands.retry_workspace import setup_attempt, workspace_identity
+from snodo.cli.commands.retry_workspace import setup_attempt, attempt_workspace_facts, workspace_identity, _persist_job_task_id
 # Task start/completion recording moved to task_record.py (Fixes #382);
 # the names stay importable from here — callers and tests reach them at
 # this path, and _execute_task below calls them through this module.
@@ -889,10 +889,12 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             protocol=protocol,
             base=os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if task.plan_name else None,
         )
-        from snodo.infrastructure.worktree import task_worktree_branch
-        task.branch = task_worktree_branch(worktree_path_val) if worktree_path_val else None; worktree_failure = None
+        task.branch, workspace_id = attempt_workspace_facts(task, worktree_path_val)
+        worktree_failure = None
     except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently
-        worktree_path_val = None; worktree_failure = exc
+        worktree_path_val = None
+        workspace_id = task.id
+        worktree_failure = exc
 
     if not worktree_path_val and not no_isolation:
         # Failing loud (Fixes #29): an agent must not run in the operator's
@@ -905,7 +907,6 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             _close_checkpointer(checkpointer)
         return 1
 
-    workspace_id = workspace_identity(task.id, worktree_path_val)
     worktree_degraded = False
     if worktree_path_val:
         print(f"  Worktree: {worktree_path_val}")
@@ -1109,7 +1110,10 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             os.environ.pop("SNODO_PROJECT_ROOT", None)
 
 
-def _persist_job_task_id(job_dir: Path, task_id: str) -> None:
+
+
+
+ef _persist_job_task_id(job_dir: Path, task_id: str) -> None:
     """Persist the resolved task identity without exposing partial task JSON."""
     task_json_path = job_dir / "task.json"
     if not task_json_path.exists():
@@ -1126,7 +1130,6 @@ def _persist_job_task_id(job_dir: Path, task_id: str) -> None:
             "Could not persist task_id into %s for retry lookup: %s",
             task_json_path, e,
         )
-
 
 def _print_worktree_retained(project_root, task, worktree_path_val, plan_name: Optional[str] = None) -> None:
     """Tell the user where the retained worktree is and how to inspect/remove it."""

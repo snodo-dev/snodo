@@ -124,3 +124,13 @@ def print_origin(origin):
         print(f"  Inherited work: {origin.get('inherited_work', False)}")
         if origin.get("starting_branch"):
             print(f"  Starting branch: {origin['starting_branch']}")
+
+
+def attempt_workspace_facts(task, path):
+    """Return the branch and lifecycle identity for an attempted workspace."""
+    from snodo.infrastructure.worktree import task_worktree_branch
+
+    branch = task_worktree_branch(path) if path else None
+    return branch, workspace_identity(task.id, path)
+
+
