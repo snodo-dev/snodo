@@ -440,11 +440,17 @@ def _evaluate_validator(
 
 
 def _completion_for_validator(
-    shared_completion_fn: Any, effective_model: str, default_model: str, task_id: str
+    context_completion_fn: Any,
+    shared_completion_fn: Any,
+    effective_model: str,
+    default_model: str,
+    task_id: str,
 ) -> Any:
-    """Return a completion bound to a validator model, or None if impossible."""
-    if shared_completion_fn is None or effective_model == default_model:
-        return shared_completion_fn
+    """Return this validator's model-bound completion, or None if impossible."""
+    if effective_model == default_model:
+        return context_completion_fn
+    if shared_completion_fn is None:
+        return context_completion_fn
     base_fn = getattr(shared_completion_fn, "func", None)
     if base_fn is None:
         return None
@@ -655,7 +661,7 @@ def run_validators(
             ctx = copy.copy(context)
             ctx.model = effective_model
             ctx.completion_fn = _completion_for_validator(
-                completion_fn, effective_model, default_model, task.id
+                ctx.completion_fn, completion_fn, effective_model, default_model, task.id
             )
             if completion_fn is not None and effective_model != default_model and ctx.completion_fn is None:
                 futures[executor.submit(_completion_binding_error, v, effective_model)] = v.validator_id
@@ -814,7 +820,7 @@ def run_validators(
         effective_model = override_model or v.model or default_model or DEFAULT_MODEL
         ctx.model = effective_model
         ctx.completion_fn = _completion_for_validator(
-            completion_fn, effective_model, default_model, task.id
+            ctx.completion_fn, completion_fn, effective_model, default_model, task.id
         )
         if completion_fn is not None and effective_model != default_model and ctx.completion_fn is None:
             result = _completion_binding_error(v, effective_model)
