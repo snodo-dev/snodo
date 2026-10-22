@@ -439,6 +439,27 @@ def _evaluate_validator(
     return enrich_result_with_criteria(result, v.criteria)
 
 
+def _completion_for_validator(
+    shared_completion_fn: Any, effective_model: str, default_model: str, task_id: str
+) -> Any:
+    """Return a completion bound to a validator model, or None if impossible."""
+    if shared_completion_fn is None or effective_model == default_model:
+        return shared_completion_fn
+    base_fn = getattr(shared_completion_fn, "func", None)
+    if base_fn is None:
+        return None
+    rebound = build_completion_fn(effective_model, base_fn)
+    return wrap_completion_fn_with_headers(rebound, task_id) if task_id else rebound
+
+
+def _completion_binding_error(validator: Validator, model: str) -> ValidatorResult:
+    return ValidatorResult(
+        validator_id=validator.validator_id, severity="blocker",
+        justification=(f"Validator {validator.validator_id} could not bind model {model}: "
+                       "shared completion function cannot be rebound"), error=True,
+    )
+
+
 def run_validators(
     protocol: Protocol,
     validators: List[Validator],
@@ -633,20 +654,12 @@ def run_validators(
             effective_model = override_model or v.model or default_model or DEFAULT_MODEL
             ctx = copy.copy(context)
             ctx.model = effective_model
-            if completion_fn is not None and effective_model != default_model:
-                # The shared completion is already bound to the role default.
-                # Reuse its base callable, but resolve routing and credentials
-                # together for this validator's configured model.
-                base_completion_fn = getattr(completion_fn, "func", None)
-                if base_completion_fn is not None:
-                    validator_completion_fn = build_completion_fn(
-                        effective_model, base_completion_fn
-                    )
-                    ctx.completion_fn = (
-                        wrap_completion_fn_with_headers(
-                            validator_completion_fn, task.id
-                        ) if task.id else validator_completion_fn
-                    )
+            ctx.completion_fn = _completion_for_validator(
+                completion_fn, effective_model, default_model, task.id
+            )
+            if completion_fn is not None and effective_model != default_model and ctx.completion_fn is None:
+                futures[executor.submit(_completion_binding_error, v, effective_model)] = v.validator_id
+                continue
             ctx.max_tool_turns = v.max_tool_turns or _vcfg.max_tool_turns
             future = executor.submit(_dispatch_with_progress, v, ctx)
             futures[future] = v.validator_id
@@ -800,17 +813,15 @@ def run_validators(
         override_model = overrides.get(v.validator_id)
         effective_model = override_model or v.model or default_model or DEFAULT_MODEL
         ctx.model = effective_model
-        if completion_fn is not None and effective_model != default_model:
-            base_completion_fn = getattr(completion_fn, "func", None)
-            if base_completion_fn is not None:
-                validator_completion_fn = build_completion_fn(
-                    effective_model, base_completion_fn
-                )
-                ctx.completion_fn = (
-                    wrap_completion_fn_with_headers(
-                        validator_completion_fn, task.id
-                    ) if task.id else validator_completion_fn
-                )
+        ctx.completion_fn = _completion_for_validator(
+            completion_fn, effective_model, default_model, task.id
+        )
+        if completion_fn is not None and effective_model != default_model and ctx.completion_fn is None:
+            result = _completion_binding_error(v, effective_model)
+            if verdict_sink is not None:
+                verdict_sink(v.validator_id, result)
+            results_by_id[v.validator_id] = result
+            continue
         ctx.max_tool_turns = v.max_tool_turns or _vcfg.max_tool_turns
         try:
             result = dispatch_fn(v, ctx, reg)
