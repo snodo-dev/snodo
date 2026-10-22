@@ -20,6 +20,7 @@ from snodo.core.spec import same_spec, spec_text, spec_with_guidance
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol, followup
 from snodo.infrastructure import cloud_liveness, worktree
+from snodo.cli.commands.retry_workspace import setup_attempt, attempt_workspace_facts, workspace_identity, _persist_job_task_id
 # Task start/completion recording moved to task_record.py (Fixes #382);
 # the names stay importable from here — callers and tests reach them at
 # this path, and _execute_task below calls them through this module.
@@ -83,6 +84,8 @@ def _build_execution_options() -> dict:
         "no_isolation": typer.Option(False, "--no-isolation",
                                      help="Run without worktree isolation even when one cannot be created. "
                                           "Never set automatically: losing isolation is a warning, not an error."),
+        "fresh_start": typer.Option(False, "--fresh-start",
+                                    help="Start from the task's base revision instead of continuing previous attempt work; preserve the previous branch, worktree and records (default false)"),
         "retain_worktree": typer.Option(False, "--retain-worktree",
                                         help="Keep the task worktree regardless of outcome"),
         "fixture": typer.Option(None, "--fixture",
@@ -115,6 +118,7 @@ class RunArgs:
     append_spec: Optional[str] = None
     replace_spec: Optional[str] = None
     retain_worktree: bool = False
+    fresh_start: bool = False
     no_isolation: bool = False
     fixture: Optional[str] = None
     audit_log: Optional[Any] = None
@@ -171,6 +175,7 @@ def register(app: typer.Typer) -> None:
                  "the previous spec stays recoverable)",
         ),
         retain_worktree: bool = _execution_option("retain_worktree"),
+        fresh_start: bool = _execution_option("fresh_start"),
         no_isolation: bool = _execution_option("no_isolation"),
         fixture: Optional[str] = _execution_option("fixture"),
     ):
@@ -182,6 +187,7 @@ def register(app: typer.Typer) -> None:
             resume=resume, retry=retry,
             append_spec=append_spec, replace_spec=replace_spec,
             retain_worktree=retain_worktree, no_isolation=no_isolation,
+            fresh_start=fresh_start,
             fixture=fixture,
         )
         return run_command(args)
@@ -867,25 +873,27 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
     # Set up git worktree — shared helper used by BOTH CLI inline and background
     from snodo.infrastructure.worktree import (
-        setup_for_task, remove_worktree,
+        remove_worktree,
         teardown_task_worktree, report_setup_failure,
     )
     existing_wt = os.environ.get("SNODO_WORKTREE_PATH")
     no_isolation = bool(getattr(args, "no_isolation", False))
 
     try:
-        worktree_path_val = setup_for_task(
+        worktree_path_val = setup_attempt(
             project_root, task.id, task.spec,
+            fresh_start=bool(getattr(args, "fresh_start", False)),
+            task=task,
             existing_worktree_path=existing_wt,
             plan_name=worktree.task_plan_name(args),
             protocol=protocol,
             base=os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if task.plan_name else None,
         )
-        from snodo.infrastructure.worktree import task_worktree_branch
-        task.branch = task_worktree_branch(worktree_path_val) if worktree_path_val else None
+        task.branch, workspace_id = attempt_workspace_facts(task, worktree_path_val)
         worktree_failure = None
     except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently
         worktree_path_val = None
+        workspace_id = task.id
         worktree_failure = exc
 
     if not worktree_path_val and not no_isolation:
@@ -944,7 +952,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     )
     if graph_and_issuer is None:
         if worktree_path_val and not getattr(args, "retain_worktree", False):
-            remove_worktree(project_root, task.id)
+            remove_worktree(project_root, workspace_id)
         elif worktree_path_val:
             _print_worktree_retained(project_root, task, worktree_path_val)
         if checkpointer:
@@ -1078,7 +1086,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             else:
                 try:
                     teardown_task_worktree(
-                        project_root, task.id, worktree.task_plan_name(args),
+                        project_root, workspace_id, worktree.task_plan_name(args),
                         target_ref=os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if task.plan_name else None,
                     )
                 except Exception as e:
@@ -1102,24 +1110,6 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             os.environ.pop("SNODO_PROJECT_ROOT", None)
 
 
-def _persist_job_task_id(job_dir: Path, task_id: str) -> None:
-    """Persist the resolved task identity without exposing partial task JSON."""
-    task_json_path = job_dir / "task.json"
-    if not task_json_path.exists():
-        return
-    try:
-        from snodo.infrastructure.state import atomic_update_json
-
-        atomic_update_json(
-            job_dir, "task.json",
-            lambda data: data.update(task_id=task_id), strict=True,
-        )
-    except Exception as e:
-        _logger.warning(
-            "Could not persist task_id into %s for retry lookup: %s",
-            task_json_path, e,
-        )
-
 
 def _print_worktree_retained(project_root, task, worktree_path_val, plan_name: Optional[str] = None) -> None:
     """Tell the user where the retained worktree is and how to inspect/remove it."""
@@ -1137,7 +1127,7 @@ def _print_worktree_retained(project_root, task, worktree_path_val, plan_name: O
     print(f"Worktree preserved for inspection: {worktree_path_val}")
     print(f"  Branch: {branch}")
     print(f"  Inspect: {followup.task_inspect(task.id)}")
-    print(f"  List/remove: snodo worktree list / snodo worktree remove {task.id}")
+    print(f"  List/remove: snodo worktree list / snodo worktree remove {workspace_identity(task.id, worktree_path_val)}")
 
 
 def _auto_merge_block_reason(protocol, mode, closure_tree, worktree_path_val, worktree_degraded, project_root: Optional[str] = None, task: Optional[Any] = None, plan_name: Optional[str] = None):
@@ -1162,7 +1152,7 @@ def _auto_merge_block_reason(protocol, mode, closure_tree, worktree_path_val, wo
     if project_root and task:
         from snodo.infrastructure.worktree import task_branch_has_no_changes
         spec = getattr(task, "root_spec", None) or getattr(task, "spec", "")
-        if task_branch_has_no_changes(project_root, task.id, spec, plan_name):
+        if task_branch_has_no_changes(project_root, workspace_identity(task.id, worktree_path_val), spec, plan_name):
             return "no changes on task branch"
     return None
 

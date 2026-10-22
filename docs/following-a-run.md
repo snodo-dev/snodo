@@ -72,3 +72,29 @@ Do not infer task outcomes from the parent job alone. Keep the plan task
 vocabulary (`pending`, `in_progress`, `completed`, `blocked`, `errored`, and
 `unmerged`) distinct from job status, and do not translate either into new
 status or halt values.
+
+## Retry starting point and retained work
+
+`snodo run --retry <task_id>` continues the previous attempt's work by default,
+including commits made before a halt and uncommitted changes. Rerunning a wave
+also reuses its task workspace. The coder receives a continuation notice when
+that workspace already carries work; it still needs validation.
+
+Choose `snodo run --retry <task_id> --fresh-start` or
+`snodo plan run <plan> --wave <id> --fresh-start` for a clean checkout of the
+task's base revision (the plan integration branch for plan tasks). This is the
+same choice as `fresh_start: true` on MCP `retry_job`. Fresh does not mean
+remove: earlier branches, worktrees and records remain readable. The run names
+what was left untouched. The status records `starting_revision`,
+`starting_branch`, and `inherited_work`; `snodo task show <task_id>` displays
+the starting-point evidence after a halt. Older attempt snapshots live under
+`.snodo/tasks/<task_id>/attempts/`.
+
+Preserved worktrees live beside the repository in
+`../.snodo-worktrees/<task_id>/`, or
+`../.snodo-worktrees/<plan>/<task_id>/` for plan tasks. Fresh workspace names
+include `_fresh_` and are printed by the run. They accumulate on that machine
+across runs; they are not temporary directories automatically erased after a
+halt. Use `snodo worktree list` to inspect them. The explicit discard command
+is `snodo worktree remove <identifier>` (use the plan-scoped identifier from
+the list). It removes the worktree and its branch, not the saved task records.
