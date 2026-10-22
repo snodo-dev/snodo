@@ -1111,26 +1111,6 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
 
 
-
-
-ef _persist_job_task_id(job_dir: Path, task_id: str) -> None:
-    """Persist the resolved task identity without exposing partial task JSON."""
-    task_json_path = job_dir / "task.json"
-    if not task_json_path.exists():
-        return
-    try:
-        from snodo.infrastructure.state import atomic_update_json
-
-        atomic_update_json(
-            job_dir, "task.json",
-            lambda data: data.update(task_id=task_id), strict=True,
-        )
-    except Exception as e:
-        _logger.warning(
-            "Could not persist task_id into %s for retry lookup: %s",
-            task_json_path, e,
-        )
-
 def _print_worktree_retained(project_root, task, worktree_path_val, plan_name: Optional[str] = None) -> None:
     """Tell the user where the retained worktree is and how to inspect/remove it."""
     from snodo.infrastructure.worktree import _task_identity
