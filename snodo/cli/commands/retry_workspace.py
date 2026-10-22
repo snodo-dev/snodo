@@ -19,6 +19,7 @@ _logger = logging.getLogger(__name__)
 
 def setup_attempt(project_root, task_id, spec, *, fresh_start=False, **kwargs):
     """Use the existing lifecycle, with a new workspace identity for fresh runs."""
+    task = kwargs.pop("task", None)
     if not fresh_start:
         # A fresh attempt can itself halt. Its next continuation must reuse
         # that checkout, not jump back to the older workspace left beside it.
@@ -31,14 +32,20 @@ def setup_attempt(project_root, task_id, spec, *, fresh_start=False, **kwargs):
                     project_root, identity, kwargs.get("plan_name")
                 ).resolve()):
             kwargs["existing_worktree_path"] = previous
-        return worktree.setup_for_task(project_root, task_id, spec, **kwargs)
+        path = worktree.setup_for_task(project_root, task_id, spec, **kwargs)
+        if task is not None:
+            record_origin(project_root, task, path, kwargs.get("plan_name"), kwargs.get("base"))
+        return path
     identity = f"{task_id}_fresh_{secrets.token_hex(6)}"
     kwargs.pop("existing_worktree_path", None)
     print(
         f"  Fresh start: workspace {identity}. Previous attempt {task_id}: "
         "branch, worktree and records left untouched."
     )
-    return worktree.setup_for_task(project_root, identity, spec, **kwargs)
+    path = worktree.setup_for_task(project_root, identity, spec, **kwargs)
+    if task is not None:
+        record_origin(project_root, task, path, kwargs.get("plan_name"), kwargs.get("base"))
+    return path
 
 
 def workspace_identity(task_id, path):

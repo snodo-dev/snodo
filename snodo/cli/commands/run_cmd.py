@@ -20,7 +20,7 @@ from snodo.core.spec import same_spec, spec_text, spec_with_guidance
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol, followup
 from snodo.infrastructure import cloud_liveness, worktree
-from snodo.cli.commands.retry_workspace import setup_attempt, record_origin, workspace_identity
+from snodo.cli.commands.retry_workspace import setup_attempt, workspace_identity
 # Task start/completion recording moved to task_record.py (Fixes #382);
 # the names stay importable from here — callers and tests reach them at
 # this path, and _execute_task below calls them through this module.
@@ -883,17 +883,16 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         worktree_path_val = setup_attempt(
             project_root, task.id, task.spec,
             fresh_start=bool(getattr(args, "fresh_start", False)),
+            task=task,
             existing_worktree_path=existing_wt,
             plan_name=worktree.task_plan_name(args),
             protocol=protocol,
             base=os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if task.plan_name else None,
         )
         from snodo.infrastructure.worktree import task_worktree_branch
-        task.branch = task_worktree_branch(worktree_path_val) if worktree_path_val else None
-        worktree_failure = None
+        task.branch = task_worktree_branch(worktree_path_val) if worktree_path_val else None; worktree_failure = None
     except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently
-        worktree_path_val = None
-        worktree_failure = exc
+        worktree_path_val = None; worktree_failure = exc
 
     if not worktree_path_val and not no_isolation:
         # Failing loud (Fixes #29): an agent must not run in the operator's
@@ -906,8 +905,6 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             _close_checkpointer(checkpointer)
         return 1
 
-    record_origin(project_root, task, worktree_path_val, worktree.task_plan_name(args),
-                  os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if task.plan_name else None)
     workspace_id = workspace_identity(task.id, worktree_path_val)
     worktree_degraded = False
     if worktree_path_val:
