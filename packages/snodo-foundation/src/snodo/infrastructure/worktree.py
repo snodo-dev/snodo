@@ -575,11 +575,21 @@ def create_worktree(
         if not registered:
             detail = "not a git repository"
             try:
+                from git import InvalidGitRepositoryError, NoSuchPathError
+                from git.exc import BadName
                 from snodo.tools.git import open_repo
+
                 with open_repo(str(wt_path), search_parent_directories=False) as existing_repo:
-                    detail = f"branch {existing_repo.active_branch.name!r} in repository {existing_repo.working_tree_dir!r}"
+                    try:
+                        branch_detail = f"branch {existing_repo.active_branch.name!r}"
+                    except (TypeError, BadName):
+                        branch_detail = "detached or unborn HEAD"
+                    detail = f"{branch_detail} in repository {existing_repo.working_tree_dir!r}"
+            except (InvalidGitRepositoryError, NoSuchPathError):
+                detail = "not a git repository"
             except Exception:
-                pass
+                _logger.debug("Could not inspect unregistered workspace %s", wt_path, exc_info=True)
+                detail = "repository details could not be read"
             raise WorktreeIsolationError(
                 f"Refusing to use existing path {wt_path}: found {detail}; project "
                 f"{Path(project_root).resolve()} requested task {task_id}. Clear it only "
