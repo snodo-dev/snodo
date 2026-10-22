@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Verify retained task workspaces against this repository’s registered worktrees before retry reuse, refusing foreign or mismatched workspaces with recovery guidance. (Fixes #970)
+
 - Add a fresh-start choice for retries and record attempt provenance, including the starting revision and inherited work. (Fixes #948)
 - Report a validator error instead of silently using the default provider when an overridden model cannot be rebound. (Fixes #993)
 - Probe for committed task-branch work after empty-artifact coder runs even when the coder reports findings, so contradictory file-absence claims halt as environment faults. (Fixes #996)
