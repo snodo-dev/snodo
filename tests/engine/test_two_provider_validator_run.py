@@ -83,3 +83,29 @@ def test_pinned_validator_calls_own_provider_on_every_call_path(monkeypatch, pat
         assert len(default_calls) == 1
         assert default_calls[0]["api_base"] == DEFAULT_BASE
         assert default_calls[0]["api_key"] == DEFAULT_KEY
+
+
+def test_unbindable_pinned_validator_errors_without_blocking_default_sibling(monkeypatch):
+    protocol = MagicMock()
+    protocol.get_mode.return_value = None
+    config = SimpleNamespace(max_tokens=128, max_tool_turns=3)
+    default_calls = []
+
+    def default_completion(**kwargs):
+        default_calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content='{"severity":"pass","justification":"ok"}', tool_calls=[]
+        ))])
+
+    runner = ValidatorRunner(protocol, default_completion, DEFAULT_MODEL, config, None,
+                             MagicMock(), MagicMock(), None)
+    validators = [
+        Validator(validator_id="pinned", validator_type="security", model=PINNED_MODEL, criteria=["check"]),
+        Validator(validator_id="default", validator_type="security", criteria=["check"]),
+    ]
+    results = runner.run(Task(id="task-1", spec="test"), validators, None, current_mode="producer")
+    assert results[0].error is True
+    assert "pinned" in results[0].justification and PINNED_MODEL in results[0].justification
+    assert results[1].error is False
+    assert len(default_calls) == 1
+    assert "model" not in default_calls[0]  # shared function remains untouched
