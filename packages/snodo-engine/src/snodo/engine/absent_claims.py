@@ -48,13 +48,31 @@ def detect_absent_claims(report: str, workspace: str | Path) -> AbsentClaimContr
         return None
 
     candidates: set[str] = set()
-    for match in _ABSENCE.finditer(report):
-        start, end = match.span()
-        # A path immediately before explicit absence wording ("`x.py` is
-        # missing") or after it ("missing `x.py`") is accepted.
-        window = report[max(0, start - 120):min(len(report), end + 120)]
+    # Keep claims local: a nearby path in another sentence is unrelated.
+    for sentence in re.split(r"(?<=[.!?])\s+|[\r\n]+", report):
+        absence_matches = list(_ABSENCE.finditer(sentence))
+        if not absence_matches:
+            continue
         for pattern in (_QUOTED_PATH, _BARE_PATH):
-            candidates.update(m.group(1).strip() for m in pattern.finditer(window))
+            for path_match in pattern.finditer(sentence):
+                path_start, path_end = path_match.span()
+                path = path_match.group(1).strip()
+                for absence in absence_matches:
+                    if path_end <= absence.start():
+                        between = sentence[path_end:absence.start()]
+                        relation = re.fullmatch(r"\s+(?:(?:is|was|seems)\s+)?", between, re.I)
+                    elif absence.end() <= path_start:
+                        between = sentence[absence.end():path_start]
+                        relation = re.fullmatch(r"\s+(?:(?:file|path)\s+)?", between, re.I)
+                        if sentence[absence.start():absence.end()].lower() != "missing":
+                            relation = bool(relation)
+                        elif relation:
+                            relation = bool(relation)
+                    else:
+                        relation = False
+                    if relation:
+                        candidates.add(path)
+                        break
 
     contradicted: set[str] = set()
     for raw in candidates:

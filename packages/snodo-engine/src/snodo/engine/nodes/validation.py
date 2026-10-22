@@ -524,7 +524,10 @@ class ValidationNodeMixin:
                 workspace = getattr(self.workspace_mcp, "project_root", None)
                 contradiction = detect_absent_claims(str(findings or ""), workspace) if workspace else None
                 if contradiction:
-                    branch = self.git_mcp.get_current_branch() if self.git_mcp else "unknown"
+                    try:
+                        branch = self.git_mcp.repo.active_branch.name
+                    except Exception:
+                        branch = "unknown"
                     reason = (
                         f"Coder reported {', '.join(contradiction.paths)} absent, but they are present "
                         f"at HEAD {contradiction.head} in workspace {workspace} (branch {branch}). "

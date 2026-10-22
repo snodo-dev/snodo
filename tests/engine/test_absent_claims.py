@@ -56,3 +56,19 @@ def test_path_escaping_workspace_is_ignored(tmp_path: Path) -> None:
     _, workspace, _ = _linked_workspace(tmp_path)
 
     assert detect_absent_claims("`../root-only.txt` is missing.", workspace) is None
+
+
+def test_claim_requires_path_and_absence_in_same_role_and_sentence(tmp_path: Path) -> None:
+    _, workspace, _ = _linked_workspace(tmp_path)
+
+    assert detect_absent_claims("`subject.py` is missing.", workspace) is not None
+    assert detect_absent_claims("I cannot find `subject.py`.", workspace) is not None
+    assert detect_absent_claims(
+        "The function is missing a docstring in `subject.py`.", workspace
+    ) is None
+    assert detect_absent_claims(
+        "`subject.py` exists. The requested file is missing.", workspace
+    ) is None
+    assert detect_absent_claims(
+        "The requested file is missing. `subject.py` exists.", workspace
+    ) is None

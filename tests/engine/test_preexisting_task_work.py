@@ -22,6 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from snodo.compiler.models import DisagreementPolicy, ExecutionConfig, Mode, Protocol, Validator
+from snodo.coders.report import CoderReport
 from snodo.core.interfaces import CodeArtifact, ValidatorResult
 from snodo.engine.loop import GraphBuilder
 from snodo.infrastructure.tokens import TokenIssuer
@@ -328,3 +329,51 @@ def test_nondefault_branch_prefix_still_recovers_preexisting_work(
     })
     ops = [call.args[0] for call in audit.append_event.call_args_list]
     assert "no_file_operations" not in ops
+
+
+@pytest.mark.parametrize("report,contradicted", [
+    ({"findings": "`feature.py` is missing."}, True),
+    ({"findings": "The change is ready."}, False),
+    (None, False),
+])
+def test_existing_work_is_only_halted_for_contradicted_absent_claim(
+    protocol_with_post_execute, tmp_path, report, contradicted
+):
+    """Only an executor-recorded absence claim contradicted by HEAD halts."""
+    _, wt, _ = _task_project_with_commit(tmp_path)
+
+    class ReportingNoOpCoder(NoOpCoder):
+        _attempt = 2
+
+        def implement(self, spec):
+            artifact = super().implement(spec)
+            self.last_report = CoderReport(**report) if report is not None else None
+            return artifact
+
+    coder = ReportingNoOpCoder()
+    post_calls = []
+
+    def capturing_validator(task, validators, shell_mcp, current_mode="", **kwargs):
+        if kwargs.get("phase") == "post_execute":
+            post_calls.append(kwargs)
+        return [ValidatorResult(validator_id=v.validator_id, severity="pass", justification="ok") for v in validators]
+
+    builder = GraphBuilder(
+        protocol_with_post_execute, workspace_mcp=WorkspaceMCP(wt), git_mcp=GitMCP(wt),
+        shell_mcp=None, coder=coder, worktree_path=wt, validator_fn=capturing_validator,
+        token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600), audit_log=MagicMock(),
+    )
+    result = builder.build_graph().compile().invoke(_state())
+
+    if contradicted:
+        assert result["is_blocked"] is True
+        assert result["halt_type"] == "environment_error"
+        reason = result["metadata"]["post_validation"]["reason"]
+        assert "feature.py" in reason and wt in reason and "HEAD" in reason
+        assert post_calls == []
+        assert result["metadata"].get("attempt_count", 1) == 1
+    else:
+        assert result["is_blocked"] is False
+        assert result["halt_type"] is None
+        assert result["metadata"]["post_validation"]["outcome"] == "passed"
+        assert len(post_calls) == 1
