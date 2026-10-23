@@ -74,13 +74,14 @@ def list_serve_processes() -> list[dict]:
         return []
 
 
-def record_serve_process(project: str, mode: str, port: int | None, hostname: str | None = None) -> dict | None:
+def record_serve_process(project: str, mode: str, port: int | None, hostname: str | None = None,
+                         transport: str = "cloudflare") -> dict | None:
     """Record this process; registry failures are deliberately non-fatal."""
     path = _path()
     try:
         import psutil
         entry = {"project": str(Path(project).resolve()), "mode": mode or "", "port": port,
-                 "hostname": hostname or "", "pid": os.getpid(),
+                 "hostname": hostname or "", "transport": transport, "pid": os.getpid(),
                  "started_at": psutil.Process().create_time(), "host": socket.gethostname()}
         with _THREAD_LOCK, _locked(path) as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)

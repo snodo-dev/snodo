@@ -85,3 +85,23 @@ def test_concurrent_writers_all_recorded():
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(lambda n: registry.record_serve_process(f"/{n}", "dev", n), range(8)))
     assert len(registry.list_serve_processes()) == 8
+
+
+def test_recording_ws_transport_round_trips():
+    recorded = registry.record_serve_process("/one", "dev", 10, transport="ws")
+
+    assert registry.list_serve_processes() == [recorded]
+    assert recorded["transport"] == "ws"
+
+
+def test_old_registry_entry_without_transport_reads_as_cloudflare(home):
+    home.parent.mkdir(parents=True)
+    current = psutil.Process()
+    legacy = {
+        "project": "/one", "mode": "dev", "port": 10, "hostname": "api.test",
+        "pid": current.pid, "started_at": current.create_time(), "host": socket.gethostname(),
+    }
+    home.write_text(json.dumps([legacy]), encoding="utf-8")
+
+    entry = registry.list_serve_processes()[0]
+    assert entry.get("transport", "cloudflare") == "cloudflare"

@@ -44,7 +44,7 @@ def test_dispatch_streams_response_chunks_without_logging_credentials():
     captured = []
     logger = logging.getLogger("relay-test")
     logger.addHandler(logging.StreamHandler(type("Capture", (), {"emit": lambda self, record: captured.append(record.getMessage())})()))
-    relay = CloudRelay({}, registry=lambda: [{"hostname": "api.test", "port": 8765}],
+    relay = CloudRelay({}, registry=lambda: [{"hostname": "api.test", "port": 8765, "transport": "ws"}],
                        http_client=Http(), machine="mid", logger=logger)
     socket = Socket()
     asyncio.run(relay._dispatch(socket, {"id": "r1", "hostname": "api.test", "method": "POST",
@@ -70,3 +70,23 @@ def test_websocket_url_uses_configured_cloud_address():
     assert websocket_url({"cloud": {"lease_url": "https://cloud.example/base"}}, "machine") == (
         "wss://cloud.example/runner/connect?machine_id=machine"
     )
+
+
+def test_endpoints_advertise_only_ws_entries():
+    from snodo.infrastructure.cloud_relay import _endpoints
+
+    entries = [
+        {"hostname": "ws.test", "port": 1, "transport": "ws"},
+        {"hostname": "cf.test", "port": 2, "transport": "cloudflare"},
+        {"hostname": "old.test", "port": 3},
+    ]
+    assert _endpoints(entries) == [{"hostname": "ws.test", "auth": ["oauth"]}]
+
+
+def test_dispatch_does_not_forward_cloudflare_only_hostname():
+    relay = CloudRelay({}, registry=lambda: [{"hostname": "cf.test", "port": 8765, "transport": "cloudflare"}],
+                       http_client=Http(), machine="mid")
+    socket = Socket()
+    asyncio.run(relay._dispatch(socket, {"id": "r1", "hostname": "cf.test", "method": "POST",
+                                          "path": "/path", "headers": {}}, b"request"))
+    assert socket.sent == [{"t": "err", "id": "r1", "code": "unknown_endpoint", "message": "Unknown endpoint"}]

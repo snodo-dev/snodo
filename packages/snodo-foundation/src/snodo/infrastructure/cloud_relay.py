@@ -60,7 +60,7 @@ def websocket_url(config: dict, machine: str) -> str:
 
 def _endpoints(entries: list[dict]) -> list[dict[str, str]]:
     return [{"hostname": row["hostname"], "auth": ["oauth"]} for row in entries
-            if row.get("hostname") and row.get("port")]
+            if row.get("transport", "cloudflare") == "ws" and row.get("hostname") and row.get("port")]
 
 
 class CloudRelay:
@@ -231,7 +231,7 @@ class CloudRelay:
         async with self._slots:
             if rid in self._cancelled:
                 return
-            matches = [entry for entry in self.registry() if entry.get("hostname") == request["hostname"]]
+            matches = [entry for entry in self.registry() if entry.get("transport", "cloudflare") == "ws" and entry.get("hostname") == request["hostname"]]
             if not matches:
                 await socket.send(encode_frame({"t": "err", "id": rid, "code": "unknown_endpoint", "message": "Unknown endpoint"}))
                 return
