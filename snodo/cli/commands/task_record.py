@@ -43,6 +43,11 @@ def _record_task_start(project_root: str, task_id: str, spec: str) -> None:
                 state["created_at"] = time.time()
             state["started_at"] = time.time()
             state["status"] = "running"
+            job_id = os.environ.get("SNODO_JOB_ID")
+            if job_id:
+                state["job_id"] = job_id
+            else:
+                state.pop("job_id", None)
             # A foreground run recorded no pid anywhere, so a monitor could not
             # tell a slow coder from a process that died an hour ago. Record it
             # alongside started_at so liveness is answerable the same way it
