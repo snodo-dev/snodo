@@ -2,6 +2,7 @@ import psutil
 from git import Repo
 
 from snodo.coders.history_tools import execute
+from snodo.tools.git import open_repo
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS
 from snodo.tools.workspace import WorkspaceMCP
@@ -10,7 +11,8 @@ from snodo.tools.workspace import WorkspaceMCP
 def _history_workspace(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
-    repo = Repo.init(root)
+    Repo.init(root).close()
+    repo = open_repo(str(root))
     path = root / "example.txt"
     path.write_text("historical content\n")
     repo.index.add(["example.txt"])
@@ -35,7 +37,7 @@ def test_coder_can_read_file_history(tmp_path):
 def test_history_results_use_shared_bound(tmp_path):
     workspace, _ = _history_workspace(tmp_path)
     root = workspace.project_root
-    repo = Repo(str(root))
+    repo = open_repo(str(root))
     (root / "large.txt").write_text("x" * (MAX_TOOL_RESULT_CHARS + 100))
     repo.index.add(["large.txt"])
     repo.index.commit("large change")
