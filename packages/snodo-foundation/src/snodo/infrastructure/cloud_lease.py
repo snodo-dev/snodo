@@ -174,7 +174,11 @@ def _perform_exchange(
 
     try:
         payload = {"audience": audience, **({"machine_id": machine_id} if machine_id else {})}
-        response = httpx.post(mint_url, headers=headers, json=payload if audience != "ingest" else None, timeout=10.0)
+        if audience == "ingest":
+            # Preserve the historical call shape for ingest clients and test doubles.
+            response = httpx.post(mint_url, headers=headers, timeout=10.0)
+        else:
+            response = httpx.post(mint_url, headers=headers, json=payload, timeout=10.0)
 
         # HTTP 2xx: Success
         if 200 <= response.status_code < 300:
