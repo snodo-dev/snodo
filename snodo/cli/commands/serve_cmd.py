@@ -84,7 +84,7 @@ def register(app: typer.Typer) -> None:
         ),
         auth: Optional[list[str]] = typer.Option(
             None, "--auth",
-            help="Tunnel authentication: OAuth (https://mcp-auth.snodo.dev)",
+            help="Tunnel authentication: oauth and/or service-token",
         ),
         delete: bool = typer.Option(
             False, "--delete", help="With --tunnel, deprovision and remove the managed tunnel",
@@ -562,7 +562,7 @@ def _tunnel_project_slug(project_root: str) -> str:
 
 def _provision_tunnel(
     api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str,
-    port: int = DEFAULT_PORT,
+    port: int = DEFAULT_PORT, auth: Optional[list[str]] = None,
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
@@ -582,6 +582,8 @@ def _provision_tunnel(
             "snodo_version": snodo_version,
             "port": port,
         }
+        if auth is not None:
+            payload["auth"] = auth
         resp = httpx.post(
             url,
             json=payload,
@@ -911,11 +913,6 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     delete_hostname = getattr(args, "hostname", None) or None
     requested_auth = getattr(args, "auth", None)
 
-    if requested_auth and "service-token" in requested_auth:
-        print("Error: service-token authentication is not supported; connect with OAuth instead.", file=sys.stderr)
-        print("  Configure an OAuth connection to https://mcp-auth.snodo.dev.", file=sys.stderr)
-        return 1
-
     # Prefer streamable-http for tunnels
     if transport == "stdio":
         transport = "streamable-http"
@@ -1011,9 +1008,18 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             return 1
 
         try:
-            provisioned = _provision_tunnel(
-                api_key, project_slug, mode, short_id, __version__, port,
-            )
+            requested_auth = getattr(args, "auth", None)
+            auth_methods = _auth_methods(requested_auth)
+            if requested_auth is None:
+                # Preserve the legacy OAuth-only call shape for callers and stubs.
+                provisioned = _provision_tunnel(
+                    api_key, project_slug, mode, short_id, __version__, port,
+                )
+            else:
+                provisioned = _provision_tunnel(
+                    api_key, project_slug, mode, short_id, __version__, port,
+                    auth=auth_methods,
+                )
         except TunnelAPIError as e:
             print(f"Error: {e}", file=sys.stderr)
             if e.status_code == 409:
@@ -1043,11 +1049,23 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                   file=sys.stderr)
             print("    snodo serve --tunnel --delete --hostname <old-hostname>",
                   file=sys.stderr)
+        if "service-token" in auth_methods:
+            required = ("client_id", "client_secret", "access_path", "access_team_domain", "access_aud", "auth")
+            missing = [key for key in required if not provisioned.get(key)]
+            if missing:
+                print("Error: tunnel provision response is missing required service-token fields: " + ", ".join(missing), file=sys.stderr)
+                _deprovision_newly_provisioned_tunnel(project_root, api_key, provisioned)
+                return 1
+            print("Service-token Access headers (save these now; the secret is shown only once):")
+            print(f"  CF-Access-Client-Id: {provisioned['client_id']}")
+            print(f"  CF-Access-Client-Secret: {provisioned['client_secret']}")
         tunnel_config = {
             "hostname": provisioned["hostname"],
             "tunnel_token": provisioned["tunnel_token"],
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
             "port": port,
+            "auth": provisioned.get("auth", auth_methods),
+            **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud") if key in provisioned},
         }
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = True
@@ -1061,7 +1079,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     ]
     if getattr(args, "verbose", False):
         mcp_cmd.append("--verbose")
-    mcp_cmd.extend(["--auth", "oauth"])
+    for auth_method in _auth_methods(getattr(args, "auth", None) or tunnel_config.get("auth")):
+        mcp_cmd.extend(["--auth", auth_method])
     if requested_mode:
         mcp_cmd.extend(["--mode", requested_mode])
 
@@ -1170,6 +1189,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
         print("  OAuth auth server: https://mcp-auth.snodo.dev")
         print()
+    if "service-token" in tunnel_config.get("auth", []) and "oauth" not in tunnel_config.get("auth", []):
+        print("  Service-token-only tunnels are shown offline by the cloud and are never dispatched to.")
 
     print("Press Ctrl+C to stop.")
 
