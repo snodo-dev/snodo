@@ -1513,8 +1513,8 @@ name = "httpcore2"
 version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/f3/1db7aa2bc2524062192bb0e0323969492d1883152a232fe36eea65f4e35c/httpcore2-2.13.1.tar.gz", hash = "sha256:e0aa977abe17e69a3b820a24542a6fa88702676d83880b8d194dcd18408e5103", size = 68071, upload-time = "2026-09-23T07:47:22.372Z" }
 wheels = [
@@ -4015,7 +4015,7 @@ name = "pyzmq"
 version = "27.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cffi", marker = "implementation_name == 'pypy'" },
+    { name = "cffi", marker = "implementation_name == 'pypy' and sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e7/8d/5b3d5631c2f4b4b8862f64cd0c9eb777b5710eeb5125b4be8dd0a200a4c0/pyzmq-27.2.0.tar.gz", hash = "sha256:54d4259d1bfae24ecdb5ca79f7acc2eac6c286a02d6a0ae617797cb45f0726d3", size = 292316, upload-time = "2026-08-20T19:08:21.19Z" }
 wheels = [
@@ -4560,7 +4560,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = "==6.169.0" },
     { name = "import-linter", marker = "extra == 'dev'", specifier = "==2.15" },
-    { name = "litellm", specifier = ">=1.80,<2" },
+    { name = "litellm", specifier = ">=1.80,<1.106" },
     { name = "marimo", marker = "extra == 'studies'", specifier = ">=0.9.0" },
     { name = "matplotlib", marker = "extra == 'studies'", specifier = ">=3.7.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.0,<2" },
@@ -4642,7 +4642,7 @@ requires-dist = [
     { name = "langchain-community", specifier = ">=0.4.0" },
     { name = "langchain-core", specifier = ">=0.3.0" },
     { name = "langgraph", specifier = ">=0.2.0" },
-    { name = "litellm", specifier = ">=1.80.0" },
+    { name = "litellm", specifier = ">=1.80.0,<1.106" },
     { name = "pydantic", specifier = ">=2.12.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "snodo-core", editable = "packages/snodo-core" },
@@ -5244,8 +5244,8 @@ name = "uvicorn"
 version = "0.54.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click" },
-    { name = "h11" },
+    { name = "click", marker = "sys_platform != 'emscripten'" },
+    { name = "h11", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/da/34/30e9280707135d2cfc589dfff3cb796bd07a3aeb1a3e415ba09dd89d7bb4/uvicorn-0.54.0.tar.gz", hash = "sha256:a2e33cbfaa0306f8e6b0c13e0cb89d7d7a2da3e62b90c66e18c33d9807b28620", size = 112283, upload-time = "2026-09-25T06:52:37.601Z" }
 wheels = [

@@ -19,6 +19,8 @@ on:
         default: ""
   release:
     types: [published]
+  schedule:
+    - cron: "17 6 * * 1"
 
 permissions:
   contents: read
@@ -56,6 +58,22 @@ jobs:
           done
           echo "::error::pip install $SPEC failed after 3 attempts"
           exit 1
+
+      - name: Verify critical imports
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/venv/bin/python" - <<'PYIMPORTS'
+          import importlib
+          import sys
+
+          for module in ("litellm", "snodo"):
+              try:
+                  importlib.import_module(module)
+              except Exception as exc:
+                  print(f"::error::failed to import {module}: {exc}", file=sys.stderr)
+                  raise
+              print(f"successfully imported {module}")
+          PYIMPORTS
 
       - name: Report installed version
         env:
