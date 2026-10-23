@@ -6,6 +6,8 @@ import logging
 import os
 import time
 import secrets
+import random
+import inspect
 from pathlib import Path
 from urllib.parse import quote
 
@@ -20,8 +22,13 @@ from snodo.paths import resolve_home
 from snodo.version import __version__
 
 _LOG = logging.getLogger(__name__)
+class _ReplacedConnection(Exception):
+    code = 4001
+
+
 MAX_IN_FLIGHT = 8
 KEEP_SECONDS = 30.0
+REGISTRY_POLL_SECONDS = 0.25
 
 
 def machine_id(path: Path | None = None) -> str:
@@ -91,61 +98,86 @@ class CloudRelay:
                 await self._connection()
             except Exception as exc:  # status exceptions intentionally reduced to code/status
                 status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
-                self.log.warning("relay disconnected status=%s", status or "connection")
-                if status == 403 or status == 426:
+                code = getattr(exc, "code", None)
+                if code == 4001:
+                    self.log.warning("relay stopped: replaced by a newer runner connection")
                     return
+                if status in (403, 426):
+                    self.log.warning("relay connection rejected status=%s", status)
+                    return
+                self.log.warning("relay disconnected status=%s", status or "connection")
             elapsed = self._clock() - started
-            if elapsed >= 60:
-                delay = 1.0
-            else:
-                await self.sleep(delay)
-                delay = min(60.0, delay * 2)
+            wait = min(60.0, min(60.0, delay) * random.uniform(0.8, 1.2))  # noqa: S311 — reconnect jitter is not security-sensitive
+            await self.sleep(wait)
+            delay = min(60.0, delay * 2) if elapsed < 60 else 1.0
 
     async def _connection(self) -> None:
-        lease = await self.lease_fetch(self.config, "runner", self.machine)
+        lease = await self._fetch_lease()
+        if lease is None:
+            self.log.warning("cloud login required: sign in with the cloud login")
+            raise ConnectionError("cloud lease unavailable")
         url = websocket_url(self.config, self.machine)
-        headers = {"Authorization": f"Bearer {lease.token}"}
         try:
-            socket = await self.socket_connect(url, additional_headers=headers, ping_interval=20)
+            socket = await self.socket_connect(url, additional_headers={"Authorization": f"Bearer {lease.token}"}, ping_interval=20)
         except Exception as exc:
             status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
             if status != 401:
                 raise
-            lease = await self.lease_fetch(self.config, "runner", self.machine, force=True)
+            lease = await self._fetch_lease(force=True)
+            if lease is None:
+                self.log.warning("cloud login required: sign in with the cloud login")
+                raise ConnectionError("cloud lease unavailable") from None
             socket = await self.socket_connect(url, additional_headers={"Authorization": f"Bearer {lease.token}"}, ping_interval=20)
         async with socket:
             current = _endpoints(self.registry())
             pending: dict[str, ChunkReassembler] = {}
             await socket.send(encode_frame({"t": "hello", "v": 1, "machine_id": self.machine,
-                                            "snodo_version": __version__, "endpoints": _endpoints(self.registry())}))
-            async for raw in socket:
-                frame = decode_frame(raw)
-                if frame["t"] == "req":
-                    rid = frame["id"]
-                    self._request_frames[rid] = frame
-                    pending[rid] = ChunkReassembler(rid)
-                    length = frame["headers"].get("content-length", frame["headers"].get("Content-Length", "0"))
-                    if not str(length).isdigit() or int(length) == 0:
-                        self._tasks[rid] = asyncio.create_task(self._dispatch(socket, frame, b""))
-                elif frame["t"] == "chunk":
-                    rid = frame["id"]
-                    assembler = pending.setdefault(rid, ChunkReassembler(rid))
-                    body = assembler.add(frame)
-                    if body is not None:
-                        req = self._request_frames.get(rid)
-                        if req:
-                            self._tasks[rid] = asyncio.create_task(self._dispatch(socket, req, body))
-                elif frame["t"] == "cancel":
-                    self._cancelled.add(frame["id"])
-                    task = self._tasks.pop(frame["id"], None)
-                    if task:
-                        task.cancel()
+                                            "snodo_version": __version__, "endpoints": current}))
+            iterator = socket.__aiter__()
+            while True:
+                try:
+                    raw = await asyncio.wait_for(iterator.__anext__(), timeout=REGISTRY_POLL_SECONDS)
+                except asyncio.TimeoutError:
+                    raw = None
+                except StopAsyncIteration:
+                    break
+                if raw is not None:
+                    frame = decode_frame(raw)
+                    if frame["t"] == "req":
+                        rid = frame["id"]
+                        self._request_frames[rid] = frame
+                        pending[rid] = ChunkReassembler(rid)
+                        length = frame["headers"].get("content-length", frame["headers"].get("Content-Length", "0"))
+                        if not str(length).isdigit() or int(length) == 0:
+                            self._tasks[rid] = asyncio.create_task(self._dispatch(socket, frame, b""))
+                    elif frame["t"] == "chunk":
+                        rid = frame["id"]
+                        assembler = pending.setdefault(rid, ChunkReassembler(rid))
+                        body = assembler.add(frame)
+                        if body is not None:
+                            req = self._request_frames.get(rid)
+                            if req:
+                                self._tasks[rid] = asyncio.create_task(self._dispatch(socket, req, body))
+                    elif frame["t"] == "cancel":
+                        self._cancelled.add(frame["id"])
+                        task = self._tasks.pop(frame["id"], None)
+                        if task:
+                            task.cancel()
                 entries = self.registry()
                 endpoints = _endpoints(entries)
                 if endpoints != current:
                     current = endpoints
                     await socket.send(encode_frame({"t": "hello", "v": 1, "machine_id": self.machine,
                                                     "snodo_version": __version__, "endpoints": endpoints}))
+        if getattr(socket, "close_code", None) == 4001:
+            raise _ReplacedConnection()
+
+    async def _fetch_lease(self, *, force: bool = False):
+        """Run the synchronous lease exchange off-loop; preserve async test seams."""
+        kwargs = {"force": force} if force else {}
+        if inspect.iscoroutinefunction(self.lease_fetch):
+            return await self.lease_fetch(self.config, "runner", self.machine, **kwargs)
+        return await asyncio.to_thread(self.lease_fetch, self.config, "runner", self.machine, **kwargs)
 
     async def _dispatch(self, socket, request: dict, body: bytes) -> None:
         rid = request["id"]
