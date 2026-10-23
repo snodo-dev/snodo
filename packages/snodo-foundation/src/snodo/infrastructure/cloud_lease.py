@@ -116,6 +116,8 @@ def get_admission_lease(
     force: bool = False,
     oauth: bool = False,
     config: Optional[dict] = None,
+    audience: str = "ingest",
+    machine_id: Optional[str] = None,
 ) -> Optional[CloudLease]:
     """Obtain or renew a lease, exchanging the API key if needed.
 
@@ -137,6 +139,7 @@ def get_admission_lease(
         if (
             _current_lease is not None
             and _current_lease_session_id == sid
+            and audience == "ingest"
             and not _current_lease.is_near_expiry()
         ):
             return _current_lease
@@ -151,7 +154,7 @@ def get_admission_lease(
             return None
 
     # 4. Perform exchange
-    return _perform_exchange(api_key, lease_url, sid, state, oauth=oauth, config=config)
+    return _perform_exchange(api_key, lease_url, sid, state, oauth=oauth, config=config, audience=audience, machine_id=machine_id)
 
 
 def _perform_exchange(
@@ -160,6 +163,7 @@ def _perform_exchange(
     session_id: str,
     state: CloudSyncState,
     *, oauth: bool = False, config: Optional[dict] = None, _retried: bool = False,
+    audience: str = "ingest", machine_id: Optional[str] = None,
 ) -> Optional[CloudLease]:
     global _current_lease, _current_lease_session_id, _quiet_until, _consecutive_failures
 
@@ -169,7 +173,8 @@ def _perform_exchange(
     mint_url = f"{lease_url.rstrip('/')}/m"
 
     try:
-        response = httpx.post(mint_url, headers=headers, timeout=10.0)
+        payload = {"audience": audience, **({"machine_id": machine_id} if machine_id else {})}
+        response = httpx.post(mint_url, headers=headers, json=payload if audience != "ingest" else None, timeout=10.0)
 
         # HTTP 2xx: Success
         if 200 <= response.status_code < 300:
@@ -216,9 +221,9 @@ def _perform_exchange(
             from snodo.infrastructure.cloud_credentials import safe_cloud_sync_credential
             refreshed, is_oauth = safe_cloud_sync_credential(config or {}, force_refresh=True)
             if refreshed and is_oauth:
-                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=True, config=config, _retried=True)
+                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=True, config=config, _retried=True, audience=audience, machine_id=machine_id)
             if refreshed:
-                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=False, config=config, _retried=True)
+                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=False, config=config, _retried=True, audience=audience, machine_id=machine_id)
             message = "OAuth authorization expired; run `snodo cloud login` again"
             refresh_failed = True
         _last_admission_error = f"{mint_url} -> HTTP {response.status_code}: {message}"
@@ -319,3 +324,16 @@ def _handle_unreachable(
         "Cloud admission backoff (%s); waiting %.1fs (attempt %d)",
         exc or f"HTTP {code}", wait, failures,
     )
+
+
+def mint_lease(config: dict, audience: str, machine_id: str, *, force: bool = False) -> Optional[CloudLease]:
+    """Mint a purpose-bound lease through the shared cloud exchange implementation."""
+    from snodo.infrastructure.cloud_credentials import safe_cloud_sync_credential
+    from snodo.config import get_cloud_lease_url
+    from snodo.infrastructure.cloud_sync import CloudSyncState
+    credential, oauth = safe_cloud_sync_credential(config)
+    if not credential:
+        return None
+    return get_admission_lease(credential, get_cloud_lease_url(config), session_id=f"runner:{machine_id}",
+                               sync_state=CloudSyncState(), force=True, oauth=oauth, config=config,
+                               audience=audience, machine_id=machine_id)

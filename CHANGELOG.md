@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add the building blocks for a WebSocket tunnel transport, including runner lease exchange, machine identity, endpoint announcements and streamed request forwarding. (Fixes #1002, Fixes #1003, Fixes #1004)
+
 - Serve Cloudflare Access service-token MCP traffic on the saved Access path beside OAuth `/mcp`, verify Access assertions fail-closed, and document direct client access for tunnels that are offline to cloud dispatch. (Fixes #1000)
 
 - Support OAuth and service-token authentication when provisioning managed tunnels, print the one-time Access secret, and retain only non-secret service-token configuration. (Fixes #999)

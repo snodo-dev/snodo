@@ -4662,6 +4662,7 @@ dependencies = [
     { name = "pyjwt" },
     { name = "pyyaml" },
     { name = "snodo-core" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -4673,6 +4674,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.15.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "snodo-core", editable = "packages/snodo-core" },
+    { name = "websockets", specifier = ">=16.1.1" },
 ]
 
 [[package]]
