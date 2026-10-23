@@ -144,3 +144,22 @@ def test_acceptance_validator_prompt_includes_test_governing_mutations():
     assert "tests/test_auth.py (modified)" in prompt
     assert "conftest.py (deleted)" in prompt
     assert "unauthorized test weakening" in prompt
+
+
+def test_model_tool_result_bound_keeps_omission_notice_and_test_tail():
+    from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS, bound_tool_result
+
+    large = "head\n" + ("x" * (MAX_TOOL_RESULT_CHARS + 100)) + "\nFAILED test_example.py::test_failure"
+    bounded = bound_tool_result(large, preserve_tail=True)
+
+    assert len(bounded) <= MAX_TOOL_RESULT_CHARS
+    assert "TRUNCATED" in bounded
+    assert "characters omitted" in bounded
+    assert "FAILED test_example.py::test_failure" in bounded
+
+
+def test_model_tool_result_within_bound_is_unchanged():
+    from snodo.coders.tool_result_text import bound_tool_result
+
+    result = "short tool output"
+    assert bound_tool_result(result) == result

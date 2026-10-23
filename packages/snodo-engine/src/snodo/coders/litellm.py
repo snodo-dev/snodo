@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
-from snodo.coders.tool_result_text import provider_tool_result_text
+from snodo.coders.tool_result_text import bound_tool_result, provider_tool_result_text
 from snodo.paths import is_protected_workspace_path
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError, TurnBudgetExhausted
 from snodo.coders.test_governing import _is_test_governing_file
@@ -548,7 +548,9 @@ Return ONLY the JSON array, no other text.
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": provider_tool_result_text(str(result)),
+                        "content": provider_tool_result_text(bound_tool_result(
+                            str(result), preserve_tail=tool_name == "run_tests",
+                        )),
                     })
                 continue
 
