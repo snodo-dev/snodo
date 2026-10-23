@@ -1,8 +1,7 @@
 # snodo serve --tunnel: managed remote tunnel via snodo.dev
 
 ## Intent
-One command gives engineers a stable public HTTPS URL protected by OAuth
-for their snodo MCP server. No Cloudflare account, no DNS config, no
+One command gives engineers a stable public HTTPS URL for their snodo MCP server, protected by OAuth and/or Cloudflare Access service-token authentication. No Cloudflare account, no DNS config, no
 domain required. Requires a free snodo account (snodo-cloud provisions
 the tunnel infrastructure). The core engine works without this — this
 is a convenience feature for remote AI client connectivity.
@@ -78,8 +77,7 @@ Failed deletion recovery:
   when it names that same target. An explicit different hostname never clears
   or changes the unrelated local record. Cloud owns retry-safe resource cleanup;
   this CLI does not infer resource state from error text or blindly erase local
-  credentials. Tunnel connections are OAuth-only; legacy saved auth settings
-  do not disable OAuth, and --auth service-token is rejected before side effects.
+  credentials. Tunnel auth follows the saved auth list. OAuth uses `https://<hostname>/mcp`; service-token uses the saved Access path (normally `/mcp-st`). A service-token client sends both `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. The local server additionally verifies `Cf-Access-Jwt-Assertion`; invalid or unavailable Access keys fail closed with 401. Service-token-only tunnels appear offline to cloud dispatch and are never dispatched to; call their Access path directly. With both methods, both paths are served independently.
 
 Ctrl+C handling:
   Stop both subprocesses (MCP server + cloudflared) cleanly
@@ -97,7 +95,11 @@ POST {cloud.tunnel_api_url}/tunnel/provision   # default https://app.snodo.dev
 {
   "hostname": "acme-api-prod-a3f7-tunnel.snodo.dev",
   "tunnel_token": "eyJ...",
-  "created_at": "2026-06-07T..."
+  "created_at": "2026-06-07T...",
+  "auth": ["oauth", "service-token"],
+  "access_path": "mcp-st",
+  "access_team_domain": "team.cloudflareaccess.com",
+  "access_aud": "..."
 }
 
 ## Acceptance criteria

@@ -256,9 +256,9 @@ in v0.18.0.
 response summaries; authentication refusals identify the failed check. The
 server defaults to stdio. HTTP transports require `--transport sse` or
 `--transport streamable-http`; `--tunnel` provisions and starts a managed
-tunnel. Managed tunnels always authenticate clients through OAuth at
-`https://mcp-auth.snodo.dev`; `--auth service-token` is refused. Tunnels carry
-no rotatable client credentials. `--delete` must be used with `--tunnel`.
+tunnel. OAuth uses `https://mcp-auth.snodo.dev`; service-token authentication
+uses Cloudflare Access at the saved path, normally `/mcp-st`. `--delete` must
+be used with `--tunnel`.
 See `snodo serve --help` for tunnel deletion and
 MCP client management options for installed Claude Desktop and Codex-family
 clients (ChatGPT desktop, Codex CLI, and the IDE extension share
@@ -278,3 +278,6 @@ directory exists: Claude Desktop and the Codex family (ChatGPT desktop, Codex
 CLI, and the IDE extension). Codex stores its shared configuration in
 `~/.codex/config.toml`, or `$CODEX_HOME/config.toml` when `CODEX_HOME` is set.
 Absent clients are skipped; restart each updated client after installing.
+
+
+Managed tunnels configured with `--auth service-token` expose the saved Access path (normally `/mcp-st`). Clients send `CF-Access-Client-Id` and `CF-Access-Client-Secret`; the server verifies Cloudflare Access assertion `Cf-Access-Jwt-Assertion` before MCP requests reach the handler. Service-token-only tunnels appear offline to cloud dispatch, so connect directly to that URL. OAuth remains at `/mcp`.

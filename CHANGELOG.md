@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Serve Cloudflare Access service-token MCP traffic on the saved Access path beside OAuth `/mcp`, verify Access assertions fail-closed, and document direct client access for tunnels that are offline to cloud dispatch. (Fixes #1000)
+
+- Support OAuth and service-token authentication when provisioning managed tunnels, print the one-time Access secret, and retain only non-secret service-token configuration. (Fixes #999)
+
 - Cap LiteLLM below 1.106 until the MCP 2.x port lands, keeping fresh installs compatible with the current MCP constraint. (Fixes #1006)
 
 - Verify retained task workspaces against this repository’s registered worktrees before retry reuse, refusing foreign or mismatched workspaces with recovery guidance. (Fixes #970)

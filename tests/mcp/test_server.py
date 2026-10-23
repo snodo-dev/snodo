@@ -1257,6 +1257,7 @@ class TestTunnelProvisioning:
             "tunnel_token": "eyJ...",
             "client_id": "abc123.access",
             "client_secret": "SECRET_DO_NOT_SAVE",
+            "auth": ["service-token"],
             "created_at": "2026-06-07T00:00:00Z",
         }
         _save_tunnel_config(project_root, config)
@@ -1264,7 +1265,7 @@ class TestTunnelProvisioning:
         saved = _load_tunnel_config(project_root)
         assert saved["hostname"] == "test.tunnel.snodo.dev"
         assert saved["tunnel_token"] == "eyJ..."
-        assert "client_id" not in saved
+        assert saved["client_id"] == "abc123.access"
         assert "client_secret" not in saved
 
     def test_load_missing_tunnel_config(self, tmp_path):

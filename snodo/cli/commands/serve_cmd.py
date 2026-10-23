@@ -84,7 +84,7 @@ def register(app: typer.Typer) -> None:
         ),
         auth: Optional[list[str]] = typer.Option(
             None, "--auth",
-            help="Tunnel authentication: OAuth (https://mcp-auth.snodo.dev)",
+            help="Tunnel authentication: oauth and/or service-token",
         ),
         delete: bool = typer.Option(
             False, "--delete", help="With --tunnel, deprovision and remove the managed tunnel",
@@ -238,32 +238,31 @@ def _run_server(args, protocol) -> int:
     tunnel_config = _load_tunnel_config(project_root)
     tunnel_hostname = tunnel_config.get("hostname")
     extra_kwargs = {}
-    if tunnel_hostname:
+    tunnel_auth = tunnel_config.get("auth", ["oauth"]) if tunnel_hostname else []
+    oauth_enabled = "oauth" in tunnel_auth
+    access_verifier = None
+    if tunnel_hostname and oauth_enabled:
         from snodo.infrastructure.jwks import JwksClient
         from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
         from mcp.server.auth.settings import AuthSettings
         from pydantic import AnyHttpUrl
 
         jwks = JwksClient()
-        if jwks.fetch():
-            resource = f"https://{tunnel_hostname}/mcp"
-            extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks, resource=resource)
-            # The resource identifier is the canonical URI of the MCP server,
-            # which is the endpoint clients actually call — FastMCP serves
-            # streamable-http at streamable_http_path, default "/mcp". Passing
-            # the bare host instead made pydantic normalise it to
-            # "https://<host>/", so the protected-resource metadata advertised
-            # the origin while the server lived at /mcp. A client that checks a
-            # token against the endpoint it was configured with then sees a
-            # resource it never agreed to.
-            extra_kwargs["auth_settings"] = AuthSettings(
-                issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
-                resource_server_url=AnyHttpUrl(resource),
-            )
-            print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
-        else:
+        if not jwks.fetch():
             print("  Error: OAuth 2.1 required for managed tunnels; could not load JWKS", file=sys.stderr)
             return 1
+        resource = f"https://{tunnel_hostname}/mcp"
+        extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks, resource=resource)
+        extra_kwargs["auth_settings"] = AuthSettings(
+            issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
+            resource_server_url=AnyHttpUrl(resource),
+        )
+        print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
+    if tunnel_hostname and "service-token" in tunnel_auth:
+        from snodo.infrastructure.access_assertion import AccessAssertionVerifier
+        access_verifier = AccessAssertionVerifier(
+            tunnel_config["access_team_domain"], tunnel_config["access_aud"]
+        )
 
     verbose = bool(getattr(args, "verbose", False))
     if verbose:
@@ -280,6 +279,18 @@ def _run_server(args, protocol) -> int:
     from snodo.cli.commands.serve_watch import cloud_live_view_url
     extra_kwargs["cloud_live_view_url"] = cloud_live_view_url()
     mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
+    if access_verifier is not None:
+        from snodo.cli.commands.serve_tunnel_asgi import TunnelMCPPaths
+        for app_factory_name in ("streamable_http_app", "sse_app"):
+            app_factory = getattr(mcp, app_factory_name)
+
+            def tunnel_app_factory(*factory_args, _factory=app_factory, **factory_kwargs):
+                return TunnelMCPPaths(
+                    _factory(*factory_args, **factory_kwargs), access_verifier,
+                    oauth_enabled=oauth_enabled, access_path=tunnel_config.get("access_path", "mcp-st"),
+                )
+
+            setattr(mcp, app_factory_name, tunnel_app_factory)
     tools = protocol_server.get_tools()
     mode_label = protocol_server._active_mode()
 
@@ -562,7 +573,7 @@ def _tunnel_project_slug(project_root: str) -> str:
 
 def _provision_tunnel(
     api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str,
-    port: int = DEFAULT_PORT,
+    port: int = DEFAULT_PORT, auth: Optional[list[str]] = None,
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
@@ -582,6 +593,8 @@ def _provision_tunnel(
             "snodo_version": snodo_version,
             "port": port,
         }
+        if auth is not None:
+            payload["auth"] = auth
         resp = httpx.post(
             url,
             json=payload,
@@ -911,11 +924,6 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     delete_hostname = getattr(args, "hostname", None) or None
     requested_auth = getattr(args, "auth", None)
 
-    if requested_auth and "service-token" in requested_auth:
-        print("Error: service-token authentication is not supported; connect with OAuth instead.", file=sys.stderr)
-        print("  Configure an OAuth connection to https://mcp-auth.snodo.dev.", file=sys.stderr)
-        return 1
-
     # Prefer streamable-http for tunnels
     if transport == "stdio":
         transport = "streamable-http"
@@ -1011,9 +1019,18 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             return 1
 
         try:
-            provisioned = _provision_tunnel(
-                api_key, project_slug, mode, short_id, __version__, port,
-            )
+            requested_auth = getattr(args, "auth", None)
+            auth_methods = _auth_methods(requested_auth)
+            if requested_auth is None:
+                # Preserve the legacy OAuth-only call shape for callers and stubs.
+                provisioned = _provision_tunnel(
+                    api_key, project_slug, mode, short_id, __version__, port,
+                )
+            else:
+                provisioned = _provision_tunnel(
+                    api_key, project_slug, mode, short_id, __version__, port,
+                    auth=auth_methods,
+                )
         except TunnelAPIError as e:
             print(f"Error: {e}", file=sys.stderr)
             if e.status_code == 409:
@@ -1043,11 +1060,23 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                   file=sys.stderr)
             print("    snodo serve --tunnel --delete --hostname <old-hostname>",
                   file=sys.stderr)
+        if "service-token" in auth_methods:
+            required = ("client_id", "client_secret", "access_path", "access_team_domain", "access_aud", "auth")
+            missing = [key for key in required if not provisioned.get(key)]
+            if missing:
+                print("Error: tunnel provision response is missing required service-token fields: " + ", ".join(missing), file=sys.stderr)
+                _deprovision_newly_provisioned_tunnel(project_root, api_key, provisioned)
+                return 1
+            print("Service-token Access headers (save these now; the secret is shown only once):")
+            print(f"  CF-Access-Client-Id: {provisioned['client_id']}")
+            print(f"  CF-Access-Client-Secret: {provisioned['client_secret']}")
         tunnel_config = {
             "hostname": provisioned["hostname"],
             "tunnel_token": provisioned["tunnel_token"],
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
             "port": port,
+            "auth": provisioned.get("auth", auth_methods),
+            **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud") if key in provisioned},
         }
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = True
@@ -1061,7 +1090,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     ]
     if getattr(args, "verbose", False):
         mcp_cmd.append("--verbose")
-    mcp_cmd.extend(["--auth", "oauth"])
+    for auth_method in _auth_methods(getattr(args, "auth", None) or tunnel_config.get("auth")):
+        mcp_cmd.extend(["--auth", auth_method])
     if requested_mode:
         mcp_cmd.extend(["--mode", requested_mode])
 
@@ -1165,11 +1195,11 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # A live URL proves both the local bind and registration with Cloudflare.
     _warn_if_unservable_hostname(tunnel_config["hostname"])
     if newly_provisioned:
-        _print_first_run_info(tunnel_config["hostname"])
+        _print_first_run_info(tunnel_config["hostname"], tunnel_config)
     else:
-        print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
-        print("  OAuth auth server: https://mcp-auth.snodo.dev")
-        print()
+        _print_tunnel_urls(tunnel_config)
+    if "service-token" in tunnel_config.get("auth", []) and "oauth" not in tunnel_config.get("auth", []):
+        print("  Service-token-only tunnels are shown offline by the cloud and are never dispatched to.")
 
     print("Press Ctrl+C to stop.")
 
@@ -1230,14 +1260,22 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     return 1
 
 
-def _print_first_run_info(hostname: str) -> None:
+
+def _print_tunnel_urls(config: dict) -> None:
+    hostname = config["hostname"]
+    auth = config.get("auth", ["oauth"])
+    print("Connect your MCP client:")
+    if "oauth" in auth:
+        print(f"  OAuth: https://{hostname}/mcp")
+        print("  OAuth auth server: https://mcp-auth.snodo.dev")
+    if "service-token" in auth:
+        print(f"  Service-token: https://{hostname}/{config.get('access_path', 'mcp-st').strip('/')}")
+
+def _print_first_run_info(hostname: str, config: dict | None = None) -> None:
     """Print the first-run tunnel configuration block."""
     print()
     print("✓ Snodo MCP tunnel active")
     print()
-    print("Connect your MCP client through OAuth:")
-    print()
-    print(f"  URL:              https://{hostname}/mcp")
-    print("  OAuth auth server: https://mcp-auth.snodo.dev")
+    _print_tunnel_urls({**(config or {"hostname": hostname}), "hostname": hostname})
     print()
     print()
