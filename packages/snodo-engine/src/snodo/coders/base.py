@@ -48,6 +48,8 @@ def protected_paths_notice(
 
     Engine state and the protocol's declared paths are named as two groups: a
     protocol that declares nothing must not read as though it had (#908).
+    ``protocol.protected_paths`` comes from protocol context; ``declared_paths``
+    is the adapter-injected protected-path list used when that context is absent.
     """
     declared = list(dict.fromkeys([
         *(getattr(protocol, "protected_paths", None) or []),
