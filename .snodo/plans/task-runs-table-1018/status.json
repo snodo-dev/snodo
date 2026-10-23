@@ -5,6 +5,8 @@
   },
   "tasks": {
     "1.1_task_state_remembers_its_job": "completed",
-    "1.2_task_runs_can_be_listed": "completed"
+    "1.2_task_runs_can_be_listed": "completed",
+    "2.1_task_show_lists_its_runs": "completed",
+    "2.2_meta_lists_runs_for_plan_tasks": "completed"
   }
 }
