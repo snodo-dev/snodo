@@ -137,6 +137,27 @@ class TestVerify:
         assert result is not None
         assert result["sub"] == "test-user"
 
+    @pytest.mark.parametrize("clock", [5.0, 10_000.0])
+    def test_fresh_client_fetches_and_throttles_unknown_kids(self, rsa_keypair, jwks_response, clock):
+        private, _ = rsa_keypair
+        now = int(time.time())
+        payload = {"sub": "test-user", "iss": OAUTH_ISSUER, "exp": now + 3600, "iat": now}
+        valid = jwt.encode(payload, private, algorithm="RS256", headers={"kid": JWKS_KID})
+        unknown_a = jwt.encode(payload, private, algorithm="RS256", headers={"kid": "unknown-a"})
+        unknown_b = jwt.encode(payload, private, algorithm="RS256", headers={"kid": "unknown-b"})
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = jwks_response
+        mock_resp.raise_for_status.return_value = None
+        client = JwksClient()
+        with patch("snodo.infrastructure.jwks.time.monotonic", return_value=clock), \
+                patch("httpx.get", return_value=mock_resp) as get:
+            assert client.verify(valid)["sub"] == "test-user"
+            assert get.call_count == 1
+            assert client.verify(unknown_a) is None
+            assert get.call_count == 2
+            assert client.verify(unknown_b) is None
+            assert get.call_count == 2
+
     def test_verify_expired_token(self, rsa_keypair, jwks_response, caplog):
         """JWT with exp in the past -> verify returns None."""
         private, _ = rsa_keypair

@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Fetch signing keys on first verification and throttle unknown-key refreshes from the actual refresh time. (Fixes #1012)
+
 - Add the building blocks for a WebSocket tunnel transport, including runner lease exchange, machine identity, endpoint announcements and streamed request forwarding. (Fixes #1002, Fixes #1003, Fixes #1004)
 
 - Serve Cloudflare Access service-token MCP traffic on the saved Access path beside OAuth `/mcp`, verify Access assertions fail-closed, and document direct client access for tunnels that are offline to cloud dispatch. (Fixes #1000)
