@@ -1,0 +1,21 @@
+intent: 'An operator can go from a task name to every job that ran it: `snodo task show`
+  and `snodo meta` both print a table of runs (job id, plan and wave, start, outcome)
+  (#1018)'
+name: task-runs-table-1018
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_task_state_remembers_its_job
+  - 1.2_task_runs_can_be_listed
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_task_show_lists_its_runs
+  - 2.2_meta_lists_runs_for_plan_tasks
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_task_runs_table_is_documented

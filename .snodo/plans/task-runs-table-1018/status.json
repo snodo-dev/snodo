@@ -1,0 +1,10 @@
+{
+  "integration": {
+    "branch": "plan/task-runs-table-1018/integration",
+    "base_sha": "ad9c6d44320bde3d0742aacf5d6629519c4e681b"
+  },
+  "tasks": {
+    "1.1_task_state_remembers_its_job": "completed",
+    "1.2_task_runs_can_be_listed": "completed"
+  }
+}
