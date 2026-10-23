@@ -610,7 +610,7 @@ def task_show_command(args) -> int:
     if findings is not None and isinstance(halt_entry, dict):
         halt_entry["findings"] = findings
 
-    from snodo.task_runs import task_runs, task_runs_data
+    from snodo.task_runs import render_task_runs, task_runs, task_runs_data
     runs = task_runs(project_root, task_id)
 
     if json_out:
@@ -699,9 +699,7 @@ def task_show_command(args) -> int:
         print_hand_completion_info(hand_completion)
 
     if runs:
-        from snodo.task_runs import render_task_runs
-        print()
-        print("Runs:")
+        print("\nRuns:")
         render_task_runs(runs)
         print("  For details: snodo meta <job id> or snodo job logs <job id>")
 
