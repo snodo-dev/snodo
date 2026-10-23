@@ -1,7 +1,8 @@
 import json
-import os
+import socket
 from concurrent.futures import ThreadPoolExecutor
 
+import psutil
 import pytest
 
 from snodo.infrastructure import serve_registry as registry
@@ -10,34 +11,56 @@ from snodo.infrastructure import serve_registry as registry
 @pytest.fixture(autouse=True)
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("SNODO_HOME", str(tmp_path / ".snodo"))
-    monkeypatch.setattr(registry, "_path", lambda: tmp_path / ".snodo" / "serve_registry.json")
+    return tmp_path / ".snodo" / "serve_registry.json"
 
 
-def test_write_list_remove_and_replacement(monkeypatch):
-    first = registry.record_serve_process("/one", "dev", 10)
-    assert registry.list_serve_processes()[0]["project"] == "/one"
-    registry.remove_serve_process(first)
-    assert registry.list_serve_processes() == []
-    one = registry.record_serve_process("/one", "dev", 10)
-    registry.record_serve_process("/two", "dev", 11)
-    newer = {**one, "port": 12}
-    monkeypatch.setattr(registry, "record_serve_process", lambda *a: None)
-    registry._path().write_text(json.dumps([one, {**one, "port": 12}, {"project": "/two", "mode": "dev", "port": 11, "hostname": "", "pid": os.getpid(), "started_at": __import__('psutil').Process().create_time(), "host": __import__('socket').gethostname()}]))
-    assert len(registry.list_serve_processes()) == 3
-    assert newer["port"] == 12
+def test_recording_replaces_same_project_and_mode_but_keeps_others():
+    registry.record_serve_process("/one", "dev", 10)
+    newer = registry.record_serve_process("/one", "dev", 12)
+    registry.record_serve_process("/one", "prod", 20)
+    registry.record_serve_process("/two", "dev", 30)
+
+    entries = registry.list_serve_processes()
+    assert len(entries) == 3
+    assert newer in entries
+    assert {(entry["project"], entry["mode"]) for entry in entries} == {
+        ("/one", "dev"), ("/one", "prod"), ("/two", "dev")
+    }
+    assert next(entry for entry in entries if entry["project"] == "/one" and entry["mode"] == "dev")["port"] == 12
 
 
-def test_dead_reused_pid_and_corrupt(monkeypatch):
-    registry._path().parent.mkdir(parents=True)
-    dead = {"pid": 99999999, "started_at": 1, "host": "host"}
-    registry._path().write_text(json.dumps([dead]))
+def test_removing_record_leaves_newer_replacement():
+    old = registry.record_serve_process("/one", "dev", 10)
+    newer = registry.record_serve_process("/one", "dev", 12)
+
+    registry.remove_serve_process(old)
+
+    assert registry.list_serve_processes() == [newer]
+
+
+def test_listing_drops_gone_and_reused_processes_and_prunes_file(home):
+    home.parent.mkdir(parents=True)
+    current = psutil.Process()
+    live = {
+        "project": "/one", "mode": "dev", "port": 10, "hostname": "",
+        "pid": current.pid, "started_at": current.create_time(), "host": socket.gethostname(),
+    }
+    stale = {**live, "pid": 99999999, "started_at": 1}
+    reused = {**live, "started_at": 1}
+    home.write_text(json.dumps([live, stale, reused]), encoding="utf-8")
+
+    assert registry.list_serve_processes() == [live]
+    assert json.loads(home.read_text(encoding="utf-8")) == [live]
+
+
+def test_corrupt_file_reads_empty_and_recording_recovers(home):
+    home.parent.mkdir(parents=True)
+    home.write_text("{", encoding="utf-8")
+
     assert registry.list_serve_processes() == []
-    entry = {"pid": os.getpid(), "started_at": 1, "host": __import__('socket').gethostname()}
-    registry._path().write_text(json.dumps([entry]))
-    monkeypatch.setattr(registry, "process_identity_matches", lambda *a: False)
-    assert registry.list_serve_processes() == []
-    registry._path().write_text("{")
-    assert registry.list_serve_processes() == []
+    recorded = registry.record_serve_process("/one", "dev", 10)
+
+    assert registry.list_serve_processes() == [recorded]
 
 
 def test_concurrent_writers_all_recorded():
