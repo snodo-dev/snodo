@@ -45,6 +45,13 @@ Three changes, none of which touches what a gate checks or the order it checks i
    gate on an idle host prints nothing new. The lock is held on an open file descriptor and
    vanishes with the process, so an interrupted gate leaves no stale slot to reap.
 
+   `GATE_SLOT_TIMEOUT` (default 600 seconds) sets the maximum time to wait for an available
+   slot. If no slot is acquired by then, the gate reports a timeout and exits unsuccessfully;
+   increasing it allows longer waits, while decreasing it fails sooner. `GATE_SLOT_PROGRESS_INTERVAL`
+   (default 10 seconds) sets how often the gate reports that it is still waiting after the
+   initial waiting notice. Increasing it makes those notices less frequent; decreasing it
+   makes them more frequent. The wait loop checks every 2 seconds, so notices are approximate.
+
 ## Alternatives considered
 - **An explicit bound on the run** (`timeout`): cuts a slow gate short rather than a dead
   one. It does not end a gate when the operator stops caring about it, which is the
