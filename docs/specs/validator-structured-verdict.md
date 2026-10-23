@@ -1,5 +1,7 @@
 # Spec: Structured validator verdict + honest halt labels
 
+> Correction (2026-10-23): the current verdict tool is `submit_verdict(task_id, severity, justification)`; the historical examples below reflect the original shape.
+
 ## Why
 
 adr read the ADRs correctly (tool access works) but the tool loop lets the model end

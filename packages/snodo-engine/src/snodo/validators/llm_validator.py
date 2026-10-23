@@ -919,7 +919,7 @@ class LLMValidator(ValidatorBase):
     }
 
     def _extract_submit_verdict(
-        self, tool_calls: list, *, expected_task_id: str = "",
+        self, tool_calls: list, *, expected_task_id: str,
     ) -> Optional["ValidatorResult"]:
         """Extract a live verdict, rejecting an unbound subject immediately.
 

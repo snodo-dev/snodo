@@ -22,7 +22,7 @@ def bind_telemetry_judge_subject(request, monkeypatch):
         for call in response.choices[0].message.tool_calls or []:
             if call.function.name == "submit_verdict":
                 arguments = json.loads(call.function.arguments)
-                arguments.setdefault("task_id", "task_1")
+                arguments["task_id"] = self._task_id
                 call.function.arguments = json.dumps(arguments)
         return response
 

@@ -33,6 +33,7 @@ def _verdict_call(severity, justification):
     tc.id = "call_verdict"
     tc.function.name = "submit_verdict"
     tc.function.arguments = json.dumps({
+        "task_id": "t1",
         "severity": severity,
         "justification": justification,
     })
@@ -98,6 +99,7 @@ class TestAcceptanceValidatorPrompt:
         assert "src/main.py" in prompt
         assert "tests/test_main.py" in prompt
         assert "Acceptance criteria" in prompt
+        assert "submit_verdict(task_id, severity, justification)" in prompt
         assert "UNMET" in prompt
         assert "UNCHECKABLE" in prompt
         assert "NEVER a finding" in prompt

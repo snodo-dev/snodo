@@ -119,7 +119,7 @@ class TestLLMValidatorOperationalFault:
             )
         )
         with caplog.at_level(logging.DEBUG, logger="snodo.validators.llm_validator"):
-            result = validator._extract_submit_verdict([tc])
+            result = validator._extract_submit_verdict([tc], expected_task_id="")
 
         assert result is None  # safe value keeps being returned
         assert _recorded(caplog, "submit_verdict arguments unparseable")

@@ -232,7 +232,7 @@ class AcceptanceValidator(LLMValidator):
             "## Available Tools\n",
             "You may call read-only tools to inspect files and git history.\n",
             "When you are ready to deliver your verdict, call the\n",
-            "`submit_verdict(severity, justification)` tool — this is the\n",
+            "`submit_verdict(task_id, severity, justification)` tool — this is the\n",
             "ONLY way to return your verdict.  Do NOT narrate your verdict\n",
             "as prose; use the tool.\n",
             "\n",
