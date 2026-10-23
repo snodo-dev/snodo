@@ -12,6 +12,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Surface non-blocking post-execute findings when test cases or substantial explanatory comments/docstrings disappear without being requested. (Fixes #959)
 - Pin dispatched OpenCode CLI runs to the task worktree with an explicit project directory, expose the read-tree boundary in run output, and cover branch-divergent linked-worktree reads. (Fixes #975; regression to #911)
 - Split OpenCode CLI launch handling by major version and refuse undescribed versions rather than using a mismatched launch shape. (Fixes #982)
+- Verify retained task workspaces against this repository’s registered worktrees before retry reuse, refusing foreign or mismatched workspaces with recovery guidance. (Fixes #970)
 
 - Add a fresh-start choice for retries and record attempt provenance, including the starting revision and inherited work. (Fixes #948)
 - Report a validator error instead of silently using the default provider when an overridden model cannot be rebound. (Fixes #993)
