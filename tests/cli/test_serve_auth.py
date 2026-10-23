@@ -164,6 +164,7 @@ def test_tunnel_hostname_is_added_to_http_host_allowlist(monkeypatch):
     monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
     monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {
         "hostname": "safe.tunnel.snodo.dev", "auth": ["service-token"],
+        "access_team_domain": "team.cloudflareaccess.com", "access_aud": "aud",
     })
     monkeypatch.setattr(serve_cmd, "_choose_serve_port", lambda _: 8080)
     monkeypatch.setattr("snodo.infrastructure.cloud_liveness.install", lambda: None)
@@ -183,7 +184,7 @@ def test_tunnel_hostname_is_added_to_http_host_allowlist(monkeypatch):
     ]
 
 
-def test_legacy_service_token_tunnel_enables_oauth(monkeypatch):
+def test_service_token_only_tunnel_skips_oauth_verifier(monkeypatch):
     from types import SimpleNamespace
 
     server = MagicMock()
@@ -196,6 +197,7 @@ def test_legacy_service_token_tunnel_enables_oauth(monkeypatch):
     monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
     monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {
         "hostname": "legacy.tunnel.snodo.dev", "auth": ["service-token"],
+        "access_team_domain": "team.cloudflareaccess.com", "access_aud": "aud",
     })
     monkeypatch.setattr(serve_cmd, "_choose_serve_port", lambda _: 8080)
     monkeypatch.setattr("snodo.infrastructure.jwks.JwksClient.fetch", lambda _: True)
@@ -210,7 +212,8 @@ def test_legacy_service_token_tunnel_enables_oauth(monkeypatch):
     serve_cmd._run_server(SimpleNamespace(
         protocol="protocol.yml", mode=None, transport="streamable-http", port=8080,
     ), protocol)
-    assert "token_verifier" in seen
+    assert "token_verifier" not in seen
+    assert "auth_settings" not in seen
 
 
 def test_service_token_request_is_accepted_by_serve_command(monkeypatch):

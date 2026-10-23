@@ -238,32 +238,31 @@ def _run_server(args, protocol) -> int:
     tunnel_config = _load_tunnel_config(project_root)
     tunnel_hostname = tunnel_config.get("hostname")
     extra_kwargs = {}
-    if tunnel_hostname:
+    tunnel_auth = tunnel_config.get("auth", ["oauth"]) if tunnel_hostname else []
+    oauth_enabled = "oauth" in tunnel_auth
+    access_verifier = None
+    if tunnel_hostname and oauth_enabled:
         from snodo.infrastructure.jwks import JwksClient
         from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
         from mcp.server.auth.settings import AuthSettings
         from pydantic import AnyHttpUrl
 
         jwks = JwksClient()
-        if jwks.fetch():
-            resource = f"https://{tunnel_hostname}/mcp"
-            extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks, resource=resource)
-            # The resource identifier is the canonical URI of the MCP server,
-            # which is the endpoint clients actually call — FastMCP serves
-            # streamable-http at streamable_http_path, default "/mcp". Passing
-            # the bare host instead made pydantic normalise it to
-            # "https://<host>/", so the protected-resource metadata advertised
-            # the origin while the server lived at /mcp. A client that checks a
-            # token against the endpoint it was configured with then sees a
-            # resource it never agreed to.
-            extra_kwargs["auth_settings"] = AuthSettings(
-                issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
-                resource_server_url=AnyHttpUrl(resource),
-            )
-            print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
-        else:
+        if not jwks.fetch():
             print("  Error: OAuth 2.1 required for managed tunnels; could not load JWKS", file=sys.stderr)
             return 1
+        resource = f"https://{tunnel_hostname}/mcp"
+        extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks, resource=resource)
+        extra_kwargs["auth_settings"] = AuthSettings(
+            issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
+            resource_server_url=AnyHttpUrl(resource),
+        )
+        print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
+    if tunnel_hostname and "service-token" in tunnel_auth:
+        from snodo.infrastructure.access_assertion import AccessAssertionVerifier
+        access_verifier = AccessAssertionVerifier(
+            tunnel_config["access_team_domain"], tunnel_config["access_aud"]
+        )
 
     verbose = bool(getattr(args, "verbose", False))
     if verbose:
@@ -280,6 +279,18 @@ def _run_server(args, protocol) -> int:
     from snodo.cli.commands.serve_watch import cloud_live_view_url
     extra_kwargs["cloud_live_view_url"] = cloud_live_view_url()
     mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
+    if access_verifier is not None:
+        from snodo.cli.commands.serve_tunnel_asgi import TunnelMCPPaths
+        for app_factory_name in ("streamable_http_app", "sse_app"):
+            app_factory = getattr(mcp, app_factory_name)
+
+            def tunnel_app_factory(*factory_args, _factory=app_factory, **factory_kwargs):
+                return TunnelMCPPaths(
+                    _factory(*factory_args, **factory_kwargs), access_verifier,
+                    oauth_enabled=oauth_enabled, access_path=tunnel_config.get("access_path", "mcp-st"),
+                )
+
+            setattr(mcp, app_factory_name, tunnel_app_factory)
     tools = protocol_server.get_tools()
     mode_label = protocol_server._active_mode()
 
@@ -1184,11 +1195,9 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # A live URL proves both the local bind and registration with Cloudflare.
     _warn_if_unservable_hostname(tunnel_config["hostname"])
     if newly_provisioned:
-        _print_first_run_info(tunnel_config["hostname"])
+        _print_first_run_info(tunnel_config["hostname"], tunnel_config)
     else:
-        print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
-        print("  OAuth auth server: https://mcp-auth.snodo.dev")
-        print()
+        _print_tunnel_urls(tunnel_config)
     if "service-token" in tunnel_config.get("auth", []) and "oauth" not in tunnel_config.get("auth", []):
         print("  Service-token-only tunnels are shown offline by the cloud and are never dispatched to.")
 
@@ -1251,14 +1260,22 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     return 1
 
 
-def _print_first_run_info(hostname: str) -> None:
+
+def _print_tunnel_urls(config: dict) -> None:
+    hostname = config["hostname"]
+    auth = config.get("auth", ["oauth"])
+    print("Connect your MCP client:")
+    if "oauth" in auth:
+        print(f"  OAuth: https://{hostname}/mcp")
+        print("  OAuth auth server: https://mcp-auth.snodo.dev")
+    if "service-token" in auth:
+        print(f"  Service-token: https://{hostname}/{config.get('access_path', 'mcp-st').strip('/')}")
+
+def _print_first_run_info(hostname: str, config: dict | None = None) -> None:
     """Print the first-run tunnel configuration block."""
     print()
     print("✓ Snodo MCP tunnel active")
     print()
-    print("Connect your MCP client through OAuth:")
-    print()
-    print(f"  URL:              https://{hostname}/mcp")
-    print("  OAuth auth server: https://mcp-auth.snodo.dev")
+    _print_tunnel_urls({**(config or {"hostname": hostname}), "hostname": hostname})
     print()
     print()
