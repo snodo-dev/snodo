@@ -91,6 +91,14 @@ POST {cloud.tunnel_api_url}/tunnel/provision   # default https://app.snodo.dev
   Returns: {hostname, tunnel_token}
 
 
+## WebSocket tunnel transport
+
+Select the outbound WebSocket relay with `snodo serve --tunnel --tunnel-transport ws`. It does not require `cloudflared`; the local MCP transport remains selected separately with `--transport`. The WebSocket transport currently supports OAuth only (no service-token authentication).
+
+Provisioning includes the usual project slug, mode, short id, and Snodo version, plus `transport: "ws"` and the machine identity (`machine_id`). The cloud returns a hostname with the `-ws.snodo.dev` suffix (for example, `acme-api-prod-ws.snodo.dev`); unlike Cloudflare tunnel state, this transport does not require or save a tunnel token. The local `.snodo/tunnel.json` records the hostname, creation time, `transport: "ws"`, machine id, and port.
+
+The machine opens one outbound WebSocket relay connection and announces its machine identity and available endpoint to the cloud. There is one relay owner per machine: a newly connected owner takes over from the prior connection, preventing stale processes from remaining the active endpoint. The cloud uses the announcement to route tunnel requests to that machine. On shutdown, Snodo stops the relay participant and local MCP server, releasing relay ownership; startup failures also stop the server and roll back a newly provisioned tunnel.
+
 ## .snodo/tunnel.json schema
 {
   "hostname": "acme-api-prod-a3f7-tunnel.snodo.dev",

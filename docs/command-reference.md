@@ -245,7 +245,7 @@ the project's job and task record directories.
 
 | Command | Arguments and options |
 |---|---|
-| `snodo serve` | `--protocol`, `--mode`, `--transport`, `--port`, `--tunnel`, `--verbose`, `--auth`, `--delete`, `--hostname`, `--mcp-install`, `--mcp-uninstall`, `--mcp-uninstall-all`, `--mcp-list`, `--purge`, `--orphans`, `--yes`/`-y`, deprecated `--install`, `--uninstall`, `--uninstall-all`, `--project-name` |
+| `snodo serve` | `--protocol`, `--mode`, `--transport`, `--port`, `--tunnel`, `--tunnel-transport`, `--verbose`, `--auth`, `--delete`, `--hostname`, `--mcp-install`, `--mcp-uninstall`, `--mcp-uninstall-all`, `--mcp-list`, `--purge`, `--orphans`, `--yes`/`-y`, deprecated `--install`, `--uninstall`, `--uninstall-all`, `--project-name` |
 
 The legacy `snodo serve --install`, `--uninstall`, and `--uninstall-all`
 options are deprecated in v0.18.0; use `--mcp-install`, `--mcp-uninstall`,
@@ -254,10 +254,15 @@ in v0.18.0.
 
 `snodo serve --verbose` logs timestamped, redacted and bounded MCP request and
 response summaries; authentication refusals identify the failed check. The
-server defaults to stdio. HTTP transports require `--transport sse` or
-`--transport streamable-http`; `--tunnel` provisions and starts a managed
-tunnel. OAuth uses `https://mcp-auth.snodo.dev`; service-token authentication
-uses Cloudflare Access at the saved path, normally `/mcp-st`. `--delete` must
+server defaults to stdio. `--transport` selects the local MCP server
+transport: HTTP transports require `sse` or `streamable-http`.
+`--tunnel-transport` selects how a managed tunnel reaches the cloud:
+`cloudflare` (the default) uses `cloudflared`; `ws` uses an outbound WebSocket,
+currently supports OAuth only, and needs no `cloudflared`. These options are
+independent: `--transport` is the local MCP transport, not the tunnel transport.
+`--tunnel` provisions and starts a managed tunnel. OAuth uses
+`https://mcp-auth.snodo.dev`; service-token authentication uses Cloudflare Access
+at the saved path, normally `/mcp-st`. `--delete` must
 be used with `--tunnel`.
 See `snodo serve --help` for tunnel deletion and
 MCP client management options for installed Claude Desktop and Codex-family

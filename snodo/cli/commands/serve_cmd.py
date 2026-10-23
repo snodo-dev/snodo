@@ -244,7 +244,10 @@ def _run_server(args, protocol) -> int:
     tunnel_config = _load_tunnel_config(project_root)
     tunnel_hostname = tunnel_config.get("hostname")
     extra_kwargs = {}
-    tunnel_auth = tunnel_config.get("auth", ["oauth"]) if tunnel_hostname else []
+    tunnel_auth = (
+        ["oauth"] if tunnel_hostname and _tunnel_transport(tunnel_config.get("transport")) == "ws"
+        else tunnel_config.get("auth", ["oauth"]) if tunnel_hostname else []
+    )
     oauth_enabled = "oauth" in tunnel_auth
     access_verifier = None
     if tunnel_hostname and oauth_enabled:
@@ -321,7 +324,7 @@ def _run_server(args, protocol) -> int:
         port = _choose_serve_port(requested_port)
         if port is None:
             return 1
-        if tunnel_port is not None and port != tunnel_port:
+        if tunnel_port is not None and port != tunnel_port and _tunnel_transport(tunnel_config.get("transport")) != "ws":
             print(
                 f"Error: {_tunnel_port_mismatch_explanation(port, tunnel_port, tunnel_hostname)}",
                 file=sys.stderr,
@@ -363,7 +366,8 @@ def _run_server(args, protocol) -> int:
 
     from snodo.infrastructure import cloud_liveness
     from snodo.infrastructure.serve_registry import record_serve_process, remove_serve_process
-    registry_entry = record_serve_process(str(project_root), mode_id or "", port if transport != "stdio" else None, tunnel_hostname)
+    registry_entry = record_serve_process(str(project_root), mode_id or "", port if transport != "stdio" else None, tunnel_hostname,
+                                         transport=_tunnel_transport(tunnel_config.get("transport")) if tunnel_hostname else "cloudflare")
     cloud_liveness.install()
     try:
         mcp.run(transport=transport)
@@ -1011,7 +1015,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     port = _choose_serve_port(requested_port)
     if port is None:
         return 1
-    if tunnel_port is not None and port != tunnel_port:
+    if tunnel_port is not None and port != tunnel_port and tunnel_transport != "ws":
         tunnel_hostname = tunnel_config.get("hostname")
         print(
             f"Error: {_tunnel_port_mismatch_explanation(port, tunnel_port, tunnel_hostname)}",
@@ -1110,10 +1114,6 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = True
 
-    if tunnel_transport == "ws":
-        print("WebSocket tunnel provisioned; running it is not yet supported.", file=sys.stderr)
-        return 1
-
     # 5. Start MCP server subprocess
     mcp_cmd = [
         sys.executable, "-m", "snodo.cli.main", "serve",
@@ -1168,6 +1168,19 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             _deprovision_newly_provisioned_tunnel(project_root, api_key,
                                                   tunnel_config)
         return 1
+
+    if tunnel_transport == "ws":
+        from snodo.cli.commands.serve_tunnel_ws import run_ws_tunnel
+        return run_ws_tunnel(
+            mcp_process, tunnel_config["hostname"], terminate=_terminate_process_group,
+            rollback=(lambda: _deprovision_newly_provisioned_tunnel(
+                project_root, api_key, tunnel_config)) if newly_provisioned else None,
+            print_active=lambda hostname: (
+                _warn_if_unservable_hostname(hostname),
+                _print_first_run_info(hostname, tunnel_config) if newly_provisioned else _print_tunnel_urls(tunnel_config),
+                print("Press Ctrl+C to stop."),
+            ),
+        )
 
     # 6. Start cloudflared only after the local listener is ready.
     cf_cmd = ["cloudflared", "tunnel", "run"]
