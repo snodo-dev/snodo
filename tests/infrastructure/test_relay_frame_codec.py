@@ -32,9 +32,17 @@ def test_frame_round_trip(frame):
 @pytest.mark.parametrize("payload", ["{", "[]", '{"t":"unknown"}', '{"t":"keep"}',
                                       '{"t":"chunk","id":"r","seq":-1,"last":true,"data_b64":""}',
                                       '{"t":"chunk","id":"r","seq":0,"last":true,"data_b64":"!"}',
-                                      json.dumps({"t":"chunk", "id":"r", "seq":0, "last":True,
-                                                  "data_b64":base64.b64encode(b"x" * (CHUNK_SIZE + 1)).decode()})])
+                                      '{"t":"chunk","id":"r","seq":true,"last":true,"data_b64":""}',
+                                      '{"t":"keep","id":1}',
+                                      '{"t":"hello","v":1,"machine_id":"m","snodo_version":"1"}'])
 def test_rejects_invalid_frames(payload):
+    with pytest.raises(RelayFrameError):
+        decode_frame(payload)
+
+
+def test_rejects_oversize_chunk():
+    payload = json.dumps({"t": "chunk", "id": "r", "seq": 0, "last": True,
+                          "data_b64": base64.b64encode(b"x" * (CHUNK_SIZE + 1)).decode()})
     with pytest.raises(RelayFrameError):
         decode_frame(payload)
 
@@ -57,6 +65,10 @@ def test_reassembler_rejects_sequence_and_limit():
     frames = list(split_body("r", b"ab"))
     with pytest.raises(RelayFrameError):
         ChunkReassembler("r").add({**frames[0], "seq": 1})
+    repeated = ChunkReassembler("r")
+    repeated.add(frames[0])
+    with pytest.raises(RelayFrameError):
+        repeated.add(frames[0])
     receiver = ChunkReassembler("r", 1)
     with pytest.raises(RelayFrameError):
         receiver.add(frames[0])

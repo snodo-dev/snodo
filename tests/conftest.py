@@ -207,6 +207,7 @@ def _guard_suite_snodo_per_test(request):
     """Report suite-checkout ``.snodo/`` writes against the test that caused them."""
     repo_root = _suite_repo_root()
     if repo_root is None:
+        yield
         return
     before = _snodo_dir_state(repo_root)
     yield
