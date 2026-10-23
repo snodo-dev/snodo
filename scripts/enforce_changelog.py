@@ -52,6 +52,52 @@ def _git(repo_root: Path, *args: str) -> str:
         raise ChangelogCheckError(f"git {' '.join(args)} failed: {detail}") from exc
 
 
+def _try_git(repo_root: Path, *args: str) -> str | None:
+    try:
+        return subprocess.run(  # noqa: S603, S607 - executable is fixed
+            ["git", *args],  # noqa: S607 - git is the fixed executable
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def _resolve_base(repo_root: Path, supplied: str) -> tuple[str, str | None]:
+    resolved = _try_git(repo_root, "rev-parse", "--verify", f"{supplied}^{{commit}}")
+    if resolved:
+        return resolved, None
+
+    attempts = ["merge-base with the default branch", "merge-base with the branch upstream"]
+    default_ref = _try_git(repo_root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+    candidates = [default_ref, "origin/main", "origin/master"]
+    seen: set[str] = set()
+    for ref in candidates:
+        if not ref or ref in seen:
+            continue
+        seen.add(ref)
+        target = _try_git(repo_root, "rev-parse", "--verify", f"{ref}^{{commit}}")
+        if target:
+            merge_base = _try_git(repo_root, "merge-base", "HEAD", target)
+            if merge_base:
+                return merge_base, f"{supplied!r} could not be resolved; using merge base {merge_base} with {ref}"
+
+    upstream = _try_git(repo_root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+    if upstream:
+        attempts.append(f"upstream {upstream}")
+        target = _try_git(repo_root, "rev-parse", "--verify", f"{upstream}^{{commit}}")
+        if target:
+            merge_base = _try_git(repo_root, "merge-base", "HEAD", target)
+            if merge_base:
+                return merge_base, f"{supplied!r} could not be resolved; using merge base {merge_base} with {upstream}"
+    raise ChangelogCheckError(
+        f"base {supplied!r} could not be resolved, and no fallback could be established "
+        f"(tried {', '.join(attempts)}); fetch the default branch or set --base to a reachable commit."
+    )
+
+
 def _commits(repo_root: Path, base: str) -> list[tuple[str, str, str, int]]:
     records = _git(
         repo_root,
@@ -157,6 +203,10 @@ def main(argv: list[str] | None = None) -> int:
     changelog_path = repo_root / args.changelog
 
     try:
+        supplied_base = args.base
+        base, fallback_message = _resolve_base(repo_root, supplied_base)
+        if fallback_message:
+            print(f"Changelog check fallback: supplied base {fallback_message}.")
         if args.mode == "release":
             failure = _release_section_failure(
                 changelog_path.read_text(encoding="utf-8"), args.base
@@ -164,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
             if failure:
                 print(f"FAIL: {failure}")
                 return 1
-        failures = check(repo_root, args.base, changelog_path)
+        failures = check(repo_root, base, changelog_path)
     except (ChangelogCheckError, OSError) as exc:
         print(f"Changelog check failed: {exc}")
         return 1
