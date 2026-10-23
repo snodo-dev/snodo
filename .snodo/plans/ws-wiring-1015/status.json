@@ -1,0 +1,50 @@
+{
+  "tasks": {
+    "1.1_ws_hostnames_are_recognised": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "cf1c65474f0f70b0"
+    },
+    "1.2_ws_tunnel_state_is_kept": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a9f26d2b7ae3a724"
+    },
+    "1.3_registry_entries_know_their_transport": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "033931958fd32c23"
+    },
+    "2.1_one_relay_owner_per_machine": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c41bca86102fe16b"
+    },
+    "3.1_serve_can_provision_a_ws_tunnel": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3c9cd8781f61112a"
+    },
+    "4.1_serve_runs_over_the_relay": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1f3759bae4ec8a24"
+    },
+    "4.2_ws_transport_is_documented": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9b141e0cd95e280b"
+    }
+  },
+  "integration": {
+    "branch": "plan/ws-wiring-1015/integration",
+    "base_sha": "a5b58ebd52a60e3156967ae89741e744b08f7368"
+  }
+}

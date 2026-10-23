@@ -1,0 +1,27 @@
+intent: 'A user can provision a WebSocket tunnel and serve through the machine relay
+  with `snodo serve --tunnel --tunnel-transport ws`, with Cloudflare behaviour unchanged
+  (#1015, #1016, #1017)'
+name: ws-wiring-1015
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_ws_hostnames_are_recognised
+  - 1.2_ws_tunnel_state_is_kept
+  - 1.3_registry_entries_know_their_transport
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_one_relay_owner_per_machine
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_serve_can_provision_a_ws_tunnel
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_serve_runs_over_the_relay
+  - 4.2_ws_transport_is_documented
