@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Cap LiteLLM below 1.106 until the MCP 2.x port lands, keeping fresh installs compatible with the current MCP constraint. (Fixes #1006)
+
 - Verify retained task workspaces against this repository’s registered worktrees before retry reuse, refusing foreign or mismatched workspaces with recovery guidance. (Fixes #970)
 
 - Add a fresh-start choice for retries and record attempt provenance, including the starting revision and inherited work. (Fixes #948)

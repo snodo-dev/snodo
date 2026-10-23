@@ -19,7 +19,8 @@ dependencies = [
     "langchain-core>=0.3.0",
     "langchain-community>=0.4.0",
     "langgraph>=0.2.0",
-    "litellm>=1.80.0",
+    # LiteLLM 1.106+ requires MCP 2.x; lift this bound when the MCP 2.x port lands.
+    "litellm>=1.80.0,<1.106",
 ]
 
 [project.urls]
