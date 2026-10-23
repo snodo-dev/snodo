@@ -1,0 +1,10 @@
+intent: Restore the rationale comments plan 931 stripped from the post-execute write-back
+  and validator context, and make the coverage-loss check see deleted test files and
+  docstring prose.
+name: rationale-restore-and-loss-check-1014
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_restore_stripped_rationale
+  - 1.2_loss_check_sees_deletions_and_prose
