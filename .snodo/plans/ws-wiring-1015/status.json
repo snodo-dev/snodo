@@ -31,13 +31,13 @@
       "spec_hash": "3c9cd8781f61112a"
     },
     "4.1_serve_runs_over_the_relay": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "1f3759bae4ec8a24"
     },
     "4.2_ws_transport_is_documented": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "9b141e0cd95e280b"
