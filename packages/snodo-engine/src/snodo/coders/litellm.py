@@ -30,6 +30,7 @@ from snodo.coders.read_memory import (
     format_repeat_read_response,
 )
 from snodo.coders.tool_result_text import bound_tool_result, provider_tool_result_text
+import snodo.coders.history_tools as history_tools
 from snodo.paths import is_protected_workspace_path
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError, TurnBudgetExhausted
 from snodo.coders.test_governing import _is_test_governing_file
@@ -102,11 +103,6 @@ _logger = logging.getLogger(__name__)
 
 # Maximum tool-use turns before forcing a CodeArtifact parse.
 _DEFAULT_MAX_TOOL_TURNS = 20
-
-
-def _is_gemini3_plus(model: str) -> bool:
-    """Check if model is Gemini 3.0 or higher."""
-    return "gemini-3" in model.lower() or "gemini-4" in model.lower()
 
 
 class LiteLLMAdapter(CoderAdapter):
@@ -297,7 +293,7 @@ Return ONLY the JSON array, no other text.
             extra_headers = self._resolve_extra_headers()
             if extra_headers:
                 kwargs["extra_headers"] = extra_headers
-            if not _is_gemini3_plus(self.model):
+            if not history_tools.is_gemini3_plus(self.model):
                 kwargs["temperature"] = self.temperature
             response = completion_without_rejected_parameters(
                 self._completion_fn, kwargs, set(), _logger, self.model,
@@ -404,7 +400,7 @@ Return ONLY the JSON array, no other text.
                 extra_headers = self._resolve_extra_headers()
                 if extra_headers:
                     kwargs["extra_headers"] = extra_headers
-                if not _is_gemini3_plus(self.model):
+                if not history_tools.is_gemini3_plus(self.model):
                     kwargs["temperature"] = self.temperature
                 response = completion_without_rejected_parameters(
                     self._completion_fn, kwargs, removed_parameters, _logger, self.model,
@@ -820,6 +816,7 @@ Return ONLY the JSON array, no other text.
     def _build_tool_definitions() -> List[Dict[str, Any]]:
         """Build OpenAI-format tool definitions for the read-only toolset."""
         return [
+            *history_tools.definitions(),
             {
                 "type": "function",
                 "function": {
@@ -1044,7 +1041,7 @@ Return ONLY the JSON array, no other text.
                     return workspace.search_symbol(symbol_name, directory)
                 return f"search_symbol unavailable on workspace: {workspace}"
             else:
-                return f"Unknown tool: {name}"
+                return history_tools.execute(name, args, workspace)
         except Exception as e:
             return f"Tool error: {e}"
 
