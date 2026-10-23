@@ -571,6 +571,47 @@ def create_worktree(
     # Retrying must not erase work from a halted attempt. This also covers the
     # legacy plan identity; the selected path is the task's durable workspace.
     if wt_path.exists():
+        registered = wt_path.resolve() in _project_worktree_paths(project_root)
+        if not registered:
+            detail = "not a git repository"
+            try:
+                from git import InvalidGitRepositoryError, NoSuchPathError
+                from git.exc import BadName
+                from snodo.tools.git import open_repo
+
+                with open_repo(str(wt_path), search_parent_directories=False) as existing_repo:
+                    try:
+                        branch_detail = f"branch {existing_repo.active_branch.name!r}"
+                    except (TypeError, BadName):
+                        branch_detail = "detached or unborn HEAD"
+                    detail = f"{branch_detail} in repository {existing_repo.working_tree_dir!r}"
+            except (InvalidGitRepositoryError, NoSuchPathError):
+                detail = "not a git repository"
+            except Exception:
+                _logger.debug("Could not inspect unregistered workspace %s", wt_path, exc_info=True)
+                detail = "repository details could not be read"
+            raise WorktreeIsolationError(
+                f"Refusing to use existing path {wt_path}: found {detail}; project "
+                f"{Path(project_root).resolve()} requested task {task_id}. Clear it only "
+                f"after inspection with 'snodo worktree remove {task_id}'."
+            )
+        try:
+            actual_branch = task_worktree_branch(str(wt_path))
+        except Exception as e:
+            raise WorktreeIsolationError(
+                f"Refusing to use registered workspace {wt_path} for project {Path(project_root).resolve()} "
+                f"task {task_id}: its branch cannot be read; use 'snodo worktree remove {task_id}' to clear it."
+            ) from e
+        expected_prefixes = [
+            f"task/{_name_component(plan_name)}/{task_id}/" if plan_name else f"task/{task_id}/"
+        ]
+        if plan_name:
+            expected_prefixes.append(f"task/{task_id}/")
+        if not any(actual_branch.startswith(prefix) for prefix in expected_prefixes):
+            raise WorktreeIsolationError(
+                f"Refusing to use existing path {wt_path}: branch {actual_branch!r} does not match "
+                f"project {Path(project_root).resolve()} task {task_id}; clear it with 'snodo worktree remove {task_id}'."
+            )
         _logger.info("Reusing existing worktree %s for task %s", wt_path, task_id)
         _prepare_task_environment(wt_path, protocol)
         return wt_path
