@@ -1,3 +1,4 @@
+import psutil
 from git import Repo
 
 from snodo.coders.history_tools import execute
@@ -55,3 +56,32 @@ def test_coder_history_surface_is_read_only():
     names = {item["function"]["name"] for item in LiteLLMAdapter._build_tool_definitions()}
     assert {"git_log", "git_show", "read_diff_between_refs"} <= names
     assert not {"write_file", "shell", "git_commit"} & names
+
+
+def test_history_queries_leave_no_git_helper_processes(tmp_path):
+    workspace, _ = _history_workspace(tmp_path)
+    parent = psutil.Process()
+
+    def live_children():
+        children = {}
+        for child in parent.children(recursive=True):
+            try:
+                if child.is_running() and child.status() != psutil.STATUS_ZOMBIE:
+                    children[child.pid] = child
+            except psutil.NoSuchProcess:
+                continue
+        return children
+
+    before = live_children()
+    assert execute("git_log", {}, workspace)
+    refusal = execute("git_show", {"ref": "no-such-revision", "path": "example.txt"}, workspace)
+    assert "Could not read" in refusal
+
+    leaked = live_children()
+    leaked = {pid: process for pid, process in leaked.items() if pid not in before}
+    git_helpers = {
+        pid: process
+        for pid, process in leaked.items()
+        if process.name() == "git" and "cat-file" in " ".join(process.cmdline())
+    }
+    assert not git_helpers

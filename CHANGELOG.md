@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 - Let coders consult bounded, read-only repository history while working in a task workspace. (Fixes #961)
+- Avoid leaving GitPython helper processes running after coder history queries. (Fixes #961)
 
 - Warn on truncated coder reads and refuse implausibly short whole-file rewrites unless acknowledged. (Fixes #944)
 
