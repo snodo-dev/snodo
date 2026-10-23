@@ -134,53 +134,88 @@ class CloudRelay:
             await socket.send(encode_frame({"t": "hello", "v": 1, "machine_id": self.machine,
                                             "snodo_version": __version__, "endpoints": current}))
             iterator = socket.__aiter__()
-            while True:
-                try:
-                    raw = await asyncio.wait_for(iterator.__anext__(), timeout=REGISTRY_POLL_SECONDS)
-                except asyncio.TimeoutError:
+            safe_recv = callable(getattr(socket, "recv", None))
+            reader = asyncio.create_task(socket.recv()) if safe_recv else None
+            connection_tasks: set[asyncio.Task] = set()
+            try:
+                while True:
                     raw = None
-                except StopAsyncIteration:
-                    break
-                if raw is not None:
-                    frame = decode_frame(raw)
-                    if frame["t"] == "req":
-                        rid = frame["id"]
-                        if rid in pending or rid in self._tasks:
-                            await socket.send(encode_frame({"t": "err", "id": rid, "code": "duplicate_request", "message": "Request id is already active"}))
-                        else:
-                            self._request_frames[rid] = frame
-                            pending[rid] = ChunkReassembler(rid)
-                    elif frame["t"] == "chunk":
-                        rid = frame["id"]
-                        assembler = pending.get(rid)
-                        if assembler is None:
-                            await socket.send(encode_frame({"t": "err", "id": rid, "code": "invalid_chunk", "message": "No pending request"}))
-                        else:
+                    if safe_recv:
+                        done, _ = await asyncio.wait(
+                            {reader}, timeout=REGISTRY_POLL_SECONDS
+                        )
+                        if done:
                             try:
-                                body = assembler.add(frame)
-                            except Exception:
-                                pending.pop(rid, None)
-                                self._request_frames.pop(rid, None)
-                                await socket.send(encode_frame({"t": "err", "id": rid, "code": "invalid_chunk", "message": "Invalid request body"}))
+                                raw = reader.result()
+                            except websockets.exceptions.ConnectionClosed:
+                                break
+                            reader = asyncio.create_task(socket.recv())
+                    else:
+                        try:
+                            raw = await asyncio.wait_for(
+                                iterator.__anext__(), timeout=REGISTRY_POLL_SECONDS
+                            )
+                        except asyncio.TimeoutError:
+                            pass
+                        except StopAsyncIteration:
+                            break
+                    if raw is not None:
+                        frame = decode_frame(raw)
+                        if frame["t"] == "req":
+                            rid = frame["id"]
+                            if rid in pending or rid in self._tasks:
+                                await socket.send(encode_frame({"t": "err", "id": rid, "code": "duplicate_request", "message": "Request id is already active"}))
                             else:
-                                if body is not None:
+                                self._request_frames[rid] = frame
+                                pending[rid] = ChunkReassembler(rid)
+                        elif frame["t"] == "chunk":
+                            rid = frame["id"]
+                            assembler = pending.get(rid)
+                            if assembler is None:
+                                await socket.send(encode_frame({"t": "err", "id": rid, "code": "invalid_chunk", "message": "No pending request"}))
+                            else:
+                                try:
+                                    body = assembler.add(frame)
+                                except Exception:
                                     pending.pop(rid, None)
-                                    task = asyncio.create_task(self._dispatch(socket, self._request_frames[rid], body))
-                                    self._tasks[rid] = task
-                    elif frame["t"] == "cancel":
-                        rid = frame["id"]
-                        pending.pop(rid, None)
+                                    self._request_frames.pop(rid, None)
+                                    await socket.send(encode_frame({"t": "err", "id": rid, "code": "invalid_chunk", "message": "Invalid request body"}))
+                                else:
+                                    if body is not None:
+                                        pending.pop(rid, None)
+                                        task = asyncio.create_task(self._dispatch(socket, self._request_frames[rid], body))
+                                        self._tasks[rid] = task
+                                        connection_tasks.add(task)
+                        elif frame["t"] == "cancel":
+                            rid = frame["id"]
+                            pending.pop(rid, None)
+                            self._request_frames.pop(rid, None)
+                            task = self._tasks.get(rid)
+                            if task:
+                                self._cancelled.add(rid)
+                                task.cancel()
+                    entries = self.registry()
+                    endpoints = _endpoints(entries)
+                    if endpoints != current:
+                        current = endpoints
+                        await socket.send(encode_frame({"t": "hello", "v": 1, "machine_id": self.machine,
+                                                        "snodo_version": __version__, "endpoints": endpoints}))
+            finally:
+                if reader is not None:
+                    if not reader.done():
+                        reader.cancel()
+                    await asyncio.gather(reader, return_exceptions=True)
+                for task in connection_tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*connection_tasks, return_exceptions=True)
+                for rid, task in list(self._tasks.items()):
+                    if task in connection_tasks:
+                        self._tasks.pop(rid, None)
                         self._request_frames.pop(rid, None)
-                        task = self._tasks.get(rid)
-                        if task:
-                            self._cancelled.add(rid)
-                            task.cancel()
-                entries = self.registry()
-                endpoints = _endpoints(entries)
-                if endpoints != current:
-                    current = endpoints
-                    await socket.send(encode_frame({"t": "hello", "v": 1, "machine_id": self.machine,
-                                                    "snodo_version": __version__, "endpoints": endpoints}))
+                        self._cancelled.discard(rid)
+                for rid in pending:
+                    self._request_frames.pop(rid, None)
         if getattr(socket, "close_code", None) == 4001:
             raise _ReplacedConnection()
 
@@ -218,7 +253,10 @@ class CloudRelay:
                     await socket.send(encode_frame({"t": "chunk", "id": rid, "seq": seq, "last": True, "data_b64": ""}))
             except Exception:
                 if rid not in self._cancelled:
-                    await socket.send(encode_frame({"t": "err", "id": rid, "code": "local_error", "message": "Local request failed"}))
+                    try:
+                        await socket.send(encode_frame({"t": "err", "id": rid, "code": "local_error", "message": "Local request failed"}))
+                    except Exception:  # noqa: S110 — a closed-socket send is expected during teardown.
+                        pass
             finally:
                 keep.cancel()
                 self._cancelled.discard(rid)
