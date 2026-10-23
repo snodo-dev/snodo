@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Let coders consult bounded, read-only repository history while working in a task workspace. (Fixes #961)
+
 - Warn on truncated coder reads and refuse implausibly short whole-file rewrites unless acknowledged. (Fixes #944)
 
 - Include deleted and renamed test files in coverage-loss checks, and count docstring prose when detecting explanation loss. (Fixes #1014)
