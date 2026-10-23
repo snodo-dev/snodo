@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Warn on truncated coder reads and refuse implausibly short whole-file rewrites unless acknowledged. (Fixes #944)
+
 - Include deleted and renamed test files in coverage-loss checks, and count docstring prose when detecting explanation loss. (Fixes #1014)
 
 - Surface non-blocking post-execute findings when test cases or substantial explanatory comments/docstrings disappear without being requested. (Fixes #959)
