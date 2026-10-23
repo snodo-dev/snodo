@@ -26,8 +26,8 @@ class JwksClient:
         self._cache_ttl = cache_ttl
         self._keys = {}
         self._cached_key = None  # Retained for compatibility with existing callers/tests.
-        self._fetched_at = 0.0
-        self._unknown_refresh_at = 0.0
+        self._fetched_at = None
+        self._unknown_refresh_at = None
 
     def fetch(self) -> bool:
         """Fetch and cache all valid RSA keys. Failures never expose response data."""
@@ -60,10 +60,11 @@ class JwksClient:
             kid = header.get("kid")
             if not isinstance(kid, str):
                 return None
-            if time.monotonic() - self._fetched_at >= self._cache_ttl:
+            if self._fetched_at is None or time.monotonic() - self._fetched_at >= self._cache_ttl:
                 self.fetch()
             key = self._keys.get(kid)
-            if key is None and time.monotonic() - self._unknown_refresh_at >= self._cache_ttl:
+            if key is None and (self._unknown_refresh_at is None or
+                                time.monotonic() - self._unknown_refresh_at >= self._cache_ttl):
                 self._unknown_refresh_at = time.monotonic()
                 self.fetch()
                 key = self._keys.get(kid)
