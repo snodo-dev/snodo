@@ -20,7 +20,7 @@ def _jwk(public_key, kid):
     return {"kty": "RSA", "n": b64(numbers.n), "e": b64(numbers.e), "alg": "RS256", "kid": kid}
 
 
-def test_access_assertion_verification():
+def test_access_assertion_claims_signature_and_unknown_key_refresh():
     key1 = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     key2 = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     domain, aud = "team.cloudflareaccess.com", "expected-aud"
@@ -34,33 +34,38 @@ def test_access_assertion_verification():
         response.raise_for_status.return_value = None
         return response
 
-    client = JwksClient(f"https://{domain}/cdn-cgi/access/certs", fetcher=fetcher, cache_ttl=0.01)
+    client = JwksClient(f"https://{domain}/cdn-cgi/access/certs", fetcher=fetcher)
     verifier = AccessAssertionVerifier(domain, aud, jwks_client=client)
-    assert client.fetch()
     now = int(time.time())
 
     def token(key, kid="one", **claims):
         payload = {"iss": f"https://{domain}", "aud": aud, "exp": now + 300, **claims}
         return jwt.encode(payload, key, algorithm="RS256", headers={"kid": kid})
 
+    # A cold-cache verification fetches exactly once and accepts its published key.
     assert verifier.verify(token(key1))
+    assert len(calls) == 1
     assert not verifier.verify(token(key1, aud="wrong"))
     assert not verifier.verify(token(key1, iss="https://wrong.example"))
-    assert not verifier.verify(jwt.encode({"iss": f"https://{domain}", "aud": aud, "exp": now - 1}, key1, algorithm="RS256", headers={"kid": "one"}))
-    assert not verifier.verify(token(key2))
+    assert not verifier.verify(jwt.encode(
+        {"iss": f"https://{domain}", "aud": aud, "exp": now - 1}, key1,
+        algorithm="RS256", headers={"kid": "one"},
+    ))
+    assert not verifier.verify(token(key2))  # correct kid, invalid signature
 
+    # One unknown-kid refresh is allowed; the same bad kid is throttled for the cache lifetime.
     unknown = token(key2, kid="new")
-    before = len(calls)
     assert not verifier.verify(unknown)
-    assert len(calls) == before + 1
+    assert len(calls) == 2  # initial fill + one unknown-kid refresh
     assert not verifier.verify(unknown)
-    assert len(calls) == before + 1
+    assert len(calls) == 2
 
-    time.sleep(0.02)
+    # The unknown-kid refresh also picks up a rotated key when Access publishes it.
     current_keys[:] = [_jwk(key2.public_key(), "new")]
-    rotated = token(key2, kid="new")
-    assert verifier.verify(rotated)
-    assert len(calls) == before + 2
+    # Force cache expiry; the next verification refreshes and accepts the new signing key.
+    client._fetched_at -= 301
+    assert verifier.verify(token(key2, kid="new"))
+    assert len(calls) == 3
 
 
 def test_access_fetch_failure_and_bad_headers_fail_closed():
