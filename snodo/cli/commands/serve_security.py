@@ -10,7 +10,7 @@ import subprocess
 _TUNNEL_HOSTNAME_RE = re.compile(
     r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.tunnel|"
     r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-tunnel|"
-    r"[a-z0-9](?:[a-z0-9-]{0,59}[a-z0-9])?-ws)\.snodo\.dev\b"
+    r"[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?-ws)\.snodo\.dev\b"
 )
 
 
