@@ -6,14 +6,15 @@ import logging
 from pathlib import Path
 from typing import List
 
-from git import GitCommandError, Repo
+from git import GitCommandError
 
 from snodo.core.interfaces import ValidatorResult
+from snodo.tools.git import open_repo
 
 logger = logging.getLogger(__name__)
 
 
-def _git_text(repo: Repo, ref: str, path: str) -> str:
+def _git_text(repo, ref: str, path: str) -> str:
     try:
         return repo.git.show(f"{ref}:{path}")
     except GitCommandError as exc:
@@ -41,7 +42,7 @@ def coverage_findings(*, base_ref: str, head_ref: str, task_spec: str, working_d
     """Compare tracked Python test/doc content to base; never veto delivery."""
     root = str(Path(working_directory))
     try:
-        repo = Repo(root, search_parent_directories=True)
+        repo = open_repo(root, search_parent_directories=True)
         names = repo.git.diff("--name-only", "--diff-filter=ACMRT", base_ref, head_ref).splitlines()
     except (GitCommandError, OSError) as exc:
         logger.warning("Could not inspect coverage changes from %s to %s: %s", base_ref, head_ref, exc)

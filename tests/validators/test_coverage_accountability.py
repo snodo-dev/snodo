@@ -1,10 +1,12 @@
 from git import Repo
 
+from snodo.tools.git import open_repo
 from snodo.validators.coverage_accountability import coverage_findings
 
 
 def _repo(tmp_path, content):
-    repo = Repo.init(tmp_path)
+    Repo.init(tmp_path).close()
+    repo = open_repo(str(tmp_path))
     path = tmp_path / "test_contract.py"
     path.write_text(content)
     repo.index.add([str(path)])
