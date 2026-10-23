@@ -239,7 +239,16 @@ For interpreting these metrics, see [Reading overnight run results](reading-over
 
 `snodo meta <composite_id>` summarizes a job or task. Job IDs conventionally
 start with `j_` and task IDs with `task_`; other values are resolved by checking
-the project's job and task record directories.
+the project's job and task record directories. For a task, its Runs table lists
+JOB (the job that ran it), PLAN/WAVE (the plan and wave, when present), TASK,
+STARTED, ENDED, and OUTCOME. A task run inside a plan wave shows the plan's job
+ID. A hand-run task has no job ID, so it does not appear in the table.
+
+`snodo task show <task_id>` also includes a Runs section with the jobs that ran
+the task. Its columns are JOB, PLAN/WAVE, TASK, STARTED, ENDED, and OUTCOME;
+PLAN/WAVE identifies the plan and wave when available, and the remaining columns
+show the run's task ID, start and end times, and outcome. Runs inside a plan wave
+show the plan's job ID. A hand-run task has no job ID.
 
 ## MCP server
 

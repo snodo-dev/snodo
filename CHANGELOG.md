@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Show the jobs behind a task in its run history, including plan-wave job IDs. (Fixes #1018)
+
 - Let a served project be reached over a WebSocket tunnel without `cloudflared`. (Fixes #1015, #1016, #1017)
 
 - Let coders consult bounded, read-only repository history while working in a task workspace. (Fixes #961)

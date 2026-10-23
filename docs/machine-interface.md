@@ -83,6 +83,7 @@ Schema: `snodo.task.v1`
 | `halt` | object \| null | the halt payload, or `null` |
 | `failure` | object \| null | the failure context, or `null` |
 | `spec` | string \| null | the task spec |
+| `runs` | array | task run records, with job, plan/wave, task, start/end, and outcome fields |
 
 For a task that is **still running** (no halt/failure record yet, a live run
 record on disk) the command answers `ok: true` with `status: "running"`, null
