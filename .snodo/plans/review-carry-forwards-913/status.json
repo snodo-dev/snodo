@@ -1,10 +1,23 @@
 {
   "tasks": {
-    "1.1_review_carry_forwards": {
-      "status": "pending",
+    "1.1_gate_variables_are_documented": {
+      "status": "completed",
       "parent_task_ref": null,
-      "depth": 0,
-      "spec_hash": "792260b180fafde7"
+      "depth": 0
+    },
+    "1.2_base_branch_failure_is_logged": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0
+    },
+    "1.3_protected_paths_sources_are_clarified": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0
     }
+  },
+  "integration": {
+    "branch": "plan/review-carry-forwards-913/integration",
+    "base_sha": "a6e04b9670690170d18b86289b4bfe7f0d11b8b8"
   }
 }

@@ -5,4 +5,6 @@ waves:
 - depends_on: []
   id: 1
   tasks:
-  - 1.1_review_carry_forwards
+  - 1.1_gate_variables_are_documented
+  - 1.2_base_branch_failure_is_logged
+  - 1.3_protected_paths_sources_are_clarified
