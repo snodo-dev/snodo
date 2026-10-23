@@ -1,10 +1,14 @@
 {
   "tasks": {
     "1.1_changelog_base_fallback": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "a42092a345db6be8"
     }
+  },
+  "integration": {
+    "branch": "plan/changelog-gate-history-robustness-962/integration",
+    "base_sha": "8a56c303a57b17a8cee8d6d4127b0790765f4233"
   }
 }
