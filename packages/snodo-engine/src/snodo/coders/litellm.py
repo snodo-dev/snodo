@@ -21,9 +21,14 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
+from snodo.coders.read_memory import (
+    ReadMemoryTracker,
+    _normalize_path_arg,
+    format_repeat_read_response,
+)
 from snodo.coders.tool_result_text import bound_tool_result, provider_tool_result_text
 from snodo.paths import is_protected_workspace_path
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError, TurnBudgetExhausted
@@ -1260,12 +1265,3 @@ def _search_term_directory_guidance(
         f"To find where a symbol is defined, call search_symbol(name=<identifier>)."
     )
 
-
-from snodo.coders.read_memory import (
-    ReadMemoryTracker,
-    _canonical_read_key,
-    _canonical_rel_path,
-    _extract_line_range,
-    _normalize_path_arg,
-    format_repeat_read_response,
-)
