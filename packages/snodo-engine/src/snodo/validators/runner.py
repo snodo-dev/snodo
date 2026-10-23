@@ -816,6 +816,16 @@ def run_validators(
             results_by_id[v.validator_id] = result
 
     results = [results_by_id[v.validator_id] for v in validators]
+    if phase == "post_execute" and base_ref:
+        from snodo.validators.coverage_accountability import coverage_findings
+
+        findings = coverage_findings(
+            base_ref=base_ref,
+            head_ref="HEAD",
+            task_spec=task.root_spec or task.spec,
+            working_directory=context.working_directory,
+        )
+        results.extend(findings)
     return results, cap_originals
 
 
