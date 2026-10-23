@@ -125,3 +125,37 @@ def test_issue_entry_in_pending_section_passes(tmp_path: Path) -> None:
     )
 
     assert changelog_check.check(repo, base, repo / "CHANGELOG.md") == []
+
+
+def test_unreachable_base_falls_back_and_enforces_coverage(tmp_path: Path, capsys) -> None:
+    repo, base = _repo(tmp_path, "fix: close the broken path (Fixes #987)")
+    _git(repo, "update-ref", "refs/remotes/origin/main", base)
+
+    assert changelog_check.main(
+        ["--repo", str(repo), "--base", "deadbeef-unreachable", "--mode", "gate"]
+    ) == 0
+    output = capsys.readouterr().out
+    assert "deadbeef-unreachable" in output
+    assert "using merge base" in output
+    assert "issue #987" in output
+
+
+def test_unreachable_base_without_fallback_has_actionable_error(tmp_path: Path, capsys) -> None:
+    repo, _ = _repo(tmp_path, "chore: ordinary change")
+
+    assert changelog_check.main(
+        ["--repo", str(repo), "--base", "deadbeef-unreachable"]
+    ) == 1
+    output = capsys.readouterr().out
+    assert "no fallback could be established" in output
+    assert "fetch the default branch" in output
+    assert "Invalid revision range" not in output
+
+
+def test_reachable_base_and_empty_range_pass(tmp_path: Path, capsys) -> None:
+    repo, base = _repo(tmp_path, "chore: ordinary change")
+    head = _git(repo, "rev-parse", "HEAD")
+
+    assert changelog_check.main(["--repo", str(repo), "--base", base]) == 0
+    assert changelog_check.main(["--repo", str(repo), "--base", head]) == 0
+    assert "fallback" not in capsys.readouterr().out
