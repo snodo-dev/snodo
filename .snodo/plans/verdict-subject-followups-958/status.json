@@ -1,10 +1,14 @@
 {
   "tasks": {
     "1.1_instructions_match_the_rule": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "737aba1e28838770"
     }
+  },
+  "integration": {
+    "branch": "plan/verdict-subject-followups-958/integration",
+    "base_sha": "958334db0f05bb1d7f79178f65d6be1048f189b4"
   }
 }
