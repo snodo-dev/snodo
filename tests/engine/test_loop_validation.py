@@ -9,6 +9,7 @@ import pytest
 from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.loop import GraphBuilder
+from snodo.engine.nodes import validation
 
 
 @pytest.fixture
@@ -815,3 +816,14 @@ class TestExecutionFailureReporting:
         assert "src/thing.py" in result["artifacts"]
         assert result["halt_type"] is None
 
+
+def test_resolved_base_branch_logs_resolution_failure(monkeypatch, caplog):
+    def fail_resolution(_project_root):
+        raise RuntimeError("base ref unavailable")
+
+    monkeypatch.setattr(validation, "resolve_base_branch", fail_resolution)
+
+    with caplog.at_level("DEBUG", logger=validation.__name__):
+        assert validation._resolved_base_branch("/repo") == ""
+
+    assert any("base ref unavailable" in record.message for record in caplog.records)

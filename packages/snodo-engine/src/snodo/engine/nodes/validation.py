@@ -1,3 +1,4 @@
+import logging
 from pathlib import PurePosixPath
 from typing import Dict, Any, List
 from snodo.engine.state import LoopStage, LoopState, _build_audit_results
@@ -15,6 +16,8 @@ from snodo.engine.policy import PolicyAction, policy_decision_to_dict
 from snodo.engine.nodes.writeback import _coder_registry_name
 from snodo.engine.absent_claims import detect_absent_claims
 
+_logger = logging.getLogger(__name__)
+
 
 def _resolved_base_branch(project_root: Any) -> str:
     """Return the repository's base branch, or "" when it cannot be resolved.
@@ -24,7 +27,8 @@ def _resolved_base_branch(project_root: Any) -> str:
     """
     try:
         return resolve_base_branch(str(project_root))
-    except Exception:
+    except Exception as exc:
+        _logger.debug("Could not resolve base branch: %s", exc)
         return ""
 
 
