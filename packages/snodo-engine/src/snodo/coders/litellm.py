@@ -464,16 +464,15 @@ Return ONLY the JSON array, no other text.
                     if tool_name == "submit_files":
                         files_list = self._extract_submit_files(tc)
                         if files_list is not None and files_list:
-                            for f in files_list:
+                            refusals = self._implausible_rewrite_feedback(files_list, workspace, prompt)
+                            accepted_files = [f for f in files_list if not isinstance(f, dict) or f.get("path") not in refusals]
+                            for f in accepted_files:
                                 if isinstance(f, dict) and "path" in f:
                                     path = f["path"]
                                     action = f.get("action", "write")
                                     accumulated_files[path] = f
                                     if _is_test_governing_file(path):
-                                        test_governing_mutations[path] = {
-                                            "path": path,
-                                            "kind": action,
-                                        }
+                                        test_governing_mutations[path] = {"path": path, "kind": action}
                             self._emit_turn_telemetry(
                                 turn_index=turn + 1,
                                 tool="submit_files",
@@ -488,6 +487,9 @@ Return ONLY the JSON array, no other text.
                             staged_count = len(files_list)
                             total_count = len(accumulated_files)
                             result = (
+                                f"Refused implausibly short rewrite(s): {refusals}. Re-read each file completely, or edit only the intended region. "
+                                "For an intentional whole-file replacement, include acknowledge_short_rewrite: true on that file."
+                                if refusals else
                                 f"Staged {staged_count} file operation(s). Total accumulated across turns: {total_count} file(s). "
                                 f"You may call submit_files again to stage additional or updated files, or finish when complete."
                             )
@@ -674,6 +676,10 @@ Return ONLY the JSON array, no other text.
                                     "type": "string",
                                     "description": "Full file content (required for write, optional for delete)",
                                 },
+                                "acknowledge_short_rewrite": {
+                                    "type": "boolean",
+                                    "description": "Set true to intentionally replace an existing file with a substantially shorter whole-file body",
+                                },
                                 "action": {
                                     "type": "string",
                                     "enum": ["write", "delete"],
@@ -689,6 +695,35 @@ Return ONLY the JSON array, no other text.
             },
         },
     }
+
+    @staticmethod
+    def _implausible_rewrite_feedback(files: List[Dict], workspace: Any, prompt: str) -> Dict[str, str]:
+        """Refuse drastic accidental shrinkage before a body enters staged writes."""
+        root = getattr(workspace, "project_root", None)
+        if not isinstance(root, (str, Path)):
+            return {}
+        shortening_requested = bool(re.search(r"\b(shorten|condense|reduce|trim|remove\s+sections?)\b", prompt, re.I))
+        refusals: Dict[str, str] = {}
+        for item in files:
+            if not isinstance(item, dict) or item.get("action", "write") != "write":
+                continue
+            path, content = item.get("path"), item.get("content")
+            if not isinstance(path, str) or not isinstance(content, str):
+                continue
+            if item.get("acknowledge_short_rewrite") is True or shortening_requested:
+                continue
+            try:
+                target = (Path(root) / path).resolve()
+                target.relative_to(Path(root).resolve())
+                if not target.is_file():
+                    continue
+                old_size, new_size = target.stat().st_size, len(content.encode("utf-8"))
+            except (OSError, ValueError):
+                continue
+            delta = old_size - new_size
+            if delta >= 1024 and new_size <= old_size * 0.4:
+                refusals[path] = f"{path}: submitted {new_size} bytes, {delta} bytes smaller than existing {old_size}-byte file"
+        return refusals
 
     @staticmethod
     def _extract_submit_files(target: Any) -> Optional[List[Dict]]:
@@ -1005,7 +1040,10 @@ Return ONLY the JSON array, no other text.
                     output += f"\n\n[TRUNCATED BATCH: {'; '.join(notice_parts)}. Read each named file with read_file_lines and continue from its stated next line.]"
                 return output
             elif name == "read_file":
-                return workspace.read_file(args["path"])
+                content = workspace.read_file(args["path"])
+                if "[TRUNCATED" in content or "... (truncated" in content.lower():
+                    return content + "\n[READ WARNING: This file content was truncated. Do not submit it as a whole-file replacement; read the remaining lines with read_file_lines first.]"
+                return content
             elif name == "read_file_lines":
                 return workspace.read_file_lines(args["path"], args["start"], args["end"])
             elif name == "list_files":
