@@ -19,7 +19,7 @@
       "spec_hash": "033931958fd32c23"
     },
     "2.1_one_relay_owner_per_machine": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "c41bca86102fe16b"
