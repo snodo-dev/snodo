@@ -1,0 +1,8 @@
+intent: The coder history tools must not leave a persistent git helper process behind,
+  so the suite's leak guard stays green (#961)
+name: history-tools-leak-961
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_history_tools_leave_no_git_child

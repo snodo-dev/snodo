@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_history_tools_leave_no_git_child": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5d0f869fe4479943"
+    }
+  },
+  "integration": {
+    "branch": "plan/history-tools-leak-961/integration",
+    "base_sha": "8a56c303a57b17a8cee8d6d4127b0790765f4233"
+  }
+}
