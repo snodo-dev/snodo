@@ -169,3 +169,27 @@ class TestHostnameRegexShape:
         hostname = f"droptrack-io-1a2b3c-all-kfc93s{_TUNNEL_DOMAIN}"
         body = f'conflict: slot taken by {hostname}'
         assert serve_cmd._extract_existing_hostname(body) == hostname
+
+    def test_regex_recognises_ws_hostname(self):
+        hostname = "droptrack-all-kfc93s-ws.snodo.dev"
+        assert serve_cmd._TUNNEL_HOSTNAME_RE.fullmatch(hostname)
+
+    def test_regex_extracts_ws_hostname_from_conflict_text(self):
+        hostname = "droptrack-all-kfc93s-ws.snodo.dev"
+        body = f"conflict: slot taken by {hostname}"
+        assert serve_cmd._extract_existing_hostname(body) == hostname
+
+    @pytest.mark.parametrize("hostname", [
+        "nested.droptrack-ws.snodo.dev",
+        "droptrack.snodo.dev",
+        "droptrack-ws.other.dev",
+    ])
+    def test_regex_rejects_ws_hostname_lookalikes(self, hostname):
+        assert not serve_cmd._TUNNEL_HOSTNAME_RE.fullmatch(hostname)
+
+    @pytest.mark.parametrize("hostname", [
+        "old.tunnel.snodo.dev",
+        "old-tunnel.snodo.dev",
+    ])
+    def test_regex_keeps_existing_cloudflare_shapes(self, hostname):
+        assert serve_cmd._TUNNEL_HOSTNAME_RE.fullmatch(hostname)
