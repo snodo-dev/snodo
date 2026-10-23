@@ -7,10 +7,10 @@
       "spec_hash": "8c9cbc9eeeb68b76"
     },
     "2.1_implausible_rewrite_refused": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "1bca8260e0b68062"
+      "spec_hash": "272a621a248a8cbd"
     },
     "3.1_read_only_history_tools": {
       "status": "pending",
