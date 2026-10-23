@@ -2,21 +2,22 @@
 
 import ast
 import re
-import subprocess
+import logging
 from pathlib import Path
 from typing import List
 
+from git import GitCommandError, Repo
+
 from snodo.core.interfaces import ValidatorResult
 
+logger = logging.getLogger(__name__)
 
-def _git_text(root: str, ref: str, path: str) -> str:
+
+def _git_text(repo: Repo, ref: str, path: str) -> str:
     try:
-        result = subprocess.run(
-            ["git", "show", f"{ref}:{path}"], cwd=root, capture_output=True,
-            text=True, check=False,
-        )
-        return result.stdout if result.returncode == 0 else ""
-    except OSError:
+        return repo.git.show(f"{ref}:{path}")
+    except GitCommandError as exc:
+        logger.warning("Could not read %s at revision %s: %s", path, ref, exc)
         return ""
 
 
@@ -40,17 +41,16 @@ def coverage_findings(*, base_ref: str, head_ref: str, task_spec: str, working_d
     """Compare tracked Python test/doc content to base; never veto delivery."""
     root = str(Path(working_directory))
     try:
-        names = subprocess.run(
-            ["git", "diff", "--name-only", "--diff-filter=ACMRT", base_ref, head_ref],
-            cwd=root, capture_output=True, text=True, check=True,
-        ).stdout.splitlines()
-    except (OSError, subprocess.CalledProcessError):
+        repo = Repo(root, search_parent_directories=True)
+        names = repo.git.diff("--name-only", "--diff-filter=ACMRT", base_ref, head_ref).splitlines()
+    except (GitCommandError, OSError) as exc:
+        logger.warning("Could not inspect coverage changes from %s to %s: %s", base_ref, head_ref, exc)
         return []
     results = []
     for name in names:
         if not name.endswith(".py"):
             continue
-        before = _git_text(root, base_ref, name)
+        before = _git_text(repo, base_ref, name)
         try:
             after = (Path(root) / name).read_text()
         except OSError:
