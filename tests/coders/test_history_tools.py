@@ -5,7 +5,6 @@ from snodo.coders.history_tools import execute
 from snodo.tools.git import open_repo
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS
-from snodo.tools.git import open_repo
 from snodo.tools.workspace import WorkspaceMCP
 
 
