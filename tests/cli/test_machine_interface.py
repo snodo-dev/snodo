@@ -215,9 +215,10 @@ class TestTaskJson:
         data = _parse_stdout(capsys)
         assert data["schema"] == "snodo.task.v1"
         assert set(data.keys()) == {
-            "schema", "ok", "task_id", "session_id", "mode", "halt", "failure", "spec",
+            "schema", "ok", "task_id", "session_id", "mode", "halt", "failure", "spec", "runs",
         }
         assert data["task_id"] == "task_abc"
+        assert data["runs"] == []
         assert data["halt"]["final_decision"] == "escalate"
 
 
@@ -450,7 +451,8 @@ class TestMetaJson:
         assert set(data.keys()) == {
             "schema", "ok", "id", "type", "status", "duration_seconds",
             "description", "tokens", "cost", "cost_formatted", "roles",
-            "tool_telemetry", "tool_telemetry_summary", "highlight", "jobs",
+            "tool_telemetry", "tool_telemetry_summary", "highlight", "jobs", "runs",
         }
+        assert data["runs"] == []
         assert data["tokens"] == {"prompt": 100, "completion": 50, "total": 150}
         assert len(data["tool_telemetry"]) == 1

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import typer
 
 from snodo.infrastructure.paths import resolve_project_root
+from snodo.task_runs import render_task_runs, task_runs, task_runs_data
 
 
 def register(app: typer.Typer) -> None:
@@ -302,7 +303,8 @@ def meta_command(args) -> int:
     # Try job first, then task
     if Path(project_root, ".snodo", "jobs", composite_id).is_dir():
         return _meta_job(project_root, composite_id, json_out=json_out)
-    if Path(project_root, ".snodo", "tasks", composite_id).is_dir():
+    runs = task_runs(project_root, composite_id)
+    if Path(project_root, ".snodo", "tasks", composite_id).is_dir() or runs:
         return _meta_task(project_root, composite_id, json_out=json_out)
     return _meta_task(project_root, composite_id, force=True, json_out=json_out)
 
@@ -412,6 +414,7 @@ def _meta_task(project_root: str, task_id: str, force: bool = False, json_out: b
     jobs_dir = Path(project_root) / ".snodo" / "jobs"
 
     task_state = _read_json(task_dir / "state.json") if task_dir.is_dir() else {}
+    runs = task_runs(project_root, task_id)
 
     matching = []
     if jobs_dir.is_dir():
@@ -425,7 +428,7 @@ def _meta_task(project_root: str, task_id: str, force: bool = False, json_out: b
                 td = json.loads(task_json.read_text())
             except Exception:
                 continue
-            if td.get("task_id") == task_id or td.get("description", "").startswith(task_id):
+            if td.get("task_id") == task_id:
                 matching.append(entry.name)
 
     if not task_state and not matching:
@@ -558,6 +561,7 @@ def _meta_task(project_root: str, task_id: str, force: bool = False, json_out: b
             "tool_telemetry_summary": _tool_telemetry_metrics(all_telemetry, all_drops),
             "highlight": hl,
             "jobs": matching,
+            "runs": task_runs_data(runs),
         }
         return emit_json(payload)
 
@@ -584,4 +588,5 @@ def _meta_task(project_root: str, task_id: str, force: bool = False, json_out: b
         print("  Jobs:")
         for line in job_lines:
             print(line)
+    render_task_runs(runs)
     return 0
