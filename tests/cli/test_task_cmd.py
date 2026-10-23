@@ -592,6 +592,35 @@ def test_task_show_displays_halt_and_failure(tmp_path, monkeypatch, capsys):
     assert data["spec"] is None
 
 
+def test_task_show_includes_task_runs_in_text_and_json(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+    mgr.update_decision(session.session_id, "halt", {
+        "t1": {"final_decision": "blocker", "halt_type": "blocker"},
+    })
+    task_dir = tmp_path / ".snodo" / "tasks" / "t1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text(json.dumps({"job_id": "j_seeded"}))
+    job_dir = tmp_path / ".snodo" / "jobs" / "j_seeded"
+    job_dir.mkdir(parents=True)
+    (job_dir / "task.json").write_text(json.dumps({"task_id": "t1"}))
+    (job_dir / "state.json").write_text(json.dumps({"status": "failed", "started_at": 123}))
+
+    assert task_show_command(SimpleNamespace(task_id="t1", json=False)) == 0
+    output = capsys.readouterr().out
+    assert "Runs:" in output
+    assert "j_seeded" in output
+    assert "snodo meta <job id>" in output
+    assert "snodo job logs <job id>" in output
+
+    assert task_show_command(SimpleNamespace(task_id="t1", json=True)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["runs"] == [{
+        "job_id": "j_seeded", "plan_name": None, "task_wave": None,
+        "task_id": "t1", "started_at": 123, "ended_at": None, "outcome": "failed",
+    }]
+
+
 def _init_task_diff_repo(path):
     def git(*args):
         subprocess.run(["git", *args], cwd=path, check=True, capture_output=True)
@@ -755,6 +784,7 @@ def test_task_show_no_spec_still_renders(tmp_path, monkeypatch, capsys):
     assert "Task:    t1" in out
     assert "reason:         no spec here" in out
     assert "Task spec:" not in out
+    assert "Runs:" not in out
 
     res = task_show_command(SimpleNamespace(task_id="t1", json=True))
     assert res == 0

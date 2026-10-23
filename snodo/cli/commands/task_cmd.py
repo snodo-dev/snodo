@@ -610,6 +610,9 @@ def task_show_command(args) -> int:
     if findings is not None and isinstance(halt_entry, dict):
         halt_entry["findings"] = findings
 
+    from snodo.task_runs import task_runs, task_runs_data
+    runs = task_runs(project_root, task_id)
+
     if json_out:
         from snodo.cli.json_output import emit_json, schema_name
         payload = {
@@ -621,6 +624,7 @@ def task_show_command(args) -> int:
             "halt": halt_entry if isinstance(halt_entry, dict) else None,
             "failure": failure_entry if isinstance(failure_entry, dict) else None,
             "spec": spec,
+            "runs": task_runs_data(runs),
         }
         if findings is not None:
             payload["findings"] = findings
@@ -693,6 +697,13 @@ def task_show_command(args) -> int:
 
     if hand_completion:
         print_hand_completion_info(hand_completion)
+
+    if runs:
+        from snodo.task_runs import render_task_runs
+        print()
+        print("Runs:")
+        render_task_runs(runs)
+        print("  For details: snodo meta <job id> or snodo job logs <job id>")
 
     from snodo.cli.commands import followup
 
