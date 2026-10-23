@@ -826,4 +826,7 @@ def test_resolved_base_branch_logs_resolution_failure(monkeypatch, caplog):
     with caplog.at_level("DEBUG", logger=validation.__name__):
         assert validation._resolved_base_branch("/repo") == ""
 
-    assert any("base ref unavailable" in record.message for record in caplog.records)
+    assert any(
+        record.levelname == "DEBUG" and "base ref unavailable" in record.message
+        for record in caplog.records
+    )
