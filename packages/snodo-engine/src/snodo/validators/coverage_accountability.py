@@ -3,6 +3,8 @@
 import ast
 import re
 import logging
+import tokenize
+from io import StringIO
 from pathlib import Path
 from typing import List
 
@@ -35,7 +37,30 @@ def _cases(text: str) -> set[str]:
 
 
 def _explanation_lines(text: str) -> int:
-    return sum(1 for line in text.splitlines() if line.lstrip().startswith(("#", '"""', "'''")))
+    """Count comment lines and docstring body lines, not quote delimiters."""
+    lines = set()
+    try:
+        for token in tokenize.generate_tokens(StringIO(text).readline):
+            if token.type == tokenize.COMMENT:
+                lines.update(range(token.start[0], token.end[0] + 1))
+    except (tokenize.TokenError, IndentationError):
+        pass
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return len(lines)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not node.body or not isinstance(node.body[0], ast.Expr):
+            continue
+        value = node.body[0].value
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            start = value.lineno + (1 if text.splitlines()[value.lineno - 1].lstrip().startswith(('"""', "'''")) else 0)
+            end = value.end_lineno - (1 if text.splitlines()[value.end_lineno - 1].rstrip().endswith(('"""', "'''")) else 0)
+            if start <= end:
+                lines.update(range(start, end + 1))
+    return len(lines)
 
 
 def coverage_findings(*, base_ref: str, head_ref: str, task_spec: str, working_directory: str) -> List[ValidatorResult]:
@@ -43,17 +68,28 @@ def coverage_findings(*, base_ref: str, head_ref: str, task_spec: str, working_d
     root = str(Path(working_directory))
     try:
         repo = open_repo(root, search_parent_directories=True)
-        names = repo.git.diff("--name-only", "--diff-filter=ACMRT", base_ref, head_ref).splitlines()
+        changes = repo.git.diff("--name-status", "-M", base_ref, head_ref).splitlines()
+        pairs = []
+        for change in changes:
+            fields = change.split("\t")
+            status = fields[0]
+            if status.startswith("R"):
+                pairs.append((fields[1], fields[2]))
+            elif status == "D":
+                pairs.append((fields[1], None))
+            elif status in {"A", "M", "T"}:
+                pairs.append((fields[1], fields[1]))
     except (GitCommandError, OSError) as exc:
         logger.warning("Could not inspect coverage changes from %s to %s: %s", base_ref, head_ref, exc)
         return []
     results = []
-    for name in names:
-        if not name.endswith(".py"):
+    for old_name, new_name in pairs:
+        name = new_name or old_name
+        if not old_name.endswith(".py") and not (new_name or "").endswith(".py"):
             continue
-        before = _git_text(repo, base_ref, name)
+        before = _git_text(repo, base_ref, old_name)
         try:
-            after = (Path(root) / name).read_text()
+            after = (Path(root) / new_name).read_text() if new_name else ""
         except OSError:
             after = ""
         removed = _cases(before) - _cases(after)
