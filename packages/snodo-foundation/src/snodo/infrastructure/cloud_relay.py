@@ -145,23 +145,35 @@ class CloudRelay:
                     frame = decode_frame(raw)
                     if frame["t"] == "req":
                         rid = frame["id"]
-                        self._request_frames[rid] = frame
-                        pending[rid] = ChunkReassembler(rid)
-                        length = frame["headers"].get("content-length", frame["headers"].get("Content-Length", "0"))
-                        if not str(length).isdigit() or int(length) == 0:
-                            self._tasks[rid] = asyncio.create_task(self._dispatch(socket, frame, b""))
+                        if rid in pending or rid in self._tasks:
+                            await socket.send(encode_frame({"t": "err", "id": rid, "code": "duplicate_request", "message": "Request id is already active"}))
+                        else:
+                            self._request_frames[rid] = frame
+                            pending[rid] = ChunkReassembler(rid)
                     elif frame["t"] == "chunk":
                         rid = frame["id"]
-                        assembler = pending.setdefault(rid, ChunkReassembler(rid))
-                        body = assembler.add(frame)
-                        if body is not None:
-                            req = self._request_frames.get(rid)
-                            if req:
-                                self._tasks[rid] = asyncio.create_task(self._dispatch(socket, req, body))
+                        assembler = pending.get(rid)
+                        if assembler is None:
+                            await socket.send(encode_frame({"t": "err", "id": rid, "code": "invalid_chunk", "message": "No pending request"}))
+                        else:
+                            try:
+                                body = assembler.add(frame)
+                            except Exception:
+                                pending.pop(rid, None)
+                                self._request_frames.pop(rid, None)
+                                await socket.send(encode_frame({"t": "err", "id": rid, "code": "invalid_chunk", "message": "Invalid request body"}))
+                            else:
+                                if body is not None:
+                                    pending.pop(rid, None)
+                                    task = asyncio.create_task(self._dispatch(socket, self._request_frames[rid], body))
+                                    self._tasks[rid] = task
                     elif frame["t"] == "cancel":
-                        self._cancelled.add(frame["id"])
-                        task = self._tasks.pop(frame["id"], None)
+                        rid = frame["id"]
+                        pending.pop(rid, None)
+                        self._request_frames.pop(rid, None)
+                        task = self._tasks.get(rid)
                         if task:
+                            self._cancelled.add(rid)
                             task.cancel()
                 entries = self.registry()
                 endpoints = _endpoints(entries)
@@ -204,12 +216,14 @@ class CloudRelay:
                             await socket.send(encode_frame({"t": "chunk", "id": rid, "seq": seq, "last": False, "data_b64": base64.b64encode(data).decode("ascii")}))
                             seq += 1
                     await socket.send(encode_frame({"t": "chunk", "id": rid, "seq": seq, "last": True, "data_b64": ""}))
-            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.TimeoutException):
-                await socket.send(encode_frame({"t": "err", "id": rid, "code": "local_unavailable", "message": "Local endpoint unavailable"}))
+            except Exception:
+                if rid not in self._cancelled:
+                    await socket.send(encode_frame({"t": "err", "id": rid, "code": "local_error", "message": "Local request failed"}))
             finally:
                 keep.cancel()
                 self._cancelled.discard(rid)
                 self._request_frames.pop(rid, None)
+                self._tasks.pop(rid, None)
 
     async def _keep(self, socket, rid: str) -> None:
         while True:
