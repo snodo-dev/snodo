@@ -146,9 +146,13 @@ def _attempt_verdicts(loop_state: Any) -> Optional[List[Any]]:
 def _build_attempt_summary(loop_state: Any, phase: str) -> dict:
     """Summarise judged coding attempts, excluding pre-execute refusals.
 
-    Recovery history is numbered by the coding pass that produced it. A
-    refusal before the next dispatch does not append a fictional code state.
-    Counts stay exact while history is bounded to the most recent entries.
+    Recovery subtasks before the current one are prior failures tagged with
+    their 1-based attempt number. An attempt is one judged pass over a code
+    state: the root is attempt 1 and each recovery subtask is the next. Attempts
+    1..depth are the recovery subtasks that preceded this one; each produced
+    the failures that spawned the next. A refusal before the next dispatch does
+    not append a fictional code state. The total stays exact while history is
+    bounded to the most recent entries, with the omitted count reported.
     """
     depth = getattr(loop_state.task, "depth", 0) or 0
     prior = getattr(loop_state.task, "prior_failures", None) or []
@@ -528,7 +532,10 @@ class WritebackMixin:
             "files_changed": list(loop_state.artifacts),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        # A replaced spec must stay recoverable across rewritten records.
+        # The failure record is rewritten every attempt, so retain superseded
+        # specs or a retry would drop the previous spec. Carry older displaced
+        # specs forward and add the one just displaced by this authoritative
+        # spec; the CLI records replacement too, making this the engine backstop.
         superseded = existing.get("superseded_specs")
         superseded = list(superseded) if isinstance(superseded, list) else []
         displaced = existing.get("original_spec") or existing.get("spec")
@@ -612,9 +619,10 @@ class WritebackMixin:
     def _merge_into_job_state(self, updates: dict) -> None:
         """Atomically merge *updates* into the job's state.json (direct write).
 
-        A corrupt read is never resolved by overwriting it: preserve the file,
-        audit the fault, and raise JobStateError so the caller learns the
-        merge did not happen.
+        state.json is the job's own record. A corrupt read is never resolved by
+        overwriting it: preserve it as state.json.corrupt-<timestamp>, audit the
+        fault, and raise JobStateError so the caller learns the merge did not
+        happen. Callers that must tolerate corrupt state catch it explicitly.
         """
         if not self._job_id or not self._project_root:
             return
@@ -753,9 +761,11 @@ class WritebackMixin:
     def _build_halt_payload(self, loop_state: Any) -> dict:
         """Construct the single authoritative halt payload from this run.
 
-        final_decision, halt_type and raw_halt_type use the canonical outcome
-        vocabulary (ADR 015). Specific reasons remain in reason and
-        constraint_violations, never silently remapped to another outcome.
+        This is the single authoritative halt payload, emitted by the CLI and
+        persisted to job state and session. final_decision, halt_type and
+        raw_halt_type use the canonical outcome vocabulary (ADR 015) and are
+        equal. Specific reasons remain in reason and constraint_violations,
+        never silently remapped to another outcome.
         """
         meta = loop_state.metadata
         phase = "unknown"
@@ -788,23 +798,32 @@ class WritebackMixin:
 
         judging_model = getattr(self, "_default_model", None)
 
-        # Record which installed binary produced this run (Fixes #290).
+        # Record which installed binary produced this run (Fixes #290), so two
+        # installs of one tool are distinguishable in an audit trail; empty for
+        # coders that invoke no program.
         coder_binary = getattr(self, "_last_coder_binary", "") or None
         coder_version = getattr(self, "_last_coder_version", "") or None
 
         authoritative_spec = getattr(loop_state.task, "root_spec", None) or loop_state.task.spec
 
-        # Per-run facts only, never a previous attempt's scratch attributes.
+        # Every fact below comes from THIS run's state, never per-run scratch
+        # attributes left by a previous attempt (#281).
         timed_out = bool(meta.get("timed_out"))
+        # Derive this from this run's raw halt and metadata; a recovered pass
+        # still carries the fact that an earlier run exhausted its turns (#282).
         turn_budget_exhausted = bool(
             loop_state.halt_type == "turn_budget_exhausted"
             or meta.get("turn_budget_exhausted")
         )
 
+        # Inspect the session holding pending proposals: advertise authorize
+        # only when it would answer, rather than report "No pending decision" (#288).
         adjudicable = _has_adjudicable_decision(
             self._session_manager, self._session_id, loop_state.task.id,
         )
 
+        # Retryability comes from the session holding failure context;
+        # operational halts never offer retry (#301).
         if halt in ("environment_error", "internal_error", "validator_error"):
             retryable = False
         else:
@@ -829,9 +848,12 @@ class WritebackMixin:
             "coder_binary": coder_binary,
             "coder_version": coder_version,
             "judging_model": judging_model,
+            # Record results through the helper so abstention is not a pass (#252).
             "validator_results": [
                 result_record(r) for r in loop_state.validation_results
             ],
+            # History precedes these results and canonical outcomes distinguish
+            # a clean pass from a hard-won one without needing logs (#271).
             "attempts": _build_attempt_summary(loop_state, phase),
             "policy_decision": policy_decision_to_dict(loop_state.policy_decision),
             "hint": _build_hint(
@@ -852,6 +874,9 @@ class WritebackMixin:
                 "Blocked before coding: the coder was not dispatched; "
                 "no coder attempt was consumed. " + payload["hint"]
             )
+        # Pending decisions / retryable context make authorize / run --retry
+        # a real follow-up, not a dead end; turn exhaustion stays visible even
+        # when recovered work passes (#282).
         if adjudicable:
             payload["adjudicable"] = True
         if retryable:
@@ -877,16 +902,21 @@ class WritebackMixin:
                 payload["coder_report"] = self._build_coder_report_payload(parsed, loop_state)
         findings = meta.get("findings")
         if findings is None and payload.get("coder_report"):
-            findings = payload.get("coder_report").get("findings")
+            report_section = payload.get("coder_report")
+            if isinstance(report_section, dict):
+                findings = report_section.get("findings")
         if findings is not None:
             payload["findings"] = findings
         return payload
 
     def _auto_write_halt_payload(self, loop_state: Any) -> None:
-        """Persist halt payload — dual-write: session checkpoint + job state.json.
+        """Persist the authoritative payload to job state and the session.
 
-        Also attaches it to metadata so it flows through graph state to the
-        closure driver and CLI (single source of truth).
+        Attach it to loop-state metadata so it flows through graph state to the
+        closure driver and CLI; the CLI consumes this source rather than
+        re-deriving it. The session checkpoint is transmitted over the wire
+        (including a session decision event), so raw coder output is stripped
+        and never enters the audit log.
         """
         halt_payload = self._build_halt_payload(loop_state)
 
@@ -1001,6 +1031,8 @@ class WritebackMixin:
 
         llm_cfg = load_llm_config()
         adapter_cls = resolve_adapter_class(new_model)
+        # An override can select a coder for which old-coder settings are inert;
+        # report that at selection time, not after its next halt (#311).
         report_inert_coder_settings(
             resolve_coder_name(model=new_model),
             explicit_coder_settings(llm_cfg.coder),

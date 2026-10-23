@@ -69,7 +69,8 @@ class ValidatorContext:
     #: a pass, so every tree-reading judge must share one digest rather than
     #: each cost a git diff. ``verdict_tree_subject_ready`` distinguishes
     #: "not computed" from a computed None (the tree identity could not be
-    #: established, so tree-reading verdicts are not cached).
+    #: established, so tree-reading verdicts are not cached). The final-verdict
+    #: subject similarly distinguishes "not computed" from a computed None.
     verdict_tree_subject: Optional[str] = None
     verdict_tree_subject_ready: bool = False
     #: Results from independent execution/quality validators, supplied only to
@@ -107,7 +108,10 @@ class ValidatorBase(ABC):
     #: specification; ``"tree"`` = a judge of repository state (tool-using or
     #: post-execute). None = the dependency is not established, so the
     #: verdict is never cached. The runner forces the tree subject whenever
-    #: the tool loop is active and for EVERY post-execute judge.
+    #: the tool loop is active and for EVERY post-execute judge. A judge that
+    #: reads the tree must never be keyed on the spec alone; the runner forces
+    #: the tree subject during tool loops and for every post-execute judge, so
+    #: an inherited "spec" value cannot key a judgement of produced work.
     cache_subject: Optional[str] = None
 
     @abstractmethod
