@@ -38,6 +38,24 @@ def test_removing_record_leaves_newer_replacement():
     assert registry.list_serve_processes() == [newer]
 
 
+def test_listing_live_entries_does_not_rewrite_file(home):
+    home.parent.mkdir(parents=True)
+    current = psutil.Process()
+    live = {
+        "project": "/one", "mode": "dev", "port": 10, "hostname": "",
+        "pid": current.pid, "started_at": current.create_time(), "host": socket.gethostname(),
+    }
+    contents = json.dumps([live])
+    home.write_text(contents, encoding="utf-8")
+    original_stat = home.stat()
+
+    for _ in range(3):
+        assert registry.list_serve_processes() == [live]
+
+    assert home.read_text(encoding="utf-8") == contents
+    assert home.stat().st_mtime_ns == original_stat.st_mtime_ns
+
+
 def test_listing_drops_gone_and_reused_processes_and_prunes_file(home):
     home.parent.mkdir(parents=True)
     current = psutil.Process()

@@ -54,10 +54,21 @@ def list_serve_processes() -> list[dict]:
     path = _path()
     try:
         with _THREAD_LOCK, _locked(path) as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_SH)
+            entries = _read(path)
+            live_entries = [entry for entry in entries if _live(entry)]
+            if len(live_entries) == len(entries):
+                return live_entries
+
+            # Pruning needs an exclusive lock. Re-read after acquiring it so a
+            # concurrent recorder's update is preserved.
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            entries = [entry for entry in _read(path) if _live(entry)]
-            atomic_write_json(path, entries, trailing_newline=True)
-            return entries
+            entries = _read(path)
+            live_entries = [entry for entry in entries if _live(entry)]
+            if len(live_entries) != len(entries):
+                atomic_write_json(path, live_entries, trailing_newline=True)
+            return live_entries
     except Exception:  # noqa: BLE001 — registry is advisory, never blocks serve
         _LOG.debug("Unable to read serve registry", exc_info=True)
         return []
