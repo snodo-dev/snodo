@@ -9,15 +9,11 @@ from typer.testing import CliRunner
 from snodo.cli.commands import serve_cmd
 
 
-def test_auth_defaults_to_oauth_and_refuses_service_tokens():
+def test_auth_defaults_and_accepts_supported_methods():
     assert serve_cmd._auth_methods(None) == ["oauth"]
-    try:
-        serve_cmd._auth_methods(["service-token"])
-    except ValueError as error:
-        assert "OAuth" in str(error)
-        assert "mcp-auth.snodo.dev" in str(error)
-    else:  # pragma: no cover
-        raise AssertionError("service-token auth was accepted")
+    assert serve_cmd._auth_methods(["oauth"]) == ["oauth"]
+    assert serve_cmd._auth_methods(["service-token"]) == ["service-token"]
+    assert serve_cmd._auth_methods(["oauth", "service-token"]) == ["oauth", "service-token"]
 
 
 def test_invalid_auth_value_is_named():
@@ -29,17 +25,18 @@ def test_invalid_auth_value_is_named():
         raise AssertionError("invalid auth value was accepted")
 
 
-def test_provision_request_does_not_send_retired_auth_set():
+def test_provision_request_omits_auth_unless_explicitly_passed():
     response = MagicMock(status_code=200)
     response.json.return_value = {"hostname": "x.tunnel.snodo.dev", "tunnel_token": "t"}
     with patch.object(serve_cmd, "_get_cloud_tunnel_api_url", return_value="https://cloud"), \
          patch("httpx.post", return_value=response) as post:
         serve_cmd._provision_tunnel("key", "project", "all", "short", "1")
+        assert "auth" not in post.call_args.kwargs["json"]
+        serve_cmd._provision_tunnel("key", "project", "all", "short", "1", auth=["service-token"])
+        assert post.call_args.kwargs["json"]["auth"] == ["service-token"]
 
-    assert "auth" not in post.call_args.kwargs["json"]
 
-
-def test_legacy_service_token_auth_cannot_disable_oauth(monkeypatch):
+def test_legacy_service_token_auth_is_kept_in_child_arguments(monkeypatch):
     from types import SimpleNamespace
 
     monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/isolated")
@@ -58,21 +55,21 @@ def test_legacy_service_token_auth_cannot_disable_oauth(monkeypatch):
     args = SimpleNamespace(protocol="protocol.yml", mode=None, transport="http", rotate=False,
                            delete=False, hostname=None, auth=None, port=8000, verbose=False)
     assert serve_cmd._run_tunnel(args, SimpleNamespace(initial_mode="default"), "protocol.yml") == 1
-    assert commands and commands[0][commands[0].index("--auth") + 1] == "oauth"
+    assert commands and commands[0][commands[0].index("--auth") + 1] == "service-token"
 
 
-def test_explicit_service_token_rejected_before_external_effects(monkeypatch, capsys):
+def test_explicit_service_token_is_accepted(monkeypatch, capsys):
     from types import SimpleNamespace
 
     def forbidden(*_a, **_k):
         raise AssertionError("side effect occurred")
 
     monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/isolated")
-    monkeypatch.setattr(serve_cmd, "_check_cloudflared", forbidden)
+    monkeypatch.setattr(serve_cmd, "_check_cloudflared", lambda: True)
     args = SimpleNamespace(protocol="protocol.yml", mode=None, transport="http", rotate=False,
                            delete=False, hostname=None, auth=["service-token"], port=None, verbose=False)
     assert serve_cmd._run_tunnel(args, SimpleNamespace(initial_mode="default"), "protocol.yml") == 1
-    assert "OAuth" in capsys.readouterr().err
+    assert "service-token" not in capsys.readouterr().err
 
 
 def test_banner_only_shows_url_and_oauth_server(capsys):
@@ -94,8 +91,8 @@ def test_help_names_values_and_any_semantics():
     out = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
 
     assert result.exit_code == 0
-    assert "OAuth" in out
-    assert "service-token" not in out
+    assert "oauth" in out
+    assert "service-token" in out
     assert "--delete" in out and "--tunnel" in out
     assert "--verbose" in out
 
@@ -216,18 +213,38 @@ def test_legacy_service_token_tunnel_enables_oauth(monkeypatch):
     assert "token_verifier" in seen
 
 
-def test_service_token_request_fails_before_provisioning(monkeypatch, capsys):
+def test_service_token_request_is_accepted_by_serve_command(monkeypatch):
     from types import SimpleNamespace
 
-    import pytest
-
     monkeypatch.setattr(serve_cmd, "load_protocol", lambda _: object())
-    monkeypatch.setattr(serve_cmd, "_run_tunnel", lambda *_: pytest.fail("tunnel ran"))
+    monkeypatch.setattr(serve_cmd, "_run_tunnel", lambda *_: 0)
     args = SimpleNamespace(
         auth=["service-token"], protocol="unused.yml", tunnel=True,
         mcp_install=False, mcp_uninstall=False, mcp_uninstall_all=False,
         mcp_list=False, install=False, uninstall=False, uninstall_all=False,
     )
-    assert serve_cmd.serve_command(args) == 2
-    message = capsys.readouterr().err
-    assert "OAuth" in message and "mcp-auth.snodo.dev" in message
+    assert serve_cmd.serve_command(args) == 0
+
+
+def test_service_token_fields_persist_without_secret(tmp_path):
+    config = {
+        "hostname": "x.tunnel.snodo.dev", "tunnel_token": "t", "created_at": "now",
+        "auth": ["service-token"], "client_id": "id", "client_secret": "once",
+        "access_path": "mcp-st", "access_team_domain": "team.cloudflareaccess.com",
+        "access_aud": "aud",
+    }
+    serve_cmd._save_tunnel_config(str(tmp_path), config)
+    saved = serve_cmd._load_tunnel_config(str(tmp_path))
+    assert saved["auth"] == ["service-token"]
+    assert saved["client_id"] == "id" and saved["access_path"] == "mcp-st"
+    assert "client_secret" not in saved
+    assert "once" not in str(saved)
+    from snodo.cli.commands.serve_tunnel_output import tunnel_secret_values
+    assert "once" in tunnel_secret_values({**config, "client_secret": "once"}, "key")
+
+
+def test_old_tunnel_config_still_loads(tmp_path):
+    path = tmp_path / ".snodo"
+    path.mkdir()
+    (path / "tunnel.json").write_text('{"hostname":"old.tunnel.snodo.dev","tunnel_token":"old"}')
+    assert serve_cmd._load_tunnel_config(str(tmp_path))["hostname"] == "old.tunnel.snodo.dev"
