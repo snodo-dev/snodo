@@ -145,8 +145,11 @@ class CloudRelay:
                     frame = decode_frame(raw)
                     if frame["t"] == "req":
                         rid = frame["id"]
-                        self._request_frames[rid] = frame
-                        pending[rid] = ChunkReassembler(rid)
+                        if rid in pending or rid in self._tasks:
+                            await socket.send(encode_frame({"t": "err", "id": rid, "code": "duplicate_request", "message": "Request id is already active"}))
+                        else:
+                            self._request_frames[rid] = frame
+                            pending[rid] = ChunkReassembler(rid)
                     elif frame["t"] == "chunk":
                         rid = frame["id"]
                         assembler = pending.get(rid)
@@ -162,7 +165,8 @@ class CloudRelay:
                             else:
                                 if body is not None:
                                     pending.pop(rid, None)
-                                    self._tasks[rid] = asyncio.create_task(self._dispatch(socket, self._request_frames[rid], body))
+                                    task = asyncio.create_task(self._dispatch(socket, self._request_frames[rid], body))
+                                    self._tasks[rid] = task
                     elif frame["t"] == "cancel":
                         rid = frame["id"]
                         pending.pop(rid, None)
