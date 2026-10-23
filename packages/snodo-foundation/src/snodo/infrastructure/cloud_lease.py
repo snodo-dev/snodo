@@ -116,6 +116,8 @@ def get_admission_lease(
     force: bool = False,
     oauth: bool = False,
     config: Optional[dict] = None,
+    audience: str = "ingest",
+    machine_id: Optional[str] = None,
 ) -> Optional[CloudLease]:
     """Obtain or renew a lease, exchanging the API key if needed.
 
@@ -127,8 +129,10 @@ def get_admission_lease(
     state = sync_state or CloudSyncState()
     sid = session_id or ""
 
-    # 1. Check if terminal refusal is recorded across processes
-    if not force and state.is_refused(sid):
+    isolated = audience != "ingest"
+
+    # Purpose-bound leases are one-shot and never consult ingest refusal state.
+    if not isolated and not force and state.is_refused(sid):
         _logger.debug("Cloud admission skipped: session %s is permanently refused", sid)
         return None
 
@@ -137,13 +141,14 @@ def get_admission_lease(
         if (
             _current_lease is not None
             and _current_lease_session_id == sid
+            and audience == "ingest"
             and not _current_lease.is_near_expiry()
         ):
             return _current_lease
 
-        # 3. Check quiet window for unreachable exchange
+        # 3. Check quiet window for unreachable exchange (ingest only).
         now = time.monotonic()
-        if now < _quiet_until:
+        if not isolated and now < _quiet_until:
             _logger.debug(
                 "Cloud admission exchange quiet until %.2f (%.1fs remaining); silence",
                 _quiet_until, _quiet_until - now,
@@ -151,7 +156,7 @@ def get_admission_lease(
             return None
 
     # 4. Perform exchange
-    return _perform_exchange(api_key, lease_url, sid, state, oauth=oauth, config=config)
+    return _perform_exchange(api_key, lease_url, sid, state, oauth=oauth, config=config, audience=audience, machine_id=machine_id)
 
 
 def _perform_exchange(
@@ -160,6 +165,7 @@ def _perform_exchange(
     session_id: str,
     state: CloudSyncState,
     *, oauth: bool = False, config: Optional[dict] = None, _retried: bool = False,
+    audience: str = "ingest", machine_id: Optional[str] = None,
 ) -> Optional[CloudLease]:
     global _current_lease, _current_lease_session_id, _quiet_until, _consecutive_failures
 
@@ -169,7 +175,12 @@ def _perform_exchange(
     mint_url = f"{lease_url.rstrip('/')}/m"
 
     try:
-        response = httpx.post(mint_url, headers=headers, timeout=10.0)
+        payload = {"audience": audience, **({"machine_id": machine_id} if machine_id else {})}
+        if audience == "ingest":
+            # Preserve the historical call shape for ingest clients and test doubles.
+            response = httpx.post(mint_url, headers=headers, timeout=10.0)
+        else:
+            response = httpx.post(mint_url, headers=headers, json=payload, timeout=10.0)
 
         # HTTP 2xx: Success
         if 200 <= response.status_code < 300:
@@ -199,15 +210,16 @@ def _perform_exchange(
                 cadence_s=cadence_s, interface_version=interface_version,
             )
 
-            with _lock:
-                _current_lease = lease
-                _current_lease_session_id = session_id
-                _consecutive_failures = 0
-                _quiet_until = 0.0
-                _last_admission_error = None
+            if audience == "ingest":
+                with _lock:
+                    _current_lease = lease
+                    _current_lease_session_id = session_id
+                    _consecutive_failures = 0
+                    _quiet_until = 0.0
+                    _last_admission_error = None
 
-            if session_id:
-                state.clear_refusal(session_id)
+                if session_id:
+                    state.clear_refusal(session_id)
             return lease
 
         message = "OAuth authorization rejected" if oauth and response.status_code == 401 else (response.text[:500].strip() or "No server message")
@@ -216,9 +228,9 @@ def _perform_exchange(
             from snodo.infrastructure.cloud_credentials import safe_cloud_sync_credential
             refreshed, is_oauth = safe_cloud_sync_credential(config or {}, force_refresh=True)
             if refreshed and is_oauth:
-                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=True, config=config, _retried=True)
+                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=True, config=config, _retried=True, audience=audience, machine_id=machine_id)
             if refreshed:
-                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=False, config=config, _retried=True)
+                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=False, config=config, _retried=True, audience=audience, machine_id=machine_id)
             message = "OAuth authorization expired; run `snodo cloud login` again"
             refresh_failed = True
         _last_admission_error = f"{mint_url} -> HTTP {response.status_code}: {message}"
@@ -227,35 +239,40 @@ def _perform_exchange(
         # An expired OAuth credential is transient: credentials can be restored
         # independently while the session remains active.
         if refresh_failed:
-            _handle_unreachable(response)
+            if audience == "ingest":
+                _handle_unreachable(response)
             return None
 
         # A route miss means client/server disagreement, not a rejected key.
         if response.status_code == 404:
-            _handle_unreachable(response)
+            if audience == "ingest":
+                _handle_unreachable(response)
             return None
 
         # HTTP 4xx (except 404 and 429): Terminal refusal
         if 400 <= response.status_code < 500 and response.status_code != 429:
             reason = f"{mint_url} -> HTTP {response.status_code}: {message}"
             _logger.warning("Cloud admission refusal HTTP %d on session=%s: %s", response.status_code, session_id, reason)
-            if session_id:
-                state.record_refusal(session_id, reason=reason, status_code=response.status_code)
-            with _lock:
-                _current_lease = None
-                _current_lease_session_id = None
-                _quiet_until = 0.0
+            if audience == "ingest":
+                if session_id:
+                    state.record_refusal(session_id, reason=reason, status_code=response.status_code)
+                with _lock:
+                    _current_lease = None
+                    _current_lease_session_id = None
+                    _quiet_until = 0.0
             return None
 
         # HTTP 429 or 5xx: Unreachable
-        _handle_unreachable(response)
+        if audience == "ingest":
+            _handle_unreachable(response)
         return None
 
     except Exception as exc:
         # Network errors / timeouts
         _last_admission_error = f"{mint_url} -> no response: {exc}"
         print(f"Cloud lease mint failed: {_last_admission_error}", file=sys.stderr)
-        _handle_unreachable(None, exc=exc)
+        if audience == "ingest":
+            _handle_unreachable(None, exc=exc)
         return None
 
 
@@ -319,3 +336,16 @@ def _handle_unreachable(
         "Cloud admission backoff (%s); waiting %.1fs (attempt %d)",
         exc or f"HTTP {code}", wait, failures,
     )
+
+
+def mint_lease(config: dict, audience: str, machine_id: str, *, force: bool = False) -> Optional[CloudLease]:
+    """Mint a purpose-bound lease through the shared cloud exchange implementation."""
+    from snodo.infrastructure.cloud_credentials import safe_cloud_sync_credential
+    from snodo.config import get_cloud_lease_url
+    from snodo.infrastructure.cloud_sync import CloudSyncState
+    credential, oauth = safe_cloud_sync_credential(config)
+    if not credential:
+        return None
+    return get_admission_lease(credential, get_cloud_lease_url(config), session_id=f"runner:{machine_id}",
+                               sync_state=CloudSyncState(), force=force, oauth=oauth, config=config,
+                               audience=audience, machine_id=machine_id)

@@ -447,3 +447,78 @@ class TestCloudAdmission:
         assert calls[1][1] == "https://app.snodo.test/i/ls_live_fixed_98765"
         assert calls[1][2].get("Authorization") == "Bearer tok_live_bearer"
         assert calls[1][3]["session_id"] == "sess_live_1"
+
+
+def test_runner_lease_isolated_from_ingest_state():
+    from snodo.infrastructure import cloud_lease
+
+    responses = iter([
+        {"jti": "ingest-jti", "token": "ingest-token"},
+        {"jti": "runner-jti", "token": "runner-token"},
+        {"jti": "runner-next", "token": "runner-next-token"},
+    ])
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append(kwargs)
+        response = MagicMock(spec=httpx.Response)
+        response.status_code = 200
+        response.json.return_value = {**next(responses), "expires_in": 300}
+        return response
+
+    with patch("httpx.post", side_effect=post):
+        ingest = cloud_lease.get_admission_lease("key", "https://app.test", "sess")
+        runner = cloud_lease.get_admission_lease(
+            "key", "https://app.test", "runner:machine", audience="runner", machine_id="machine",
+        )
+        assert cloud_lease.get_current_lease("sess") is ingest
+        ingest_again = cloud_lease.get_admission_lease("key", "https://app.test", "sess")
+        assert ingest_again is ingest
+        runner_again = cloud_lease.get_admission_lease(
+            "key", "https://app.test", "runner:machine", audience="runner", machine_id="machine",
+        )
+
+    assert runner is not ingest and runner_again is not ingest
+    assert calls[0].get("json") is None
+    assert "audience" not in calls[0]  # ingest keeps its historical post call shape
+    assert calls[1]["json"] == {"audience": "runner", "machine_id": "machine"}
+
+
+def test_failed_runner_mint_does_not_touch_ingest_backoff_or_refusal():
+    from snodo.infrastructure import cloud_lease
+
+    state = CloudSyncState()
+    state.record_refusal("sess", reason="ingest refused", status_code=403)
+    before = (cloud_lease._quiet_until, cloud_lease._consecutive_failures)
+    response = MagicMock(spec=httpx.Response)
+    response.status_code = 503
+    response.text = "unavailable"
+    with patch("httpx.post", return_value=response) as post:
+        assert cloud_lease.get_admission_lease(
+            "key", "https://app.test", "runner:machine", sync_state=state,
+            audience="runner", machine_id="machine",
+        ) is None
+        assert cloud_lease.get_admission_lease(
+            "key", "https://app.test", "sess", sync_state=state,
+        ) is None
+    post.assert_called_once()
+    assert (cloud_lease._quiet_until, cloud_lease._consecutive_failures) == before
+    assert state.is_refused("sess")
+
+
+def test_runner_mint_still_attempts_after_ingest_refusal():
+    from snodo.infrastructure import cloud_lease
+
+    state = CloudSyncState()
+    state.record_refusal("sess", reason="ingest refused", status_code=403)
+    response = MagicMock(spec=httpx.Response)
+    response.status_code = 200
+    response.json.return_value = {"jti": "runner-jti", "token": "runner-token"}
+    with patch("httpx.post", return_value=response) as post:
+        lease = cloud_lease.get_admission_lease(
+            "key", "https://app.test", "sess", sync_state=state,
+            audience="runner", machine_id="machine",
+        )
+    assert lease is not None
+    assert state.is_refused("sess")
+    assert post.call_args.kwargs["json"] == {"audience": "runner", "machine_id": "machine"}
