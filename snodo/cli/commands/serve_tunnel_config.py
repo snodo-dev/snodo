@@ -15,6 +15,7 @@ from typing import Optional
 
 #: Supported tunnel authentication selection.
 AUTH_METHODS = ("oauth", "service-token")
+TUNNEL_TRANSPORTS = ("cloudflare", "ws")
 _logger = logging.getLogger(__name__)
 
 
@@ -30,13 +31,42 @@ def _auth_methods(values: Optional[list[str]]) -> list[str]:
     return list(dict.fromkeys(values))
 
 
+def _tunnel_transport(value: Optional[str]) -> str:
+    """Return the selected tunnel transport, defaulting to Cloudflare."""
+    if value is None:
+        return "cloudflare"
+    if value not in TUNNEL_TRANSPORTS:
+        raise ValueError(
+            f"invalid tunnel transport {value!r}; choose cloudflare or ws"
+        )
+    return value
+
+
+def _validate_tunnel_auth(transport: str, auth: Optional[list[str]]) -> list[str]:
+    """Validate authentication choices for the selected tunnel transport."""
+    selected = _auth_methods(auth)
+    if transport == "ws" and "service-token" in selected:
+        raise ValueError("service-token auth is not supported over ws yet")
+    return selected
+
+
+def _has_usable_saved_tunnel(config: dict) -> bool:
+    """Whether saved tunnel state is sufficient to reuse the provisioned tunnel."""
+    if _tunnel_transport(config.get("transport")) == "ws":
+        return bool(config.get("hostname"))
+    return bool(config.get("tunnel_token"))
+
+
 def _load_tunnel_config(project_root: str) -> dict:
     """Load .snodo/tunnel.json or return empty dict."""
     path = Path(project_root) / ".snodo" / "tunnel.json"
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text())
+        config = json.loads(path.read_text())
+        if isinstance(config, dict):
+            config.setdefault("transport", "cloudflare")
+        return config
     except (json.JSONDecodeError, OSError):
         return {}
 
@@ -49,7 +79,10 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
         "hostname": config.get("hostname", ""),
         "tunnel_token": config.get("tunnel_token", ""),
         "created_at": config.get("created_at", ""),
+        "transport": _tunnel_transport(config.get("transport")),
     }
+    if config.get("machine_id") is not None:
+        to_save["machine_id"] = config["machine_id"]
     if config.get("port") is not None:
         to_save["port"] = config["port"]
     if config.get("auth") is not None:
