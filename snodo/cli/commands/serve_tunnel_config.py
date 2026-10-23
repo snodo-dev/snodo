@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 #: Supported tunnel authentication selection.
-AUTH_METHODS = ("oauth",)
+AUTH_METHODS = ("oauth", "service-token")
 _logger = logging.getLogger(__name__)
 
 
@@ -22,14 +22,10 @@ def _auth_methods(values: Optional[list[str]]) -> list[str]:
     """Return the selected tunnel mechanisms, preserving repeat order."""
     if not values:
         return ["oauth"]
-    if "service-token" in values:
-        raise ValueError(
-            "Managed tunnels connect through OAuth (https://mcp-auth.snodo.dev)."
-        )
     invalid = [value for value in values if value not in AUTH_METHODS]
     if invalid:
         raise ValueError(
-            f"invalid auth value {invalid[0]!r}; choose oauth"
+            f"invalid auth value {invalid[0]!r}; choose oauth or service-token"
         )
     return list(dict.fromkeys(values))
 
@@ -56,9 +52,13 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
     }
     if config.get("port") is not None:
         to_save["port"] = config["port"]
+    if config.get("auth") is not None:
+        to_save["auth"] = config["auth"]
+    for key in ("client_id", "access_path", "access_team_domain", "access_aud"):
+        if config.get(key) is not None:
+            to_save[key] = config[key]
     # Recovery metadata is local lifecycle state, not a protocol/job status.
-    # Retired service-token fields (auth, client_id, credentials, auth_type)
-    # are deliberately not persisted any more.
+    # Never persist client_secret.
     recovery = config.get("recovery")
     if isinstance(recovery, dict) and recovery.get("action") == "delete":
         to_save["recovery"] = {

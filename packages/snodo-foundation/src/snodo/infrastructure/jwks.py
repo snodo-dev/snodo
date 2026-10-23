@@ -1,13 +1,9 @@
-"""Standalone JWKS client that fetches RS256 public keys from MCP Auth.
-
-FILE: snodo/infrastructure/jwks.py
-"""
+"""JWKS client for RS256 token verification."""
 
 import json
-import sys
-from typing import Optional
-
 import logging
+import time
+from typing import Callable, Optional
 
 import httpx
 import jwt
@@ -16,97 +12,75 @@ from jwt.algorithms import RSAAlgorithm
 JWKS_URI = "https://mcp-auth.snodo.dev/.well-known/jwks.json"
 JWKS_KID = "mcp-auth-rs256-v1"
 OAUTH_ISSUER = "https://mcp-auth.snodo.dev"
-
+_CACHE_TTL_SECONDS = 300
 _logger = logging.getLogger(__name__)
 
 
 class JwksClient:
-    """Fetches and caches RS256 public keys from a JWKS endpoint.
+    """Fetch and cache RS256 public keys, refreshing once for an unknown kid."""
 
-    Usage:
-        client = JwksClient()
-        if client.fetch():
-            payload = client.verify(token)
-    """
-
-    def __init__(self):
-        self._cached_key = None
+    def __init__(self, uri: str = JWKS_URI, *, fetcher: Optional[Callable] = None,
+                 cache_ttl: float = _CACHE_TTL_SECONDS):
+        self._uri = uri
+        self._fetcher = fetcher or (lambda url, timeout: httpx.get(url, timeout=timeout))
+        self._cache_ttl = cache_ttl
+        self._keys = {}
+        self._cached_key = None  # Retained for compatibility with existing callers/tests.
+        self._fetched_at = 0.0
+        self._unknown_refresh_at = 0.0
 
     def fetch(self) -> bool:
-        """Fetch JWKS, find the key with kid=JWKS_KID, and cache it.
-
-        Returns True on success, False on failure (prints warning to stderr).
-        """
+        """Fetch and cache all valid RSA keys. Failures never expose response data."""
         try:
-            resp = httpx.get(JWKS_URI, timeout=10.0)
-            resp.raise_for_status()
-            data = resp.json()
-            keys = data.get("keys", [])
-            for key_data in keys:
-                if key_data.get("kid") == JWKS_KID:
-                    self._cached_key = RSAAlgorithm.from_jwk(json.dumps(key_data))
-                    return True
-            print(f"Warning: JWKS contains no key with kid={JWKS_KID!r}", file=sys.stderr)
+            response = self._fetcher(self._uri, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, dict) or not isinstance(data.get("keys"), list):
+                return False
+            keys = {}
+            for item in data["keys"]:
+                if isinstance(item, dict) and isinstance(item.get("kid"), str):
+                    try:
+                        keys[item["kid"]] = RSAAlgorithm.from_jwk(json.dumps(item))
+                    except Exception:
+                        continue
+            self._keys = keys
+            self._cached_key = keys.get(JWKS_KID)
+            self._fetched_at = time.monotonic()
+            return bool(keys) and JWKS_KID in keys if self._uri == JWKS_URI else bool(keys)
+        except Exception:
+            _logger.warning("JWKS fetch failed")
             return False
-        except Exception as exc:
-            print(f"Warning: JWKS fetch failed: {exc}", file=sys.stderr)
-            return False
 
-    def verify(self, token: str, audience: Optional[str] = None) -> Optional[dict]:
-        """Verify a Bearer JWT against the cached RS256 public key.
-
-        Checks header.kid matches JWKS_KID, then verifies the signature,
-        expiry, issued-at time, issuer and audience. Returns the decoded
-        payload dict on success, or None on any failure.
-
-        ``audience`` is required whenever the issuer stamps an ``aud`` claim,
-        which it does for every resource-indicated token (RFC 8707/9068).
-        PyJWT does not ignore an audience it was not told about: a token
-        carrying ``aud`` with no ``audience`` argument raises
-        InvalidAudienceError (api_jwt.py ``_validate_aud``). Omitting it
-        therefore rejects every correctly-issued token rather than skipping
-        the check.
-        """
-        if self._cached_key is None:
-            return None
+    def verify(self, token: str, audience: Optional[str] = None, *, issuer: str = OAUTH_ISSUER,
+               require_iat: bool = True) -> Optional[dict]:
+        """Verify signed JWT claims; return None for every malformed or invalid token."""
         try:
             header = jwt.get_unverified_header(token)
-            if header.get("kid") != JWKS_KID:
-                _logger.warning("MCP authentication refused: kid mismatch (expected %r, received %r)", JWKS_KID, header.get("kid"))
+            kid = header.get("kid")
+            if not isinstance(kid, str):
                 return None
-            payload = jwt.decode(
-                token,
-                self._cached_key,
-                algorithms=["RS256"],
-                options={"require": ["exp", "iat", "iss"]},
-                issuer=OAUTH_ISSUER,
-                audience=audience,
-            )
-            return payload
-        except jwt.InvalidTokenError as exc:
-            # Report actionable claims without ever including the token.
-            if isinstance(exc, jwt.ExpiredSignatureError):
-                reason = "expired"
-            elif isinstance(exc, jwt.ImmatureSignatureError):
-                reason = "iat in the future"
-            elif isinstance(exc, jwt.InvalidAudienceError):
-                try:
-                    received_aud = jwt.decode(
-                        token, options={"verify_signature": False, "verify_aud": False}
-                    ).get("aud")
-                except jwt.InvalidTokenError:
-                    received_aud = "unavailable"
-                reason = f"audience mismatch (expected {audience!r}, received {received_aud!r})"
-            elif isinstance(exc, jwt.InvalidIssuerError):
-                reason = f"wrong issuer (expected {OAUTH_ISSUER!r})"
-            elif isinstance(exc, jwt.InvalidSignatureError):
-                reason = "bad signature"
-            else:
-                reason = f"{type(exc).__name__}: {exc}"
-            _logger.warning("MCP authentication refused: %s", reason)
+            if time.monotonic() - self._fetched_at >= self._cache_ttl:
+                self.fetch()
+            key = self._keys.get(kid)
+            if key is None and time.monotonic() - self._unknown_refresh_at >= self._cache_ttl:
+                self._unknown_refresh_at = time.monotonic()
+                self.fetch()
+                key = self._keys.get(kid)
+            if key is None:
+                return None
+            required = ["exp", "iss"] + (["iat"] if require_iat else [])
+            return jwt.decode(token, key, algorithms=["RS256"], options={"require": required},
+                              issuer=issuer, audience=audience)
+        except jwt.ExpiredSignatureError:
+            _logger.warning("MCP authentication refused: expired")
             return None
-        except Exception as exc:
-            # Malformed headers and unsupported token encodings still get a
-            # useful refusal line; exception text from parsers is not trusted.
-            _logger.warning("MCP authentication refused: malformed token (%s)", type(exc).__name__)
+        except jwt.InvalidAudienceError:
+            _logger.warning("MCP authentication refused: audience mismatch")
+            return None
+        except jwt.InvalidIssuerError:
+            _logger.warning("MCP authentication refused: wrong issuer")
+            return None
+        except Exception:
+            _logger.warning("JWT authentication refused")
             return None
