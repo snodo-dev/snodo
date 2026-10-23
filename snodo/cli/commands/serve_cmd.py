@@ -36,6 +36,9 @@ from snodo.cli.commands.serve_tunnel_process import (
 )
 from snodo.cli.commands.serve_tunnel_config import (  # noqa: F401 - re-exported for callers and tests
     _auth_methods,
+    _has_usable_saved_tunnel,
+    _tunnel_transport,
+    _validate_tunnel_auth,
     _load_tunnel_config,
     _save_tunnel_config,
 )
@@ -75,6 +78,9 @@ def register(app: typer.Typer) -> None:
         port: Optional[int] = typer.Option(
             None, "--port",
             help="Port for SSE/streamable-http transport (default: find a free one)",
+        ),
+        tunnel_transport: str = typer.Option(
+            "cloudflare", "--tunnel-transport", help="Managed tunnel transport: cloudflare or ws",
         ),
         tunnel: bool = typer.Option(
             False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
@@ -131,7 +137,7 @@ def register(app: typer.Typer) -> None:
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
-            tunnel=tunnel, verbose=verbose, auth=auth,
+            tunnel=tunnel, tunnel_transport=tunnel_transport, verbose=verbose, auth=auth,
             delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
             mcp_uninstall_all=mcp_uninstall_all, mcp_list=mcp_list,
@@ -147,7 +153,7 @@ def register(app: typer.Typer) -> None:
 def serve_command(args) -> int:
     """Start MCP server from protocol definition."""
     try:
-        _auth_methods(getattr(args, "auth", None))
+        _validate_tunnel_auth(_tunnel_transport(getattr(args, "tunnel_transport", None)), getattr(args, "auth", None))
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 2
@@ -472,6 +478,8 @@ def _warn_if_unservable_hostname(hostname: str) -> bool:
     delete-by-hostname path (which is unchanged here).
     """
     host = (hostname or "").strip().rstrip(".").lower()
+    if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-ws\.snodo\.dev", host):
+        return False
     if host.endswith(".tunnel.snodo.dev"):
         leading = host[: -len(".tunnel.snodo.dev")]
         unservable = bool(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", leading))
@@ -577,6 +585,7 @@ def _tunnel_project_slug(project_root: str) -> str:
 def _provision_tunnel(
     api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str,
     port: int = DEFAULT_PORT, auth: Optional[list[str]] = None,
+    tunnel_transport: str = "cloudflare", machine_identifier: Optional[str] = None,
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
@@ -598,6 +607,9 @@ def _provision_tunnel(
         }
         if auth is not None:
             payload["auth"] = auth
+        if tunnel_transport == "ws":
+            payload["transport"] = "ws"
+            payload["machine_id"] = machine_identifier
         resp = httpx.post(
             url,
             json=payload,
@@ -931,8 +943,15 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     if transport == "stdio":
         transport = "streamable-http"
 
+    tunnel_transport = _tunnel_transport(getattr(args, "tunnel_transport", None))
+    try:
+        _validate_tunnel_auth(tunnel_transport, getattr(args, "auth", None))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+
     # 1. Check cloudflared
-    if not _check_cloudflared():
+    if tunnel_transport != "ws" and not _check_cloudflared():
         print("Error: cloudflared is required for managed tunnels.", file=sys.stderr)
         print("  macOS:   brew install cloudflared", file=sys.stderr)
         print("  Linux:   See https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/", file=sys.stderr)
@@ -973,7 +992,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # underneath it; a tunnel recorded before the port was stored keeps the
     # historical default its ingress was built with. Only a fresh tunnel with
     # no --port has a port chosen for it, and that choice is reported.
-    has_existing_tunnel = bool(tunnel_config.get("tunnel_token"))
+    has_existing_tunnel = _has_usable_saved_tunnel(tunnel_config)
     raw_tunnel_port = tunnel_config.get("port")
     try:
         tunnel_port = int(raw_tunnel_port) if raw_tunnel_port is not None else None
@@ -1008,7 +1027,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # First run: provision
     newly_provisioned = False
     provisioned = {}
-    if not tunnel_config.get("tunnel_token"):
+    if not _has_usable_saved_tunnel(tunnel_config):
         from snodo.version import __version__
         short_id = _generate_short_id()
 
@@ -1023,7 +1042,11 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
         try:
             requested_auth = getattr(args, "auth", None)
-            auth_methods = _auth_methods(requested_auth)
+            auth_methods = _validate_tunnel_auth(tunnel_transport, requested_auth)
+            machine_identifier = None
+            if tunnel_transport == "ws":
+                from snodo.infrastructure.cloud_relay import machine_id
+                machine_identifier = machine_id()
             if requested_auth is None:
                 # Preserve the legacy OAuth-only call shape for callers and stubs.
                 provisioned = _provision_tunnel(
@@ -1032,7 +1055,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             else:
                 provisioned = _provision_tunnel(
                     api_key, project_slug, mode, short_id, __version__, port,
-                    auth=auth_methods,
+                    auth=auth_methods, tunnel_transport=tunnel_transport,
+                    machine_identifier=machine_identifier,
                 )
         except TunnelAPIError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -1075,7 +1099,9 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             print(f"  CF-Access-Client-Secret: {provisioned['client_secret']}")
         tunnel_config = {
             "hostname": provisioned["hostname"],
-            "tunnel_token": provisioned["tunnel_token"],
+            "tunnel_token": provisioned.get("tunnel_token", ""),
+            "transport": tunnel_transport,
+            **({"machine_id": machine_identifier} if machine_identifier else {}),
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
             "port": port,
             "auth": provisioned.get("auth", auth_methods),
@@ -1083,6 +1109,10 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         }
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = True
+
+    if tunnel_transport == "ws":
+        print("WebSocket tunnel provisioned; running it is not yet supported.", file=sys.stderr)
+        return 1
 
     # 5. Start MCP server subprocess
     mcp_cmd = [
