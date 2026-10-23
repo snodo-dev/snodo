@@ -356,6 +356,8 @@ def _run_server(args, protocol) -> int:
         print("  Or use: snodo serve --tunnel (requires free snodo account)")
 
     from snodo.infrastructure import cloud_liveness
+    from snodo.infrastructure.serve_registry import record_serve_process, remove_serve_process
+    registry_entry = record_serve_process(str(project_root), mode_id or "", port if transport != "stdio" else None, tunnel_hostname)
     cloud_liveness.install()
     try:
         mcp.run(transport=transport)
@@ -370,6 +372,7 @@ def _run_server(args, protocol) -> int:
         raise
     finally:
         cloud_liveness.uninstall()
+        remove_serve_process(registry_entry)
     return 0
 
 
