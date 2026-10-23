@@ -129,8 +129,10 @@ def get_admission_lease(
     state = sync_state or CloudSyncState()
     sid = session_id or ""
 
-    # 1. Check if terminal refusal is recorded across processes
-    if not force and state.is_refused(sid):
+    isolated = audience != "ingest"
+
+    # Purpose-bound leases are one-shot and never consult ingest refusal state.
+    if not isolated and not force and state.is_refused(sid):
         _logger.debug("Cloud admission skipped: session %s is permanently refused", sid)
         return None
 
@@ -144,9 +146,9 @@ def get_admission_lease(
         ):
             return _current_lease
 
-        # 3. Check quiet window for unreachable exchange
+        # 3. Check quiet window for unreachable exchange (ingest only).
         now = time.monotonic()
-        if now < _quiet_until:
+        if not isolated and now < _quiet_until:
             _logger.debug(
                 "Cloud admission exchange quiet until %.2f (%.1fs remaining); silence",
                 _quiet_until, _quiet_until - now,
@@ -208,15 +210,16 @@ def _perform_exchange(
                 cadence_s=cadence_s, interface_version=interface_version,
             )
 
-            with _lock:
-                _current_lease = lease
-                _current_lease_session_id = session_id
-                _consecutive_failures = 0
-                _quiet_until = 0.0
-                _last_admission_error = None
+            if audience == "ingest":
+                with _lock:
+                    _current_lease = lease
+                    _current_lease_session_id = session_id
+                    _consecutive_failures = 0
+                    _quiet_until = 0.0
+                    _last_admission_error = None
 
-            if session_id:
-                state.clear_refusal(session_id)
+                if session_id:
+                    state.clear_refusal(session_id)
             return lease
 
         message = "OAuth authorization rejected" if oauth and response.status_code == 401 else (response.text[:500].strip() or "No server message")
@@ -236,35 +239,40 @@ def _perform_exchange(
         # An expired OAuth credential is transient: credentials can be restored
         # independently while the session remains active.
         if refresh_failed:
-            _handle_unreachable(response)
+            if audience == "ingest":
+                _handle_unreachable(response)
             return None
 
         # A route miss means client/server disagreement, not a rejected key.
         if response.status_code == 404:
-            _handle_unreachable(response)
+            if audience == "ingest":
+                _handle_unreachable(response)
             return None
 
         # HTTP 4xx (except 404 and 429): Terminal refusal
         if 400 <= response.status_code < 500 and response.status_code != 429:
             reason = f"{mint_url} -> HTTP {response.status_code}: {message}"
             _logger.warning("Cloud admission refusal HTTP %d on session=%s: %s", response.status_code, session_id, reason)
-            if session_id:
-                state.record_refusal(session_id, reason=reason, status_code=response.status_code)
-            with _lock:
-                _current_lease = None
-                _current_lease_session_id = None
-                _quiet_until = 0.0
+            if audience == "ingest":
+                if session_id:
+                    state.record_refusal(session_id, reason=reason, status_code=response.status_code)
+                with _lock:
+                    _current_lease = None
+                    _current_lease_session_id = None
+                    _quiet_until = 0.0
             return None
 
         # HTTP 429 or 5xx: Unreachable
-        _handle_unreachable(response)
+        if audience == "ingest":
+            _handle_unreachable(response)
         return None
 
     except Exception as exc:
         # Network errors / timeouts
         _last_admission_error = f"{mint_url} -> no response: {exc}"
         print(f"Cloud lease mint failed: {_last_admission_error}", file=sys.stderr)
-        _handle_unreachable(None, exc=exc)
+        if audience == "ingest":
+            _handle_unreachable(None, exc=exc)
         return None
 
 
@@ -339,5 +347,5 @@ def mint_lease(config: dict, audience: str, machine_id: str, *, force: bool = Fa
     if not credential:
         return None
     return get_admission_lease(credential, get_cloud_lease_url(config), session_id=f"runner:{machine_id}",
-                               sync_state=CloudSyncState(), force=True, oauth=oauth, config=config,
+                               sync_state=CloudSyncState(), force=force, oauth=oauth, config=config,
                                audience=audience, machine_id=machine_id)
