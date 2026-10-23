@@ -1010,10 +1010,16 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         try:
             requested_auth = getattr(args, "auth", None)
             auth_methods = _auth_methods(requested_auth)
-            provisioned = _provision_tunnel(
-                api_key, project_slug, mode, short_id, __version__, port,
-                auth=auth_methods if requested_auth is not None else None,
-            )
+            if requested_auth is None:
+                # Preserve the legacy OAuth-only call shape for callers and stubs.
+                provisioned = _provision_tunnel(
+                    api_key, project_slug, mode, short_id, __version__, port,
+                )
+            else:
+                provisioned = _provision_tunnel(
+                    api_key, project_slug, mode, short_id, __version__, port,
+                    auth=auth_methods,
+                )
         except TunnelAPIError as e:
             print(f"Error: {e}", file=sys.stderr)
             if e.status_code == 409:
