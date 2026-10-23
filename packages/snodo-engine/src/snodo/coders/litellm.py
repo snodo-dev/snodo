@@ -28,6 +28,7 @@ from snodo.coders.tool_result_text import bound_tool_result, provider_tool_resul
 from snodo.paths import is_protected_workspace_path
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError, TurnBudgetExhausted
 from snodo.coders.test_governing import _is_test_governing_file
+from snodo.coders.rewrite_guard import implausible_rewrite_feedback
 from snodo.coders.report import build_coder_report as assemble_coder_report
 from snodo.engine.progress import format_elapsed, format_tool_call_summary
 from snodo.coders.parameter_fallback import completion_without_rejected_parameters
@@ -464,7 +465,7 @@ Return ONLY the JSON array, no other text.
                     if tool_name == "submit_files":
                         files_list = self._extract_submit_files(tc)
                         if files_list is not None and files_list:
-                            refusals = self._implausible_rewrite_feedback(files_list, workspace, prompt)
+                            refusals = implausible_rewrite_feedback(files_list, workspace, prompt)
                             accepted_files = [f for f in files_list if not isinstance(f, dict) or f.get("path") not in refusals]
                             for f in accepted_files:
                                 if isinstance(f, dict) and "path" in f:
@@ -695,35 +696,6 @@ Return ONLY the JSON array, no other text.
             },
         },
     }
-
-    @staticmethod
-    def _implausible_rewrite_feedback(files: List[Dict], workspace: Any, prompt: str) -> Dict[str, str]:
-        """Refuse drastic accidental shrinkage before a body enters staged writes."""
-        root = getattr(workspace, "project_root", None)
-        if not isinstance(root, (str, Path)):
-            return {}
-        shortening_requested = bool(re.search(r"\b(shorten|condense|reduce|trim|remove\s+sections?)\b", prompt, re.I))
-        refusals: Dict[str, str] = {}
-        for item in files:
-            if not isinstance(item, dict) or item.get("action", "write") != "write":
-                continue
-            path, content = item.get("path"), item.get("content")
-            if not isinstance(path, str) or not isinstance(content, str):
-                continue
-            if item.get("acknowledge_short_rewrite") is True or shortening_requested:
-                continue
-            try:
-                target = (Path(root) / path).resolve()
-                target.relative_to(Path(root).resolve())
-                if not target.is_file():
-                    continue
-                old_size, new_size = target.stat().st_size, len(content.encode("utf-8"))
-            except (OSError, ValueError):
-                continue
-            delta = old_size - new_size
-            if delta >= 1024 and new_size <= old_size * 0.4:
-                refusals[path] = f"{path}: submitted {new_size} bytes, {delta} bytes smaller than existing {old_size}-byte file"
-        return refusals
 
     @staticmethod
     def _extract_submit_files(target: Any) -> Optional[List[Dict]]:
