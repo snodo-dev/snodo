@@ -120,6 +120,8 @@ class Task(BaseModel):
     # attempt — see ADR 021.
     root_task_ref: Optional[str] = None
     root_spec: Optional[str] = None
+    # Why composed input is present: operator retry evidence or engine recovery.
+    composed_input_source: Optional[str] = None
     prior_failures: List[Dict[str, Any]] = Field(default_factory=list)
     # Recovery provenance: files earlier attempts in the same recovery chain
     # wrote in the cumulative worktree. This is ownership context, not a

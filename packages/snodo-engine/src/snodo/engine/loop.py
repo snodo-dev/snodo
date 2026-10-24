@@ -905,6 +905,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             parent_task_ref=loop_state.task.id,
             root_task_ref=root_id,
             root_spec=root_spec,
+            composed_input_source="engine_recovery",
             prior_failures=accumulated,
             attempt_provenance=provenance,
             attempt_reads=read_history,

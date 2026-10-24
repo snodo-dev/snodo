@@ -85,7 +85,8 @@ def test_real_retry_composition_reaches_quorum_without_becoming_spec(tmp_path, m
 
 @pytest.mark.parametrize("tools", [False, True])
 def test_evidence_reaches_completion_separately_for_both_judge_paths(tools):
-    task = Task(id="rate", spec=f"Original spec: {SPEC}\n\n{EVIDENCE}", root_spec=SPEC)
+    task = Task(id="rate", spec=f"Original spec: {SPEC}\n\n{EVIDENCE}", root_spec=SPEC,
+                 composed_input_source="operator_retry")
     completion = MagicMock(return_value="response")
     context = ValidatorContext(task=task, phase="pre_execute", completion_fn=completion)
     validator = LLMValidator(protocol().validators[0])
@@ -98,6 +99,7 @@ def test_evidence_reaches_completion_separately_for_both_judge_paths(tools):
     assert sent[0]["content"] == prompt
     assert EVIDENCE in sent[-1]["content"]
     assert "not the specification" in sent[-1]["content"]
+    assert "operator retry" in sent[-1]["content"]
     assert "prescriptiveness criteria" in sent[-1]["content"]
     assert len(messages) == 1
     assert context.task.spec == SPEC
@@ -147,3 +149,18 @@ def test_refusal_preserves_coding_summary_not_failure_sequence(previous):
     assert payload["phase"] == "post_execute"
     assert payload["attempts"] == after
     assert "no coder attempt was consumed" not in payload["hint"]
+
+
+def test_engine_recovery_evidence_keeps_original_intent_authoritative():
+    fix_instruction = "Original spec: Make ingestion safe\n\nFix the failed rate-limit gate."
+    task = Task(id="rate_fix_1", spec=fix_instruction, root_spec=SPEC, depth=1,
+                composed_input_source="engine_recovery")
+    context = ValidatorContext(task=task, phase="pre_execute")
+    assert context.task.spec == SPEC
+    assert context.retry_evidence == fix_instruction
+    from snodo.validators.retry_evidence import retry_evidence_block
+    block = retry_evidence_block(context)
+    assert "engine-composed recovery" in block
+    assert fix_instruction in block
+    assert "not the specification" in block
+    assert context.task.spec != fix_instruction

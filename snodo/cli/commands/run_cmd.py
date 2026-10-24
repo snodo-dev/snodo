@@ -786,6 +786,7 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
 
     task = Task(
         id=task_id, spec=augmented, root_spec=authoritative_spec,
+        composed_input_source="operator_retry",
         module_id=getattr(args, "module", None),
         plan_name=(os.environ.get("SNODO_TASK_PLAN") or getattr(args, "plan", None)),
         plan_wave=(os.environ.get("SNODO_TASK_PLAN_WAVE") or getattr(args, "plan_wave", None)),

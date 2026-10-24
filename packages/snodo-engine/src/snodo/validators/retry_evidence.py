@@ -9,10 +9,14 @@ def retry_evidence_block(context: Any) -> str:
     evidence = getattr(context, "retry_evidence", "")
     if getattr(context, "phase", "") != "pre_execute" or not evidence:
         return ""
+    source = getattr(context, "composed_input_source", "")
+    if source not in {"operator_retry", "engine_recovery"}:
+        return ""
+    label = "operator retry" if source == "operator_retry" else "engine-composed recovery"
     return (
-        "\n## Previous attempt evidence (context only, not the specification)\n"
+        f"\n## Composed input evidence ({label}; context only, not the specification)\n"
         "The Task section above is the authoritative operator specification. "
-        "The engine-composed retry input below is provided only as evidence "
+        f"The engine-composed {label} input below is provided only as evidence "
         "of the previous failure. It may quote code paths, line counts, code "
         "and gate output. Do not apply specification-authoring or "
         "prescriptiveness criteria to this evidence or its retry instructions.\n"

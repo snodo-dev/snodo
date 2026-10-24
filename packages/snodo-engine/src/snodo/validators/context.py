@@ -78,15 +78,17 @@ class ValidatorContext:
     execution_evidence: List[ValidatorResult] = field(default_factory=list)
     #: The composed coder input, kept separate from the operator's proposal.
     retry_evidence: str = ""
+    composed_input_source: str = ""
 
     def __post_init__(self) -> None:
-        if self.phase != "pre_execute" or self.task.root_spec is None:
+        if self.phase != "pre_execute" or not self.task.composed_input_source:
             return
-        if self.task.spec == self.task.root_spec:
+        if self.task.root_spec is None:
             return
         from snodo.validators.retry_evidence import with_retry_evidence
 
         self.retry_evidence = self.task.spec
+        self.composed_input_source = self.task.composed_input_source
         # Never mutate the task dispatched to the coder or the post-execute
         # subject. All pre-execute backends, including plugin tools, see the
         # authoritative proposal through context.task.spec.
