@@ -13,7 +13,7 @@
       "spec_hash": "0c9e6a3f132a838d"
     },
     "3.1_release_pin_retire_workarounds": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "29e95cdf61cbe77e"
