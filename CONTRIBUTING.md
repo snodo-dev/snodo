@@ -102,9 +102,11 @@ is performed only by the tag-triggered release workflow.
 
 ### Documentation links
 
-Run `make docs` after documentation changes. It uses the deployment's
-`mkdocs.yml` and builds with `--strict`; unresolved, absolute local, and
-unrecognized local links are warnings and therefore fail the build.
+Run `make docs` after documentation changes. It checks local in-page anchors
+with `scripts/enforce_docs_anchors.py`, using the site's Markdown extensions,
+then uses the deployment's `mkdocs.yml` and builds with `--strict`; unresolved,
+absolute local, and unrecognized local links are warnings and therefore fail
+the build.
 Only files served from `docs/` can be local site targets. For repository-only
 files, show the repository path as code and provide the repository URL, as the
 three example references in `docs/extending.md` do. Do not copy examples into
@@ -133,6 +135,8 @@ uv run lint-imports           # architecture layering contract
 uv run python scripts/enforce_file_length.py     # file-length ratchet
 uv run python scripts/enforce_docs_coverage.py   # docs-coverage ratchet
 uv run python scripts/enforce_vocabularies.py    # closed-vocabulary check
+uv run --extra docs python scripts/enforce_docs_anchors.py  # local docs anchors
+make docs                    # strict documentation build
 ```
 
 `enforce_vocabularies.py` is the gate behind ADR 045. The engine's vocabularies
