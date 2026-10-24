@@ -296,7 +296,12 @@ def _make_progress_emitter(ctx: Optional[Context]) -> tuple:
     async def _no_drain() -> None:
         return None
 
-    meta = getattr(getattr(ctx, "request_context", None), "meta", None)
+    request_context = getattr(ctx, "request_context", None)
+    meta = getattr(request_context, "meta", None)
+    if meta is None:
+        request = getattr(request_context, "request", None)
+        params = getattr(request, "params", None)
+        meta = getattr(params, "meta", None)
     if meta is None or getattr(meta, "progressToken", None) is None:
         return None, _no_drain
     try:
@@ -846,6 +851,8 @@ def _make_tool_handler(
     handler.__doc__ = tool_info["description"]
     if narrates:
         annotations["ctx"] = Context
+    if narrates:
+        params.append(inspect.Parameter("ctx", inspect.Parameter.KEYWORD_ONLY, annotation=Context))
     handler.__signature__ = inspect.Signature(params, return_annotation=str)  # type: ignore[attr-defined]
     handler.__annotations__ = annotations
 
