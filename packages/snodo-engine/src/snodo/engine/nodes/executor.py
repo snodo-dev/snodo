@@ -398,6 +398,8 @@ class ExecutorMixin:
                 refs_before=refs_before,
                 task=task,
             )
+            # Recovered task-branch work must not pass if this coder escaped
+            # the dispatched workspace during this run.
             escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
             if escaped:
                 raise ExecutionError(escaped) from None
@@ -410,6 +412,8 @@ class ExecutorMixin:
                 git_mcp, coder, artifacts, base_ref=getattr(task, "base", None),
                 refs_before=refs_before, task=task,
             )
+            # Recovered task-branch work must not pass if this coder escaped
+            # the dispatched workspace during this run.
             escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
             if escaped:
                 raise ExecutionError(escaped) from None
