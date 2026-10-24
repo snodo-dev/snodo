@@ -1,10 +1,14 @@
 {
   "tasks": {
     "1.1_prove_link_gate_fails_closed": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "d4dc96d88d65dda4"
     }
+  },
+  "integration": {
+    "branch": "plan/docs-link-gate-canary-966/integration",
+    "base_sha": "9dc9d9cfb303130f5fdda56246550f1b9543d466"
   }
 }
