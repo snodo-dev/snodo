@@ -1,10 +1,10 @@
 {
   "tasks": {
     "1.1_port_transport_to_mcp_2x": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "3c9114f73ca21fc1"
+      "spec_hash": "1e1216d56a660dc0"
     },
     "2.1_carry_mcp_surfaces": {
       "status": "pending",
@@ -17,6 +17,16 @@
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "29e95cdf61cbe77e"
+    },
+    "2.2_handshake_and_tool_surface_are_tested": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8738548c1f5a5dd8"
     }
+  },
+  "integration": {
+    "branch": "plan/mcp-2x-port-922/integration",
+    "base_sha": "97eba82245e13538a0628c8d66c19e9959e3baa6"
   }
 }

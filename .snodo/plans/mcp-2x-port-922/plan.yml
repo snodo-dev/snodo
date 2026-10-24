@@ -11,6 +11,7 @@ waves:
   id: 2
   tasks:
   - 2.1_carry_mcp_surfaces
+  - 2.2_handshake_and_tool_surface_are_tested
 - depends_on: []
   id: 3
   tasks:
