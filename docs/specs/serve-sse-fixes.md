@@ -54,6 +54,6 @@ their own tooling.
 
 ## Constraints
 - Read cli/commands/serve_cmd.py and check FastMCP.run() signature
-  (mcp.server.fastmcp) before touching anything
+  (mcp.server.mcpserver) before touching anything
 - Only touch serve_cmd.py
 - Keep the hint short — engineers know what ngrok is
