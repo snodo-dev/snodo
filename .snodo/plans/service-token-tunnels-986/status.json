@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_access_assertion_verifier": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a00aae96cd8b64c3"
+    },
+    "1.2_auth_list_and_provision_fields": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "aa873b5632edf4fd"
+    },
+    "2.1_serve_mounts_service_token_path": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e59e7d1547865fa2"
+    }
+  },
+  "integration": {
+    "branch": "plan/service-token-tunnels-986/integration",
+    "base_sha": "422a82f707a3bc0a5fbe1cd5e02c71092598b4bf"
+  }
+}

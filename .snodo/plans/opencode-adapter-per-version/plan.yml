@@ -1,0 +1,19 @@
+intent: 'OpenCode 2.x changed the `run` command contract (no directory flag, no skip-permissions
+  flag; an auto-approve flag instead), and snodo''s opencode-cli adapter has to serve
+  both 1.x and 2.x installs without one version''s launch shape leaking into the other.
+  Make the adapter version-aware by design: one adapter per supported major, chosen
+  from the installed CLI, with each version''s launch flags pinned to that version''s
+  recorded `run --help`, and `snodo ready` telling the user early when the installed
+  CLI does not accept the flags snodo would send. Issues #982, #983, #984.'
+name: opencode-adapter-per-version
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_split_opencode_adapters_by_version
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_recorded_help_contract
+  - 2.2_ready_flag_check

@@ -1,0 +1,10 @@
+intent: 'Cover the stale-work environment halt with tests and tighten the absent-claim
+  detector so it only fires on an explicitly named path in the same sentence as the
+  absence wording. Fixes #995.'
+name: stale-work-halt-followup-995
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_test_the_contradicted_claim_halt
+  - 1.2_absent_claim_needs_same_sentence_path

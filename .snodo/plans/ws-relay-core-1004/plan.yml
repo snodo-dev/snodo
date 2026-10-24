@@ -1,0 +1,40 @@
+intent: 'The building blocks of the WebSocket tunnel transport agreed with snodo-cloud:
+  serve records itself in a user-level registry (#1002), the relay frames are encoded
+  and decoded in one tested module (#1003), and a machine-level relay holds one outbound
+  socket and forwards cloud requests to local serve ports (#1004). Nothing is wired
+  into the CLI yet.'
+name: ws-relay-core-1004
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_serve_registry
+  - 1.2_relay_frame_codec
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_machine_relay
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_runner_lease_isolation
+  - 3.2_relay_connection_hardening
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_relay_request_handling
+  - 4.2_serve_registry_test_tidy
+- depends_on:
+  - 4
+  id: 5
+  tasks:
+  - 5.1_relay_idle_connection_and_cleanup
+  - 5.2_registry_listing_without_rewrite
+- depends_on:
+  - 5
+  id: 6
+  tasks:
+  - 6.1_jwks_first_fetch_on_fresh_host

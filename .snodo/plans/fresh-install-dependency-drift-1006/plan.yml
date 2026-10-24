@@ -1,0 +1,10 @@
+intent: A fresh install of snodo resolves a litellm release that needs a newer mcp
+  than snodo allows, so the published package and the PR review workflow break while
+  the locked development environment keeps working
+name: fresh-install-dependency-drift-1006
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_bound_litellm_below_the_mcp2_release
+  - 1.2_scheduled_fresh_install_check

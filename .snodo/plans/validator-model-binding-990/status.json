@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_bind_completion_per_validator_model": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e4755e92ed244f4d"
+    },
+    "1.2_tool_loop_keeps_bound_model": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d50c8a06e4ed70a1"
+    },
+    "2.1_two_provider_validator_run": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d519e7326967087a"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-model-binding-990/integration",
+    "base_sha": "a6cc34988f2f9db9a64c3b1a1ee046c57b0c70c8"
+  }
+}

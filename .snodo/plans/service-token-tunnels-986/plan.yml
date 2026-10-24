@@ -1,0 +1,17 @@
+intent: 'A served tunnel can be reached through a Cloudflare Access service token
+  as well as OAuth: repeatable --auth oauth and --auth service-token, the provision
+  request carries the auth list, the new provision fields are read and the secret
+  is shown once, and serve answers on /mcp-st after verifying Cf-Access-Jwt-Assertion
+  beside /mcp. Part of #986 (ADR-0052); issues #998, #999, #1000.'
+name: service-token-tunnels-986
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_access_assertion_verifier
+  - 1.2_auth_list_and_provision_fields
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_serve_mounts_service_token_path

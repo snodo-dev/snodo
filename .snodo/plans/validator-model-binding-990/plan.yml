@@ -1,0 +1,19 @@
+intent: 'Make every validator call go to the provider of the validator''s own configured
+  model: base URL, key and headers resolved together from that model on every call
+  path. Today one completion function is bound once to the role''s default validator
+  model and reused for validators pinned to other models, so a validator pinned to
+  an OpenAI-compatible provider is sent to the wrong host with the default provider''s
+  key, and the plain and structured paths silently answer with the default model.
+  Fixes #990.'
+name: validator-model-binding-990
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_bind_completion_per_validator_model
+  - 1.2_tool_loop_keeps_bound_model
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_two_provider_validator_run

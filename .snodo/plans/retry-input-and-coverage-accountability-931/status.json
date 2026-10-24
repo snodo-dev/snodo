@@ -7,10 +7,10 @@
       "spec_hash": "db048caf4904db00"
     },
     "2.1_lost_coverage_is_surfaced": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "ffec05cae29474a5"
+      "spec_hash": "53403915b9f83848"
     }
   },
   "integration": {

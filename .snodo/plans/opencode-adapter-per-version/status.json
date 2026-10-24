@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_split_opencode_adapters_by_version": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a73010f6d9c092b1"
+    },
+    "2.1_recorded_help_contract": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8b13f117e9dee0b4"
+    },
+    "2.2_ready_flag_check": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e8bca5f6c104c24e"
+    }
+  },
+  "integration": {
+    "branch": "plan/opencode-adapter-per-version/integration",
+    "base_sha": "a6cc34988f2f9db9a64c3b1a1ee046c57b0c70c8"
+  }
+}

@@ -1,0 +1,16 @@
+intent: 'When a dispatched coder reports that the task''s subject files are absent
+  while the dispatched workspace''s HEAD contains them, halt as an environment fault
+  naming the contradiction, instead of validating a previous attempt''s work and spending
+  a coder attempt. The honest no-change case keeps today''s behaviour. Fixes #992.'
+name: stale-work-environment-fault-992
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_detect_absent_claims_contradicted_by_head
+  - 1.2_environment_halt_does_not_spend_an_attempt
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_halt_on_contradicted_absent_claim

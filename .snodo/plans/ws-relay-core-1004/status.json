@@ -1,0 +1,68 @@
+{
+  "tasks": {
+    "1.1_serve_registry": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6a3bc295933fb211"
+    },
+    "1.2_relay_frame_codec": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "125cf6af6f4ec206"
+    },
+    "2.1_machine_relay": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5b141a15849c59ee"
+    },
+    "3.1_runner_lease_isolation": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b3e16b64161571bf"
+    },
+    "3.2_relay_connection_hardening": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a2779a31c6cdf114"
+    },
+    "4.1_relay_request_handling": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "306c0cb80991db94"
+    },
+    "4.2_serve_registry_test_tidy": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9dbbadbc6cbc4d9b"
+    },
+    "5.1_relay_idle_connection_and_cleanup": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2e1270189b9715da"
+    },
+    "5.2_registry_listing_without_rewrite": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e19df04fdc5607d0"
+    },
+    "6.1_jwks_first_fetch_on_fresh_host": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ccc8824e4121ae47"
+    }
+  },
+  "integration": {
+    "branch": "plan/ws-relay-core-1004/integration",
+    "base_sha": "757edf124882f0ce330f200a2f5ac0b1ed3c766e"
+  }
+}

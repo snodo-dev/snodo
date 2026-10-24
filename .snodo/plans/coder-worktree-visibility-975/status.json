@@ -1,7 +1,7 @@
 {
   "tasks": {
     "1.1_coder_observes_its_worktree": {
-      "status": "errored",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "1db81302d304c748"

@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_one_rebinding_helper_and_loud_failure": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c666923415d44895"
+    },
+    "1.2_deferred_acceptance_pass_honours_pinned_model": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "31270c842dd59f1e"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-rebinding-cleanup-993/integration",
+    "base_sha": "2afa1d73daed55a6030832bf9f4e949eadc52125"
+  }
+}

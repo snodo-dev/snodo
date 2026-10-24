@@ -1,10 +1,14 @@
 {
   "tasks": {
     "1.1_prove_worktree_ownership_before_reuse": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "050713ddbe5bb51a"
+      "spec_hash": "294716d730f71590"
     }
+  },
+  "integration": {
+    "branch": "plan/worktree-identity-check-970/integration",
+    "base_sha": "ca2b0e6e6dbefeba1b7d8f09a2edad7bfbab4fd3"
   }
 }

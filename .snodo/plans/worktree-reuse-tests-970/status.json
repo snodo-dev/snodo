@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_prove_foreign_workspace_refusal": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7a10911ad369e803"
+    },
+    "1.2_prove_legitimate_reuse_still_works": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4fb248c77762f98a"
+    }
+  },
+  "integration": {
+    "branch": "plan/worktree-reuse-tests-970/integration",
+    "base_sha": "48cf1153541f41ef51e102f107e441adba936ac7"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_detect_absent_claims_contradicted_by_head": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "99db67096e9c2b25"
+    },
+    "1.2_environment_halt_does_not_spend_an_attempt": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2add9746aace843f"
+    },
+    "2.1_halt_on_contradicted_absent_claim": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e47a3d9ed139fc77"
+    }
+  },
+  "integration": {
+    "branch": "plan/stale-work-environment-fault-992/integration",
+    "base_sha": "630344f7033de0e9d846cbdc012e12abd31d80e9"
+  }
+}

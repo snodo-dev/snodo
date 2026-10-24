@@ -1,0 +1,9 @@
+intent: 'The workspace-reuse ownership check delivered for #970 shipped without the
+  tests its ticket asked for, so the refusal and legitimate-reuse behaviour is unproven'
+name: worktree-reuse-tests-970
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_prove_foreign_workspace_refusal
+  - 1.2_prove_legitimate_reuse_still_works

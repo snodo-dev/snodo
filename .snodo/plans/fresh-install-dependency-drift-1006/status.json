@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_bound_litellm_below_the_mcp2_release": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c7d4239811cca526"
+    },
+    "1.2_scheduled_fresh_install_check": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b25e74f8cd4e7ec2"
+    }
+  },
+  "integration": {
+    "branch": "plan/fresh-install-dependency-drift-1006/integration",
+    "base_sha": "48cf1153541f41ef51e102f107e441adba936ac7"
+  }
+}
