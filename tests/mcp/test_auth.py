@@ -10,8 +10,8 @@ from unittest.mock import MagicMock
 import anyio
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.server import TransportSecuritySettings
+from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import AnyHttpUrl
 from snodo.infrastructure.jwks import JwksClient
 from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
@@ -20,7 +20,7 @@ from starlette.testclient import TestClient
 
 def _make_mcp(
     verifier: Optional[TokenVerifier] = None,
-) -> FastMCP:
+) -> MCPServer:
     """Create a bare FastMCP with a ping tool for testing."""
     auth = None
     if verifier is not None:
@@ -29,16 +29,7 @@ def _make_mcp(
             resource_server_url=AnyHttpUrl("https://mcp.snodo.dev"),
         )
 
-    mcp = FastMCP(
-        "test-auth",
-        token_verifier=verifier,
-        auth=auth,
-        stateless_http=True,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=False,
-            allowed_hosts=["*"],
-        ),
-    )
+    mcp = MCPServer("test-auth", token_verifier=verifier, auth=auth)
 
     @mcp.tool()
     def ping() -> str:
@@ -69,9 +60,14 @@ class TestOAuthProtectedResource:
 
         async def run():
             mcp = _make_mcp(verifier=RejectAllVerifier())
-            app = mcp.streamable_http_app()
+            app = mcp.streamable_http_app(
+                stateless_http=True,
+                transport_security=TransportSecuritySettings(
+                    enable_dns_rebinding_protection=False, allowed_hosts=["*"],
+                ),
+            )
             async with anyio.create_task_group() as tg:
-                mcp._session_manager._task_group = tg
+                mcp.session_manager._task_group = tg
                 client = TestClient(app)
                 resp = client.get("/.well-known/oauth-protected-resource")
                 assert resp.status_code == 200, resp.text
@@ -93,9 +89,14 @@ class TestMCPEndpoint:
 
         async def run():
             mcp = _make_mcp(verifier=RejectAllVerifier())
-            app = mcp.streamable_http_app()
+            app = mcp.streamable_http_app(
+                stateless_http=True,
+                transport_security=TransportSecuritySettings(
+                    enable_dns_rebinding_protection=False, allowed_hosts=["*"],
+                ),
+            )
             async with anyio.create_task_group() as tg:
-                mcp._session_manager._task_group = tg
+                mcp.session_manager._task_group = tg
                 client = TestClient(app)
                 resp = client.post(
                     "/mcp",
@@ -125,9 +126,14 @@ class TestMCPEndpoint:
 
         async def run():
             mcp = _make_mcp(verifier=verifier)
-            app = mcp.streamable_http_app()
+            app = mcp.streamable_http_app(
+                stateless_http=True,
+                transport_security=TransportSecuritySettings(
+                    enable_dns_rebinding_protection=False, allowed_hosts=["*"],
+                ),
+            )
             async with anyio.create_task_group() as tg:
-                mcp._session_manager._task_group = tg
+                mcp.session_manager._task_group = tg
                 client = TestClient(app)
                 resp = client.post(
                     "/mcp",
