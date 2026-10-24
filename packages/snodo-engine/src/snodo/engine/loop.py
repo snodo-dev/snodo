@@ -517,9 +517,6 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self.git_mcp = git_mcp
         self.shell_mcp = shell_mcp
         self.coder = coder or MockAdapter()
-        # CLI prompt guidance is derived from the already-loaded protocol; the
-        # enforcement path remains in the post-execution validators/guards.
-        self.coder.protected_paths = list(getattr(protocol, "protected_paths", []) or [])
         # The progress callback is part of the DECLARED coder interface (base
         # class default on Coder), so it is assigned unconditionally — never
         # behind a hasattr guard (docs/architecture/coder-adapter-contract.md
