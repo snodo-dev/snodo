@@ -813,7 +813,7 @@ def _make_tool_handler(
 
     if narrates:
         # MCPServer finds the context parameter through the function's type
-        # hints (mcp.server.fastmcp.utilities.context_injection): declaring
+        # hints (MCPServer context injection): declaring
         # ``ctx`` in __annotations__ below makes the SDK pass the request
         # Context as a keyword argument AFTER schema validation — it never
         # touches the client-visible input schema, which is built from the

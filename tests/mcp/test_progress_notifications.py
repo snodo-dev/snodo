@@ -33,7 +33,7 @@ import anyio
 import pytest
 import yaml
 from mcp import types
-from mcp.server.fastmcp import Context
+from mcp.server.mcpserver import Context
 from mcp.shared.memory import create_connected_server_and_client_session
 from snodo.compiler.models import Protocol
 from snodo.mcp.server import ProtocolMCPServer

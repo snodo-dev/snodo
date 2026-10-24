@@ -328,9 +328,9 @@ class TestModeToolMap:
 
 class TestFastMCPBridge:
     def test_build_creates_fastmcp_instance(self, server):
-        from mcp.server.fastmcp import FastMCP
+        from mcp.server.mcpserver import MCPServer
         mcp = build_fastmcp_server(server)
-        assert isinstance(mcp, FastMCP)
+        assert isinstance(mcp, MCPServer)
 
     def test_build_server_name(self, server):
         mcp = build_fastmcp_server(server)
@@ -362,8 +362,8 @@ class TestFastMCPBridge:
 
         # read_file should require 'path' parameter
         rf = tool_map["read_file"]
-        assert "path" in rf.inputSchema.get("properties", {})
-        assert "path" in rf.inputSchema.get("required", [])
+        assert "path" in rf.input_schema.get("properties", {})
+        assert "path" in rf.input_schema.get("required", [])
 
     def test_tool_handler_delegates_read(self, server):
         """Tool handler delegates to protocol_server.call_tool."""
@@ -2045,7 +2045,7 @@ class TestInstructions:
         mcp = build_fastmcp_server(producer_server)
         tool_names = {tool.name for tool in asyncio.run(mcp.list_tools())}
         assert "guide" in tool_names
-        content, _ = asyncio.run(mcp.call_tool("guide", {}))
+        content = asyncio.run(mcp.call_tool("guide", {})).content
         assert "Snodo getting started" in content[0].text
 
     def test_guide_names_the_live_served_mode(self, server, project_dir):
@@ -2054,7 +2054,7 @@ class TestInstructions:
 
         mcp = build_fastmcp_server(server)
         write_state(project_dir, ProjectState(current_mode="reviewer"))
-        content, _ = asyncio.run(mcp.call_tool("guide", {}))
+        content = asyncio.run(mcp.call_tool("guide", {})).content
         assert content[0].text.startswith("Serving mode: reviewer.")
 
     def test_guide_default_is_source_backed_and_mode_honest(self, guide_server):
@@ -2336,7 +2336,7 @@ class TestResources:
         resources = asyncio.run(mcp.list_resources())
         uris = {str(r.uri) for r in resources}
         templates = asyncio.run(mcp.list_resource_templates())
-        template_uris = {t.uriTemplate for t in templates}
+        template_uris = {t.uri_template for t in templates}
         all_uris = uris | template_uris
         assert "snodo://protocol" in all_uris
         assert "snodo://sessions" in all_uris
