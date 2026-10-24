@@ -1,10 +1,14 @@
 {
   "tasks": {
     "1.1_explain_escape_checks": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "285a1790bdb1631f"
     }
+  },
+  "integration": {
+    "branch": "plan/recovery-probe-docs-964/integration",
+    "base_sha": "cf819173ef28c8d5eab55d01ef413379aecfc43c"
   }
 }
