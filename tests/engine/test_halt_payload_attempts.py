@@ -16,7 +16,7 @@ from snodo.compiler.models import (
     Validator,
 )
 from snodo.core.interfaces import CodeArtifact, Task, ValidatorResult
-from snodo.engine.closure import run_to_closure
+from snodo.engine.closure import _make_failure_state, run_to_closure
 from snodo.engine.loop import GraphBuilder
 from snodo.engine.nodes.writeback import (
     _MAX_ATTEMPT_HISTORY,
@@ -261,3 +261,18 @@ class TestClosurePayloadRecordsAttempts:
             {"attempt": 1, "outcome": "warned"},
             {"attempt": 2, "outcome": "passed"},
         ]
+
+
+def test_internal_error_fallback_attempt_payload_has_current_contract_keys():
+    payload = _make_failure_state("internal_error", "boom")["metadata"]["halt_payload"]
+
+    assert set(payload) == {
+        "status", "halt_type", "final_decision", "raw_halt_type", "reason",
+        "task_id", "task_spec", "phase", "validator_results", "attempts",
+        "policy_decision", "hint", "artifacts_count",
+    }
+    assert payload["attempts"] == {
+        "total": 1,
+        "coder_dispatches": 0,
+        "history": [{"attempt": 1, "outcome": "error"}],
+    }

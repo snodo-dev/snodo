@@ -48,7 +48,6 @@ def _make_failure_state(halt_type: str, error: str) -> dict:
                 "validator_results": [],
                 "attempts": {
                     "total": 1,
-                    "non_verdicts": 0,
                     "coder_dispatches": 0,
                     "history": [{"attempt": 1, "outcome": "error"}],
                 },

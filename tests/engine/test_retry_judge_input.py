@@ -120,7 +120,10 @@ def test_refusal_preserves_coding_summary_not_failure_sequence(previous):
     writer = WritebackMixin()
     writer._session_manager = manager
     writer._session_id = "session"
-    state = LoopState(task=Task(id="rate", spec=SPEC, depth=previous), current_mode="producer",
+    state = LoopState(task=Task(
+        id="rate", spec=SPEC, depth=previous,
+        prior_failures=[{"attempt": n, "severity": "blocker"} for n in range(1, previous + 1)],
+    ), current_mode="producer",
                       is_blocked=True, halt_type="blocked")
     results = [ValidatorResult(validator_id="spec", severity="blocker", justification="refused")]
     writer._auto_write_failure_context(state, results)
@@ -130,6 +133,9 @@ def test_refusal_preserves_coding_summary_not_failure_sequence(previous):
     assert decisions["task_failure"]["rate"]["phase"] == "pre_execute"
     before = _build_attempt_summary(state, "pre_execute")
     assert before["total"] == previous
+    assert before["history"] == [
+        {"attempt": n, "outcome": "blocked"} for n in range(1, previous + 1)
+    ]
     assert before["coder_dispatches"] == previous
     payload = writer._build_halt_payload(state)
     assert payload["phase"] == "pre_execute"

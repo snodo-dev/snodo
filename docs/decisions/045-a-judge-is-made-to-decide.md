@@ -76,7 +76,12 @@ ADR 043 then recorded non-verdicts as a durable category in the halt payload —
 state. With the state gone, the category describes nothing. The useful part of
 043 survives: the payload still records every attempt as `{attempt, outcome}`
 over `passed` / `warned` / `blocked` / `error`, so a hard-won recovery is still
-distinguishable from a first-time pass.
+distinguishable from a first-time pass. A pre-execute refusal before dispatch is
+not a coding attempt: it adds neither an attempt number nor a code state to the
+history. A dispatched attempt that later fails is included. Recovery numbering
+depends on this distinction: assigning a number to a refusal would shift every
+subsequent recovery attempt away from the code state that actually produced its
+failure evidence.
 
 The through-line: both records treated the symptom (the judge did not decide)
 as a thing to be handled. The cause was the tool menu on the final turn, and
