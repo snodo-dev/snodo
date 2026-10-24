@@ -16,8 +16,9 @@ from pathlib import Path
 import sys
 from urllib.parse import unquote, urlsplit
 
+import yaml
+
 from markdown import Markdown
-from mkdocs.config import load_config
 
 
 class Page(HTMLParser):
@@ -44,9 +45,16 @@ class Page(HTMLParser):
 
 class Renderer:
     def __init__(self, repo_root: Path) -> None:
-        config = load_config(config_file=str(repo_root / "mkdocs.yml"))
-        self.extensions = config.markdown_extensions
-        self.configs = config.mdx_configs
+        config = yaml.safe_load((repo_root / "mkdocs.yml").read_text(encoding="utf-8"))
+        self.extensions = []
+        self.configs = {}
+        for extension in config.get("markdown_extensions", []):
+            if isinstance(extension, dict):
+                name, settings = next(iter(extension.items()))
+                self.extensions.append(name)
+                self.configs[name] = settings or {}
+            else:
+                self.extensions.append(extension)
 
     def markdown(self) -> Markdown:
         return Markdown(extensions=self.extensions, extension_configs=self.configs)
