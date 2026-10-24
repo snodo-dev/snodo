@@ -1,8 +1,8 @@
-"""FastMCP transport bridge for Snodo MCP server.
+"""MCPServer transport bridge for Snodo MCP server.
 
 FILE: snodo/mcp/transport.py
 
-Bridges ProtocolMCPServer (tool resolution, mode filtering) to FastMCP
+Bridges ProtocolMCPServer (tool resolution, mode filtering) to MCPServer
 (official MCP SDK transport). Replaces the custom stdio/SSE transport
 that didn't work with Claude Desktop.
 
@@ -13,7 +13,7 @@ ProtocolMCPServer handles:
   link, not a gate the caller must pass; see ADR 047)
 - Dispatching to backing MCPs (workspace, git, shell, pr, planner)
 
-FastMCP handles:
+MCPServer handles:
 - MCP protocol handshake (initialize, notifications)
 - JSON-RPC framing (Content-Length headers, stdio)
 - Tool listing and calling via MCP protocol
@@ -32,7 +32,7 @@ from typing import Any, Optional
 
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from snodo.mcp.server import ProtocolMCPServer
 from snodo.mcp.tools import TOOL_REGISTRY
@@ -83,9 +83,14 @@ def _safe_mcp_excerpt(value: Any) -> str:
     return text if len(text) <= _MCP_LOG_MAX_CHARS else text[:_MCP_LOG_MAX_CHARS] + "…"
 
 
-def _enable_mcp_traffic_logging(mcp: FastMCP) -> None:
+def _enable_mcp_traffic_logging(mcp: MCPServer) -> None:
     """Log incoming JSON-RPC requests and their outgoing responses safely."""
-    server = mcp._mcp_server
+    server = getattr(mcp, "_mcp_server", getattr(mcp, "_lowlevel_server", None))
+    if server is None or not hasattr(server, "_handle_request"):
+        # MCP 2.x request dispatch is middleware-based; preserve this hook as
+        # a no-op until the dedicated logging middleware port lands.
+        logger.debug("MCP traffic logging hook is unavailable on this SDK")
+        return
     original = server._handle_request
 
     async def logged_handle_request(message, req, session, lifespan_context, raise_exceptions):
@@ -479,7 +484,7 @@ def _assert_names_only_exposed_tools(instructions: str, exposed: set) -> None:
         )
 
 
-def build_fastmcp_server(
+def build_mcp_server(
     protocol_server: ProtocolMCPServer,
     *,
     token_verifier: Optional[TokenVerifier] = None,
@@ -488,22 +493,22 @@ def build_fastmcp_server(
     public_base_url: Optional[str] = None,
     cloud_live_view_url: Optional[str] = None,
     watch_link_ttl: int = 24 * 60 * 60,
-) -> FastMCP:
-    """Build a FastMCP server that delegates to a ProtocolMCPServer.
+) -> MCPServer:
+    """Build a MCPServer server that delegates to a ProtocolMCPServer.
 
-    Creates a FastMCP instance with tools matching the protocol configuration,
+    Creates a MCPServer instance with tools matching the protocol configuration,
     instructions from the loaded protocol, and resources for self-description.
 
     Args:
         protocol_server: ProtocolMCPServer with resolved tools and validation state
         token_verifier: Optional OAuth TokenVerifier for Bearer JWT validation.
-            When set, FastMCP wraps the /mcp endpoint with auth middleware.
+            When set, MCPServer wraps the /mcp endpoint with auth middleware.
         auth_settings: Optional OAuth settings (issuer_url, resource_server_url).
-            When set with resource_server_url, FastMCP serves
+            When set with resource_server_url, MCPServer serves
             /.well-known/oauth-protected-resource for client discovery.
 
     Returns:
-        Configured FastMCP instance ready to run
+        Configured MCPServer instance ready to run
     """
     server_name = f"snodo-{protocol_server.protocol.protocol_id}"
     if protocol_server.mode_id:
@@ -512,7 +517,7 @@ def build_fastmcp_server(
     instructions = _build_instructions(protocol_server)
     watch_issuer = WatchLinkIssuer(watch_link_ttl) if public_base_url else None
 
-    mcp = FastMCP(
+    mcp = MCPServer(
         server_name,
         instructions=instructions,
         token_verifier=token_verifier,
@@ -547,7 +552,9 @@ def build_fastmcp_server(
     # verifier cannot explain that 401. Observe protected HTTP app responses
     # without retaining or printing any header values.
     for app_factory_name in ("streamable_http_app", "sse_app"):
-        app_factory = getattr(mcp, app_factory_name)
+        app_factory = getattr(mcp, app_factory_name, None)
+        if app_factory is None:
+            continue
 
         def observed_app_factory(*args, _factory=app_factory, **kwargs):
             return _MissingAuthorizationObserver(_factory(*args, **kwargs))
@@ -556,7 +563,9 @@ def build_fastmcp_server(
 
     if watch_issuer is not None:
         for app_factory_name in ("streamable_http_app", "sse_app"):
-            app_factory = getattr(mcp, app_factory_name)
+            app_factory = getattr(mcp, app_factory_name, None)
+            if app_factory is None:
+                continue
 
             def watch_app_factory(*args, _factory=app_factory, **kwargs):
                 return WatchJobASGI(
@@ -610,7 +619,7 @@ def _with_browser_watch_link(handler, protocol_server, cloud_live_view_url):
     return wrapped
 
 
-def _register_guide(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:
+def _register_guide(mcp: MCPServer, protocol_server: ProtocolMCPServer) -> None:
     """Register the always-available, read-only source-backed guide."""
     exposed = {t["name"] for t in protocol_server.get_tools()}
 
@@ -625,7 +634,7 @@ def _register_guide(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:
         )
 
 
-def _register_watch_job_resource(mcp: FastMCP) -> None:
+def _register_watch_job_resource(mcp: MCPServer) -> None:
     """Register the self-contained MCP Apps view only when its tool is granted."""
 
     @mcp.resource(
@@ -639,7 +648,7 @@ def _register_watch_job_resource(mcp: FastMCP) -> None:
         return WATCH_JOB_HTML
 
 
-def _register_resources(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:
+def _register_resources(mcp: MCPServer, protocol_server: ProtocolMCPServer) -> None:
     """Register read-only resources for orchestrator self-description.
 
     Resources are URI-addressable data backed by existing managers — no new logic.
@@ -759,9 +768,9 @@ def _register_resources(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> Non
 def _make_tool_handler(
     protocol_server: ProtocolMCPServer, tool_info: dict
 ) -> Any:
-    """Create a tool handler function with proper signature for FastMCP.
+    """Create a tool handler function with proper signature for MCPServer.
 
-    FastMCP inspects function signatures to generate input schemas.
+    MCPServer inspects function signatures to generate input schemas.
     We build a function with the correct parameters matching our
     TOOL_REGISTRY schema so Claude sees proper parameter descriptions.
 
@@ -770,7 +779,7 @@ def _make_tool_handler(
         tool_info: Tool descriptor with name, description, inputSchema
 
     Returns:
-        A callable with proper __signature__ for FastMCP inspection
+        A callable with proper __signature__ for MCPServer inspection
     """
     tool_name = tool_info["name"]
     schema = tool_info["inputSchema"]
@@ -803,7 +812,7 @@ def _make_tool_handler(
     narrates = is_slow and protocol_server.accepts_progress(tool_name)
 
     if narrates:
-        # FastMCP finds the context parameter through the function's type
+        # MCPServer finds the context parameter through the function's type
         # hints (mcp.server.fastmcp.utilities.context_injection): declaring
         # ``ctx`` in __annotations__ below makes the SDK pass the request
         # Context as a keyword argument AFTER schema validation — it never
@@ -841,3 +850,7 @@ def _make_tool_handler(
     handler.__annotations__ = annotations
 
     return handler
+
+
+# Backwards-compatible builder name; implementation targets MCP 2.x MCPServer.
+build_fastmcp_server = build_mcp_server
