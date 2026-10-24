@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Release the `mcp` dependency on 2.x, remove the temporary LiteLLM and Dependabot caps, and update the MCP transport module reference. (Fixes #922)
+
 - Show the jobs behind a task in its run history, including plan-wave job IDs. (Fixes #1018)
 
 - Let a served project be reached over a WebSocket tunnel without `cloudflared`. (Fixes #1015, #1016, #1017)

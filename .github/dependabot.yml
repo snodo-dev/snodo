@@ -78,13 +78,6 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
-    ignore:
-      # mcp 2.x renames mcp.server.fastmcp to mcp.server.mcpserver and changes
-      # other server APIs, which would break `snodo serve` at import time. The
-      # port is planned work (#922); until it lands, keep the declared <2
-      # constraint from being re-proposed as a major bump every week.
-      - dependency-name: "mcp"
-        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         update-types:
