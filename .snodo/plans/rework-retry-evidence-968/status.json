@@ -1,13 +1,13 @@
 {
   "tasks": {
     "1.1_judged_subject_explicit": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "ea1632a0240fd484"
     },
     "1.2_retire_stale_payload_field": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "d6aaf30ce2017f84"
@@ -18,5 +18,9 @@
       "depth": 0,
       "spec_hash": "b4487ca236a51b01"
     }
+  },
+  "integration": {
+    "branch": "plan/rework-retry-evidence-968/integration",
+    "base_sha": "22f7d14e338196013fa9381097c3927499780958"
   }
 }
