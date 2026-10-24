@@ -1,10 +1,14 @@
 {
   "tasks": {
     "1.1_single_attribution_source": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "5f61e81f0add107a"
+      "spec_hash": "9602fdd09b47a0e2"
     }
+  },
+  "integration": {
+    "branch": "plan/protected-paths-attribution-917/integration",
+    "base_sha": "1d0d139016d2625fa6bc4f8cf14e67ba77845acf"
   }
 }
