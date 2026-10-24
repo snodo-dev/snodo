@@ -86,10 +86,43 @@ def _safe_mcp_excerpt(value: Any) -> str:
 def _enable_mcp_traffic_logging(mcp: MCPServer) -> None:
     """Log incoming JSON-RPC requests and their outgoing responses safely."""
     server = getattr(mcp, "_mcp_server", getattr(mcp, "_lowlevel_server", None))
-    if server is None or not hasattr(server, "_handle_request"):
-        # MCP 2.x request dispatch is middleware-based; preserve this hook as
-        # a no-op until the dedicated logging middleware port lands.
+    if server is None:
         logger.debug("MCP traffic logging hook is unavailable on this SDK")
+        return
+    if not hasattr(server, "_handle_request"):
+        middleware = getattr(mcp, "middleware", None)
+        if middleware is None:
+            logger.debug("MCP traffic logging middleware is unavailable on this SDK")
+            return
+
+        async def log_middleware(ctx, call_next):
+            method = str(getattr(ctx, "method", "unknown"))
+            params = getattr(ctx, "params", None)
+            tool_name = params.get("name") if method == "tools/call" and isinstance(params, dict) else None
+            request_id = getattr(ctx, "request_id", "-")
+            stamp = datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds")
+            label = f"{stamp} IN {method}"
+            if tool_name:
+                label += f" tool={tool_name}"
+            label += f" id={request_id}"
+            if params is not None:
+                label += f" data={_safe_mcp_excerpt(params)}"
+            print(sanitize_verbose_output(label), file=sys.stderr, flush=True)
+            started = time.perf_counter()
+            error = None
+            try:
+                return await call_next(ctx)
+            except BaseException as exc:
+                error = exc
+                raise
+            finally:
+                duration_ms = (time.perf_counter() - started) * 1000
+                status = "error" if error is not None else "ok"
+                out = (f"{datetime.now(timezone.utc).astimezone().isoformat(timespec='milliseconds')} "
+                       f"OUT {method} id={request_id} duration={duration_ms:.1f}ms {status}")
+                print(sanitize_verbose_output(out), file=sys.stderr, flush=True)
+
+        middleware.append(log_middleware)
         return
     original = server._handle_request
 
@@ -866,5 +899,6 @@ def _make_tool_handler(
     return handler
 
 
-# Backwards-compatible builder name; implementation targets MCP 2.x MCPServer.
+
+# Public bridge name retained for callers; it constructs the MCP 2.x MCPServer.
 build_fastmcp_server = build_mcp_server
