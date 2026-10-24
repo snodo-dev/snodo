@@ -447,3 +447,20 @@ def test_wave_output_completes_under_a_real_pty(monkeypatch) -> None:
             process.kill()
             process.wait()
         os.close(master)
+
+
+def test_popen_stays_a_subscriptable_class_under_the_wave(monkeypatch) -> None:
+    """A library imported lazily mid-command may evaluate ``subprocess.Popen[bytes]`` (Fixes #1025)."""
+    import sys
+
+    _enable_wave(monkeypatch)
+    monkeypatch.setattr(sys, "stdout", Terminal())
+    monkeypatch.setattr(sys, "stderr", Terminal())
+    original = subprocess.Popen
+    with wave_while_silent("loading tasks"):
+        assert isinstance(subprocess.Popen, type)
+        assert subprocess.Popen[bytes] is not None
+        process = subprocess.Popen([sys.executable, "-c", "pass"], stdout=subprocess.DEVNULL)
+        process.wait()
+        assert isinstance(process, original)
+    assert subprocess.Popen is original

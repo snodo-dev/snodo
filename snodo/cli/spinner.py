@@ -230,8 +230,7 @@ def wave_while_silent(label: str) -> Iterator[None]:
 
     builtins.input = observed_builtin_input
 
-    @wraps(original_popen)
-    def observed_popen(*args, **kwargs):
+    def _stop_wave_for_child(kwargs) -> None:
         # Only inherited terminal stdout is a terminal handoff: stdin alone
         # does not give a child a visible terminal surface, and stderr-only
         # inheritance can carry a warning without taking over the display.
@@ -239,7 +238,25 @@ def wave_while_silent(label: str) -> Iterator[None]:
         # separately above, including pagers that inherit stderr.
         if kwargs.get("stdout") is None and _stream_is_tty(sys.stdout):
             spinner.stop_for_output()
-        return original_popen(*args, **kwargs)
+
+    if isinstance(original_popen, type):
+        # Popen must stay a class while the wave is active: libraries imported
+        # lazily mid-command (litellm -> mcp 2.x) evaluate ``subprocess.Popen[bytes]``,
+        # which a replacement function cannot answer (Fixes #1025).
+        class observed_popen(original_popen):  # type: ignore[valid-type,misc]
+            def __init__(self, *args, **kwargs):
+                _stop_wave_for_child(kwargs)
+                super().__init__(*args, **kwargs)
+
+        observed_popen.__name__ = original_popen.__name__
+        observed_popen.__qualname__ = original_popen.__qualname__
+        observed_popen.__module__ = original_popen.__module__
+    else:
+
+        @wraps(original_popen)
+        def observed_popen(*args, **kwargs):
+            _stop_wave_for_child(kwargs)
+            return original_popen(*args, **kwargs)
 
     subprocess.Popen = observed_popen
     spinner.__enter__()

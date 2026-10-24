@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Keep `subprocess.Popen` a class while the CLI wave is active, so a library imported lazily mid-command (litellm 1.106 importing mcp 2.x on its first completion) no longer fails every LLM call with "'function' object is not subscriptable". (Fixes #1025)
+
 - Prove the strict documentation link gate fails closed with an automated minimal-fixture canary. (Fixes #966)
 
 - Distinguish retry from recovery in the judged subject, retire the stale composed-input payload field, and key verdict reuse on the complete subject the judge sees, including retry or recovery evidence. (Fixes #968)
