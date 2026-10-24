@@ -38,7 +38,10 @@ def with_retry_evidence(completion_fn: Any, context: Any) -> Any:
 
     @wraps(completion_fn)
     def complete(*args: Any, **kwargs: Any) -> Any:
-        messages = list(kwargs.get("messages") or [])
+        messages = [
+            message for message in (kwargs.get("messages") or [])
+            if "\n## Composed input evidence (" not in str(message.get("content", ""))
+        ]
         messages.append({"role": "user", "content": block})
         return completion_fn(*args, **{**kwargs, "messages": messages})
 

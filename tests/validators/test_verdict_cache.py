@@ -218,6 +218,34 @@ def test_unchanged_spec_and_criteria_reuse_verdict_and_mark_it(tmp_path):
     assert "reused" not in result_record(first[0])
 
 
+
+def test_retry_evidence_narrows_spec_cache_without_disabling_reuse(tmp_path):
+    validator = _validator()
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _Completion()
+    base = Task(id="t1", spec="Implement feature X")
+    retry = Task(
+        id="t1", spec="Composed input A", root_spec=base.spec,
+        composed_input_source="operator_retry",
+    )
+    other_retry = Task(
+        id="t1", spec="Composed input B", root_spec=base.spec,
+        composed_input_source="operator_retry",
+    )
+
+    first, _ = _run(protocol, [validator], cache, completion, task=base)
+    with_evidence, _ = _run(protocol, [validator], cache, completion, task=retry)
+    same_evidence, _ = _run(protocol, [validator], cache, completion, task=retry)
+    changed_evidence, _ = _run(protocol, [validator], cache, completion, task=other_retry)
+
+    assert not first[0].reused
+    assert not with_evidence[0].reused
+    assert same_evidence[0].reused
+    assert not changed_evidence[0].reused
+    assert completion.count() == 3
+
+
 def test_wave_scoped_judge_uses_one_stable_subject_for_siblings(tmp_path):
     validator = _validator(tooling={"scope": "wave"})
     protocol = _protocol([validator])
