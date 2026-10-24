@@ -336,6 +336,7 @@ def test_wave_while_silent_restores_global_output_state_on_exception(monkeypatch
     assert Console.print is original_print
 
 
+@pytest.mark.timeout(120)
 def test_wave_output_completes_under_a_real_pty(monkeypatch) -> None:
     """A real terminal must not deadlock while output stops the animation."""
     for name in (
@@ -368,34 +369,58 @@ def test_wave_output_completes_under_a_real_pty(monkeypatch) -> None:
     )
     os.close(slave)
     output = bytearray()
-    deadline = time.monotonic() + 55
+    draw_budget = 55
+    exit_budget = 55
+    draw_started = time.monotonic()
+    draw_elapsed = 0.0
+    exit_elapsed = 0.0
+    phase = "draw"
+    wave_drawn = False
     try:
-        # Keep the child silent until the real-PTY animation has drawn. Reading
-        # stdin does not cross an output boundary, so the wave remains active.
-        while process.poll() is None and time.monotonic() < deadline:
-            ready, _, _ = select.select([master], [], [], 0.1)
+        # Drain continuously, including while waiting for the child to draw.
+        while not wave_drawn and process.poll() is None:
+            remaining = draw_budget - (time.monotonic() - draw_started)
+            if remaining <= 0:
+                break
+            ready, _, _ = select.select([master], [], [], min(0.1, remaining))
             if ready:
                 try:
                     output.extend(os.read(master, 4096))
                 except OSError:
                     break
-                if b"\x1b[2K" in output:
-                    break
-        assert b"\x1b[2K" in output, "wave did not draw under a PTY"
-        assert process.poll() is None, "CLI exited before output stopped the wave"
+                wave_drawn = b"\x1b[2K" in output
+        draw_elapsed = time.monotonic() - draw_started
+        assert wave_drawn, (
+            f"PTY draw phase timed out; draw_elapsed={draw_elapsed:.2f}s, "
+            f"exit_elapsed={exit_elapsed:.2f}s, output={bytes(output)!r}"
+        )
+        assert process.poll() is None, (
+            f"child exited before release; draw_elapsed={draw_elapsed:.2f}s, "
+            f"exit_elapsed={exit_elapsed:.2f}s, output={bytes(output)!r}"
+        )
         assert process.stdin is not None
         process.stdin.write(b"continue\n")
         process.stdin.flush()
-        # Drain until clean process exit, using the remaining per-test budget.
-        while process.poll() is None and time.monotonic() < deadline:
-            ready, _, _ = select.select([master], [], [], 0.1)
+        phase = "exit"
+        exit_started = time.monotonic()
+        while process.poll() is None:
+            remaining = exit_budget - (time.monotonic() - exit_started)
+            if remaining <= 0:
+                break
+            ready, _, _ = select.select([master], [], [], min(0.1, remaining))
             if ready:
                 try:
-                    output.extend(os.read(master, 4096))
+                    chunk = os.read(master, 4096)
                 except OSError:
-                    break
-        assert process.poll() is not None, "CLI remained blocked under a PTY"
+                    continue
+                if chunk:
+                    output.extend(chunk)
+        exit_elapsed = time.monotonic() - exit_started
+        # Drain any bytes already written before checking the final output.
         while True:
+            ready, _, _ = select.select([master], [], [], 0)
+            if not ready:
+                break
             try:
                 chunk = os.read(master, 4096)
             except OSError:
@@ -403,7 +428,15 @@ def test_wave_output_completes_under_a_real_pty(monkeypatch) -> None:
             if not chunk:
                 break
             output.extend(chunk)
-        assert process.returncode == 0
+        assert process.poll() is not None, (
+            f"{phase} phase timed out; draw_elapsed={draw_elapsed:.2f}s, "
+            f"exit_elapsed={exit_elapsed:.2f}s, output={bytes(output)!r}"
+        )
+        assert process.returncode == 0, (
+            f"child exited with code {process.returncode}; "
+            f"draw_elapsed={draw_elapsed:.2f}s, exit_elapsed={exit_elapsed:.2f}s, "
+            f"output={bytes(output)!r}"
+        )
         assert b"task table" in output
         assert b"\x1b[2K" in output
         assert output.rstrip().endswith(b"task table\r") or output.rstrip().endswith(
