@@ -59,9 +59,9 @@ jobs:
         run: |
           uv venv "$RUNNER_TEMP/pr-review-venv"
           if [[ -n "$SNODO_VERSION" ]]; then
-            uv pip install --python "$RUNNER_TEMP/pr-review-venv/bin/python" "snodo==$SNODO_VERSION"
+            uv pip install --python "$RUNNER_TEMP/pr-review-venv/bin/python" "snodo==$SNODO_VERSION" "litellm<1.106"
           else
-            uv pip install --python "$RUNNER_TEMP/pr-review-venv/bin/python" snodo
+            uv pip install --python "$RUNNER_TEMP/pr-review-venv/bin/python" snodo "litellm<1.106"
           fi
       - name: Configure snodo
         env:
