@@ -117,12 +117,13 @@ To verify that link validation still fails closed:
 1. Run `make docs` and confirm it succeeds.
 2. Create a temporary `docs/link-validation-canary.md` (do not overwrite an
    existing file) containing `[missing page](link-validation-missing-page.md)`.
-   Ensure the target does not exist.
-3. Run `make docs` again. Confirm it exits nonzero and reports the missing
-   `link-validation-missing-page.md` target, rather than an unrelated failure.
-4. Remove `docs/link-validation-canary.md` and run `make docs` once more.
-   Confirm the clean build succeeds, and do not commit the canary or generated
-   `site/` output.
+   Ensure the target does not exist, and add the canary page to the `nav` in
+   `mkdocs.yml` so it cannot trigger a missing-navigation warning.
+3. Run `make docs` again. The single failure should report the unresolved
+   `link-validation-missing-page.md` target.
+4. Remove the temporary nav entry and `docs/link-validation-canary.md`, then run
+   `make docs` once more. Confirm the clean build succeeds, and do not commit the
+   canary or generated `site/` output.
 
 Keep the link validation levels at warning or higher; fix invalid targets
 rather than excluding documents or lowering validation to pass the build.
