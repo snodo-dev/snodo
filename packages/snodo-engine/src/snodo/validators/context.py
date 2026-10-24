@@ -94,9 +94,6 @@ class ValidatorContext:
         # authoritative proposal through context.task.spec.
         self.task = self.task.model_copy(update={"spec": self.task.root_spec})
         self.completion_fn = with_retry_evidence(self.completion_fn, self)
-        # Existing cache keys do not cover the separately supplied evidence.
-        # Judge retries fresh rather than reuse a verdict on different input.
-        self.verdict_cache = None
 
 
 class ValidatorBase(ABC):

@@ -106,6 +106,26 @@ def test_evidence_reaches_completion_separately_for_both_judge_paths(tools):
     assert task.spec != SPEC
 
 
+def test_evidence_is_reappended_once_for_each_tool_loop_completion():
+    task = Task(id="rate", spec=f"Original spec: {SPEC}\n\n{EVIDENCE}",
+                root_spec=SPEC, composed_input_source="operator_retry")
+    completion = MagicMock(return_value="response")
+    context = ValidatorContext(task=task, phase="pre_execute", completion_fn=completion)
+    caller_messages = [{"role": "user", "content": "initial"}]
+
+    context.completion_fn(messages=caller_messages)
+    first = completion.call_args.kwargs["messages"]
+    context.completion_fn(messages=first)
+    second = completion.call_args.kwargs["messages"]
+
+    assert caller_messages == [{"role": "user", "content": "initial"}]
+    assert len(first) == len(second) == 2
+    for request in (first, second):
+        sections = [m for m in request if "Composed input evidence" in m["content"]]
+        assert len(sections) == 1
+        assert EVIDENCE in sections[0]["content"]
+
+
 @pytest.mark.parametrize("previous", [0, 2])
 def test_refusal_preserves_coding_summary_not_failure_sequence(previous):
     decisions = {"task_failure": {"rate": {"attempt": previous, "original_spec": SPEC}}}

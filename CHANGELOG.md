@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Distinguish retry from recovery in the judged subject, retire the stale composed-input payload field, and key verdict reuse on the complete subject the judge sees, including retry or recovery evidence. (Fixes #968)
+
 - Release the `mcp` dependency on 2.x, remove the temporary LiteLLM and Dependabot caps, and update the MCP transport module reference. (Fixes #922)
 
 - Show the jobs behind a task in its run history, including plan-wave job IDs. (Fixes #1018)

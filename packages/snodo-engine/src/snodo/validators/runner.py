@@ -165,6 +165,10 @@ def _spec_subject(context: ValidatorContext, v: Optional[Validator] = None) -> s
     task happened to dispatch the judge first.
     """
     spec = getattr(getattr(context, "task", None), "spec", "") or ""
+    # Key on the exact separate evidence section added to completion requests.
+    from snodo.validators.retry_evidence import retry_evidence_block
+
+    spec += retry_evidence_block(context)
     tooling = getattr(v, "tooling", None) or {}
     wave_specs = getattr(context, "wave_specs", None)
     if wave_specs is None:
