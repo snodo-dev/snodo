@@ -302,7 +302,14 @@ def _make_progress_emitter(ctx: Optional[Context]) -> tuple:
         request = getattr(request_context, "request", None)
         params = getattr(request, "params", None)
         meta = getattr(params, "meta", None)
-    if meta is None or getattr(meta, "progressToken", None) is None:
+    progress_token = getattr(meta, "progress_token", None)
+    if progress_token is None:
+        progress_token = getattr(meta, "progressToken", None)
+    if progress_token is None:
+        params = getattr(request_context, "params", None) or {}
+        raw_meta = params.get("_meta", {}) if isinstance(params, dict) else {}
+        progress_token = raw_meta.get("progressToken") or raw_meta.get("progress_token")
+    if progress_token is None:
         return None, _no_drain
     try:
         loop = asyncio.get_running_loop()
