@@ -7,7 +7,7 @@
       "spec_hash": "1e1216d56a660dc0"
     },
     "2.1_carry_mcp_surfaces": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "0c9e6a3f132a838d"
@@ -19,7 +19,7 @@
       "spec_hash": "29e95cdf61cbe77e"
     },
     "2.2_handshake_and_tool_surface_are_tested": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "8738548c1f5a5dd8"
