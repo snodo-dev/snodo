@@ -26,6 +26,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -33,11 +34,29 @@ import anyio
 import pytest
 import yaml
 from mcp import types
+from mcp.client._memory import InMemoryTransport
+from mcp.client.session import ClientSession
 from mcp.server.mcpserver import Context
-from mcp.shared.memory import create_connected_server_and_client_session
 from snodo.compiler.models import Protocol
 from snodo.mcp.server import ProtocolMCPServer
 from snodo.mcp.transport import _sanitize_progress_line, build_fastmcp_server
+
+
+# Preserve the response attribute spellings used by this test module on the
+# 2.x SDK models, whose Python field names follow snake_case.
+types.CallToolResult.isError = property(lambda self: self.is_error)
+types.Tool.inputSchema = property(lambda self: self.input_schema)
+
+
+@asynccontextmanager
+async def create_connected_server_and_client_session(server, *, message_handler=None):
+    """Pair an MCP 2.x client session with an in-process server transport."""
+    async with InMemoryTransport(server) as (read_stream, write_stream):
+        async with ClientSession(
+            read_stream, write_stream, message_handler=message_handler,
+        ) as session:
+            await session.initialize()
+            yield session
 
 # The quality validator is tooling-driven (echo test passed) — deterministic
 # narration through the real runner, no LLM involved.
