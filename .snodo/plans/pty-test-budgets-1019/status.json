@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_pty_wave_test_phases_have_own_budgets": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1a8e7ca64ce0889f"
+    }
+  },
+  "integration": {
+    "branch": "plan/pty-test-budgets-1019/integration",
+    "base_sha": "fb8a6b1368b0b372dbc5d64e40614357a80d0f0c"
+  }
+}

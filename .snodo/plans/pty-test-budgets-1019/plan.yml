@@ -1,0 +1,8 @@
+intent: 'The real-PTY wave test no longer fails under parallel gate load: each phase
+  has its own time budget and a failure says which phase ran out (#1019)'
+name: pty-test-budgets-1019
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_pty_wave_test_phases_have_own_budgets
