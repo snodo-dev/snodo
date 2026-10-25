@@ -12,6 +12,10 @@ from mcp.server.auth.provider import AccessToken, TokenVerifier
 from snodo.infrastructure.jwks import JwksClient
 
 
+class OrganizationMismatchError(Exception):
+    """Raised when a valid token belongs to a different organization."""
+
+
 class JwksTokenVerifier(TokenVerifier):
     """TokenVerifier that delegates JWT verification to a JwksClient.
 
@@ -24,6 +28,7 @@ class JwksTokenVerifier(TokenVerifier):
         jwks_client: JwksClient,
         resource: Optional[str] = None,
         audiences: Optional[Dict[str, str]] = None,
+        expected_org_id: Optional[str] = None,
     ):
         """
         Args:
@@ -36,6 +41,7 @@ class JwksTokenVerifier(TokenVerifier):
         self._jwks = jwks_client
         self._resource = resource
         self._audiences = dict(audiences) if audiences is not None else None
+        self._expected_org_id = expected_org_id
         self._request_host: ContextVar[Optional[str]] = ContextVar(
             f"oauth_verifier_request_host_{id(self)}", default=None
         )
@@ -60,6 +66,8 @@ class JwksTokenVerifier(TokenVerifier):
         payload = self._jwks.verify(token, audience=audience)
         if payload is None:
             return None
+        if self._expected_org_id is not None and payload.get("org_id") != self._expected_org_id:
+            raise OrganizationMismatchError("token organization does not match expected organization")
         return AccessToken(
             token=token,
             client_id=payload.get("client_id", payload.get("sub", "unknown")),

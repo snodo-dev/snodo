@@ -8,13 +8,14 @@ from typing import Optional
 from unittest.mock import MagicMock
 
 import anyio
+import pytest
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import AnyHttpUrl
 from snodo.infrastructure.jwks import JwksClient
-from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
+from snodo.infrastructure.oauth_verifier import JwksTokenVerifier, OrganizationMismatchError
 from starlette.testclient import TestClient
 
 
@@ -236,3 +237,35 @@ class TestMultiAudienceVerifier:
 
         anyio.run(run)
         mock_client.verify.assert_not_called()
+
+
+class TestExpectedOrganizationVerifier:
+    def test_matching_org_is_accepted(self):
+        mock_client = MagicMock(spec=JwksClient)
+        mock_client.verify.return_value = {"sub": "test-user", "org_id": "org-1"}
+        verifier = JwksTokenVerifier(mock_client, expected_org_id="org-1")
+
+        assert anyio.run(verifier.verify_token, "token") is not None
+
+    @pytest.mark.parametrize("payload", [{"org_id": "org-2"}, {}])
+    def test_mismatching_or_missing_org_has_distinguishable_reason(self, payload):
+        mock_client = MagicMock(spec=JwksClient)
+        mock_client.verify.return_value = payload
+        verifier = JwksTokenVerifier(mock_client, expected_org_id="org-1")
+
+        with pytest.raises(OrganizationMismatchError):
+            anyio.run(verifier.verify_token, "token")
+
+    def test_invalid_token_is_ordinary_failure_with_expected_org(self):
+        mock_client = MagicMock(spec=JwksClient)
+        mock_client.verify.return_value = None
+        verifier = JwksTokenVerifier(mock_client, expected_org_id="org-1")
+
+        assert anyio.run(verifier.verify_token, "invalid") is None
+
+    def test_no_expected_org_does_not_check_org_claim(self):
+        mock_client = MagicMock(spec=JwksClient)
+        mock_client.verify.return_value = {"sub": "test-user", "org_id": "org-2"}
+        verifier = JwksTokenVerifier(mock_client)
+
+        assert anyio.run(verifier.verify_token, "token") is not None
