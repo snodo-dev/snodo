@@ -1,0 +1,16 @@
+intent: 'The ws tunnel provisioning fix (#1029) and the tunnel path wrappers that
+  sit in front of the mcp 2.x app are pinned by tests that exercise the real code
+  path, so neither can regress unseen. Fixes #1029 and completes the test side of
+  #1027.'
+name: tunnel-wrapper-and-ws-tests-1029
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_the_tunnel_wrapper_install_is_one_function
+  - 1.2_a_ws_serve_without_auth_asks_for_a_ws_tunnel
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_the_tunnel_wrapper_keeps_host_and_protection

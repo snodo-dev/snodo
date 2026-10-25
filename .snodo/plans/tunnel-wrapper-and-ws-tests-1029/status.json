@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_the_tunnel_wrapper_install_is_one_function": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a06d3d5a516b5fa4"
+    },
+    "1.2_a_ws_serve_without_auth_asks_for_a_ws_tunnel": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "eb50a84d6b4a4388"
+    },
+    "2.1_the_tunnel_wrapper_keeps_host_and_protection": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "90354ad3fa33b052"
+    }
+  },
+  "integration": {
+    "branch": "plan/tunnel-wrapper-and-ws-tests-1029/integration",
+    "base_sha": "adf0c1a06fb708905c52980936cbb01ef017b0db"
+  }
+}
