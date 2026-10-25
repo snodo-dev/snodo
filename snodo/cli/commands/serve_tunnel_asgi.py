@@ -37,3 +37,17 @@ async def _refuse(send):
                 "headers": [(b"content-type", b"text/plain; charset=utf-8"),
                             (b"cache-control", b"no-store")]})
     await send({"type": "http.response.body", "body": b"Unauthorized", "more_body": False})
+
+
+def install_tunnel_mcp_paths(mcp, verifier, *, oauth_enabled: bool, access_path: str = "mcp-st"):
+    """Wrap the MCP HTTP app factories with tunnel path routing."""
+    for app_factory_name in ("streamable_http_app", "sse_app"):
+        app_factory = getattr(mcp, app_factory_name)
+
+        def tunnel_app_factory(*factory_args, _factory=app_factory, **factory_kwargs):
+            return TunnelMCPPaths(
+                _factory(*factory_args, **factory_kwargs), verifier,
+                oauth_enabled=oauth_enabled, access_path=access_path,
+            )
+
+        setattr(mcp, app_factory_name, tunnel_app_factory)

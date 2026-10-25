@@ -289,17 +289,11 @@ def _run_server(args, protocol) -> int:
     extra_kwargs["cloud_live_view_url"] = cloud_live_view_url()
     mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
     if access_verifier is not None:
-        from snodo.cli.commands.serve_tunnel_asgi import TunnelMCPPaths
-        for app_factory_name in ("streamable_http_app", "sse_app"):
-            app_factory = getattr(mcp, app_factory_name)
-
-            def tunnel_app_factory(*factory_args, _factory=app_factory, **factory_kwargs):
-                return TunnelMCPPaths(
-                    _factory(*factory_args, **factory_kwargs), access_verifier,
-                    oauth_enabled=oauth_enabled, access_path=tunnel_config.get("access_path", "mcp-st"),
-                )
-
-            setattr(mcp, app_factory_name, tunnel_app_factory)
+        from snodo.cli.commands.serve_tunnel_asgi import install_tunnel_mcp_paths
+        install_tunnel_mcp_paths(
+            mcp, access_verifier, oauth_enabled=oauth_enabled,
+            access_path=tunnel_config.get("access_path", "mcp-st"),
+        )
     tools = protocol_server.get_tools()
     mode_label = protocol_server._active_mode()
 
