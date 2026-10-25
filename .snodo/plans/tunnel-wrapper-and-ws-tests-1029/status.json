@@ -13,10 +13,10 @@
       "spec_hash": "eb50a84d6b4a4388"
     },
     "2.1_the_tunnel_wrapper_keeps_host_and_protection": {
-      "status": "pending",
+      "status": "errored",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "90354ad3fa33b052"
+      "spec_hash": "ea29b5508fe8a069"
     }
   },
   "integration": {

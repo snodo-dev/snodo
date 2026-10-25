@@ -7,22 +7,28 @@
       "spec_hash": "2f54b7d6e44ea2d5"
     },
     "2.1_serve_hands_host_port_and_protection_to_run": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "3f04b4d8ae392e58"
+      "spec_hash": "5eac26c0fe0675bf",
+      "completed_by": "snodo-public orchestrator (Claude), on Ylli's standing instruction to merge unclean runs by hand",
+      "completed_at": "2026-10-25T02:23:07.497697+00:00",
+      "judged": false
     },
     "3.1_a_real_http_server_starts_and_refuses_foreign_hosts": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "1879da09e51a07f7"
+      "spec_hash": "6d2c630765b2966b",
+      "completed_by": "snodo-public orchestrator (Claude), on Ylli's standing instruction to merge unclean runs by hand",
+      "completed_at": "2026-10-25T04:11:26.906916+00:00",
+      "judged": false
     },
     "3.2_the_tunnel_wrapper_keeps_host_and_protection": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "94bd03a96663a43d"
+      "spec_hash": "3ea5095c26e4fefa"
     }
   },
   "integration": {
