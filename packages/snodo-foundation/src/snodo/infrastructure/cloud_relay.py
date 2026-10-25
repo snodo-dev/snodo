@@ -68,7 +68,7 @@ class CloudRelay:
 
     def __init__(self, config: dict, *, socket_connect=None, lease_fetch=None, registry=None,
                  http_client=None, sleep=asyncio.sleep, clock=None, machine=None,
-                 logger: logging.Logger | None = None) -> None:
+                 logger: logging.Logger | None = None, notify=None) -> None:
         self.config = config
         self.socket_connect = socket_connect or websockets.connect
         self.lease_fetch = lease_fetch or mint_lease
@@ -78,6 +78,7 @@ class CloudRelay:
         self.sleep = sleep
         self.machine = machine or machine_id()
         self.log = logger or _LOG
+        self.notify = notify
         self._clock = clock or time.monotonic
         self._slots = asyncio.Semaphore(MAX_IN_FLIGHT)
         self._tasks: dict[str, asyncio.Task] = {}
@@ -101,9 +102,11 @@ class CloudRelay:
                 code = getattr(exc, "code", None)
                 if code == 4001:
                     self.log.warning("relay stopped: replaced by a newer runner connection")
+                    self._notify("This connection was replaced by a newer runner connection.")
                     return
                 if status in (403, 426):
                     self.log.warning("relay connection rejected status=%s", status)
+                    self._notify("snodo cloud rejected the connection.")
                     return
                 self.log.warning("relay disconnected status=%s", status or "connection")
             elapsed = self._clock() - started
@@ -115,6 +118,7 @@ class CloudRelay:
         lease = await self._fetch_lease()
         if lease is None:
             self.log.warning("cloud login required: sign in with the cloud login")
+            self._notify("Cloud login is missing or expired. Sign in to snodo cloud.")
             raise ConnectionError("cloud lease unavailable")
         url = websocket_url(self.config, self.machine)
         try:
@@ -126,6 +130,7 @@ class CloudRelay:
             lease = await self._fetch_lease(force=True)
             if lease is None:
                 self.log.warning("cloud login required: sign in with the cloud login")
+                self._notify("Cloud login is missing or expired. Sign in to snodo cloud.")
                 raise ConnectionError("cloud lease unavailable") from None
             socket = await self.socket_connect(url, additional_headers={"Authorization": f"Bearer {lease.token}"}, ping_interval=20)
         async with socket:
@@ -133,6 +138,7 @@ class CloudRelay:
             pending: dict[str, ChunkReassembler] = {}
             await socket.send(encode_frame({"t": "hello", "v": 1, "machine_id": self.machine,
                                             "snodo_version": __version__, "endpoints": current}))
+            self._notify("Connected to snodo cloud.")
             iterator = socket.__aiter__()
             safe_recv = callable(getattr(socket, "recv", None))
             reader = asyncio.create_task(socket.recv()) if safe_recv else None
@@ -218,6 +224,14 @@ class CloudRelay:
                     self._request_frames.pop(rid, None)
         if getattr(socket, "close_code", None) == 4001:
             raise _ReplacedConnection()
+        self._notify("Connection to snodo cloud was lost. Retrying.")
+
+    def _notify(self, message: str) -> None:
+        if self.notify is not None:
+            try:
+                self.notify(message)
+            except Exception:
+                self.log.debug("cloud relay notification failed", exc_info=True)
 
     async def _fetch_lease(self, *, force: bool = False):
         """Run the synchronous lease exchange off-loop; preserve async test seams."""
