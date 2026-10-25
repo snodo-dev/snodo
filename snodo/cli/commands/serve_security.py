@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import subprocess
 
+from mcp.server.transport_security import TransportSecuritySettings
+
 _TUNNEL_HOSTNAME_RE = re.compile(
     r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.tunnel|"
     r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-tunnel|"
@@ -50,6 +52,26 @@ def is_loopback_host(host: str) -> bool:
         return ipaddress.ip_address(host.strip("[]")).is_loopback
     except ValueError:
         return host.lower() == "localhost"
+
+
+def build_transport_security_settings(
+    port: int, tunnel_hostname: str | None
+) -> TransportSecuritySettings:
+    """Build HTTP Host protection settings for the bind and optional tunnel."""
+    allowed_hosts = [f"localhost:{port}", f"127.0.0.1:{port}", f"[::1]:{port}"]
+    allowed_origins = [
+        f"http://localhost:{port}",
+        f"http://127.0.0.1:{port}",
+        f"http://[::1]:{port}",
+    ]
+    if tunnel_hostname:
+        allowed_hosts.extend((tunnel_hostname, f"{tunnel_hostname}:{port}"))
+        allowed_origins.append(f"https://{tunnel_hostname}")
+    return TransportSecuritySettings(
+        allowed_hosts=allowed_hosts,
+        allowed_origins=allowed_origins,
+        enable_dns_rebinding_protection=True,
+    )
 
 
 def configure_http_transport(mcp, port: int, tunnel_hostname: str | None) -> None:
