@@ -1052,8 +1052,10 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             if tunnel_transport == "ws":
                 from snodo.infrastructure.cloud_relay import machine_id
                 machine_identifier = machine_id()
-            if requested_auth is None:
+            if requested_auth is None and tunnel_transport != "ws":
                 # Preserve the legacy OAuth-only call shape for callers and stubs.
+                # A ws tunnel must always say so: without the transport the
+                # worker provisions a plain Cloudflare tunnel (Fixes #1029).
                 provisioned = _provision_tunnel(
                     api_key, project_slug, mode, short_id, __version__, port,
                 )
