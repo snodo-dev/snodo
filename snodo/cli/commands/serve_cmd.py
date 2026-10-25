@@ -85,6 +85,9 @@ def register(app: typer.Typer) -> None:
         tunnel: bool = typer.Option(
             False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
         ),
+        public_url: bool = typer.Option(
+            False, "--public-url", help="Request a public URL for a WebSocket tunnel",
+        ),
         verbose: bool = typer.Option(
             False, "--verbose", help="Log MCP requests and responses for debugging",
         ),
@@ -137,7 +140,8 @@ def register(app: typer.Typer) -> None:
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
-            tunnel=tunnel, tunnel_transport=tunnel_transport, verbose=verbose, auth=auth,
+            tunnel=tunnel, tunnel_transport=tunnel_transport, public_url=public_url,
+            verbose=verbose, auth=auth,
             delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
             mcp_uninstall_all=mcp_uninstall_all, mcp_list=mcp_list,
@@ -156,6 +160,12 @@ def serve_command(args) -> int:
         _validate_tunnel_auth(_tunnel_transport(getattr(args, "tunnel_transport", None)), getattr(args, "auth", None))
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 2
+    if getattr(args, "public_url", False) and (
+        not getattr(args, "tunnel", False)
+        or _tunnel_transport(getattr(args, "tunnel_transport", None)) != "ws"
+    ):
+        print("Error: --public-url requires --tunnel --tunnel-transport ws.", file=sys.stderr)
         return 2
     if (
         getattr(args, "mcp_install", False)
@@ -585,6 +595,7 @@ def _provision_tunnel(
     api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str,
     port: int = DEFAULT_PORT, auth: Optional[list[str]] = None,
     tunnel_transport: str = "cloudflare", machine_identifier: Optional[str] = None,
+    public_url: bool = False,
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
@@ -608,6 +619,8 @@ def _provision_tunnel(
             payload["auth"] = auth
         if tunnel_transport == "ws":
             payload["transport"] = "ws"
+            if public_url:
+                payload["public_url"] = True
             payload["machine_id"] = machine_identifier
         resp = httpx.post(
             url,
@@ -1026,7 +1039,9 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # First run: provision
     newly_provisioned = False
     provisioned = {}
-    if not _has_usable_saved_tunnel(tunnel_config):
+    public_url_requested = bool(getattr(args, "public_url", False))
+    had_saved_tunnel = _has_usable_saved_tunnel(tunnel_config)
+    if not had_saved_tunnel or public_url_requested:
         from snodo.version import __version__
         short_id = _generate_short_id()
 
@@ -1058,6 +1073,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                     api_key, project_slug, mode, short_id, __version__, port,
                     auth=auth_methods, tunnel_transport=tunnel_transport,
                     machine_identifier=machine_identifier,
+                    public_url=public_url_requested,
                 )
         except TunnelAPIError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -1072,6 +1088,11 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             return 1
         except RuntimeError as e:
             print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        if public_url_requested and (not provisioned.get("org_id") or not provisioned.get("public_hostname")):
+            missing = [key for key in ("org_id", "public_hostname") if not provisioned.get(key)]
+            print("Error: tunnel provision response is missing required public URL fields: " + ", ".join(missing), file=sys.stderr)
             return 1
 
         if project_slug != Path(project_root).name.lower():
@@ -1106,10 +1127,12 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
             "port": port,
             "auth": provisioned.get("auth", auth_methods),
-            **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud") if key in provisioned},
+            **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud", "org_id") if key in provisioned},
+            **({"public_hostname": provisioned["public_hostname"]}
+               if public_url_requested else {}),
         }
         _save_tunnel_config(project_root, tunnel_config)
-        newly_provisioned = True
+        newly_provisioned = not had_saved_tunnel
 
     # 5. Start MCP server subprocess
     mcp_cmd = [
