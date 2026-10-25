@@ -172,6 +172,59 @@ class TestMultiAudienceVerifier:
             "https://a.example/mcp", "https://b.example/mcp"
         ]
 
+    def test_tokens_are_rejected_on_the_other_hosts_audience(self):
+        mock_client = MagicMock(spec=JwksClient)
+        mock_client.verify.side_effect = lambda token, audience: (
+            {"sub": "test-user"} if token == audience else None
+        )
+        verifier = JwksTokenVerifier(
+            mock_client,
+            audiences={"a.example": "aud-a", "b.example": "aud-b"},
+        )
+
+        async def run():
+            with verifier.request_host("a.example"):
+                assert await verifier.verify_token("aud-a") is not None
+                assert await verifier.verify_token("aud-b") is None
+            with verifier.request_host("b.example"):
+                assert await verifier.verify_token("aud-b") is not None
+                assert await verifier.verify_token("aud-a") is None
+
+        anyio.run(run)
+
+    def test_interleaved_requests_keep_their_host_audience(self):
+        mock_client = MagicMock(spec=JwksClient)
+        mock_client.verify.return_value = {"sub": "test-user"}
+        verifier = JwksTokenVerifier(
+            mock_client,
+            audiences={"a.example": "aud-a", "b.example": "aud-b"},
+        )
+
+        async def run():
+            a_ready = anyio.Event()
+            b_ready = anyio.Event()
+
+            async def verify_a():
+                with verifier.request_host("a.example"):
+                    a_ready.set()
+                    await b_ready.wait()
+                    assert await verifier.verify_token("token-a") is not None
+
+            async def verify_b():
+                with verifier.request_host("b.example"):
+                    await a_ready.wait()
+                    b_ready.set()
+                    assert await verifier.verify_token("token-b") is not None
+
+            async with anyio.create_task_group() as task_group:
+                task_group.start_soon(verify_a)
+                task_group.start_soon(verify_b)
+
+        anyio.run(run)
+        assert [call.kwargs["audience"] for call in mock_client.verify.call_args_list] == [
+            "aud-b", "aud-a"
+        ]
+
     def test_unknown_host_fails_closed(self):
         mock_client = MagicMock(spec=JwksClient)
         verifier = JwksTokenVerifier(mock_client, audiences={"a.example": "aud-a"})
