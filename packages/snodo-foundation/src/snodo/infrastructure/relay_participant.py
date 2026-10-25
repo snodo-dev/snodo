@@ -18,11 +18,13 @@ class RelayParticipant:
     """Run a relay while holding the machine-wide exclusive ownership lock."""
 
     def __init__(self, relay_factory: Callable[[], CloudRelay], *, lock_path: Path | None = None,
-                 retry_interval: float = 1.0, logger: logging.Logger | None = None) -> None:
+                 retry_interval: float = 1.0, logger: logging.Logger | None = None,
+                 notify: Callable[[str], None] | None = None) -> None:
         self.relay_factory = relay_factory
         self.lock_path = lock_path or (resolve_home() / "machine_id.relay.lock")
         self.retry_interval = retry_interval
         self.log = logger or _LOG
+        self.notify = notify
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -56,17 +58,23 @@ class RelayParticipant:
             self._relay_task = None
 
     def _run(self) -> None:
+        waited = False
         self.lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         with self.lock_path.open("a") as lock_file:
             while not self._stop.is_set():
                 try:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
+                    if not waited:
+                        waited = True
+                        self._notify("Another snodo serve on this machine is holding the connection to snodo cloud; this serve will take over if it stops.")
                     self._stop.wait(self.retry_interval)
                     continue
                 try:
                     if self._stop.is_set():
                         return
+                    if waited:
+                        self._notify("This serve now holds the connection to snodo cloud.")
                     relay = self.relay_factory()
                     asyncio.run(self._run_relay(relay))
                     # A relay returning normally is terminal too; do not spin.
@@ -76,6 +84,13 @@ class RelayParticipant:
                     return
                 finally:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _notify(self, message: str) -> None:
+        if self.notify is not None:
+            try:
+                self.notify(message)
+            except Exception:
+                self.log.exception("relay participant notification failed")
 
     async def _run_relay(self, relay: CloudRelay) -> None:
         loop = asyncio.get_running_loop()
