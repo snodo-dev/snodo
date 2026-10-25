@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from snodo.infrastructure.cloud_relay import CloudRelay
+from snodo.infrastructure.cloud_relay import CloudRelay, _endpoints
 
 
 class _Socket:
@@ -157,4 +157,46 @@ def test_raising_notify_does_not_break_connection_loop():
         await relay._connection()
         assert calls == ["Connected to snodo cloud.", "Connection to snodo cloud was lost. Retrying."]
 
+    asyncio.run(run())
+
+
+def test_hello_endpoints_include_public_alias_only_for_ws_entries():
+    assert _endpoints([
+        {"hostname": "private.example", "port": 80, "transport": "ws", "public_hostname": "alias-pub.snodo.dev"},
+        {"hostname": "plain.example", "port": 80, "transport": "ws"},
+        {"hostname": "cloudflare.example", "port": 80, "transport": "cloudflare", "public_hostname": "ignored.example"},
+    ]) == [
+        {"hostname": "private.example", "auth": ["oauth"]},
+        {"hostname": "alias-pub.snodo.dev", "auth": ["oauth"]},
+        {"hostname": "plain.example", "auth": ["oauth"]},
+    ]
+
+
+@pytest.mark.parametrize("next_alias", ["first-pub.snodo.dev", "changed-pub.snodo.dev"])
+def test_hello_is_resent_when_public_alias_changes(next_alias):
+    async def run():
+        socket = _Socket()
+        entry = {"hostname": "private.example", "port": 80, "transport": "ws"}
+        calls = 0
+
+        def registry():
+            nonlocal calls
+            calls += 1
+            return [entry] if calls == 1 else [dict(entry, public_hostname=next_alias)]
+
+        relay = CloudRelay(
+            {}, machine="machine", lease_fetch=lambda *_args, **_kwargs: object(),
+            socket_connect=lambda *_args, **_kwargs: _connected_socket(socket), registry=registry,
+        )
+        relay._fetch_lease = _lease
+        await relay._connection()
+        import json
+        frames = [json.loads(message) for message in socket.sent]
+        assert [frame["endpoints"] for frame in frames if frame["t"] == "hello"] == [
+            [{"hostname": "private.example", "auth": ["oauth"]}],
+            [
+                {"hostname": "private.example", "auth": ["oauth"]},
+                {"hostname": next_alias, "auth": ["oauth"]},
+            ],
+        ]
     asyncio.run(run())
