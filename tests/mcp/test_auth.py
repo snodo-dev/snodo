@@ -149,3 +149,37 @@ class TestMCPEndpoint:
                 )
 
         anyio.run(run)
+
+
+class TestMultiAudienceVerifier:
+    def test_selects_only_the_current_hosts_audience(self):
+        mock_client = MagicMock(spec=JwksClient)
+        mock_client.verify.return_value = {"sub": "test-user"}
+        verifier = JwksTokenVerifier(
+            mock_client,
+            audiences={"a.example": "https://a.example/mcp", "b.example": "https://b.example/mcp"},
+        )
+
+        async def run():
+            with verifier.request_host("a.example"):
+                assert await verifier.verify_token("token") is not None
+            with verifier.request_host("b.example"):
+                assert await verifier.verify_token("token") is not None
+            assert await verifier.verify_token("token") is None
+
+        anyio.run(run)
+        assert [call.kwargs["audience"] for call in mock_client.verify.call_args_list] == [
+            "https://a.example/mcp", "https://b.example/mcp"
+        ]
+
+    def test_unknown_host_fails_closed(self):
+        mock_client = MagicMock(spec=JwksClient)
+        verifier = JwksTokenVerifier(mock_client, audiences={"a.example": "aud-a"})
+
+        async def run():
+            with verifier.request_host("other.example"):
+                assert await verifier.verify_token("token") is None
+            assert await verifier.verify_token("token") is None
+
+        anyio.run(run)
+        mock_client.verify.assert_not_called()

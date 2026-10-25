@@ -3,7 +3,9 @@
 FILE: snodo/infrastructure/oauth_verifier.py
 """
 
-from typing import Optional
+from contextvars import ContextVar, Token
+from contextlib import contextmanager
+from typing import Dict, Iterator, Optional
 
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 
@@ -17,7 +19,12 @@ class JwksTokenVerifier(TokenVerifier):
     FastMCP can use it to protect its streamable-http transport.
     """
 
-    def __init__(self, jwks_client: JwksClient, resource: Optional[str] = None):
+    def __init__(
+        self,
+        jwks_client: JwksClient,
+        resource: Optional[str] = None,
+        audiences: Optional[Dict[str, str]] = None,
+    ):
         """
         Args:
             jwks_client: Fetches and caches the issuer's RS256 public key.
@@ -28,9 +35,29 @@ class JwksTokenVerifier(TokenVerifier):
         """
         self._jwks = jwks_client
         self._resource = resource
+        self._audiences = dict(audiences) if audiences is not None else None
+        self._request_host: ContextVar[Optional[str]] = ContextVar(
+            f"oauth_verifier_request_host_{id(self)}", default=None
+        )
+
+    @contextmanager
+    def request_host(self, host: str) -> Iterator[None]:
+        """Select the audience for verification within the current request context."""
+        token: Token[Optional[str]] = self._request_host.set(host)
+        try:
+            yield
+        finally:
+            self._request_host.reset(token)
 
     async def verify_token(self, token: str) -> Optional[AccessToken]:
-        payload = self._jwks.verify(token, audience=self._resource)
+        if self._audiences is not None:
+            host = self._request_host.get()
+            if host is None or host not in self._audiences:
+                return None
+            audience = self._audiences[host]
+        else:
+            audience = self._resource
+        payload = self._jwks.verify(token, audience=audience)
         if payload is None:
             return None
         return AccessToken(
