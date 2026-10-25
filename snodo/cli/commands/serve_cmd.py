@@ -487,7 +487,7 @@ def _warn_if_unservable_hostname(hostname: str) -> bool:
     delete-by-hostname path (which is unchanged here).
     """
     host = (hostname or "").strip().rstrip(".").lower()
-    if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-ws\.snodo\.dev", host):
+    if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-(?:ws|pub)\.snodo\.dev", host):
         return False
     if host.endswith(".tunnel.snodo.dev"):
         leading = host[: -len(".tunnel.snodo.dev")]
@@ -1130,6 +1130,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud", "org_id") if key in provisioned},
             **({"public_hostname": provisioned["public_hostname"]}
                if public_url_requested else {}),
+            **({"last_printed_public_hostname": tunnel_config["last_printed_public_hostname"]}
+               if "last_printed_public_hostname" in tunnel_config else {}),
         }
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = not had_saved_tunnel
@@ -1197,7 +1199,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                 project_root, api_key, tunnel_config)) if newly_provisioned else None,
             print_active=lambda hostname: (
                 _warn_if_unservable_hostname(hostname),
-                _print_first_run_info(hostname, tunnel_config) if newly_provisioned else _print_tunnel_urls(tunnel_config),
+                _print_first_run_info(hostname, tunnel_config, public_url_requested) if newly_provisioned else _print_tunnel_urls(tunnel_config, public_url_requested),
+                _save_tunnel_config(project_root, tunnel_config) if public_url_requested else None,
                 print("Press Ctrl+C to stop."),
             ),
         )
@@ -1261,9 +1264,11 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # A live URL proves both the local bind and registration with Cloudflare.
     _warn_if_unservable_hostname(tunnel_config["hostname"])
     if newly_provisioned:
-        _print_first_run_info(tunnel_config["hostname"], tunnel_config)
+        _print_first_run_info(tunnel_config["hostname"], tunnel_config, public_url_requested)
     else:
-        _print_tunnel_urls(tunnel_config)
+        _print_tunnel_urls(tunnel_config, public_url_requested)
+    if public_url_requested:
+        _save_tunnel_config(project_root, tunnel_config)
     if "service-token" in tunnel_config.get("auth", []) and "oauth" not in tunnel_config.get("auth", []):
         print("  Service-token-only tunnels are shown offline by the cloud and are never dispatched to.")
 
@@ -1327,11 +1332,21 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
 
 
-def _print_tunnel_urls(config: dict) -> None:
+def _print_tunnel_urls(config: dict, public_url: bool = False) -> None:
     hostname = config["hostname"]
     if config.get("transport") == "ws":
         print("Endpoint reached through snodo cloud (Dispatch):")
         print(f"  {hostname}")
+        if public_url and config.get("public_hostname"):
+            public_hostname = config["public_hostname"]
+            previous = config.get("last_printed_public_hostname")
+            print("Public MCP URL for outside clients:")
+            print(f"  https://{public_hostname}/mcp")
+            if previous and previous != public_hostname:
+                print(f"A new public URL was issued. MCP connections using {previous} must be updated.")
+                print(f"  Old: https://{previous}/mcp")
+                print(f"  New: https://{public_hostname}/mcp")
+            config["last_printed_public_hostname"] = public_hostname
         return
     auth = config.get("auth", ["oauth"])
     print("Connect your MCP client:")
@@ -1341,11 +1356,13 @@ def _print_tunnel_urls(config: dict) -> None:
     if "service-token" in auth:
         print(f"  Service-token: https://{hostname}/{config.get('access_path', 'mcp-st').strip('/')}")
 
-def _print_first_run_info(hostname: str, config: dict | None = None) -> None:
+def _print_first_run_info(hostname: str, config: dict | None = None, public_url: bool = False) -> None:
     """Print the first-run tunnel configuration block."""
     print()
     print("✓ Snodo MCP tunnel active")
     print()
-    _print_tunnel_urls({**(config or {"hostname": hostname}), "hostname": hostname})
+    tunnel_config = config if config is not None else {"hostname": hostname}
+    tunnel_config["hostname"] = hostname
+    _print_tunnel_urls(tunnel_config, public_url)
     print()
     print()

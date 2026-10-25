@@ -312,3 +312,44 @@ def test_non_tunnel_run_passes_arguments_to_real_mcp_server(monkeypatch):
     assert kwargs["host"] == "127.0.0.1"
     assert kwargs["port"] == 8123
     assert kwargs["transport_security"].enable_dns_rebinding_protection is True
+
+
+def test_ws_public_url_banner_tracks_first_and_changed_alias(capsys):
+    config = {
+        "hostname": "x-ws.snodo.dev", "transport": "ws",
+        "public_hostname": "new-pub.snodo.dev",
+    }
+    serve_cmd._print_first_run_info(config["hostname"], config, public_url=True)
+    output = capsys.readouterr().out
+    assert "https://new-pub.snodo.dev/mcp" in output
+    assert "outside clients" in output
+    assert "new public URL was issued" not in output
+    assert config["last_printed_public_hostname"] == "new-pub.snodo.dev"
+
+    config["public_hostname"] = "changed-pub.snodo.dev"
+    serve_cmd._print_tunnel_urls(config, public_url=True)
+    output = capsys.readouterr().out
+    assert "new public URL was issued" in output
+    assert "MCP connections using new-pub.snodo.dev must be updated" in output
+    assert "https://new-pub.snodo.dev/mcp" in output
+    assert "https://changed-pub.snodo.dev/mcp" in output
+    assert config["last_printed_public_hostname"] == "changed-pub.snodo.dev"
+
+
+def test_ws_public_url_repeat_and_no_flag(capsys):
+    config = {
+        "hostname": "x-ws.snodo.dev", "transport": "ws",
+        "public_hostname": "same-pub.snodo.dev",
+        "last_printed_public_hostname": "same-pub.snodo.dev",
+    }
+    serve_cmd._print_tunnel_urls(config, public_url=True)
+    output = capsys.readouterr().out
+    assert "https://same-pub.snodo.dev/mcp" in output
+    assert "new public URL was issued" not in output
+    assert config["last_printed_public_hostname"] == "same-pub.snodo.dev"
+
+    serve_cmd._print_tunnel_urls(config)
+    output = capsys.readouterr().out
+    assert "same-pub.snodo.dev" not in output
+    assert config["last_printed_public_hostname"] == "same-pub.snodo.dev"
+    assert serve_cmd._warn_if_unservable_hostname("same-pub.snodo.dev") is False
