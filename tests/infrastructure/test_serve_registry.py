@@ -105,3 +105,20 @@ def test_old_registry_entry_without_transport_reads_as_cloudflare(home):
 
     entry = registry.list_serve_processes()[0]
     assert entry.get("transport", "cloudflare") == "cloudflare"
+    assert "public_hostname" not in entry
+
+
+def test_recording_public_hostname_round_trips():
+    recorded = registry.record_serve_process(
+        "/one", "dev", 10, transport="ws", public_hostname="random-pub.snodo.dev"
+    )
+
+    assert registry.list_serve_processes() == [recorded]
+    assert recorded["public_hostname"] == "random-pub.snodo.dev"
+
+
+def test_recording_without_public_hostname_omits_alias():
+    recorded = registry.record_serve_process("/one", "dev", 10, transport="ws")
+
+    assert registry.list_serve_processes() == [recorded]
+    assert "public_hostname" not in recorded

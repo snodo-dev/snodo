@@ -75,7 +75,7 @@ def list_serve_processes() -> list[dict]:
 
 
 def record_serve_process(project: str, mode: str, port: int | None, hostname: str | None = None,
-                         transport: str = "cloudflare") -> dict | None:
+                         transport: str = "cloudflare", public_hostname: str | None = None) -> dict | None:
     """Record this process; registry failures are deliberately non-fatal."""
     path = _path()
     try:
@@ -83,6 +83,8 @@ def record_serve_process(project: str, mode: str, port: int | None, hostname: st
         entry = {"project": str(Path(project).resolve()), "mode": mode or "", "port": port,
                  "hostname": hostname or "", "transport": transport, "pid": os.getpid(),
                  "started_at": psutil.Process().create_time(), "host": socket.gethostname()}
+        if public_hostname:
+            entry["public_hostname"] = public_hostname
         with _THREAD_LOCK, _locked(path) as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             entries = _read(path)
