@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Update pillow to 13.0.0 and certifi to 2026.10.23 so the dependency audit passes, and ignore the three filelock advisories that are fixed only in filelock 4.x until litellm allows it. (Fixes #1028)
+
 - Document the environment variables the quality gate reads, and leave a diagnostic trace when resolving the base branch fails. (Fixes #913)
 
 - Inject a coder's protected paths from a single site, the executor, so the notice a coder sees has one source. (Fixes #917)

@@ -125,7 +125,14 @@ jobs:
         # in its own isolated environment instead.
         run: uv export --all-extras --no-dev --no-emit-project --no-emit-workspace -o requirements-audit.txt
       - name: Audit dependencies (pip-audit)
-        run: uvx "pip-audit@2.9.0" -r requirements-audit.txt
+        # The three filelock advisories are fixed only in filelock 4.x, and
+        # litellm requires filelock<4, so no consistent lock exists yet. Remove
+        # these ignores once litellm allows filelock 4 (Fixes #1028).
+        run: >-
+          uvx "pip-audit@2.9.0" -r requirements-audit.txt
+          --ignore-vuln GHSA-v4x8-3wr5-3wq8
+          --ignore-vuln GHSA-9vhv-jxww-xfm5
+          --ignore-vuln GHSA-567q-5qvw-pf92
       - name: Lint workflows (zizmor)
         run: uvx "zizmor@1.30.0" --format=github .
         env:
