@@ -1,0 +1,17 @@
+{
+  "integration": {
+    "branch": "plan/ws-serve-output-1030/integration",
+    "base_sha": "2c46a6dfa747f838e3f5cfa59b2914595142edb5"
+  },
+  "tasks": {
+    "1.1_ws_connect_block_names_snodo_cloud": "completed",
+    "1.2_relay_participant_reports_waiting_for_the_lock": "completed",
+    "1.3_cloud_relay_reports_its_connection": {
+      "status": "completed",
+      "completed_by": "orchestrator (snodo-public) on Ylli's behalf",
+      "completed_at": "2026-10-25T19:11:20.981073+00:00",
+      "judged": false
+    },
+    "2.1_ws_serve_prints_relay_messages": "completed"
+  }
+}
