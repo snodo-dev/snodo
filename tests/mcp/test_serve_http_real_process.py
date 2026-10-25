@@ -81,7 +81,10 @@ def test_real_streamable_http_server_refuses_foreign_hosts_and_stops(tmp_path):
         assert foreign_status != good_status
 
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        assert proc.wait(timeout=10) == 0
+        # uvicorn finishes its graceful shutdown and then re-raises SIGTERM, so a
+        # clean stop is either exit 0 or death by that signal; a hang or a
+        # different signal is the failure.
+        assert proc.wait(timeout=10) in (0, -signal.SIGTERM)
     finally:
         if proc.poll() is None:
             try:
