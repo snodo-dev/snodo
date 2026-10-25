@@ -153,10 +153,12 @@ def test_serve_startup_prints_local_cloud_sync_notice(monkeypatch, capsys):
 def test_tunnel_hostname_is_added_to_http_host_allowlist(monkeypatch):
     from types import SimpleNamespace
 
+    from mcp.server.mcpserver import MCPServer
+
     server = MagicMock()
     server.get_tools.return_value = []
-    mcp = MagicMock()
-    mcp.settings = SimpleNamespace(transport_security=SimpleNamespace(), port=None)
+    mcp = MCPServer("test")
+    mcp.run = MagicMock()
     protocol = SimpleNamespace(protocol_id="test", get_mode=lambda _: True)
     monkeypatch.setenv("FORWARDED_ALLOW_IPS", "")
     monkeypatch.setattr("snodo.mcp.server.ProtocolMCPServer", lambda **_: server)
@@ -173,12 +175,14 @@ def test_tunnel_hostname_is_added_to_http_host_allowlist(monkeypatch):
     serve_cmd._run_server(SimpleNamespace(
         protocol="protocol.yml", mode=None, transport="streamable-http", port=8080,
     ), protocol)
-    assert mcp.settings.host == "127.0.0.1"
-    assert mcp.settings.transport_security.allowed_hosts == [
+    run_kwargs = mcp.run.call_args.kwargs
+    assert run_kwargs["host"] == "127.0.0.1"
+    assert run_kwargs["transport_security"].enable_dns_rebinding_protection is True
+    assert run_kwargs["transport_security"].allowed_hosts == [
         "localhost:8080", "127.0.0.1:8080", "[::1]:8080",
         "safe.tunnel.snodo.dev", "safe.tunnel.snodo.dev:8080",
     ]
-    assert mcp.settings.transport_security.allowed_origins == [
+    assert run_kwargs["transport_security"].allowed_origins == [
         "http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080",
         "https://safe.tunnel.snodo.dev",
     ]
@@ -190,7 +194,6 @@ def test_service_token_only_tunnel_skips_oauth_verifier(monkeypatch):
     server = MagicMock()
     server.get_tools.return_value = []
     mcp = MagicMock()
-    mcp.settings = SimpleNamespace(transport_security=SimpleNamespace(), port=None)
     protocol = SimpleNamespace(protocol_id="test", get_mode=lambda _: True)
     monkeypatch.setattr("snodo.mcp.server.ProtocolMCPServer", lambda **_: server)
     monkeypatch.setattr("snodo.mcp.transport.build_fastmcp_server", lambda *_a, **kwargs: (mcp, kwargs)[0])
@@ -251,3 +254,31 @@ def test_old_tunnel_config_still_loads(tmp_path):
     path.mkdir()
     (path / "tunnel.json").write_text('{"hostname":"old.tunnel.snodo.dev","tunnel_token":"old"}')
     assert serve_cmd._load_tunnel_config(str(tmp_path))["hostname"] == "old.tunnel.snodo.dev"
+
+
+def test_non_tunnel_run_passes_arguments_to_real_mcp_server(monkeypatch):
+    from types import SimpleNamespace
+    from mcp.server.mcpserver import MCPServer
+
+    server = MagicMock()
+    server.get_tools.return_value = []
+    mcp = MCPServer("test")
+    mcp.run = MagicMock()
+    protocol = SimpleNamespace(protocol_id="test", get_mode=lambda _: True)
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "")
+    monkeypatch.setattr("snodo.mcp.server.ProtocolMCPServer", lambda **_: server)
+    monkeypatch.setattr("snodo.mcp.transport.build_fastmcp_server", lambda *_a, **_k: mcp)
+    monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
+    monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {})
+    monkeypatch.setattr(serve_cmd, "_choose_serve_port", lambda _: 8123)
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.install", lambda: None)
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.uninstall", lambda: None)
+
+    serve_cmd._run_server(SimpleNamespace(
+        protocol="protocol.yml", mode=None, transport="streamable-http", port=8123,
+    ), protocol)
+
+    kwargs = mcp.run.call_args.kwargs
+    assert kwargs["host"] == "127.0.0.1"
+    assert kwargs["port"] == 8123
+    assert kwargs["transport_security"].enable_dns_rebinding_protection is True

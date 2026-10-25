@@ -204,7 +204,6 @@ def test_run_server_refuses_when_port_held(capsys):
     with patch("snodo.mcp.server.ProtocolMCPServer"):
         with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
             mock_mcp = MagicMock()
-            mock_mcp.settings.port = 8000
             mock_build.return_value = mock_mcp
             with patch(
                 "snodo.cli.commands.serve_cmd._port_holder_pid", return_value=4321,
@@ -238,7 +237,6 @@ def test_run_server_preflight_ignores_stdio():
     with patch("snodo.mcp.server.ProtocolMCPServer"):
         with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
             mock_mcp = MagicMock()
-            mock_mcp.settings.port = 8000
             mock_build.return_value = mock_mcp
             with patch(
                 "snodo.cli.commands.serve_cmd._port_holder_pid",
@@ -273,7 +271,6 @@ def _run_server_with_held(held, *, mode=None):
     with patch("snodo.mcp.server.ProtocolMCPServer"):
         with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
             mock_mcp = MagicMock()
-            mock_mcp.settings.port = 8000
             mock_build.return_value = mock_mcp
             with patch(
                 "snodo.cli.commands.serve_cmd._port_holder_pid",
@@ -281,7 +278,7 @@ def _run_server_with_held(held, *, mode=None):
             ):
                 with redirect_stderr(err):
                     result = serve_cmd._run_server(args, mock_protocol)
-    return result, mock_mcp.settings.port, err.getvalue()
+    return result, mock_mcp.run.call_args.kwargs.get("port"), err.getvalue()
 
 
 def test_two_servers_without_a_port_both_start_on_different_ports():
@@ -388,11 +385,10 @@ def _run_server_explicit(port):
     with patch("snodo.mcp.server.ProtocolMCPServer"):
         with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
             mock_mcp = MagicMock()
-            mock_mcp.settings.port = 8000
             mock_build.return_value = mock_mcp
             with redirect_stderr(err):
                 result = serve_cmd._run_server(args, mock_protocol)
-    return result, mock_mcp.settings.port, err.getvalue()
+    return result, mock_mcp.run.call_args.kwargs.get("port"), err.getvalue()
 
 
 # === A failed tunnel start leaves nothing behind and announces nothing (#309) ===
@@ -807,7 +803,7 @@ def test_run_server_proceeds_when_binding_port_agrees_with_recorded_tunnel_port(
 
     assert result == 0
     assert mock_mcp.run.call_count == 1
-    assert mock_mcp.settings.port == 8000
+    assert mock_mcp.run.call_args.kwargs["port"] == 8000
 
 
 def test_run_server_no_port_given_with_tunnel_targets_recorded_tunnel_port(capsys):
@@ -836,7 +832,7 @@ def test_run_server_no_port_given_with_tunnel_targets_recorded_tunnel_port(capsy
 
     assert result == 0
     assert mock_mcp.run.call_count == 1
-    assert mock_mcp.settings.port == 8000
+    assert mock_mcp.run.call_args.kwargs["port"] == 8000
     assert "Using recorded tunnel port 8000" in capsys.readouterr().err
 
 

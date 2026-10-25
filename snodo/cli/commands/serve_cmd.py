@@ -44,7 +44,7 @@ from snodo.cli.commands.serve_tunnel_config import (  # noqa: F401 - re-exported
 )
 from snodo.cli.commands.serve_security import (
     _TUNNEL_HOSTNAME_RE,  # noqa: F401 - re-exported for callers and tests
-    configure_http_transport,
+    build_transport_security_settings,
     check_cloudflared as _check_cloudflared,
     derive_project_root as _derive_project_root,
     extract_existing_hostname as _extract_existing_hostname,
@@ -332,16 +332,14 @@ def _run_server(args, protocol) -> int:
             return 1
         if explicit_port is None and tunnel_port is not None:
             print(f"Using recorded tunnel port {port}", file=sys.stderr)
-        mcp.settings.port = port
-        mcp.settings.host = "127.0.0.1"
+        host = "127.0.0.1"
     else:
         port = explicit_port
-        if port is not None:
-            mcp.settings.port = port
 
     # Trust only local tunnel proxies, while FastMCP validates request Host values.
     if transport != "stdio":
-        configure_http_transport(mcp, port, tunnel_hostname)
+        os.environ["FORWARDED_ALLOW_IPS"] = "127.0.0.1,::1" if tunnel_hostname else ""
+        transport_security = build_transport_security_settings(port, tunnel_hostname)
 
     print(
         f"Snodo MCP [{protocol.protocol_id}] mode={mode_label} "
@@ -370,7 +368,10 @@ def _run_server(args, protocol) -> int:
                                          transport=_tunnel_transport(tunnel_config.get("transport")) if tunnel_hostname else "cloudflare")
     cloud_liveness.install()
     try:
-        mcp.run(transport=transport)
+        if transport != "stdio":
+            mcp.run(transport=transport, host=host, port=port, transport_security=transport_security)
+        else:
+            mcp.run(transport=transport)
     except SystemExit as e:
         # uvicorn reports a bind failure by logging the OSError and exiting
         # with STARTUP_FAILURE (3). The port can be taken between the check
