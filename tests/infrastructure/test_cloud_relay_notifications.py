@@ -80,3 +80,81 @@ def test_missing_lease_notification(lease, expected):
             await relay._connection()
         assert messages == [expected]
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("status", [403, 426])
+def test_rejected_connection_notification(status):
+    async def run():
+        messages = []
+
+        class Rejected(Exception):
+            status_code = status
+
+        async def connect(*_args, **_kwargs):
+            raise Rejected()
+
+        relay = CloudRelay(
+            {}, machine="machine", lease_fetch=lambda *_args, **_kwargs: object(),
+            socket_connect=connect, notify=messages.append,
+            sleep=lambda _delay: asyncio.sleep(0),
+        )
+        relay._fetch_lease = _lease
+        await relay.run(max_connections=1)
+        assert messages == ["snodo cloud rejected the connection."]
+
+    asyncio.run(run())
+
+
+def test_replaced_connection_notification():
+    async def run():
+        messages = []
+
+        class Replaced(Exception):
+            code = 4001
+
+        async def connect(*_args, **_kwargs):
+            raise Replaced()
+
+        relay = CloudRelay({}, machine="machine", socket_connect=connect, notify=messages.append)
+        relay._fetch_lease = _lease
+        await relay.run(max_connections=1)
+        assert messages == ["This connection was replaced by a newer runner connection."]
+
+    asyncio.run(run())
+
+
+def test_connection_lost_notification():
+    async def run():
+        messages = []
+        socket = _Socket()
+        relay = CloudRelay(
+            {}, machine="machine", lease_fetch=lambda *_args, **_kwargs: object(),
+            socket_connect=lambda *_args, **_kwargs: _connected_socket(socket),
+            registry=lambda: [], notify=messages.append,
+        )
+        relay._fetch_lease = _lease
+        await relay._connection()
+        assert messages[-1] == "Connection to snodo cloud was lost. Retrying."
+
+    asyncio.run(run())
+
+
+def test_raising_notify_does_not_break_connection_loop():
+    async def run():
+        socket = _Socket()
+        calls = []
+
+        def notify(message):
+            calls.append(message)
+            raise RuntimeError("notify failure")
+
+        relay = CloudRelay(
+            {}, machine="machine", lease_fetch=lambda *_args, **_kwargs: object(),
+            socket_connect=lambda *_args, **_kwargs: _connected_socket(socket),
+            registry=lambda: [], notify=notify,
+        )
+        relay._fetch_lease = _lease
+        await relay._connection()
+        assert calls == ["Connected to snodo cloud.", "Connection to snodo cloud was lost. Retrying."]
+
+    asyncio.run(run())
