@@ -52,3 +52,33 @@ def test_child_exit_stops_relay_and_rolls_back():
         rollback=lambda: calls.append("rollback"), signal_module=signals,
     ) == 1
     assert calls == ["start", "stop", "terminate", "rollback"]
+
+
+def test_created_participant_notifications_reach_stdout(monkeypatch, capsys):
+    from snodo.infrastructure import cloud_relay, relay_participant
+
+    captured = {}
+
+    class Participant:
+        def __init__(self, relay_factory, *, notify):
+            captured["notify"] = notify
+            captured["relay_factory"] = relay_factory
+
+        def start(self):
+            captured["notify"]("connected to snodo cloud")
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(relay_participant, "RelayParticipant", Participant)
+    monkeypatch.setattr(cloud_relay, "CloudRelay", lambda config, *, notify: captured.update(relay_notify=notify))
+    monkeypatch.setattr("snodo.config.ConfigManager.load", lambda self: {})
+
+    run_ws_tunnel(
+        SimpleNamespace(poll=lambda: 1), "host.example",
+        terminate=lambda _: None, rollback=lambda: None, print_active=lambda _: None,
+    )
+
+    assert capsys.readouterr().out.startswith("connected to snodo cloud\n")
+    captured["relay_factory"]()
+    assert captured["relay_notify"] is captured["notify"]

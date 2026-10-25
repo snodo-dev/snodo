@@ -11,7 +11,11 @@ def run_ws_tunnel(mcp_process, hostname, *, participant=None, terminate, rollbac
         from snodo.infrastructure.relay_participant import RelayParticipant
         from snodo.infrastructure.cloud_relay import CloudRelay
         from snodo.config import ConfigManager
-        participant = RelayParticipant(lambda: CloudRelay(ConfigManager().load()))
+        def notify(message):
+            print(message, flush=True)
+        participant = RelayParticipant(
+            lambda: CloudRelay(ConfigManager().load(), notify=notify), notify=notify
+        )
     try:
         participant.start()
     except Exception:
