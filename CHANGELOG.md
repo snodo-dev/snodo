@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 - `snodo serve --tunnel --tunnel-transport ws` without `--auth` now provisions a ws tunnel instead of a Cloudflare one. (Fixes #1029)
+- Explain that WebSocket tunnel endpoints are reached through snodo cloud (Dispatch), and report when the machine is connected or waiting for another serve. (Fixes #1030)
 
 - Make serving over HTTP and managed tunnels start on mcp 2.x again. (Fixes #1027)
 - Update pillow to 13.0.0 and certifi to 2026.10.23 so the dependency audit passes, and ignore the three filelock advisories that are fixed only in filelock 4.x until litellm allows it. (Fixes #1028)
