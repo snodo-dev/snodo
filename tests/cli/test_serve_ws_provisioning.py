@@ -1,0 +1,73 @@
+"""Pin tunnel provisioning parameters for WebSocket tunnels (Fixes #1029)."""
+
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from snodo.cli.commands import serve_cmd
+
+
+def _provision_call(tunnel_transport, monkeypatch):
+    protocol = SimpleNamespace(initial_mode="all")
+    args = SimpleNamespace(
+        protocol="/tmp/project/.snodo/protocol.yml",
+        mode=None,
+        transport="streamable-http",
+        tunnel_transport=tunnel_transport,
+        auth=None,
+        port=8000,
+        delete=False,
+        rotate=False,
+        verbose=False,
+    )
+    monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/tmp/project")
+    monkeypatch.setattr(serve_cmd, "_get_snodo_api_key", lambda: "key")
+    monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {})
+    monkeypatch.setattr(serve_cmd, "_choose_serve_port", lambda port: port)
+    monkeypatch.setattr(serve_cmd, "_save_tunnel_config", lambda *_: None)
+    monkeypatch.setattr(serve_cmd, "_wait_for_server_bind", lambda _: False)
+    monkeypatch.setattr(serve_cmd, "_terminate_process_group", lambda *_: None)
+    monkeypatch.setattr(serve_cmd, "_check_cloudflared", lambda: True)
+    import importlib
+    importlib.import_module("snodo.infrastructure.cloud_relay")
+
+    with patch("snodo.infrastructure.cloud_relay.machine_id", return_value="machine-123"), \
+         patch.object(serve_cmd, "_provision_tunnel", return_value={"hostname": "project-ws.snodo.dev"}) as provision, \
+         patch.object(serve_cmd.subprocess, "Popen", lambda *_, **__: SimpleNamespace(stderr=None, returncode=1)):
+        serve_cmd._run_tunnel(args, protocol, args.protocol)
+    return provision
+
+
+def test_ws_without_auth_provisions_with_transport_and_machine_id(monkeypatch):
+    provision = _provision_call("ws", monkeypatch)
+
+    assert provision.call_args.kwargs["tunnel_transport"] == "ws"
+    assert provision.call_args.kwargs["machine_identifier"] == "machine-123"
+
+
+def test_cloudflare_without_auth_keeps_legacy_provision_call(monkeypatch):
+    provision = _provision_call("cloudflare", monkeypatch)
+
+    assert "tunnel_transport" not in provision.call_args.kwargs
+    assert "machine_identifier" not in provision.call_args.kwargs
+
+
+def test_ws_provision_request_includes_transport_and_machine_id(monkeypatch):
+    import httpx
+
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["json"] = kwargs["json"]
+        response = SimpleNamespace(status_code=200, json=lambda: {"hostname": "project-ws.snodo.dev"})
+        return response
+
+    monkeypatch.setattr(serve_cmd, "_get_cloud_tunnel_api_url", lambda: "https://worker.example")
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    serve_cmd._provision_tunnel(
+        "key", "project", "all", "abc123", "1.2.3", 8000,
+        tunnel_transport="ws", machine_identifier="machine-123",
+    )
+
+    assert captured["json"]["transport"] == "ws"
+    assert captured["json"]["machine_id"] == "machine-123"
