@@ -77,3 +77,29 @@ def test_sse_wrapper_keeps_host_protection():
     # the event stream itself never ends, so it is not used here.
     assert _post(client, "/messages/", TUNNEL_HOST) != 421
     assert _post(client, "/messages/", FOREIGN_HOST) == 421
+
+
+def test_host_set_serves_host_specific_protected_resource():
+    private_host = TUNNEL_HOST
+    public_host = "demo-pub.snodo.dev"
+    mcp = MCPServer("tunnel-host-specific-discovery")
+    install_tunnel_mcp_paths(
+        mcp, _AccessVerifier(), oauth_enabled=True, hosts={private_host, public_host}
+    )
+    app = mcp.streamable_http_app(
+        stateless_http=True,
+        transport_security=build_transport_security_settings(PORT, private_host, public_host),
+    )
+    client = TestClient(app)
+
+    for host in (private_host, public_host):
+        response = client.get(
+            "/.well-known/oauth-protected-resource", headers={"host": host}
+        )
+        assert response.status_code == 200
+        assert response.json()["resource"] == f"https://{host}/mcp"
+
+    response = client.get(
+        "/.well-known/oauth-protected-resource", headers={"host": FOREIGN_HOST}
+    )
+    assert response.status_code == 421
