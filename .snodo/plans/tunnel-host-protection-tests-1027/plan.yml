@@ -1,0 +1,10 @@
+intent: 'The tunnel path wrapper that sits in front of the mcp 2.x HTTP apps is pinned
+  by tests that exercise the real code, one per factory, so a wrapper that dropped
+  host or transport security fails them. Completes the test side of #1027.'
+name: tunnel-host-protection-tests-1027
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_streamable_http_wrapper_keeps_host_protection
+  - 1.2_sse_wrapper_keeps_host_protection

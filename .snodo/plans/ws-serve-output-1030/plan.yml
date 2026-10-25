@@ -1,0 +1,21 @@
+intent: '`snodo serve --tunnel --tunnel-transport ws` tells the user the truth: the
+  endpoint is reached through snodo cloud (Dispatch), and the terminal says when the
+  machine is connected to the cloud, waiting on another serve, or turned away (#1030)'
+name: ws-serve-output-1030
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_ws_connect_block_names_snodo_cloud
+  - 1.2_relay_participant_reports_waiting_for_the_lock
+  - 1.3_cloud_relay_reports_its_connection
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_ws_serve_prints_relay_messages
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_ws_output_is_in_the_changelog

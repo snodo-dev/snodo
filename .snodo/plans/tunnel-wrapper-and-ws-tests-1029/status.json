@@ -13,10 +13,13 @@
       "spec_hash": "eb50a84d6b4a4388"
     },
     "2.1_the_tunnel_wrapper_keeps_host_and_protection": {
-      "status": "errored",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "ea29b5508fe8a069"
+      "spec_hash": "7214f680a29406db",
+      "completed_by": "orchestrator (snodo-public) on Ylli's behalf",
+      "completed_at": "2026-10-25T18:13:59.256202+00:00",
+      "judged": false
     }
   },
   "integration": {

@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_streamable_http_wrapper_keeps_host_protection": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "71977958c811440e"
+    },
+    "1.2_sse_wrapper_keeps_host_protection": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6fe2dacc316a7f49"
+    }
+  },
+  "integration": {
+    "branch": "plan/tunnel-host-protection-tests-1027/integration",
+    "base_sha": "756197c2afd297b74bca602d4946ee31f64adef4"
+  }
+}

@@ -25,10 +25,13 @@
       "judged": false
     },
     "3.2_the_tunnel_wrapper_keeps_host_and_protection": {
-      "status": "blocked",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "3ea5095c26e4fefa"
+      "spec_hash": "3ea5095c26e4fefa",
+      "completed_by": "orchestrator (snodo-public) on Ylli's behalf",
+      "completed_at": "2026-10-25T18:13:59.619607+00:00",
+      "judged": false
     }
   },
   "integration": {
