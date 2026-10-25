@@ -5,6 +5,8 @@ import base64
 import logging
 from pathlib import Path
 
+import pytest
+
 from snodo.infrastructure.cloud_relay import CloudRelay, machine_id, websocket_url
 from snodo.infrastructure.relay_frame_codec import decode_frame
 
@@ -89,4 +91,39 @@ def test_dispatch_does_not_forward_cloudflare_only_hostname():
     socket = Socket()
     asyncio.run(relay._dispatch(socket, {"id": "r1", "hostname": "cf.test", "method": "POST",
                                           "path": "/path", "headers": {}}, b"request"))
+    assert socket.sent == [{"t": "err", "id": "r1", "code": "unknown_endpoint", "message": "Unknown endpoint"}]
+
+
+class CapturingHttp(Http):
+    def stream(self, method, url, *, headers, content):
+        self.headers = headers
+        return Response()
+
+
+@pytest.mark.parametrize("hostname", ["private.test", "public-pub.snodo.dev"])
+def test_dispatch_routes_private_and_public_hosts_to_same_entry(hostname):
+    http = CapturingHttp()
+    relay = CloudRelay({}, registry=lambda: [{
+        "hostname": "private.test", "public_hostname": "public-pub.snodo.dev",
+        "port": 8765, "transport": "ws",
+    }], http_client=http, machine="mid")
+    socket = Socket()
+    asyncio.run(relay._dispatch(socket, {
+        "id": "r1", "hostname": hostname, "method": "POST", "path": "/path",
+        "headers": {"hOsT": "attacker.test", ":authority": "also-attacker.test", "authorization": "token"},
+    }, b"request"))
+    assert socket.sent[0]["t"] == "res"
+    assert http.headers == {"authorization": "token", "Host": hostname}
+
+
+def test_dispatch_refuses_unrelated_hostname():
+    relay = CloudRelay({}, registry=lambda: [{
+        "hostname": "private.test", "public_hostname": "public-pub.snodo.dev",
+        "port": 8765, "transport": "ws",
+    }], http_client=Http(), machine="mid")
+    socket = Socket()
+    asyncio.run(relay._dispatch(socket, {
+        "id": "r1", "hostname": "unrelated.test", "method": "POST",
+        "path": "/path", "headers": {},
+    }, b"request"))
     assert socket.sent == [{"t": "err", "id": "r1", "code": "unknown_endpoint", "message": "Unknown endpoint"}]
