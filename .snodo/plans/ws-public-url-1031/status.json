@@ -1,0 +1,12 @@
+{
+  "integration": {
+    "branch": "plan/ws-public-url-1031/integration",
+    "base_sha": "2388ff8435249eeb968814395c9276e7608a86a8"
+  },
+  "tasks": {
+    "1.1_public_alias_hostnames_are_recognised_and_allowed": "completed",
+    "1.2_tunnel_config_keeps_org_and_alias": "completed",
+    "1.3_serve_registry_entries_can_carry_an_alias": "completed",
+    "1.4_verifier_can_pick_its_audience_from_the_request_host": "completed"
+  }
+}
