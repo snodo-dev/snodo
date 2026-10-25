@@ -12,6 +12,7 @@
       "completed_at": "2026-10-25T19:11:20.981073+00:00",
       "judged": false
     },
-    "2.1_ws_serve_prints_relay_messages": "completed"
+    "2.1_ws_serve_prints_relay_messages": "completed",
+    "3.1_ws_output_is_in_the_changelog": "completed"
   }
 }
