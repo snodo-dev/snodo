@@ -9,6 +9,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document the environment variables the quality gate reads, and leave a diagnostic trace when resolving the base branch fails. (Fixes #913)
+
+- Inject a coder's protected paths from a single site, the executor, so the notice a coder sees has one source. (Fixes #917)
+
+- Document how the recovery probe shares its path with the workspace escape checks. (Fixes #964)
+
+- Give each phase of the real-terminal wave test its own time budget so a slow start no longer fails the whole test. (Fixes #1019)
+
+- Check that documentation links with an in-page anchor point at an anchor that exists. (Fixes #1020)
+
+- Keep the changelog coverage check working when a branch history has been rewritten. (Fixes #962)
+
+- Keep the instructions and test scaffolds consistent with the rule that a validator verdict names its subject task. (Fixes #958)
+
+- Verify the `Cf-Access-Jwt-Assertion` token on service-token tunnel requests against the team keys, audience, issuer and expiry, refusing on any failure. (Fixes #998)
+
+- Cover the stale-work halt with tests, and match an "absent file" claim only when the named path sits in the same sentence as the absence wording. (Fixes #995)
+
+- Pin each OpenCode major version's launch flags to its recorded `run --help` output, so a removed or renamed flag fails the gate instead of a dispatch. (Fixes #983)
+
+- Make `snodo ready` check that the installed coder CLI accepts the flags snodo launches it with. (Fixes #984)
+
 - Keep `subprocess.Popen` a class while the CLI wave is active, so a library imported lazily mid-command (litellm 1.106 importing mcp 2.x on its first completion) no longer fails every LLM call with "'function' object is not subscriptable". (Fixes #1025)
 
 - Prove the strict documentation link gate fails closed with an automated minimal-fixture canary. (Fixes #966)
