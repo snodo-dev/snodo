@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Make serving over HTTP and managed tunnels start on mcp 2.x again. (Fixes #1027)
+
 - Document the environment variables the quality gate reads, and leave a diagnostic trace when resolving the base branch fails. (Fixes #913)
 
 - Inject a coder's protected paths from a single site, the executor, so the notice a coder sees has one source. (Fixes #917)
