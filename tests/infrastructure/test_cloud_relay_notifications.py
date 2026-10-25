@@ -172,8 +172,14 @@ def test_hello_endpoints_include_public_alias_only_for_ws_entries():
     ]
 
 
-@pytest.mark.parametrize("next_alias", ["first-pub.snodo.dev", "changed-pub.snodo.dev"])
-def test_hello_is_resent_when_public_alias_changes(next_alias):
+@pytest.mark.parametrize(
+    ("initial_alias", "next_alias"),
+    [
+        (None, "first-pub.snodo.dev"),
+        ("first-pub.snodo.dev", "changed-pub.snodo.dev"),
+    ],
+)
+def test_hello_is_resent_when_public_alias_changes(initial_alias, next_alias):
     async def run():
         socket = _Socket()
         entry = {"hostname": "private.example", "port": 80, "transport": "ws"}
@@ -182,7 +188,8 @@ def test_hello_is_resent_when_public_alias_changes(next_alias):
         def registry():
             nonlocal calls
             calls += 1
-            return [entry] if calls == 1 else [dict(entry, public_hostname=next_alias)]
+            alias = initial_alias if calls == 1 else next_alias
+            return [dict(entry, public_hostname=alias)] if alias else [entry]
 
         relay = CloudRelay(
             {}, machine="machine", lease_fetch=lambda *_args, **_kwargs: object(),
@@ -192,11 +199,15 @@ def test_hello_is_resent_when_public_alias_changes(next_alias):
         await relay._connection()
         import json
         frames = [json.loads(message) for message in socket.sent]
+        expected_initial = [{"hostname": "private.example", "auth": ["oauth"]}]
+        expected_updated = [
+            {"hostname": "private.example", "auth": ["oauth"]},
+            {"hostname": next_alias, "auth": ["oauth"]},
+        ]
+        if initial_alias:
+            expected_initial.append({"hostname": initial_alias, "auth": ["oauth"]})
         assert [frame["endpoints"] for frame in frames if frame["t"] == "hello"] == [
-            [{"hostname": "private.example", "auth": ["oauth"]}],
-            [
-                {"hostname": "private.example", "auth": ["oauth"]},
-                {"hostname": next_alias, "auth": ["oauth"]},
-            ],
+            expected_initial,
+            expected_updated,
         ]
     asyncio.run(run())
