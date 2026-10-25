@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 - Make serving over HTTP and managed tunnels start on mcp 2.x again. (Fixes #1027)
+- Update pillow to 13.0.0 and certifi to 2026.10.23 so the dependency audit passes, and ignore the three filelock advisories that are fixed only in filelock 4.x until litellm allows it. (Fixes #1028)
 
 - Document the environment variables the quality gate reads, and leave a diagnostic trace when resolving the base branch fails. (Fixes #913)
 

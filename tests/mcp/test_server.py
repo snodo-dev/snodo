@@ -1046,7 +1046,7 @@ class TestServePortAndProxy:
         )
 
     def test_port_passed_to_fastmcp_settings(self):
-        """Port arg is set on mcp.settings.port before run."""
+        """Port, host, and transport security are passed to run."""
         from types import SimpleNamespace
         from unittest.mock import MagicMock, patch
 
@@ -1068,13 +1068,15 @@ class TestServePortAndProxy:
             MockP.return_value.get_tools.return_value = []
             with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
                 mock_mcp = MagicMock()
-                mock_mcp.settings.port = 8000
                 mock_build.return_value = mock_mcp
 
                 _run_server(args, mock_protocol)
 
-                assert mock_mcp.settings.port == 9999
-                mock_mcp.run.assert_called_once_with(transport="sse")
+                kwargs = mock_mcp.run.call_args.kwargs
+                assert kwargs["port"] == 9999
+                assert kwargs["host"] == "127.0.0.1"
+                assert kwargs["transport"] == "sse"
+                assert kwargs["transport_security"].enable_dns_rebinding_protection is True
 
     def test_forwarded_allow_ips_set_for_sse(self):
         """FORWARDED_ALLOW_IPS is set for sse transport."""
@@ -1099,15 +1101,14 @@ class TestServePortAndProxy:
         with patch("snodo.mcp.server.ProtocolMCPServer"):
             with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
                 mock_mcp = MagicMock()
-                mock_mcp.settings.port = 8000
                 mock_build.return_value = mock_mcp
 
                 # Clear the env var before test
                 os.environ.pop("FORWARDED_ALLOW_IPS", None)
                 _run_server(args, mock_protocol)
                 assert os.environ.get("FORWARDED_ALLOW_IPS") == ""
-                assert mock_mcp.settings.transport_security.enable_dns_rebinding_protection is True
-                assert mock_mcp.settings.transport_security.allowed_hosts == [
+                assert mock_mcp.run.call_args.kwargs["transport_security"].enable_dns_rebinding_protection is True
+                assert mock_mcp.run.call_args.kwargs["transport_security"].allowed_hosts == [
                     "localhost:8080", "127.0.0.1:8080", "[::1]:8080",
                 ]
 
@@ -1134,13 +1135,12 @@ class TestServePortAndProxy:
         with patch("snodo.mcp.server.ProtocolMCPServer"):
             with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
                 mock_mcp = MagicMock()
-                mock_mcp.settings.port = 8000
                 mock_build.return_value = mock_mcp
 
                 os.environ.pop("FORWARDED_ALLOW_IPS", None)
                 _run_server(args, mock_protocol)
                 assert os.environ.get("FORWARDED_ALLOW_IPS") == ""
-                assert mock_mcp.settings.transport_security.enable_dns_rebinding_protection is True
+                assert mock_mcp.run.call_args.kwargs["transport_security"].enable_dns_rebinding_protection is True
 
     def test_no_forwarded_allow_ips_for_stdio(self):
         """FORWARDED_ALLOW_IPS is NOT set for stdio transport."""
@@ -1165,7 +1165,6 @@ class TestServePortAndProxy:
         with patch("snodo.mcp.server.ProtocolMCPServer"):
             with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
                 mock_mcp = MagicMock()
-                mock_mcp.settings.port = 8000
                 mock_build.return_value = mock_mcp
 
                 os.environ.pop("FORWARDED_ALLOW_IPS", None)
@@ -1194,7 +1193,6 @@ class TestServePortAndProxy:
         with patch("snodo.mcp.server.ProtocolMCPServer"):
             with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
                 mock_mcp = MagicMock()
-                mock_mcp.settings.port = 8000
                 mock_build.return_value = mock_mcp
 
                 _run_server(args, mock_protocol)
@@ -1227,7 +1225,6 @@ class TestServePortAndProxy:
         with patch("snodo.mcp.server.ProtocolMCPServer"):
             with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
                 mock_mcp = MagicMock()
-                mock_mcp.settings.port = 8000
                 mock_build.return_value = mock_mcp
 
                 _run_server(args, mock_protocol)
