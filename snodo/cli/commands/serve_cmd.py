@@ -1127,7 +1127,9 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
             "port": port,
             "auth": provisioned.get("auth", auth_methods),
-            **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud", "org_id", "public_hostname") if key in provisioned},
+            **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud", "org_id") if key in provisioned},
+            **({"public_hostname": provisioned["public_hostname"]}
+               if public_url_requested else {}),
         }
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = not had_saved_tunnel

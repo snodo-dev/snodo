@@ -71,3 +71,47 @@ def test_ws_provision_request_includes_transport_and_machine_id(monkeypatch):
 
     assert captured["json"]["transport"] == "ws"
     assert captured["json"]["machine_id"] == "machine-123"
+
+
+def test_ws_public_url_is_sent_when_requested(monkeypatch):
+    import httpx
+
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["json"] = kwargs["json"]
+        return SimpleNamespace(status_code=200, json=lambda: {
+            "hostname": "project-ws.snodo.dev",
+            "org_id": "org-123",
+            "public_hostname": "random-pub.snodo.dev",
+        })
+
+    monkeypatch.setattr(serve_cmd, "_get_cloud_tunnel_api_url", lambda: "https://worker.example")
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    serve_cmd._provision_tunnel(
+        "key", "project", "all", "abc123", "1.2.3", 8000,
+        tunnel_transport="ws", machine_identifier="machine-123", public_url=True,
+    )
+
+    assert captured["json"]["public_url"] is True
+
+
+def test_ws_provision_request_omits_public_url_without_flag(monkeypatch):
+    import httpx
+
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["json"] = kwargs["json"]
+        return SimpleNamespace(status_code=200, json=lambda: {"hostname": "project-ws.snodo.dev"})
+
+    monkeypatch.setattr(serve_cmd, "_get_cloud_tunnel_api_url", lambda: "https://worker.example")
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    serve_cmd._provision_tunnel(
+        "key", "project", "all", "abc123", "1.2.3", 8000,
+        tunnel_transport="ws", machine_identifier="machine-123",
+    )
+
+    assert "public_url" not in captured["json"]
