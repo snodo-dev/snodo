@@ -1,0 +1,38 @@
+intent: 'A ws serve can opt in to a public MCP address with `snodo serve --tunnel --tunnel-transport ws
+  --public-url`: the alias is requested, announced, allowed, authenticated per host and organization,
+  and shown at every start (#1031)'
+name: ws-public-url-1031
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_public_alias_hostnames_are_recognised_and_allowed
+  - 1.2_tunnel_config_keeps_org_and_alias
+  - 1.3_serve_registry_entries_can_carry_an_alias
+  - 1.4_verifier_can_pick_its_audience_from_the_request_host
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_hello_announces_both_hostnames
+  - 2.2_verifier_refuses_a_token_from_another_organization
+  - 2.3_serve_accepts_public_url_and_provisions_with_it
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_relay_hands_the_callers_host_to_the_local_serve
+  - 3.2_start_up_output_says_which_public_url_was_issued
+  - 3.3_wrapper_answers_discovery_per_host
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_child_serves_the_alias_host
+  - 4.2_wrapper_answers_403_for_another_organization
+- depends_on:
+  - 4
+  id: 5
+  tasks:
+  - 5.1_serve_wires_audiences_org_and_hosts
+  - 5.2_public_url_is_documented_and_in_the_changelog
