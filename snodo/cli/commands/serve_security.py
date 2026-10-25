@@ -1,7 +1,6 @@
 """HTTP bind and transport security helpers for ``snodo serve``."""
 
 import ipaddress
-import os
 import re
 import json
 from pathlib import Path
