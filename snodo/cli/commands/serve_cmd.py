@@ -1306,6 +1306,10 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
 def _print_tunnel_urls(config: dict) -> None:
     hostname = config["hostname"]
+    if config.get("transport") == "ws":
+        print("Endpoint reached through snodo cloud (Dispatch):")
+        print(f"  {hostname}")
+        return
     auth = config.get("auth", ["oauth"])
     print("Connect your MCP client:")
     if "oauth" in auth:

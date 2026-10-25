@@ -72,6 +72,28 @@ def test_explicit_service_token_is_accepted(monkeypatch, capsys):
     assert "service-token" not in capsys.readouterr().err
 
 
+def test_ws_first_run_banner_names_dispatch_endpoint(capsys):
+    serve_cmd._print_first_run_info(
+        "x-ws.snodo.dev", {"hostname": "x-ws.snodo.dev", "transport": "ws"}
+    )
+    output = capsys.readouterr().out
+    assert "snodo cloud (Dispatch)" in output
+    assert "x-ws.snodo.dev" in output
+    assert "Connect your MCP client" not in output
+    assert "https://x-ws.snodo.dev/mcp" not in output
+    assert "mcp-auth.snodo.dev" not in output
+
+
+def test_ws_repeat_run_banner_names_dispatch_endpoint(capsys):
+    serve_cmd._print_tunnel_urls({"hostname": "x-ws.snodo.dev", "transport": "ws"})
+    output = capsys.readouterr().out
+    assert "snodo cloud (Dispatch)" in output
+    assert "x-ws.snodo.dev" in output
+    assert "Connect your MCP client" not in output
+    assert "https://x-ws.snodo.dev/mcp" not in output
+    assert "mcp-auth.snodo.dev" not in output
+
+
 def test_banner_only_shows_url_and_oauth_server(capsys):
     serve_cmd._print_first_run_info(
         "x.tunnel.snodo.dev",
@@ -80,6 +102,14 @@ def test_banner_only_shows_url_and_oauth_server(capsys):
     assert "https://x.tunnel.snodo.dev/mcp" in output
     assert "mcp-auth.snodo.dev" in output
     assert "CF-Access-Client" not in output
+
+
+def test_repeat_run_banner_keeps_cloudflare_client_urls(capsys):
+    serve_cmd._print_tunnel_urls({"hostname": "x.tunnel.snodo.dev"})
+    output = capsys.readouterr().out
+    assert "Connect your MCP client:" in output
+    assert "OAuth: https://x.tunnel.snodo.dev/mcp" in output
+    assert "OAuth auth server: https://mcp-auth.snodo.dev" in output
 
 
 def test_help_names_values_and_any_semantics():
