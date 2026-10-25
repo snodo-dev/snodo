@@ -81,6 +81,15 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
         "created_at": config.get("created_at", ""),
         "transport": _tunnel_transport(config.get("transport")),
     }
+    # These are ws provisioning details. Keep them optional so older and
+    # Cloudflare tunnel configurations retain their existing shape.
+    for key in ("org_id", "public_hostname", "last_printed_public_hostname"):
+        if key in config:
+            to_save[key] = config[key]
+    if "public_hostname" not in config:
+        existing = _load_tunnel_config(project_root)
+        if "public_hostname" in existing:
+            to_save["public_hostname"] = existing["public_hostname"]
     if config.get("machine_id") is not None:
         to_save["machine_id"] = config["machine_id"]
     if config.get("port") is not None:

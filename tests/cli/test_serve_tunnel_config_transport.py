@@ -63,3 +63,45 @@ def test_ws_auth_validation_allows_oauth_and_rejects_service_token():
     assert serve_tunnel_config._validate_tunnel_auth("ws", ["oauth"]) == ["oauth"]
     with pytest.raises(ValueError, match="service-token.*not supported over ws yet"):
         serve_tunnel_config._validate_tunnel_auth("ws", ["service-token"])
+
+
+def test_ws_public_tunnel_metadata_round_trips(tmp_path):
+    config = {
+        "transport": "ws", "hostname": "private.snodo.dev",
+        "org_id": "org-123", "public_hostname": "random-pub.snodo.dev",
+        "last_printed_public_hostname": "previous-pub.snodo.dev",
+    }
+
+    serve_tunnel_config._save_tunnel_config(str(tmp_path), config)
+
+    loaded = serve_tunnel_config._load_tunnel_config(str(tmp_path))
+    assert {key: loaded[key] for key in (
+        "org_id", "public_hostname", "last_printed_public_hostname",
+    )} == {key: config[key] for key in (
+        "org_id", "public_hostname", "last_printed_public_hostname",
+    )}
+
+
+def test_save_without_public_metadata_does_not_invent_it(tmp_path):
+    serve_tunnel_config._save_tunnel_config(str(tmp_path), {
+        "transport": "cloudflare", "hostname": "cf.snodo.dev",
+    })
+
+    loaded = serve_tunnel_config._load_tunnel_config(str(tmp_path))
+    assert not {"org_id", "public_hostname", "last_printed_public_hostname"} & loaded.keys()
+
+
+def test_save_keeps_existing_public_alias_unless_explicitly_cleared(tmp_path):
+    serve_tunnel_config._save_tunnel_config(str(tmp_path), {
+        "transport": "ws", "hostname": "private.snodo.dev",
+        "public_hostname": "random-pub.snodo.dev",
+    })
+    serve_tunnel_config._save_tunnel_config(str(tmp_path), {
+        "transport": "ws", "hostname": "private.snodo.dev",
+    })
+    assert serve_tunnel_config._load_tunnel_config(str(tmp_path))["public_hostname"] == "random-pub.snodo.dev"
+
+    serve_tunnel_config._save_tunnel_config(str(tmp_path), {
+        "transport": "ws", "hostname": "private.snodo.dev", "public_hostname": None,
+    })
+    assert serve_tunnel_config._load_tunnel_config(str(tmp_path))["public_hostname"] is None
