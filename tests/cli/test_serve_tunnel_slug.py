@@ -193,3 +193,18 @@ class TestHostnameRegexShape:
     ])
     def test_regex_keeps_existing_cloudflare_shapes(self, hostname):
         assert serve_cmd._TUNNEL_HOSTNAME_RE.fullmatch(hostname)
+
+
+def test_regex_recognises_and_extracts_public_hostname():
+    hostname = "random-pub.snodo.dev"
+    assert serve_cmd._TUNNEL_HOSTNAME_RE.fullmatch(hostname)
+    assert serve_cmd._extract_existing_hostname(f"conflict: {hostname}") == hostname
+
+
+@pytest.mark.parametrize("hostname", [
+    "nested.random-pub.snodo.dev",
+    "random-pub.other.dev",
+    "random-public.snodo.dev",
+])
+def test_regex_rejects_public_hostname_lookalikes(hostname):
+    assert not serve_cmd._TUNNEL_HOSTNAME_RE.fullmatch(hostname)

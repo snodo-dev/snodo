@@ -34,3 +34,17 @@ def test_tunnel_transport_security_settings() -> None:
         "https://example.tunnel.snodo.dev",
     ]
     assert settings.enable_dns_rebinding_protection is True
+
+
+def test_two_tunnel_hostnames_are_allowed() -> None:
+    settings = build_transport_security_settings(8080, "private.snodo.dev", "random-pub.snodo.dev")
+
+    assert settings.allowed_hosts == [
+        "localhost:8080", "127.0.0.1:8080", "[::1]:8080",
+        "private.snodo.dev", "private.snodo.dev:8080",
+        "random-pub.snodo.dev", "random-pub.snodo.dev:8080",
+    ]
+    assert settings.allowed_origins == [
+        "http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080",
+        "https://private.snodo.dev", "https://random-pub.snodo.dev",
+    ]

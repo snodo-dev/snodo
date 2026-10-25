@@ -11,7 +11,8 @@ from mcp.server.transport_security import TransportSecuritySettings
 _TUNNEL_HOSTNAME_RE = re.compile(
     r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.tunnel|"
     r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-tunnel|"
-    r"[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?-ws)\.snodo\.dev\b"
+    r"[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?-ws|"
+    r"[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?-pub)\.snodo\.dev\b"
 )
 
 
@@ -54,7 +55,7 @@ def is_loopback_host(host: str) -> bool:
 
 
 def build_transport_security_settings(
-    port: int, tunnel_hostname: str | None
+    port: int, tunnel_hostname: str | None, public_hostname: str | None = None
 ) -> TransportSecuritySettings:
     """Build HTTP Host protection settings for the bind and optional tunnel."""
     allowed_hosts = [f"localhost:{port}", f"127.0.0.1:{port}", f"[::1]:{port}"]
@@ -63,9 +64,10 @@ def build_transport_security_settings(
         f"http://127.0.0.1:{port}",
         f"http://[::1]:{port}",
     ]
-    if tunnel_hostname:
-        allowed_hosts.extend((tunnel_hostname, f"{tunnel_hostname}:{port}"))
-        allowed_origins.append(f"https://{tunnel_hostname}")
+    for hostname in (tunnel_hostname, public_hostname):
+        if hostname:
+            allowed_hosts.extend((hostname, f"{hostname}:{port}"))
+            allowed_origins.append(f"https://{hostname}")
     return TransportSecuritySettings(
         allowed_hosts=allowed_hosts,
         allowed_origins=allowed_origins,
