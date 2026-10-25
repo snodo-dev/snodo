@@ -59,8 +59,15 @@ def websocket_url(config: dict, machine: str) -> str:
 
 
 def _endpoints(entries: list[dict]) -> list[dict[str, str]]:
-    return [{"hostname": row["hostname"], "auth": ["oauth"]} for row in entries
-            if row.get("transport", "cloudflare") == "ws" and row.get("hostname") and row.get("port")]
+    endpoints = []
+    for row in entries:
+        if row.get("transport", "cloudflare") != "ws" or not row.get("hostname") or not row.get("port"):
+            continue
+        endpoints.append({"hostname": row["hostname"], "auth": ["oauth"]})
+        public_hostname = row.get("public_hostname")
+        if public_hostname:
+            endpoints.append({"hostname": public_hostname, "auth": ["oauth"]})
+    return endpoints
 
 
 class CloudRelay:

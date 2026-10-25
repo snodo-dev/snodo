@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from snodo.infrastructure.cloud_relay import CloudRelay
+from snodo.infrastructure.cloud_relay import CloudRelay, _endpoints
 
 
 class _Socket:
@@ -157,4 +157,57 @@ def test_raising_notify_does_not_break_connection_loop():
         await relay._connection()
         assert calls == ["Connected to snodo cloud.", "Connection to snodo cloud was lost. Retrying."]
 
+    asyncio.run(run())
+
+
+def test_hello_endpoints_include_public_alias_only_for_ws_entries():
+    assert _endpoints([
+        {"hostname": "private.example", "port": 80, "transport": "ws", "public_hostname": "alias-pub.snodo.dev"},
+        {"hostname": "plain.example", "port": 80, "transport": "ws"},
+        {"hostname": "cloudflare.example", "port": 80, "transport": "cloudflare", "public_hostname": "ignored.example"},
+    ]) == [
+        {"hostname": "private.example", "auth": ["oauth"]},
+        {"hostname": "alias-pub.snodo.dev", "auth": ["oauth"]},
+        {"hostname": "plain.example", "auth": ["oauth"]},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("initial_alias", "next_alias"),
+    [
+        (None, "first-pub.snodo.dev"),
+        ("first-pub.snodo.dev", "changed-pub.snodo.dev"),
+    ],
+)
+def test_hello_is_resent_when_public_alias_changes(initial_alias, next_alias):
+    async def run():
+        socket = _Socket()
+        entry = {"hostname": "private.example", "port": 80, "transport": "ws"}
+        calls = 0
+
+        def registry():
+            nonlocal calls
+            calls += 1
+            alias = initial_alias if calls == 1 else next_alias
+            return [dict(entry, public_hostname=alias)] if alias else [entry]
+
+        relay = CloudRelay(
+            {}, machine="machine", lease_fetch=lambda *_args, **_kwargs: object(),
+            socket_connect=lambda *_args, **_kwargs: _connected_socket(socket), registry=registry,
+        )
+        relay._fetch_lease = _lease
+        await relay._connection()
+        import json
+        frames = [json.loads(message) for message in socket.sent]
+        expected_initial = [{"hostname": "private.example", "auth": ["oauth"]}]
+        expected_updated = [
+            {"hostname": "private.example", "auth": ["oauth"]},
+            {"hostname": next_alias, "auth": ["oauth"]},
+        ]
+        if initial_alias:
+            expected_initial.append({"hostname": initial_alias, "auth": ["oauth"]})
+        assert [frame["endpoints"] for frame in frames if frame["t"] == "hello"] == [
+            expected_initial,
+            expected_updated,
+        ]
     asyncio.run(run())
