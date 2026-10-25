@@ -1130,6 +1130,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud", "org_id") if key in provisioned},
             **({"public_hostname": provisioned["public_hostname"]}
                if public_url_requested else {}),
+            **({"last_printed_public_hostname": tunnel_config["last_printed_public_hostname"]}
+               if "last_printed_public_hostname" in tunnel_config else {}),
         }
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = not had_saved_tunnel
