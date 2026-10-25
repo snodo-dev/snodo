@@ -1,0 +1,20 @@
+intent: 'snodo serve over HTTP, and every managed tunnel, starts again on mcp 2.x:
+  host, port and transport security are handed to the server the way mcp 2.x expects,
+  and a test starts a real HTTP server so this cannot regress unseen. Fixes #1027.'
+name: serve-http-mcp-2x-1027
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_transport_security_is_a_value_not_a_mutation
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_serve_hands_host_port_and_protection_to_run
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_a_real_http_server_starts_and_refuses_foreign_hosts
+  - 3.2_the_tunnel_wrapper_keeps_host_and_protection
