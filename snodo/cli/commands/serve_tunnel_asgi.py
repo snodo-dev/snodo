@@ -1,5 +1,7 @@
 """Path routing and Cloudflare Access assertion protection for tunnel MCP."""
 
+from snodo.infrastructure.oauth_verifier import OrganizationMismatchError
+
 
 class TunnelMCPPaths:
     """Serve OAuth MCP and Access-protected MCP paths through one ASGI app."""
@@ -45,16 +47,12 @@ class TunnelMCPPaths:
             return await self.app(scope, receive, send)
         if not self.oauth_enabled and (path == "/mcp" or path.startswith("/mcp/")):
             return await _refuse(send)
-        if path == "/mcp" or path.startswith("/mcp/"):
-            return await self._oauth_app(scope, receive, send)
         return await self._oauth_app(scope, receive, send)
 
     async def _oauth_app(self, scope, receive, send):
         headers = dict(scope.get("headers", []))
         authorization = headers.get(b"authorization", b"")
-        if authorization.startswith(b"Bearer "):
-            from snodo.infrastructure.oauth_verifier import OrganizationMismatchError
-
+        if authorization.startswith(b"Bearer ") and callable(getattr(self.verifier, "verify_token", None)):
             try:
                 await self.verifier.verify_token(authorization[7:].decode("latin-1"))
             except OrganizationMismatchError:
