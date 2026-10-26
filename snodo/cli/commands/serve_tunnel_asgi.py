@@ -21,7 +21,8 @@ class TunnelMCPPaths:
         if self.hosts is not None:
             headers = dict(scope.get("headers", []))
             host = headers.get(b"host", b"").decode("latin-1").lower()
-            if host not in self.hosts:
+            loopback_host = host.startswith(("localhost:", "127.0.0.1:", "[::1]:"))
+            if host not in self.hosts and not loopback_host:
                 await _bad_host(send)
                 return
             effective_host = (
