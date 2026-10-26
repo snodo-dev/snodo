@@ -6,6 +6,7 @@
   "tasks": {
     "1.1_discovery_documents_are_answered_per_host_in_both_forms": "completed",
     "1.2_changelog_entry_for_the_alias_discovery_fix": "completed",
-    "2.1_unauthorized_challenge_names_the_request_host": "completed"
+    "2.1_unauthorized_challenge_names_the_request_host": "completed",
+    "3.1_composed_test_over_both_hosts_with_the_real_serve_wiring": "completed"
   }
 }
