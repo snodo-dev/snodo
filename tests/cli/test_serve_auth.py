@@ -370,7 +370,7 @@ def test_ws_public_hostname_is_allowed_and_registered(monkeypatch):
     monkeypatch.setattr("snodo.mcp.transport.build_fastmcp_server", lambda *_a, **_k: mcp)
     monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
     monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {
-        "hostname": "private.snodo.dev", "transport": "ws",
+        "hostname": "private-ws.snodo.dev", "transport": "ws", "org_id": "org-1",
         "public_hostname": "public-pub.snodo.dev",
     })
     monkeypatch.setattr(serve_cmd, "_choose_serve_port", lambda _: 8080)
@@ -411,7 +411,7 @@ def test_ws_without_public_hostname_keeps_private_host_allowlist(monkeypatch):
     monkeypatch.setattr("snodo.mcp.transport.build_fastmcp_server", lambda *_a, **_k: mcp)
     monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
     monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {
-        "hostname": "private.snodo.dev", "transport": "ws",
+        "hostname": "private-ws.snodo.dev", "transport": "ws",
     })
     monkeypatch.setattr(serve_cmd, "_choose_serve_port", lambda _: 8080)
     monkeypatch.setattr("snodo.infrastructure.cloud_liveness.install", lambda: None)
@@ -432,10 +432,10 @@ def test_ws_without_public_hostname_keeps_private_host_allowlist(monkeypatch):
     security = mcp.run.call_args.kwargs["transport_security"]
     assert security.allowed_hosts == [
         "localhost:8080", "127.0.0.1:8080", "[::1]:8080",
-        "private.snodo.dev", "private.snodo.dev:8080",
+        "private-ws.snodo.dev", "private-ws.snodo.dev:8080",
     ]
     assert security.allowed_origins == [
         "http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080",
-        "https://private.snodo.dev",
+        "https://private-ws.snodo.dev",
     ]
     assert recorded["public_hostname"] is None

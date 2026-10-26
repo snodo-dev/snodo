@@ -253,6 +253,25 @@ def _run_server(args, protocol) -> int:
     # Detect tunnel mode and wire the selected bearer verifier if active.
     tunnel_config = _load_tunnel_config(project_root)
     tunnel_hostname = tunnel_config.get("hostname")
+    ws_tunnel = _tunnel_transport(tunnel_config.get("transport")) == "ws"
+    ws_public_hostname = tunnel_config.get("public_hostname") if ws_tunnel else None
+    ws_org_id = tunnel_config.get("org_id") if ws_tunnel else None
+    ws_hosts = []
+    if ws_tunnel:
+        for configured_host in (tunnel_hostname, ws_public_hostname):
+            if configured_host and _TUNNEL_HOSTNAME_RE.fullmatch(configured_host):
+                ws_hosts.append(configured_host)
+            elif configured_host:
+                print(
+                    "Ignoring invalid tunnel hostname; run `snodo serve --tunnel --public-url` to refresh the config.",
+                    file=sys.stderr,
+                )
+        if ws_public_hostname and not ws_org_id:
+            print(
+                "Ignoring public hostname without an organization id; run `snodo serve --tunnel --public-url` to refresh the config.",
+                file=sys.stderr,
+            )
+            ws_hosts = [host for host in ws_hosts if host != ws_public_hostname]
     extra_kwargs = {}
     tunnel_auth = (
         ["oauth"] if tunnel_hostname and _tunnel_transport(tunnel_config.get("transport")) == "ws"
@@ -271,10 +290,20 @@ def _run_server(args, protocol) -> int:
             print("  Error: OAuth 2.1 required for managed tunnels; could not load JWKS", file=sys.stderr)
             return 1
         resource = f"https://{tunnel_hostname}/mcp"
-        extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks, resource=resource)
+        if ws_tunnel:
+            audiences = {host: f"https://{host}/mcp" for host in ws_hosts}
+            extra_kwargs["token_verifier"] = JwksTokenVerifier(
+                jwks, audiences=audiences, expected_org_id=ws_org_id
+            )
+        else:
+            extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks, resource=resource)
+        auth_kwargs = {}
+        if ws_tunnel:
+            auth_kwargs["validate_token_resource"] = False
         extra_kwargs["auth_settings"] = AuthSettings(
             issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
             resource_server_url=AnyHttpUrl(resource),
+            **auth_kwargs,
         )
         print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
     if tunnel_hostname and "service-token" in tunnel_auth:
@@ -298,12 +327,6 @@ def _run_server(args, protocol) -> int:
     from snodo.cli.commands.serve_watch import cloud_live_view_url
     extra_kwargs["cloud_live_view_url"] = cloud_live_view_url()
     mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
-    if access_verifier is not None:
-        from snodo.cli.commands.serve_tunnel_asgi import install_tunnel_mcp_paths
-        install_tunnel_mcp_paths(
-            mcp, access_verifier, oauth_enabled=oauth_enabled,
-            access_path=tunnel_config.get("access_path", "mcp-st"),
-        )
     tools = protocol_server.get_tools()
     mode_label = protocol_server._active_mode()
 
@@ -340,16 +363,29 @@ def _run_server(args, protocol) -> int:
     else:
         port = explicit_port
 
+    if access_verifier is not None or (ws_tunnel and oauth_enabled):
+        from snodo.cli.commands.serve_tunnel_asgi import install_tunnel_mcp_paths
+        install_tunnel_mcp_paths(
+            mcp, access_verifier or extra_kwargs.get("token_verifier"), oauth_enabled=oauth_enabled,
+            access_path=tunnel_config.get("access_path", "mcp-st"),
+            hosts=({
+                *ws_hosts,
+                f"localhost:{port}", f"127.0.0.1:{port}", f"[::1]:{port}",
+            } if ws_tunnel else None),
+            private_host=tunnel_hostname if ws_tunnel else None,
+        )
+
     # Trust only local tunnel proxies, while FastMCP validates request Host values.
     public_hostname = None
     if transport != "stdio":
         os.environ["FORWARDED_ALLOW_IPS"] = "127.0.0.1,::1" if tunnel_hostname else ""
-        public_hostname = (
-            tunnel_config.get("public_hostname")
-            if _tunnel_transport(tunnel_config.get("transport")) == "ws"
-            else None
+        public_hostname = ws_public_hostname if ws_public_hostname in ws_hosts else None
+        security_tunnel_hostname = (
+            tunnel_hostname if not ws_tunnel or tunnel_hostname in ws_hosts else None
         )
-        transport_security = build_transport_security_settings(port, tunnel_hostname, public_hostname)
+        transport_security = build_transport_security_settings(
+            port, security_tunnel_hostname, public_hostname
+        )
 
     print(
         f"Snodo MCP [{protocol.protocol_id}] mode={mode_label} "

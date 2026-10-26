@@ -6,12 +6,13 @@ from snodo.infrastructure.oauth_verifier import OrganizationMismatchError
 class TunnelMCPPaths:
     """Serve OAuth MCP and Access-protected MCP paths through one ASGI app."""
 
-    def __init__(self, app, verifier, *, oauth_enabled: bool, access_path: str = "mcp-st", hosts=None):
+    def __init__(self, app, verifier, *, oauth_enabled: bool, access_path: str = "mcp-st", hosts=None, private_host=None):
         self.app = app
         self.verifier = verifier
         self.oauth_enabled = oauth_enabled
         self.access_path = "/" + access_path.strip("/")
         self.hosts = {host.lower() for host in hosts} if hosts is not None else None
+        self.private_host = private_host.lower() if private_host else None
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
@@ -23,11 +24,16 @@ class TunnelMCPPaths:
             if host not in self.hosts:
                 await _bad_host(send)
                 return
+            effective_host = (
+                self.private_host
+                if self.private_host and host.startswith(("localhost:", "127.0.0.1:", "[::1]:"))
+                else host
+            )
             if path == "/.well-known/oauth-protected-resource":
-                return await _protected_resource(send, host)
+                return await _protected_resource(send, effective_host)
             request_host = getattr(self.verifier, "request_host", None)
             if request_host is not None:
-                with request_host(host):
+                with request_host(effective_host):
                     return await self._route(scope, receive, send, path)
         return await self._route(scope, receive, send, path)
 
@@ -92,7 +98,7 @@ async def _refuse(send):
     await send({"type": "http.response.body", "body": b"Unauthorized", "more_body": False})
 
 
-def install_tunnel_mcp_paths(mcp, verifier, *, oauth_enabled: bool, access_path: str = "mcp-st", hosts=None):
+def install_tunnel_mcp_paths(mcp, verifier, *, oauth_enabled: bool, access_path: str = "mcp-st", hosts=None, private_host=None):
     """Wrap the MCP HTTP app factories with tunnel path routing."""
     for app_factory_name in ("streamable_http_app", "sse_app"):
         app_factory = getattr(mcp, app_factory_name)
@@ -101,6 +107,7 @@ def install_tunnel_mcp_paths(mcp, verifier, *, oauth_enabled: bool, access_path:
             return TunnelMCPPaths(
                 _factory(*factory_args, **factory_kwargs), verifier,
                 oauth_enabled=oauth_enabled, access_path=access_path, hosts=hosts,
+                private_host=private_host,
             )
 
         setattr(mcp, app_factory_name, tunnel_app_factory)
