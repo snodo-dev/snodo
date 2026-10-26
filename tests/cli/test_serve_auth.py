@@ -394,3 +394,48 @@ def test_ws_public_hostname_is_allowed_and_registered(monkeypatch):
     assert "public-pub.snodo.dev:8080" in security.allowed_hosts
     assert "https://public-pub.snodo.dev" in security.allowed_origins
     assert recorded["public_hostname"] == "public-pub.snodo.dev"
+
+
+def test_ws_without_public_hostname_keeps_private_host_allowlist(monkeypatch):
+    from types import SimpleNamespace
+
+    from mcp.server.mcpserver import MCPServer
+
+    server = MagicMock()
+    server.get_tools.return_value = []
+    mcp = MCPServer("test")
+    mcp.run = MagicMock()
+    protocol = SimpleNamespace(protocol_id="test", get_mode=lambda _: True)
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "")
+    monkeypatch.setattr("snodo.mcp.server.ProtocolMCPServer", lambda **_: server)
+    monkeypatch.setattr("snodo.mcp.transport.build_fastmcp_server", lambda *_a, **_k: mcp)
+    monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
+    monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {
+        "hostname": "private.snodo.dev", "transport": "ws",
+    })
+    monkeypatch.setattr(serve_cmd, "_choose_serve_port", lambda _: 8080)
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.install", lambda: None)
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.uninstall", lambda: None)
+    recorded = {}
+
+    def record(*args, **kwargs):
+        recorded.update(kwargs)
+        return {}
+
+    monkeypatch.setattr("snodo.infrastructure.serve_registry.record_serve_process", record)
+    monkeypatch.setattr("snodo.infrastructure.serve_registry.remove_serve_process", lambda _: None)
+
+    serve_cmd._run_server(SimpleNamespace(
+        protocol="protocol.yml", mode=None, transport="streamable-http", port=8080,
+    ), protocol)
+
+    security = mcp.run.call_args.kwargs["transport_security"]
+    assert security.allowed_hosts == [
+        "localhost:8080", "127.0.0.1:8080", "[::1]:8080",
+        "private.snodo.dev", "private.snodo.dev:8080",
+    ]
+    assert security.allowed_origins == [
+        "http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080",
+        "https://private.snodo.dev",
+    ]
+    assert recorded["public_hostname"] is None

@@ -341,6 +341,7 @@ def _run_server(args, protocol) -> int:
         port = explicit_port
 
     # Trust only local tunnel proxies, while FastMCP validates request Host values.
+    public_hostname = None
     if transport != "stdio":
         os.environ["FORWARDED_ALLOW_IPS"] = "127.0.0.1,::1" if tunnel_hostname else ""
         public_hostname = (
