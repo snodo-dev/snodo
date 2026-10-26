@@ -105,6 +105,62 @@ def test_host_set_serves_host_specific_protected_resource():
     assert response.status_code == 421
 
 
+def test_host_set_serves_both_protected_resource_forms_with_issuer():
+    from mcp.server.auth.settings import AuthSettings
+    from pydantic import AnyHttpUrl
+
+    private_host = TUNNEL_HOST
+    public_host = "demo-pub.snodo.dev"
+    issuer = "https://mcp-auth.snodo.dev"
+    mcp = MCPServer(
+        "tunnel-host-specific-discovery-forms",
+        token_verifier=_AccessVerifier(),
+        auth=AuthSettings(
+            issuer_url=AnyHttpUrl(issuer),
+            resource_server_url=AnyHttpUrl(f"https://{private_host}/mcp"),
+        ),
+    )
+    install_tunnel_mcp_paths(
+        mcp, _AccessVerifier(), oauth_enabled=True, hosts={private_host, public_host},
+        private_host=private_host, issuer_url=AnyHttpUrl(issuer),
+    )
+    app = mcp.streamable_http_app(
+        stateless_http=True,
+        transport_security=build_transport_security_settings(PORT, private_host, public_host),
+    )
+    client = TestClient(app)
+
+    for host in (private_host, public_host):
+        for path in (
+            "/.well-known/oauth-protected-resource",
+            "/.well-known/oauth-protected-resource/mcp",
+        ):
+            response = client.get(path, headers={"host": host})
+            assert response.status_code == 200
+            assert response.json()["resource"] == f"https://{host}/mcp"
+            assert response.json()["authorization_servers"] == [f"{issuer}/"]
+            assert response.headers["cache-control"] == "no-store"
+
+    response = client.get(
+        "/.well-known/oauth-protected-resource/mcp", headers={"host": FOREIGN_HOST}
+    )
+    assert response.status_code == 421
+
+    response = client.get(
+        "/.well-known/oauth-protected-resource/mcp",
+        headers={"host": f"localhost:{PORT}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["resource"] == f"https://{private_host}/mcp"
+
+
+def test_protected_resource_without_hosts_setting_is_unchanged():
+    mcp = _wrapped_server()
+    app = mcp.streamable_http_app(stateless_http=True)
+    response = TestClient(app).get("/.well-known/oauth-protected-resource/mcp")
+    assert response.status_code != 200
+
+
 def test_host_set_scopes_real_oauth_verifier_to_request_host():
     from unittest.mock import MagicMock
 

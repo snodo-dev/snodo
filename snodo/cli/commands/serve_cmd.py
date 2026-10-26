@@ -316,6 +316,7 @@ def _run_server(args, protocol) -> int:
                 f"localhost:{port}", f"127.0.0.1:{port}", f"[::1]:{port}",
             } if ws_tunnel else None),
             private_host=tunnel_hostname if ws_tunnel else None,
+            issuer_url=getattr(extra_kwargs.get("auth_settings"), "issuer_url", None),
         )
 
     # Trust only local tunnel proxies, while FastMCP validates request Host values.
