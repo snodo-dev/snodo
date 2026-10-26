@@ -254,7 +254,7 @@ show the plan's job ID. A hand-run task has no job ID.
 
 | Command | Arguments and options |
 |---|---|
-| `snodo serve` | `--protocol`, `--mode`, `--transport`, `--port`, `--tunnel`, `--tunnel-transport`, `--verbose`, `--auth`, `--delete`, `--hostname`, `--mcp-install`, `--mcp-uninstall`, `--mcp-uninstall-all`, `--mcp-list`, `--purge`, `--orphans`, `--yes`/`-y`, deprecated `--install`, `--uninstall`, `--uninstall-all`, `--project-name` |
+| `snodo serve` | `--protocol`, `--mode`, `--transport`, `--port`, `--tunnel`, `--tunnel-transport`, `--public-url`, `--verbose`, `--auth`, `--delete`, `--hostname`, `--mcp-install`, `--mcp-uninstall`, `--mcp-uninstall-all`, `--mcp-list`, `--purge`, `--orphans`, `--yes`/`-y`, deprecated `--install`, `--uninstall`, `--uninstall-all`, `--project-name` |
 
 The legacy `snodo serve --install`, `--uninstall`, and `--uninstall-all`
 options are deprecated in v0.18.0; use `--mcp-install`, `--mcp-uninstall`,
@@ -269,7 +269,8 @@ transport: HTTP transports require `sse` or `streamable-http`.
 `cloudflare` (the default) uses `cloudflared`; `ws` uses an outbound WebSocket,
 currently supports OAuth only, and needs no `cloudflared`. These options are
 independent: `--transport` is the local MCP transport, not the tunnel transport.
-`--tunnel` provisions and starts a managed tunnel. OAuth uses
+`--public-url` requests an additional public alias for a WebSocket tunnel; it applies only with
+`--tunnel --tunnel-transport ws`. `--tunnel` provisions and starts a managed tunnel. OAuth uses
 `https://mcp-auth.snodo.dev`; service-token authentication uses Cloudflare Access
 at the saved path, normally `/mcp-st`. `--delete` must
 be used with `--tunnel`.
