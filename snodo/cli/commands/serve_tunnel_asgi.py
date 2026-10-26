@@ -47,7 +47,7 @@ class TunnelMCPPaths:
             return await _refuse(send)
         if path == "/mcp" or path.startswith("/mcp/"):
             return await self._oauth_app(scope, receive, send)
-        return await self.app(scope, receive, send)
+        return await self._oauth_app(scope, receive, send)
 
     async def _oauth_app(self, scope, receive, send):
         headers = dict(scope.get("headers", []))
@@ -63,7 +63,20 @@ class TunnelMCPPaths:
                         message["status"] = 403
             await send(message)
 
-        return await self.app(scope, receive, checked_send)
+        try:
+            return await self.app(scope, receive, checked_send)
+        except Exception as error:
+            if type(error).__name__ != "OrganizationMismatchError":
+                raise
+            await _forbidden(send)
+
+
+async def _forbidden(send):
+    await send({"type": "http.response.start", "status": 403, "headers": [
+        (b"content-type", b"text/plain; charset=utf-8"),
+        (b"cache-control", b"no-store"),
+    ]})
+    await send({"type": "http.response.body", "body": b"Forbidden", "more_body": False})
 
 
 async def _bad_host(send):
