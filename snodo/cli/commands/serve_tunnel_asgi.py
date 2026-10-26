@@ -52,23 +52,14 @@ class TunnelMCPPaths:
     async def _oauth_app(self, scope, receive, send):
         headers = dict(scope.get("headers", []))
         authorization = headers.get(b"authorization", b"")
+        if authorization.startswith(b"Bearer "):
+            from snodo.infrastructure.oauth_verifier import OrganizationMismatchError
 
-        async def checked_send(message):
-            if message.get("type") == "http.response.start" and message.get("status") == 401 and authorization.startswith(b"Bearer "):
-                try:
-                    await self.verifier.verify_token(authorization[7:].decode("latin-1"))
-                except Exception as error:
-                    if type(error).__name__ == "OrganizationMismatchError":
-                        message = dict(message)
-                        message["status"] = 403
-            await send(message)
-
-        try:
-            return await self.app(scope, receive, checked_send)
-        except Exception as error:
-            if type(error).__name__ != "OrganizationMismatchError":
-                raise
-            await _forbidden(send)
+            try:
+                await self.verifier.verify_token(authorization[7:].decode("latin-1"))
+            except OrganizationMismatchError:
+                return await _forbidden(send)
+        return await self.app(scope, receive, send)
 
 
 async def _forbidden(send):

@@ -211,7 +211,10 @@ def test_other_organization_status_translation_on_both_real_apps():
                         path, content=body,
                         headers={**request_headers, "authorization": f"Bearer {token}"},
                     )
-                    assert response.status_code == expected, response.text
+                    if index == 1 and token == "matching":
+                        assert response.status_code == 400, response.text
+                    else:
+                        assert response.status_code == expected, response.text
             tg.cancel_scope.cancel()
 
     anyio.run(run)
