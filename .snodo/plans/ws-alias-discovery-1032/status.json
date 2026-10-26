@@ -1,0 +1,10 @@
+{
+  "integration": {
+    "branch": "plan/ws-alias-discovery-1032/integration",
+    "base_sha": "0969c1a6a4e9840f9384a5778fb27dded9595d01"
+  },
+  "tasks": {
+    "1.1_discovery_documents_are_answered_per_host_in_both_forms": "completed",
+    "1.2_changelog_entry_for_the_alias_discovery_fix": "completed"
+  }
+}

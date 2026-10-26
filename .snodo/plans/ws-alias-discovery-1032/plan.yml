@@ -1,0 +1,19 @@
+intent: A ws serve with --public-url names the host the caller used in the sign-in challenge and in both
+  well-known discovery documents, so MCP connectors accept the public alias (#1032)
+name: ws-alias-discovery-1032
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_discovery_documents_are_answered_per_host_in_both_forms
+  - 1.2_changelog_entry_for_the_alias_discovery_fix
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_unauthorized_challenge_names_the_request_host
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_composed_test_over_both_hosts_with_the_real_serve_wiring
