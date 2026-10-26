@@ -838,6 +838,51 @@ class TestReconciliation:
         assert "different process" in result["error"]
         assert "100.0" in result["error"]
 
+    @pytest.mark.parametrize("actual_start", [101.0, 99.0])
+    def test_reconcile_start_time_within_tolerance_stays_running(self, manager, actual_start):
+        job_dir = manager.jobs_dir / "j_rec_tolerated"
+        job_dir.mkdir()
+        state = {
+            "status": "running", "pid": 12345,
+            "process_host": socket.gethostname(),
+            "process_started_at": 100.0,
+        }
+
+        with (
+            patch("os.kill"),
+            patch("psutil.Process") as process,
+        ):
+            process.return_value.create_time.return_value = actual_start
+            result = manager._reconcile_state(job_dir, state)
+
+        assert result["status"] == "running"
+
+    def test_reconcile_start_time_just_over_tolerance_fails(self, manager):
+        from snodo.infrastructure.process_identity import (
+            PROCESS_IDENTITY_START_TIME_TOLERANCE_SECONDS,
+        )
+
+        job_dir = manager.jobs_dir / "j_rec_over_tolerance"
+        job_dir.mkdir()
+        state = {
+            "status": "running", "pid": 12345,
+            "process_host": socket.gethostname(),
+            "process_started_at": 100.0,
+        }
+        manager._save_state(job_dir, state)
+
+        with (
+            patch("os.kill"),
+            patch("psutil.Process") as process,
+        ):
+            process.return_value.create_time.return_value = (
+                100.0 + PROCESS_IDENTITY_START_TIME_TOLERANCE_SECONDS + 0.01
+            )
+            result = manager._reconcile_state(job_dir, state)
+
+        assert result["status"] == "failed"
+        assert "different process" in result["error"]
+
     def test_reconcile_foreign_host_fails_without_checking_local_pid(self, manager):
         job_dir = manager.jobs_dir / "j_rec_foreign"
         job_dir.mkdir()
