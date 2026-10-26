@@ -274,3 +274,48 @@ def test_other_organization_status_translation_on_both_real_apps():
             tg.cancel_scope.cancel()
 
     anyio.run(run)
+
+
+def test_host_set_rewrites_real_oauth_401_challenge_per_request_host():
+    from mcp.server.auth.settings import AuthSettings
+    from pydantic import AnyHttpUrl
+    from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
+    from unittest.mock import MagicMock
+
+    private_host = TUNNEL_HOST
+    public_host = "demo-pub.snodo.dev"
+    jwks = MagicMock()
+    jwks.verify.return_value = None
+    verifier = JwksTokenVerifier(jwks)
+    mcp = MCPServer(
+        "tunnel-host-specific-challenge",
+        token_verifier=verifier,
+        auth=AuthSettings(
+            issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
+            resource_server_url=AnyHttpUrl(f"https://{private_host}/mcp"),
+            validate_token_resource=False,
+        ),
+    )
+    install_tunnel_mcp_paths(
+        mcp, verifier, oauth_enabled=True, hosts={private_host, public_host},
+        private_host=private_host,
+    )
+    app = mcp.streamable_http_app(
+        stateless_http=True,
+        transport_security=build_transport_security_settings(PORT, private_host, public_host),
+    )
+
+    async def run():
+        async with anyio.create_task_group() as tg:
+            mcp.session_manager._task_group = tg
+            client = TestClient(app)
+            for host in (private_host, public_host):
+                response = client.post(
+                    "/mcp", content=b'{"jsonrpc":"2.0","method":"ping","id":1}',
+                    headers={**JSON_HEADERS, "host": host},
+                )
+                assert response.status_code == 401
+                assert f'resource_metadata="https://{host}/.well-known/oauth-protected-resource/mcp"' in response.headers["www-authenticate"]
+            tg.cancel_scope.cancel()
+
+    anyio.run(run)
