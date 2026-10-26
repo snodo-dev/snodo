@@ -1,0 +1,19 @@
+intent: A job that is still running is never reported failed because its recorded process start time reads
+  a second off; a reused process id is still caught, with one shared comparison (#1033)
+name: job-identity-tolerance-1033
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_shared_identity_helper_tolerates_a_few_seconds
+  - 1.2_changelog_entry_for_the_job_identity_fix
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_job_reconcile_uses_the_shared_identity_comparison
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_job_reconcile_keeps_a_live_job_running_end_to_end

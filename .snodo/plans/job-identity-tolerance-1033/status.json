@@ -1,0 +1,10 @@
+{
+  "integration": {
+    "branch": "plan/job-identity-tolerance-1033/integration",
+    "base_sha": "af483a16166a2f4146512d9bd9bd787dfb9cf3a2"
+  },
+  "tasks": {
+    "1.1_shared_identity_helper_tolerates_a_few_seconds": "completed",
+    "1.2_changelog_entry_for_the_job_identity_fix": "completed"
+  }
+}
