@@ -39,10 +39,11 @@ class TunnelMCPPaths:
             request_host = getattr(self.verifier, "request_host", None)
             if request_host is not None:
                 with request_host(effective_host):
-                    return await self._route(scope, receive, send, path)
+                    return await self._route(scope, receive, send, path, effective_host)
+            return await self._route(scope, receive, send, path, effective_host)
         return await self._route(scope, receive, send, path)
 
-    async def _route(self, scope, receive, send, path):
+    async def _route(self, scope, receive, send, path, request_host=None):
         if path == self.access_path or path.startswith(self.access_path + "/"):
             headers = dict(scope.get("headers", []))
             assertion = headers.get(b"cf-access-jwt-assertion", b"")
@@ -58,9 +59,9 @@ class TunnelMCPPaths:
             return await self.app(scope, receive, send)
         if not self.oauth_enabled and (path == "/mcp" or path.startswith("/mcp/")):
             return await _refuse(send)
-        return await self._oauth_app(scope, receive, send)
+        return await self._oauth_app(scope, receive, send, request_host=request_host)
 
-    async def _oauth_app(self, scope, receive, send):
+    async def _oauth_app(self, scope, receive, send, *, request_host=None):
         headers = dict(scope.get("headers", []))
         authorization = headers.get(b"authorization", b"")
         if authorization.startswith(b"Bearer ") and callable(getattr(self.verifier, "verify_token", None)):
@@ -68,7 +69,34 @@ class TunnelMCPPaths:
                 await self.verifier.verify_token(authorization[7:].decode("latin-1"))
             except OrganizationMismatchError:
                 return await _forbidden(send)
-        return await self.app(scope, receive, send)
+        if request_host is None or self.hosts is None:
+            return await self.app(scope, receive, send)
+
+        async def rewrite_challenge(message):
+            if message.get("type") == "http.response.start" and message.get("status") == 401:
+                headers = []
+                for name, value in message.get("headers", []):
+                    if name.lower() == b"www-authenticate":
+                        value = _rewrite_resource_metadata(value, self.hosts, request_host)
+                    headers.append((name, value))
+                message = dict(message, headers=headers)
+            await send(message)
+
+        return await self.app(scope, receive, rewrite_challenge)
+
+
+def _rewrite_resource_metadata(value, known_hosts, request_host):
+    import re
+
+    pattern = re.compile(rb'(resource_metadata=["\'])https://([^/"\']+)(/\.well-known/oauth-protected-resource/mcp)(["\'])', re.IGNORECASE)
+
+    def replace(match):
+        metadata_host = match.group(2).decode("latin-1").lower()
+        if metadata_host not in known_hosts:
+            return match.group(0)
+        return match.group(1) + b"https://" + request_host.encode("latin-1") + match.group(3) + match.group(4)
+
+    return pattern.sub(replace, value)
 
 
 async def _forbidden(send):
