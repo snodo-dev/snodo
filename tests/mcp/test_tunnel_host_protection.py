@@ -165,3 +165,56 @@ def test_host_set_scopes_real_oauth_verifier_to_request_host():
             tg.cancel_scope.cancel()
 
     anyio.run(run)
+
+
+def test_other_organization_status_translation_on_both_real_apps():
+    from unittest.mock import MagicMock
+
+    from mcp.server.auth.settings import AuthSettings
+    from pydantic import AnyHttpUrl
+    from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
+
+    jwks = MagicMock()
+    jwks.verify.side_effect = lambda token, audience: (
+        {"sub": "user", "org_id": "org-2" if token == "other-org" else "org-1"}
+        if token in ("matching", "other-org") else None
+    )
+    verifier = JwksTokenVerifier(jwks, expected_org_id="org-1")
+    mcp = MCPServer(
+        "tunnel-organization-status", token_verifier=verifier,
+        auth=AuthSettings(
+            issuer_url=AnyHttpUrl("https://auth.snodo.dev"),
+            resource_server_url=AnyHttpUrl(f"https://{TUNNEL_HOST}/mcp"),
+            validate_token_resource=False,
+        ),
+    )
+    install_tunnel_mcp_paths(mcp, verifier, oauth_enabled=True)
+    security = build_transport_security_settings(PORT, TUNNEL_HOST)
+    apps = [
+        mcp.streamable_http_app(stateless_http=True, host="127.0.0.1", transport_security=security),
+        mcp.sse_app(host="127.0.0.1", transport_security=security),
+    ]
+
+    async def run():
+        async with anyio.create_task_group() as tg:
+            mcp.session_manager._task_group = tg
+            for index, app in enumerate(apps):
+                client = TestClient(app)
+                path = "/mcp" if index == 0 else "/messages/"
+                request_headers = {"host": TUNNEL_HOST, "content-type": "application/json"}
+                if index == 0:
+                    request_headers.update(JSON_HEADERS)
+                body = b'{"jsonrpc":"2.0","method":"ping","id":1}'
+                assert client.post(path, content=body, headers=request_headers).status_code == 401
+                for token, expected in (("invalid", 401), ("other-org", 403), ("matching", 200)):
+                    response = client.post(
+                        path, content=body,
+                        headers={**request_headers, "authorization": f"Bearer {token}"},
+                    )
+                    if index == 1 and token == "matching":
+                        assert response.status_code == 400, response.text
+                    else:
+                        assert response.status_code == expected, response.text
+            tg.cancel_scope.cancel()
+
+    anyio.run(run)
