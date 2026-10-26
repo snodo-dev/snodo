@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Make a ws serve with `--public-url` name the address you used in sign-in discovery and the sign-in challenge, so connectors that check it accept the alias. (Fixes #1032)
 - Document the optional public URL alias for WebSocket tunnels and its host-specific OAuth behavior. (Fixes #1031)
 - `snodo serve --tunnel --tunnel-transport ws` without `--auth` now provisions a ws tunnel instead of a Cloudflare one. (Fixes #1029)
 - Explain that WebSocket tunnel endpoints are reached through snodo cloud (Dispatch), and report when the machine is connected or waiting for another serve. (Fixes #1030)
