@@ -343,7 +343,12 @@ def _run_server(args, protocol) -> int:
     # Trust only local tunnel proxies, while FastMCP validates request Host values.
     if transport != "stdio":
         os.environ["FORWARDED_ALLOW_IPS"] = "127.0.0.1,::1" if tunnel_hostname else ""
-        transport_security = build_transport_security_settings(port, tunnel_hostname)
+        public_hostname = (
+            tunnel_config.get("public_hostname")
+            if _tunnel_transport(tunnel_config.get("transport")) == "ws"
+            else None
+        )
+        transport_security = build_transport_security_settings(port, tunnel_hostname, public_hostname)
 
     print(
         f"Snodo MCP [{protocol.protocol_id}] mode={mode_label} "
@@ -369,7 +374,8 @@ def _run_server(args, protocol) -> int:
     from snodo.infrastructure import cloud_liveness
     from snodo.infrastructure.serve_registry import record_serve_process, remove_serve_process
     registry_entry = record_serve_process(str(project_root), mode_id or "", port if transport != "stdio" else None, tunnel_hostname,
-                                         transport=_tunnel_transport(tunnel_config.get("transport")) if tunnel_hostname else "cloudflare")
+                                         transport=_tunnel_transport(tunnel_config.get("transport")) if tunnel_hostname else "cloudflare",
+                                         public_hostname=public_hostname if tunnel_hostname else None)
     cloud_liveness.install()
     try:
         if transport != "stdio":
