@@ -46,7 +46,10 @@ def test_ws_auth_wiring_composes_hosts_audiences_and_organization(monkeypatch, c
     def ping() -> str:
         return "pong"
 
-    install_tunnel_mcp_paths(mcp, verifier, oauth_enabled=True, hosts=set(hosts), private_host=private)
+    install_tunnel_mcp_paths(
+        mcp, verifier, oauth_enabled=True, hosts=set(hosts), private_host=private,
+        issuer_url=settings.issuer_url,
+    )
     app = mcp.streamable_http_app(
         stateless_http=True,
         transport_security=build_transport_security_settings(PORT, private, public),
@@ -71,9 +74,21 @@ def test_ws_auth_wiring_composes_hosts_audiences_and_organization(monkeypatch, c
             assert post("evil.example.com", private_token).status_code == 421
             assert post(f"127.0.0.1:{PORT}", private_token).status_code == 200
             for host in (PRIVATE_HOST, PUBLIC_HOST):
-                response = client.get("/.well-known/oauth-protected-resource", headers={"host": host})
-                assert response.status_code == 200
-                assert response.json()["resource"] == f"https://{host}/mcp"
+                unauthenticated = client.post(
+                    "/mcp", content=b'{"jsonrpc":"2.0","method":"ping","id":1}',
+                    headers={**JSON_HEADERS, "host": host},
+                )
+                assert unauthenticated.status_code == 401
+                assert f'resource_metadata="https://{host}/.well-known/oauth-protected-resource/mcp"' in unauthenticated.headers["www-authenticate"]
+
+                for path in (
+                    "/.well-known/oauth-protected-resource/mcp",
+                    "/.well-known/oauth-protected-resource",
+                ):
+                    response = client.get(path, headers={"host": host})
+                    assert response.status_code == 200
+                    assert response.json()["resource"] == f"https://{host}/mcp"
+                    assert response.json()["authorization_servers"] == ["https://mcp-auth.snodo.dev/"]
             response = client.get("/.well-known/oauth-protected-resource", headers={"host": f"127.0.0.1:{PORT}"})
             assert response.json()["resource"] == f"https://{PRIVATE_HOST}/mcp"
             tg.cancel_scope.cancel()
