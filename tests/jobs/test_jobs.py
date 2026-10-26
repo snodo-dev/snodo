@@ -817,6 +817,37 @@ class TestWaitFor:
 # === State Reconciliation Tests ===
 
 class TestReconciliation:
+    @pytest.mark.parametrize(
+        ("recorded_start_offset", "expected_status"),
+        [(1.0, "running"), (-3 * 60 * 60, "failed")],
+    )
+    def test_reconcile_real_process_start_time(self, manager, recorded_start_offset, expected_status):
+        import psutil
+
+        process = subprocess.Popen(
+            [os.sys.executable, "-c", "import time; time.sleep(60)"]
+        )
+        try:
+            actual_start = psutil.Process(process.pid).create_time()
+            job_dir = manager.jobs_dir / f"j_real_identity_{expected_status}"
+            job_dir.mkdir()
+            state = {
+                "status": "running",
+                "pid": process.pid,
+                "process_host": socket.gethostname(),
+                "process_started_at": actual_start + recorded_start_offset,
+            }
+            manager._save_state(job_dir, state)
+
+            result = manager._reconcile_state(job_dir, state)
+
+            assert result["status"] == expected_status
+            if expected_status == "failed":
+                assert "different process" in result["error"]
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+
     def test_reconcile_pid_reuse_fails_with_identity_error(self, manager):
         job_dir = manager.jobs_dir / "j_rec_pid_reuse"
         job_dir.mkdir()
