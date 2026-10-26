@@ -17,6 +17,9 @@ from typing import List, Optional
 
 from snodo.infrastructure.atomic_json import atomic_write_json
 from snodo.infrastructure.state import atomic_update_json
+from snodo.infrastructure.process_identity import (
+    PROCESS_IDENTITY_START_TIME_TOLERANCE_SECONDS,
+)
 
 try:  # a declared dependency, but a stale install can lack it
     import psutil
@@ -256,7 +259,10 @@ class JobManager:
                 except psutil.AccessDenied:
                     identity_error = f"Cannot verify the identity of process {pid}"
                 else:
-                    if actual_start != recorded_start:
+                    if (
+                        abs(actual_start - recorded_start)
+                        > PROCESS_IDENTITY_START_TIME_TOLERANCE_SECONDS
+                    ):
                         identity_error = (
                             f"PID {pid} now belongs to a different process "
                             f"(started at {actual_start}, expected {recorded_start})"
