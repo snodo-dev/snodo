@@ -1,5 +1,6 @@
-intent: A job that is still running is never reported failed because its recorded process start time reads
-  a second off; a reused process id is still caught, with one shared comparison (#1033)
+intent: A job that is still running is never reported failed because its recorded
+  process start time reads a second off; a reused process id is still caught, with
+  one shared comparison (#1033)
 name: job-identity-tolerance-1033
 waves:
 - depends_on: []

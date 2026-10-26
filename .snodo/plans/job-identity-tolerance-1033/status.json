@@ -5,6 +5,12 @@
   },
   "tasks": {
     "1.1_shared_identity_helper_tolerates_a_few_seconds": "completed",
-    "1.2_changelog_entry_for_the_job_identity_fix": "completed"
+    "1.2_changelog_entry_for_the_job_identity_fix": "completed",
+    "2.1_job_reconcile_uses_the_shared_identity_comparison": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7aae20a145b80233"
+    }
   }
 }
