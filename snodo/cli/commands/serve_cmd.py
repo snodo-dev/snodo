@@ -85,6 +85,9 @@ def register(app: typer.Typer) -> None:
         tunnel: bool = typer.Option(
             False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
         ),
+        public_url: bool = typer.Option(
+            False, "--public-url", help="Request a public URL for a WebSocket tunnel",
+        ),
         verbose: bool = typer.Option(
             False, "--verbose", help="Log MCP requests and responses for debugging",
         ),
@@ -137,7 +140,8 @@ def register(app: typer.Typer) -> None:
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
-            tunnel=tunnel, tunnel_transport=tunnel_transport, verbose=verbose, auth=auth,
+            tunnel=tunnel, tunnel_transport=tunnel_transport, public_url=public_url,
+            verbose=verbose, auth=auth,
             delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
             mcp_uninstall_all=mcp_uninstall_all, mcp_list=mcp_list,
@@ -156,6 +160,12 @@ def serve_command(args) -> int:
         _validate_tunnel_auth(_tunnel_transport(getattr(args, "tunnel_transport", None)), getattr(args, "auth", None))
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 2
+    if getattr(args, "public_url", False) and (
+        not getattr(args, "tunnel", False)
+        or _tunnel_transport(getattr(args, "tunnel_transport", None)) != "ws"
+    ):
+        print("Error: --public-url requires --tunnel --tunnel-transport ws.", file=sys.stderr)
         return 2
     if (
         getattr(args, "mcp_install", False)
@@ -240,38 +250,10 @@ def _run_server(args, protocol) -> int:
         print(f"Error: Failed to create MCP server: {e}", file=sys.stderr)
         return 1
 
-    # Detect tunnel mode and wire the selected bearer verifier if active.
-    tunnel_config = _load_tunnel_config(project_root)
-    tunnel_hostname = tunnel_config.get("hostname")
-    extra_kwargs = {}
-    tunnel_auth = (
-        ["oauth"] if tunnel_hostname and _tunnel_transport(tunnel_config.get("transport")) == "ws"
-        else tunnel_config.get("auth", ["oauth"]) if tunnel_hostname else []
-    )
-    oauth_enabled = "oauth" in tunnel_auth
-    access_verifier = None
-    if tunnel_hostname and oauth_enabled:
-        from snodo.infrastructure.jwks import JwksClient
-        from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
-        from mcp.server.auth.settings import AuthSettings
-        from pydantic import AnyHttpUrl
+    from snodo.cli.commands.serve_ws_auth import configure_tunnel_auth
 
-        jwks = JwksClient()
-        if not jwks.fetch():
-            print("  Error: OAuth 2.1 required for managed tunnels; could not load JWKS", file=sys.stderr)
-            return 1
-        resource = f"https://{tunnel_hostname}/mcp"
-        extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks, resource=resource)
-        extra_kwargs["auth_settings"] = AuthSettings(
-            issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
-            resource_server_url=AnyHttpUrl(resource),
-        )
-        print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
-    if tunnel_hostname and "service-token" in tunnel_auth:
-        from snodo.infrastructure.access_assertion import AccessAssertionVerifier
-        access_verifier = AccessAssertionVerifier(
-            tunnel_config["access_team_domain"], tunnel_config["access_aud"]
-        )
+    (tunnel_config, tunnel_hostname, ws_tunnel, ws_public_hostname, ws_hosts,
+     tunnel_auth, oauth_enabled, access_verifier, extra_kwargs) = configure_tunnel_auth(project_root, _load_tunnel_config)
 
     verbose = bool(getattr(args, "verbose", False))
     if verbose:
@@ -288,12 +270,6 @@ def _run_server(args, protocol) -> int:
     from snodo.cli.commands.serve_watch import cloud_live_view_url
     extra_kwargs["cloud_live_view_url"] = cloud_live_view_url()
     mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
-    if access_verifier is not None:
-        from snodo.cli.commands.serve_tunnel_asgi import install_tunnel_mcp_paths
-        install_tunnel_mcp_paths(
-            mcp, access_verifier, oauth_enabled=oauth_enabled,
-            access_path=tunnel_config.get("access_path", "mcp-st"),
-        )
     tools = protocol_server.get_tools()
     mode_label = protocol_server._active_mode()
 
@@ -330,10 +306,29 @@ def _run_server(args, protocol) -> int:
     else:
         port = explicit_port
 
+    if access_verifier is not None or (ws_tunnel and oauth_enabled):
+        from snodo.cli.commands.serve_tunnel_asgi import install_tunnel_mcp_paths
+        install_tunnel_mcp_paths(
+            mcp, access_verifier or extra_kwargs.get("token_verifier"), oauth_enabled=oauth_enabled,
+            access_path=tunnel_config.get("access_path", "mcp-st"),
+            hosts=({
+                *ws_hosts,
+                f"localhost:{port}", f"127.0.0.1:{port}", f"[::1]:{port}",
+            } if ws_tunnel else None),
+            private_host=tunnel_hostname if ws_tunnel else None,
+        )
+
     # Trust only local tunnel proxies, while FastMCP validates request Host values.
+    public_hostname = None
     if transport != "stdio":
         os.environ["FORWARDED_ALLOW_IPS"] = "127.0.0.1,::1" if tunnel_hostname else ""
-        transport_security = build_transport_security_settings(port, tunnel_hostname)
+        public_hostname = ws_public_hostname if ws_public_hostname in ws_hosts else None
+        security_tunnel_hostname = (
+            tunnel_hostname if not ws_tunnel or tunnel_hostname in ws_hosts else None
+        )
+        transport_security = build_transport_security_settings(
+            port, security_tunnel_hostname, public_hostname
+        )
 
     print(
         f"Snodo MCP [{protocol.protocol_id}] mode={mode_label} "
@@ -359,7 +354,8 @@ def _run_server(args, protocol) -> int:
     from snodo.infrastructure import cloud_liveness
     from snodo.infrastructure.serve_registry import record_serve_process, remove_serve_process
     registry_entry = record_serve_process(str(project_root), mode_id or "", port if transport != "stdio" else None, tunnel_hostname,
-                                         transport=_tunnel_transport(tunnel_config.get("transport")) if tunnel_hostname else "cloudflare")
+                                         transport=_tunnel_transport(tunnel_config.get("transport")) if tunnel_hostname else "cloudflare",
+                                         public_hostname=public_hostname if tunnel_hostname else None)
     cloud_liveness.install()
     try:
         if transport != "stdio":
@@ -477,7 +473,7 @@ def _warn_if_unservable_hostname(hostname: str) -> bool:
     delete-by-hostname path (which is unchanged here).
     """
     host = (hostname or "").strip().rstrip(".").lower()
-    if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-ws\.snodo\.dev", host):
+    if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?-(?:ws|pub)\.snodo\.dev", host):
         return False
     if host.endswith(".tunnel.snodo.dev"):
         leading = host[: -len(".tunnel.snodo.dev")]
@@ -585,6 +581,7 @@ def _provision_tunnel(
     api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str,
     port: int = DEFAULT_PORT, auth: Optional[list[str]] = None,
     tunnel_transport: str = "cloudflare", machine_identifier: Optional[str] = None,
+    public_url: bool = False,
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
@@ -608,6 +605,8 @@ def _provision_tunnel(
             payload["auth"] = auth
         if tunnel_transport == "ws":
             payload["transport"] = "ws"
+            if public_url:
+                payload["public_url"] = True
             payload["machine_id"] = machine_identifier
         resp = httpx.post(
             url,
@@ -1026,7 +1025,9 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # First run: provision
     newly_provisioned = False
     provisioned = {}
-    if not _has_usable_saved_tunnel(tunnel_config):
+    public_url_requested = bool(getattr(args, "public_url", False))
+    had_saved_tunnel = _has_usable_saved_tunnel(tunnel_config)
+    if not had_saved_tunnel or public_url_requested:
         from snodo.version import __version__
         short_id = _generate_short_id()
 
@@ -1058,6 +1059,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                     api_key, project_slug, mode, short_id, __version__, port,
                     auth=auth_methods, tunnel_transport=tunnel_transport,
                     machine_identifier=machine_identifier,
+                    public_url=public_url_requested,
                 )
         except TunnelAPIError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -1072,6 +1074,11 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             return 1
         except RuntimeError as e:
             print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        if public_url_requested and (not provisioned.get("org_id") or not provisioned.get("public_hostname")):
+            missing = [key for key in ("org_id", "public_hostname") if not provisioned.get(key)]
+            print("Error: tunnel provision response is missing required public URL fields: " + ", ".join(missing), file=sys.stderr)
             return 1
 
         if project_slug != Path(project_root).name.lower():
@@ -1106,10 +1113,14 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
             "port": port,
             "auth": provisioned.get("auth", auth_methods),
-            **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud") if key in provisioned},
+            **{key: provisioned[key] for key in ("client_id", "access_path", "access_team_domain", "access_aud", "org_id") if key in provisioned},
+            **({"public_hostname": provisioned["public_hostname"]}
+               if public_url_requested else {}),
+            **({"last_printed_public_hostname": tunnel_config["last_printed_public_hostname"]}
+               if "last_printed_public_hostname" in tunnel_config else {}),
         }
         _save_tunnel_config(project_root, tunnel_config)
-        newly_provisioned = True
+        newly_provisioned = not had_saved_tunnel
 
     # 5. Start MCP server subprocess
     mcp_cmd = [
@@ -1174,7 +1185,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                 project_root, api_key, tunnel_config)) if newly_provisioned else None,
             print_active=lambda hostname: (
                 _warn_if_unservable_hostname(hostname),
-                _print_first_run_info(hostname, tunnel_config) if newly_provisioned else _print_tunnel_urls(tunnel_config),
+                _print_first_run_info(hostname, tunnel_config, public_url_requested) if newly_provisioned else _print_tunnel_urls(tunnel_config, public_url_requested),
+                _save_tunnel_config(project_root, tunnel_config) if public_url_requested else None,
                 print("Press Ctrl+C to stop."),
             ),
         )
@@ -1238,9 +1250,11 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # A live URL proves both the local bind and registration with Cloudflare.
     _warn_if_unservable_hostname(tunnel_config["hostname"])
     if newly_provisioned:
-        _print_first_run_info(tunnel_config["hostname"], tunnel_config)
+        _print_first_run_info(tunnel_config["hostname"], tunnel_config, public_url_requested)
     else:
-        _print_tunnel_urls(tunnel_config)
+        _print_tunnel_urls(tunnel_config, public_url_requested)
+    if public_url_requested:
+        _save_tunnel_config(project_root, tunnel_config)
     if "service-token" in tunnel_config.get("auth", []) and "oauth" not in tunnel_config.get("auth", []):
         print("  Service-token-only tunnels are shown offline by the cloud and are never dispatched to.")
 
@@ -1304,11 +1318,21 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
 
 
-def _print_tunnel_urls(config: dict) -> None:
+def _print_tunnel_urls(config: dict, public_url: bool = False) -> None:
     hostname = config["hostname"]
     if config.get("transport") == "ws":
         print("Endpoint reached through snodo cloud (Dispatch):")
         print(f"  {hostname}")
+        if public_url and config.get("public_hostname"):
+            public_hostname = config["public_hostname"]
+            previous = config.get("last_printed_public_hostname")
+            print("Public MCP URL for outside clients:")
+            print(f"  https://{public_hostname}/mcp")
+            if previous and previous != public_hostname:
+                print(f"A new public URL was issued. MCP connections using {previous} must be updated.")
+                print(f"  Old: https://{previous}/mcp")
+                print(f"  New: https://{public_hostname}/mcp")
+            config["last_printed_public_hostname"] = public_hostname
         return
     auth = config.get("auth", ["oauth"])
     print("Connect your MCP client:")
@@ -1318,11 +1342,13 @@ def _print_tunnel_urls(config: dict) -> None:
     if "service-token" in auth:
         print(f"  Service-token: https://{hostname}/{config.get('access_path', 'mcp-st').strip('/')}")
 
-def _print_first_run_info(hostname: str, config: dict | None = None) -> None:
+def _print_first_run_info(hostname: str, config: dict | None = None, public_url: bool = False) -> None:
     """Print the first-run tunnel configuration block."""
     print()
     print("✓ Snodo MCP tunnel active")
     print()
-    _print_tunnel_urls({**(config or {"hostname": hostname}), "hostname": hostname})
+    tunnel_config = config if config is not None else {"hostname": hostname}
+    tunnel_config["hostname"] = hostname
+    _print_tunnel_urls(tunnel_config, public_url)
     print()
     print()

@@ -59,8 +59,15 @@ def websocket_url(config: dict, machine: str) -> str:
 
 
 def _endpoints(entries: list[dict]) -> list[dict[str, str]]:
-    return [{"hostname": row["hostname"], "auth": ["oauth"]} for row in entries
-            if row.get("transport", "cloudflare") == "ws" and row.get("hostname") and row.get("port")]
+    endpoints = []
+    for row in entries:
+        if row.get("transport", "cloudflare") != "ws" or not row.get("hostname") or not row.get("port"):
+            continue
+        endpoints.append({"hostname": row["hostname"], "auth": ["oauth"]})
+        public_hostname = row.get("public_hostname")
+        if public_hostname:
+            endpoints.append({"hostname": public_hostname, "auth": ["oauth"]})
+    return endpoints
 
 
 class CloudRelay:
@@ -245,14 +252,17 @@ class CloudRelay:
         async with self._slots:
             if rid in self._cancelled:
                 return
-            matches = [entry for entry in self.registry() if entry.get("transport", "cloudflare") == "ws" and entry.get("hostname") == request["hostname"]]
+            matches = [entry for entry in self.registry() if entry.get("transport", "cloudflare") == "ws" and request["hostname"] in (entry.get("hostname"), entry.get("public_hostname"))]
             if not matches:
                 await socket.send(encode_frame({"t": "err", "id": rid, "code": "unknown_endpoint", "message": "Unknown endpoint"}))
                 return
             url = f"http://127.0.0.1:{matches[0]['port']}{request['path']}"
+            headers = {key: value for key, value in request["headers"].items()
+                       if key.lower() not in ("host", ":authority")}
+            headers["Host"] = request["hostname"]
             keep = asyncio.create_task(self._keep(socket, rid))
             try:
-                async with self.http.stream(request["method"], url, headers=request["headers"], content=body) as response:
+                async with self.http.stream(request["method"], url, headers=headers, content=body) as response:
                     await socket.send(encode_frame({"t": "res", "id": rid, "status": response.status_code,
                                                     "headers": dict(response.headers)}))
                     seq = 0

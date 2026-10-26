@@ -99,6 +99,12 @@ Provisioning includes the usual project slug, mode, short id, and Snodo version,
 
 The machine opens one outbound WebSocket relay connection and announces its machine identity and available endpoint to the cloud. There is one relay owner per machine: a newly connected owner takes over from the prior connection, preventing stale processes from remaining the active endpoint. The cloud uses the announcement to route tunnel requests to that machine. On shutdown, Snodo stops the relay participant and local MCP server, releasing relay ownership; startup failures also stop the server and roll back a newly provisioned tunnel.
 
+### Public URL alias
+
+With `snodo serve --tunnel --tunnel-transport ws --public-url`, provisioning requests a public URL with `public_url: true`. When available, snodo cloud returns a `public_hostname` alias of the form `<random label>-pub.snodo.dev`, alongside the private hostname. Repeating a request with `public_url: true` returns the full provisioning body and keeps the active alias (or issues a new one if the old alias was released after seven idle days); a request without the flag does not remove or change an alias. The alias is stored in `.snodo/tunnel.json`. At every start with the flag, serve prints the public MCP URL and clearly announces if it differs from the last URL it printed. After seven idle days an alias may change, and the newly issued URL is announced at startup.
+
+The relay hello lists both private and public hostnames as endpoints, each with `auth: ["oauth"]`. Relayed requests are forwarded to the child MCP server on loopback without a Host header; each request frame carries the hostname the caller used. Only the private hostname and provisioned public alias are accepted, for Host validation, token audience validation, and discovery. A bearer token must have the audience for the hostname on which it arrived. `/.well-known/oauth-protected-resource` is answered per request host as `https://<host>/mcp`. Requests with a token whose `org_id` differs from the provisioned organization are refused with HTTP 403; `sub` and owner checks are not used.
+
 ## .snodo/tunnel.json schema
 {
   "hostname": "acme-api-prod-a3f7-tunnel.snodo.dev",

@@ -77,3 +77,144 @@ def test_sse_wrapper_keeps_host_protection():
     # the event stream itself never ends, so it is not used here.
     assert _post(client, "/messages/", TUNNEL_HOST) != 421
     assert _post(client, "/messages/", FOREIGN_HOST) == 421
+
+
+def test_host_set_serves_host_specific_protected_resource():
+    private_host = TUNNEL_HOST
+    public_host = "demo-pub.snodo.dev"
+    mcp = MCPServer("tunnel-host-specific-discovery")
+    install_tunnel_mcp_paths(
+        mcp, _AccessVerifier(), oauth_enabled=True, hosts={private_host, public_host}
+    )
+    app = mcp.streamable_http_app(
+        stateless_http=True,
+        transport_security=build_transport_security_settings(PORT, private_host, public_host),
+    )
+    client = TestClient(app)
+
+    for host in (private_host, public_host):
+        response = client.get(
+            "/.well-known/oauth-protected-resource", headers={"host": host}
+        )
+        assert response.status_code == 200
+        assert response.json()["resource"] == f"https://{host}/mcp"
+
+    response = client.get(
+        "/.well-known/oauth-protected-resource", headers={"host": FOREIGN_HOST}
+    )
+    assert response.status_code == 421
+
+
+def test_host_set_scopes_real_oauth_verifier_to_request_host():
+    from unittest.mock import MagicMock
+
+    from mcp.server.auth.settings import AuthSettings
+    from pydantic import AnyHttpUrl
+    from snodo.infrastructure.jwks import JwksClient
+    from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
+
+    private_host = TUNNEL_HOST
+    public_host = "demo-pub.snodo.dev"
+    jwks = MagicMock(spec=JwksClient)
+    jwks.verify.side_effect = lambda token, audience: (
+        {"sub": "test-user", "scopes": []} if token == audience else None
+    )
+    verifier = JwksTokenVerifier(
+        jwks,
+        audiences={
+            private_host: f"https://{private_host}/mcp",
+            public_host: f"https://{public_host}/mcp",
+        },
+    )
+    mcp = MCPServer(
+        "tunnel-host-specific-audience",
+        token_verifier=verifier,
+        auth=AuthSettings(
+            issuer_url=AnyHttpUrl("https://auth.snodo.dev"),
+            resource_server_url=AnyHttpUrl(f"https://{private_host}/mcp"),
+            validate_token_resource=False,
+        ),
+    )
+    install_tunnel_mcp_paths(
+        mcp, verifier, oauth_enabled=True, hosts={private_host, public_host}
+    )
+    app = mcp.streamable_http_app(
+        stateless_http=True,
+        transport_security=build_transport_security_settings(PORT, private_host, public_host),
+    )
+
+    async def run():
+        async with anyio.create_task_group() as tg:
+            mcp.session_manager._task_group = tg
+            client = TestClient(app)
+
+            def post(host, token):
+                return client.post(
+                    "/mcp",
+                    content=b'{"jsonrpc":"2.0","method":"ping","id":1}',
+                    headers={
+                        **JSON_HEADERS,
+                        "host": host,
+                        "authorization": f"Bearer {token}",
+                    },
+                )
+
+            assert post(private_host, f"https://{public_host}/mcp").status_code == 401
+            assert post(public_host, f"https://{public_host}/mcp").status_code == 200
+            assert post(public_host, f"https://{private_host}/mcp").status_code == 401
+            tg.cancel_scope.cancel()
+
+    anyio.run(run)
+
+
+def test_other_organization_status_translation_on_both_real_apps():
+    from unittest.mock import MagicMock
+
+    from mcp.server.auth.settings import AuthSettings
+    from pydantic import AnyHttpUrl
+    from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
+
+    jwks = MagicMock()
+    jwks.verify.side_effect = lambda token, audience: (
+        {"sub": "user", "org_id": "org-2" if token == "other-org" else "org-1"}
+        if token in ("matching", "other-org") else None
+    )
+    verifier = JwksTokenVerifier(jwks, expected_org_id="org-1")
+    mcp = MCPServer(
+        "tunnel-organization-status", token_verifier=verifier,
+        auth=AuthSettings(
+            issuer_url=AnyHttpUrl("https://auth.snodo.dev"),
+            resource_server_url=AnyHttpUrl(f"https://{TUNNEL_HOST}/mcp"),
+            validate_token_resource=False,
+        ),
+    )
+    install_tunnel_mcp_paths(mcp, verifier, oauth_enabled=True)
+    security = build_transport_security_settings(PORT, TUNNEL_HOST)
+    apps = [
+        mcp.streamable_http_app(stateless_http=True, host="127.0.0.1", transport_security=security),
+        mcp.sse_app(host="127.0.0.1", transport_security=security),
+    ]
+
+    async def run():
+        async with anyio.create_task_group() as tg:
+            mcp.session_manager._task_group = tg
+            for index, app in enumerate(apps):
+                client = TestClient(app)
+                path = "/mcp" if index == 0 else "/messages/"
+                request_headers = {"host": TUNNEL_HOST, "content-type": "application/json"}
+                if index == 0:
+                    request_headers.update(JSON_HEADERS)
+                body = b'{"jsonrpc":"2.0","method":"ping","id":1}'
+                assert client.post(path, content=body, headers=request_headers).status_code == 401
+                for token, expected in (("invalid", 401), ("other-org", 403), ("matching", 200)):
+                    response = client.post(
+                        path, content=body,
+                        headers={**request_headers, "authorization": f"Bearer {token}"},
+                    )
+                    if index == 1 and token == "matching":
+                        assert response.status_code == 400, response.text
+                    else:
+                        assert response.status_code == expected, response.text
+            tg.cancel_scope.cancel()
+
+    anyio.run(run)
