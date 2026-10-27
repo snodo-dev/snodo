@@ -192,7 +192,7 @@ def test_build_graph_with_custom_functions(sample_protocol, temp_workspace):
 
 def test_governance_node(sample_protocol, sample_task, temp_workspace):
     """Test governance node executes correctly."""
-    builder = GraphBuilder(sample_protocol)
+    builder = GraphBuilder(sample_protocol, project_root=temp_workspace)
 
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
@@ -828,7 +828,8 @@ def test_end_to_end_execution_with_blocker(sample_protocol, sample_task, temp_wo
         git_mcp=git_mcp,
         shell_mcp=shell_mcp,
         coder=coder,
-        validator_fn=blocker_validator
+        validator_fn=blocker_validator,
+        project_root=temp_workspace,
     )
     graph = builder.build_graph()
     compiled_graph = graph.compile()
@@ -1084,7 +1085,7 @@ def _make_audit_log():
 def test_governance_node_logs_event(sample_protocol, sample_task, temp_workspace):
     """Governance node produces governance_check audit event."""
     audit = _make_audit_log()
-    builder = GraphBuilder(sample_protocol, audit_log=audit)
+    builder = GraphBuilder(sample_protocol, audit_log=audit, project_root=temp_workspace)
 
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
@@ -1293,6 +1294,7 @@ def test_end_to_end_audit_chain(sample_protocol, sample_task, temp_workspace):
         coder=coder,
         audit_log=audit,
         validator_fn=_all_pass,
+        project_root=temp_workspace,
     )
     graph = builder.build_graph()
     compiled = graph.compile()
@@ -1350,6 +1352,7 @@ def test_end_to_end_blocker_audit(sample_protocol, sample_task, temp_workspace):
         sample_protocol,
         validator_fn=blocker_validator,
         audit_log=audit,
+        project_root=temp_workspace,
     )
     graph = builder.build_graph()
     compiled = graph.compile()
@@ -1382,7 +1385,7 @@ def test_end_to_end_blocker_audit(sample_protocol, sample_task, temp_workspace):
 
 def test_no_audit_log_no_error(sample_protocol, sample_task, temp_workspace):
     """GraphBuilder without audit_log works without errors."""
-    builder = GraphBuilder(sample_protocol, audit_log=None)
+    builder = GraphBuilder(sample_protocol, audit_log=None, project_root=temp_workspace)
     state = {
         "task": {"id": "t1", "spec": "test"},
         "current_mode": "producer",
