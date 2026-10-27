@@ -290,6 +290,7 @@ def test_commit_not_happening_is_refused(name, tmp_path):
                 shell_mcp=None,
                 executor_fn=harness._default_executor,
                 token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
+                project_root=str(tmp_path),
             )
             graph = builder.build_graph().compile()
             result = graph.invoke({
