@@ -13,6 +13,7 @@
       "depth": 0,
       "spec_hash": "904f2121efacc2a3"
     },
-    "1.5_head_not_moved_tests_use_a_temporary_project_root": "completed"
+    "1.5_head_not_moved_tests_use_a_temporary_project_root": "completed",
+    "2.1_suite_guard_refuses_environment_prep_against_the_checkout": "completed"
   }
 }
