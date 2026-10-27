@@ -1,0 +1,18 @@
+{
+  "integration": {
+    "branch": "plan/suite-env-isolation-1036-v2/integration",
+    "base_sha": "5c2004b37e1ebc45cf473ef82a24fddff792e67b"
+  },
+  "tasks": {
+    "1.1_adapter_conformance_commit_refusal_uses_a_temporary_project_root": "completed",
+    "1.2_loop_tests_use_a_temporary_project_root": "completed",
+    "1.3_loop_validation_execution_failure_tests_use_a_temporary_project_root": "completed",
+    "1.4_integration_blocker_tests_use_a_temporary_project_root": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "904f2121efacc2a3"
+    },
+    "1.5_head_not_moved_tests_use_a_temporary_project_root": "completed"
+  }
+}

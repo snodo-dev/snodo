@@ -1,0 +1,17 @@
+intent: Running the test suite never modifies the environment of the repository it
+  runs in, so the release gate stops losing its docs extras mid-run (#1036)
+name: suite-env-isolation-1036-v2
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_adapter_conformance_commit_refusal_uses_a_temporary_project_root
+  - 1.2_loop_tests_use_a_temporary_project_root
+  - 1.3_loop_validation_execution_failure_tests_use_a_temporary_project_root
+  - 1.4_integration_blocker_tests_use_a_temporary_project_root
+  - 1.5_head_not_moved_tests_use_a_temporary_project_root
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_suite_guard_refuses_environment_prep_against_the_checkout
