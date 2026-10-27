@@ -316,7 +316,8 @@ def test_blocker_stops_execution(temp_git_repo):
         git_mcp=GitMCP(str(temp_git_repo)),
         shell_mcp=ShellMCP(str(temp_git_repo)),
         coder=MockCoderAdapter(),
-        validator_fn=blocking_validator
+        validator_fn=blocking_validator,
+        project_root=str(temp_git_repo)
     )
 
     graph = builder.build_graph()
@@ -366,7 +367,8 @@ def test_multiple_artifacts_created(temp_git_repo, sample_protocol):
         git_mcp=GitMCP(str(temp_git_repo)),
         shell_mcp=ShellMCP(str(temp_git_repo)),
         coder=MockCoderAdapter(),
-        validator_fn=passing_validator
+        validator_fn=passing_validator,
+        project_root=str(temp_git_repo)
     )
 
     graph = builder.build_graph()
