@@ -683,7 +683,7 @@ class TestExecutionFailureReporting:
             initial_mode="producer",
         )
 
-    def _builder(self, executor_fn):
+    def _builder(self, executor_fn, project_root):
         from snodo.infrastructure.tokens import TokenIssuer
 
         from tests.conftest import TEST_SECRET
@@ -697,6 +697,7 @@ class TestExecutionFailureReporting:
             validator_fn=passing_validator,
             executor_fn=executor_fn,
             token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
+            project_root=str(project_root),
         )
 
     @staticmethod
@@ -717,14 +718,14 @@ class TestExecutionFailureReporting:
             "metadata": {},
         }
 
-    def test_execute_failure_is_internal_error_and_skips_post_validation(self):
+    def test_execute_failure_is_internal_error_and_skips_post_validation(self, tmp_path):
         """A genuine internal engine fault raises ExecutionError and halts as internal_error."""
         from snodo.core.interfaces import ExecutionError
 
         def failing_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
             raise ExecutionError("unexpected engine internal fault")
 
-        builder = self._builder(failing_executor)
+        builder = self._builder(failing_executor, tmp_path)
         result = builder.build_graph().compile().invoke(self._state())
 
         assert result["is_blocked"] is True
@@ -742,7 +743,7 @@ class TestExecutionFailureReporting:
         # Post-validation was skipped, not passed.
         assert payload["post_validation"]["outcome"] == "skipped"
 
-    def test_no_file_operations_is_blocker_not_internal_error(self):
+    def test_no_file_operations_is_blocker_not_internal_error(self, tmp_path):
         """A coder that ran fine and produced no file operations halts as
         no_file_operations (canonical blocker), not internal_error (Fixes #203)."""
         from snodo.core.interfaces import NoFileOperationsError
@@ -750,7 +751,7 @@ class TestExecutionFailureReporting:
         def no_op_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
             raise NoFileOperationsError("Coder produced no file operations")
 
-        builder = self._builder(no_op_executor)
+        builder = self._builder(no_op_executor, tmp_path)
         result = builder.build_graph().compile().invoke(self._state())
 
         assert result["is_blocked"] is True
@@ -772,7 +773,7 @@ class TestExecutionFailureReporting:
         # Post-validation was skipped, not passed.
         assert payload["post_validation"]["outcome"] == "skipped"
 
-    def test_adapter_failure_is_execution_error_not_internal_error(self):
+    def test_adapter_failure_is_execution_error_not_internal_error(self, tmp_path):
         """A coder backend failure (AdapterError) is a config-fixable blocker,
         not an internal engine error (Fixes #195)."""
         from snodo.coders.base import LLMCallError
@@ -783,7 +784,7 @@ class TestExecutionFailureReporting:
                 '(--model "gemini-3.7-flash")'
             )
 
-        builder = self._builder(failing_executor)
+        builder = self._builder(failing_executor, tmp_path)
         result = builder.build_graph().compile().invoke(self._state())
 
         assert result["is_blocked"] is True
@@ -805,11 +806,11 @@ class TestExecutionFailureReporting:
         # Post-validation was skipped, not passed.
         assert payload["post_validation"]["outcome"] == "skipped"
 
-    def test_completed_execution_unaffected(self):
+    def test_completed_execution_unaffected(self, tmp_path):
         def succeeding_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
             return ["src/thing.py"]
 
-        builder = self._builder(succeeding_executor)
+        builder = self._builder(succeeding_executor, tmp_path)
         result = builder.build_graph().compile().invoke(self._state())
 
         assert result["is_blocked"] is False
