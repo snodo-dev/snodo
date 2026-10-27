@@ -834,3 +834,41 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         return
     for line in build_notice(count).splitlines():
         terminalreporter.write_line(line)
+
+
+@pytest.fixture(autouse=True)
+def _guard_prepare_environment_checkout_target(request):
+    """Refuse real environment preparation against the checkout (Fixes #1036)."""
+    from unittest.mock import patch
+
+    from snodo.infrastructure import environment
+
+    repo_root = Path(__file__).resolve().parent.parent
+    original = environment.prepare_environment
+
+    def guarded_prepare_environment(
+        target_dir, protocol=None, explicit_command=None,
+        run_command_fn=None, shell_mcp=None,
+    ):
+        target = Path(target_dir).resolve()
+        try:
+            target.relative_to(repo_root)
+            inside_checkout = True
+        except ValueError:
+            inside_checkout = False
+        if inside_checkout:
+            stubbed_runner = run_command_fn is not None or shell_mcp is not None
+            disabled_command = explicit_command is not None and explicit_command.strip().lower() in ("", "none")
+            if not stubbed_runner and not disabled_command:
+                pytest.fail(
+                    "prepare_environment targeted the test checkout in "
+                    f"{request.node.nodeid}: {target}. Use an isolated project root.",
+                    pytrace=False,
+                )
+        return original(
+            target_dir, protocol=protocol, explicit_command=explicit_command,
+            run_command_fn=run_command_fn, shell_mcp=shell_mcp,
+        )
+
+    with patch.object(environment, "prepare_environment", guarded_prepare_environment):
+        yield
