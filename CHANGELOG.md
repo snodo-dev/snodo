@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Keep the test suite from preparing the environment of the repository it runs in, so a full run no longer removes the documentation extras from its own environment. (Fixes #1036)
 - Keep a job that is still running from being reported as failed when its recorded start time differs by a second, while still recognizing a reused process ID. (Fixes #1033)
 - Make a ws serve with `--public-url` name the address you used in sign-in discovery and the sign-in challenge, so connectors that check it accept the alias. (Fixes #1032)
 - Document the optional public URL alias for WebSocket tunnels and its host-specific OAuth behavior. (Fixes #1031)
