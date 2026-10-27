@@ -129,6 +129,7 @@ def test_artifact_returned_without_commit_halts_head_not_moved(
     audit = MagicMock()
     builder = GraphBuilder(
         protocol_with_post_execute,
+        project_root=temp_workspace,
         workspace_mcp=workspace_mcp,
         git_mcp=git_mcp,
         shell_mcp=None,
@@ -183,6 +184,7 @@ def test_executor_that_commits_moves_head_and_passes(
 
     builder = GraphBuilder(
         protocol_with_post_execute,
+        project_root=temp_workspace,
         workspace_mcp=workspace_mcp,
         git_mcp=git_mcp,
         shell_mcp=None,
@@ -234,6 +236,7 @@ def test_inplace_adapter_git_add_failure_names_cause_in_halt_payload(
 
     builder = GraphBuilder(
         protocol_with_post_execute,
+        project_root=temp_workspace,
         workspace_mcp=workspace_mcp,
         git_mcp=git_mcp,
         shell_mcp=None,
@@ -294,6 +297,7 @@ def test_inplace_adapter_cannot_open_repo_names_cause_in_halt_payload(
 
     builder = GraphBuilder(
         protocol_with_post_execute,
+        project_root=temp_workspace,
         workspace_mcp=workspace_mcp,
         git_mcp=git_mcp,
         shell_mcp=None,
@@ -347,6 +351,7 @@ def test_inplace_adapter_nothing_staged_names_cause_in_halt_payload(
 
     builder = GraphBuilder(
         protocol_with_post_execute,
+        project_root=temp_workspace,
         workspace_mcp=workspace_mcp,
         git_mcp=git_mcp,
         shell_mcp=None,
