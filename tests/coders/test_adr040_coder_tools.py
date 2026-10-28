@@ -163,3 +163,22 @@ def test_model_tool_result_within_bound_is_unchanged():
 
     result = "short tool output"
     assert bound_tool_result(result) == result
+
+
+def test_large_test_result_is_bounded_with_exit_code_and_tail():
+    from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS, bound_tool_result
+
+    result = (
+        "Test Execution Result (exit code: 1):\n"
+        "--- STDOUT ---\n" + "noise\n" * 400_000 +
+        "\n--- STDERR ---\nAssertionError: expected value\n"
+        "FAILED tests/test_example.py::test_failure"
+    )
+    model_result = bound_tool_result(result, preserve_tail=True)
+
+    assert len(model_result) <= MAX_TOOL_RESULT_CHARS
+    assert "exit code: 1" in model_result
+    assert "TRUNCATED" in model_result
+    assert "characters omitted" in model_result
+    assert "run a narrower test target" in model_result
+    assert "FAILED tests/test_example.py::test_failure" in model_result

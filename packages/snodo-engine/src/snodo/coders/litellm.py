@@ -552,9 +552,10 @@ Return ONLY the JSON array, no other text.
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": provider_tool_result_text(bound_tool_result(
-                            str(result), preserve_tail=tool_name == "run_tests",
-                        )),
+                        "content": bound_tool_result(
+                            provider_tool_result_text(str(result)),
+                            preserve_tail=tool_name == "run_tests",
+                        ),
                     })
                 continue
 
