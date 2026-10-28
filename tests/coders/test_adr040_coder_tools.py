@@ -166,7 +166,11 @@ def test_model_tool_result_within_bound_is_unchanged():
 
 
 def test_large_test_result_is_bounded_with_exit_code_and_tail():
-    from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS, bound_tool_result
+    from snodo.coders.tool_result_text import (
+        MAX_TOOL_RESULT_CHARS,
+        bound_tool_result,
+        provider_tool_result_text,
+    )
 
     result = (
         "Test Execution Result (exit code: 1):\n"
@@ -174,7 +178,11 @@ def test_large_test_result_is_bounded_with_exit_code_and_tail():
         "\n--- STDERR ---\nAssertionError: expected value\n"
         "FAILED tests/test_example.py::test_failure"
     )
-    model_result = bound_tool_result(result, preserve_tail=True)
+    # This is the composition used for message content sent to the provider:
+    # frame first, then bound, so framing cannot push the final value over cap.
+    model_result = bound_tool_result(
+        provider_tool_result_text(result), preserve_tail=True,
+    )
 
     assert len(model_result) <= MAX_TOOL_RESULT_CHARS
     assert "exit code: 1" in model_result
@@ -182,3 +190,24 @@ def test_large_test_result_is_bounded_with_exit_code_and_tail():
     assert "characters omitted" in model_result
     assert "run a narrower test target" in model_result
     assert "FAILED tests/test_example.py::test_failure" in model_result
+
+
+def test_provider_framing_cannot_push_at_limit_result_over_bound():
+    from snodo.coders.tool_result_text import (
+        MAX_TOOL_RESULT_CHARS,
+        bound_tool_result,
+        provider_tool_result_text,
+    )
+
+    # JSON-shaped tool output receives a provider-facing prefix. The bounded
+    # value delivered to the model must include that prefix in its accounting.
+    result = "{" + ("x" * (MAX_TOOL_RESULT_CHARS - 2)) + "}"
+    framed = provider_tool_result_text(result)
+    model_result = bound_tool_result(framed)
+
+    assert len(result) == MAX_TOOL_RESULT_CHARS
+    assert len(model_result) <= MAX_TOOL_RESULT_CHARS
+    assert model_result.startswith("Tool result (text):\n{")
+    assert "TRUNCATED" in model_result
+    assert "characters omitted" in model_result
+    assert "run a narrower test target" in model_result
