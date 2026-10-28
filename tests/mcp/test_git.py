@@ -685,6 +685,21 @@ def test_show_reads_file_at_ref(temp_git_repo):
     assert "# Second version" in content
 
 
+def test_show_missing_path_returns_not_found_at_ref(temp_git_repo):
+    """A path absent from a valid ref is an ordinary inspection result."""
+    git_mcp, _ = temp_git_repo
+
+    assert git_mcp.show("HEAD", "src/not-a-real-file.py") == "not found at HEAD"
+
+
+def test_show_unknown_ref_still_raises_git_error(temp_git_repo):
+    """An invalid ref remains an operational error, not a missing path."""
+    git_mcp, _ = temp_git_repo
+
+    with pytest.raises(GitError):
+        git_mcp.show("no-such-ref", "README.md")
+
+
 def test_show_reads_file_at_previous_ref(temp_git_repo):
     """Test show reads the old version at HEAD~1."""
     git_mcp, tmpdir = temp_git_repo
@@ -738,11 +753,10 @@ def test_show_path_validation(temp_git_repo):
 
 
 def test_show_nonexistent_file_at_ref(temp_git_repo):
-    """Test show raises for file that doesn't exist at ref."""
+    """A path absent at the ref is returned as an inspection result."""
     git_mcp, _ = temp_git_repo
 
-    with pytest.raises(GitError):
-        git_mcp.show("HEAD", "nonexistent.txt")
+    assert git_mcp.show("HEAD", "nonexistent.txt") == "not found at HEAD"
 
 
 def test_log_returns_recent_commits(temp_git_repo):

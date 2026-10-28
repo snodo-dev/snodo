@@ -581,9 +581,26 @@ class GitMCP:
         validated = self.validate_path(path)
         rel_path = str(validated.relative_to(self.project_root))
         try:
-            if rel_path == ".":
-                return self.repo.git.ls_tree("--name-only", ref)
-            return self.repo.git.show(f"{ref}:{rel_path}")
+            # Resolve the ref independently before checking the path. Git's
+            # show error text conflates an unknown ref with a missing path;
+            # only the latter is a useful inspection result for a validator.
+            commit = self.repo.commit(ref)
+        except Exception as e:
+            raise GitError(f"Git command failed: {e}") from e
+
+        if rel_path == ".":
+            try:
+                return self.repo.git.ls_tree("--name-only", commit.hexsha)
+            except GitCommandError as e:
+                raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
+
+        try:
+            commit.tree / rel_path
+        except (KeyError, IndexError):
+            return f"not found at {ref}"
+
+        try:
+            return self.repo.git.show(f"{commit.hexsha}:{rel_path}")
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 

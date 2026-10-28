@@ -1145,6 +1145,43 @@ class TestPostExecuteToolLoop:
         assert result.severity == "pass"
         mock_git.show.assert_called_once_with("HEAD~1", "src/auth.py")
 
+    def test_git_show_missing_path_is_result_and_verdict_completes(self, security_validator):
+        git = MagicMock()
+        git.show.return_value = "not found at HEAD"
+        calls = []
+
+        def completion_side_effect(**kwargs):
+            calls.append(kwargs["messages"])
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if len(calls) == 1:
+                tc = MagicMock()
+                tc.id = "tc_missing_path"
+                tc.function.name = "git_show"
+                tc.function.arguments = '{"ref":"HEAD","path":"src/misguessed.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+            else:
+                assert any(
+                    m.get("role") == "tool" and "not found at HEAD" in m.get("content", "")
+                    for m in kwargs["messages"]
+                )
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = '{"severity":"pass","justification":"inspected"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion)
+        result = validator.evaluate(self._make_post_context(completion, MagicMock(), git))
+
+        assert result.severity == "pass"
+        assert result.error is False
+        assert len(calls) == 2
+
     def test_tool_loop_executes_git_log(self, security_validator):
         """Tool loop should call git.log for git_log tool."""
         mock_git = MagicMock()
