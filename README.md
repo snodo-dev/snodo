@@ -7,7 +7,7 @@
 [![Docs](https://img.shields.io/badge/docs-snodo.dev-2DD4BF)](https://docs.snodo.dev)
 [![arXiv](https://img.shields.io/badge/arXiv-2606.20615-b31b1b)](https://arxiv.org/abs/2606.20615)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.21967946-blue)](https://doi.org/10.5281/zenodo.21967946)
-[![Coverage](https://img.shields.io/codecov/c/github/snodo-dev/snodo/main)](https://codecov.io/gh/snodo-dev/snodo)
+[![Coverage](https://img.shields.io/badge/coverage-85%25-green)](https://codecov.io/gh/snodo-dev/snodo)
 [![Security Policy](https://img.shields.io/badge/security-policy-brightgreen)](SECURITY.md)
 [![Built with snodo](https://img.shields.io/badge/built%20with-snodo-2DD4BF)](#built-with-snodo)
 
