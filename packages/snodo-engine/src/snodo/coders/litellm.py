@@ -29,7 +29,7 @@ from snodo.coders.read_memory import (
     _normalize_path_arg,
     format_repeat_read_response,
 )
-from snodo.coders.tool_result_text import bound_tool_result, provider_tool_result_text
+from snodo.coders.tool_result_text import model_tool_result_text
 import snodo.coders.history_tools as history_tools
 from snodo.paths import is_protected_workspace_path
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError, TurnBudgetExhausted
@@ -552,10 +552,7 @@ Return ONLY the JSON array, no other text.
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": bound_tool_result(
-                            provider_tool_result_text(str(result)),
-                            preserve_tail=tool_name == "run_tests",
-                        ),
+                        "content": model_tool_result_text(str(result), preserve_tail=tool_name == "run_tests"),
                     })
                 continue
 

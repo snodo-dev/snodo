@@ -27,3 +27,10 @@ def provider_tool_result_text(result: str) -> str:
     if result.lstrip().startswith(("{", "[")):
         return f"Tool result (text):\n{result}"
     return result
+
+
+def model_tool_result_text(result: str, *, preserve_tail: bool = False) -> str:
+    """Format and bound the exact text appended to a provider tool message."""
+    return bound_tool_result(
+        provider_tool_result_text(result), preserve_tail=preserve_tail,
+    )
