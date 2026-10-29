@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import tempfile
 from typing import Any, Callable, Optional
 
@@ -155,7 +156,12 @@ def _opencode_cli_error_event(stdout: str) -> Optional[str]:
 
 
 def _single_line_reason(reason: str, limit: int = 200) -> str:
-    normalized = " ".join(reason.split())
+    # CLI output is untrusted: remove terminal control sequences before display.
+    from snodo.mcp.transport import sanitize_verbose_output
+
+    text = re.sub(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))", "", reason)
+    text = "".join(char for char in text if char in "\t\n\r" or ord(char) >= 32 and ord(char) != 127)
+    normalized = sanitize_verbose_output(text)
     if len(normalized) > limit:
         return normalized[: limit - 3] + "..."
     return normalized
