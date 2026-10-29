@@ -2698,14 +2698,8 @@ class TestSummarizeDirectoryTool:
     @pytest.mark.parametrize("oversized", [True, False], ids=["oversized", "small"])
     def test_tool_loop_bounds_results_before_model_message(self, oversized):
         from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS
-        from snodo.validators.tool_registry import ValidatorTool, _default_registry
 
         tool_result = "x" * 100_500 if oversized else "small result"
-        tool_name = "result_bound_probe"
-        _default_registry.register(ValidatorTool(
-            definition={"type": "function", "function": {"name": tool_name, "parameters": {"type": "object"}}},
-            handler=lambda args, ctx: tool_result,
-        ))
         calls = []
 
         def scripted(**kwargs):
@@ -2715,8 +2709,8 @@ class TestSummarizeDirectoryTool:
             tc = MagicMock()
             tc.id = f"tc{len(calls)}"
             if len(calls) == 1:
-                tc.function.name = tool_name
-                tc.function.arguments = "{}"
+                tc.function.name = "list_files"
+                tc.function.arguments = '{"directory":"."}'
             else:
                 tc.function.name = "submit_verdict"
                 tc.function.arguments = '{"severity":"pass","justification":"checked"}'
@@ -2725,12 +2719,10 @@ class TestSummarizeDirectoryTool:
             return response
 
         completion = MagicMock(side_effect=scripted)
-        spec = self._tool_validator([tool_name])
-        try:
-            ctx = self._context(completion)
-            result = LLMValidator(spec, completion).evaluate(ctx)
-        finally:
-            _default_registry._tools.pop(tool_name, None)
+        ctx = self._context(completion)
+        ctx.workspace_mcp.list_files.return_value = [tool_result]
+        spec = self._tool_validator(["list_files"])
+        result = LLMValidator(spec, completion).evaluate(ctx)
 
         assert result.severity == "pass"
         tool_message = next(m for m in calls[1]["messages"] if m.get("role") == "tool")
