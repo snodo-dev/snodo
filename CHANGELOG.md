@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Bound every tool result before it reaches a model, in the coder loop, the validator loop and the recon loop, and cap the length of each `search_string` match line, so one oversized result no longer makes the provider refuse the request. (Fixes #956)
+- Report a clear "not found at <ref>" for `git_show` on a path that is absent at that ref, instead of an error. (Fixes #1037)
+
 ## [0.27.0] — 2026-10-27
 
 - Keep the test suite from preparing the environment of the repository it runs in, so a full run no longer removes the documentation extras from its own environment. (Fixes #1036)
