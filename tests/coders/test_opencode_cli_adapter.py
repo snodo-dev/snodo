@@ -14,7 +14,6 @@ Covers:
 import io
 import json
 import os
-import json
 import subprocess
 import tempfile
 from pathlib import Path
