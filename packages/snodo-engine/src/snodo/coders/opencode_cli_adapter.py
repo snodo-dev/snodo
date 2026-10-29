@@ -6,10 +6,13 @@ Runs opencode directly on the host machine via SubprocessCoderAdapter.
 """
 
 import json
+import os
 import re
+import subprocess
+from pathlib import Path
 from typing import Any, List, Optional
 
-from snodo.coders.base import CoderUnavailableError
+from snodo.coders.base import CoderTimeoutError, CoderUnavailableError
 from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
 from snodo.config import ConfigManager, DEFAULT_CLOUD_MODELS_URL
 from snodo.paths import subprocess_env_for_coder
@@ -64,6 +67,28 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
             "cache_write_tokens": None,
             "cost": None,
         }
+
+    def run_prompt(
+        self, prompt: str, directory: str | Path, timeout_seconds: int = 30,
+    ) -> subprocess.CompletedProcess:
+        """Run one raw prompt in an explicit directory, without task bookkeeping."""
+        project_root = str(Path(directory))
+        argv = self._build_argv(prompt, project_root, self._bare_model())
+        previous_timeout = self.timeout_seconds
+        self.timeout_seconds = timeout_seconds
+        try:
+            return self._run_subprocess(argv, project_root)
+        except FileNotFoundError as exc:
+            raise CoderUnavailableError(
+                self.binary, self.install_hint, search_path=os.environ.get("PATH", ""),
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise CoderTimeoutError(
+                f"{self.binary} run timed out after {timeout_seconds}s",
+                timeout_seconds=timeout_seconds, timeout_limit="wall_clock",
+            ) from exc
+        finally:
+            self.timeout_seconds = previous_timeout
 
     def _reported_cli_version(self) -> str:
         from snodo.coders.availability import read_binary_version

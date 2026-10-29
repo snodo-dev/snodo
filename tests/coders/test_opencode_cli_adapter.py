@@ -618,3 +618,41 @@ def test_dispatched_linked_worktree_is_pinned_and_read_side_sees_branch(tmp_path
     else:
         dir_index = observed["argv"].index("--dir")
         assert Path(observed["argv"][dir_index + 1]).resolve() == worktree.resolve()
+
+
+@pytest.mark.parametrize("returncode", [0, 7])
+def test_run_prompt_returns_raw_completed_process_without_task_path(tmp_path, returncode):
+    adapter = OpenCodeCLIAdapter(
+        model="opencode-cli/openai/gpt-6-luna", workspace=tmp_path,
+    )
+    completed = subprocess.CompletedProcess(
+        ["opencode"], returncode, stdout='{"type":"error"}\n', stderr="raw stderr\n",
+    )
+    observed = {}
+
+    def run(argv, directory):
+        observed["argv"] = argv
+        observed["directory"] = directory
+        return completed
+
+    with patch.object(adapter, "_run_subprocess", side_effect=run), \
+         patch.object(adapter, "implement", side_effect=AssertionError("task path called")):
+        result = adapter.run_prompt("check", tmp_path, timeout_seconds=9)
+
+    assert result is completed
+    assert (result.returncode, result.stdout, result.stderr) == (
+        returncode, '{"type":"error"}\n', "raw stderr\n",
+    )
+    assert observed["directory"] == str(tmp_path)
+    assert observed["argv"] == adapter._build_argv(
+        "check", str(tmp_path), "openai/gpt-6-luna",
+    )
+
+
+def test_run_prompt_timeout_uses_existing_timeout_error(tmp_path):
+    from snodo.coders.base import CoderTimeoutError
+
+    adapter = OpenCodeCLIAdapter(model="opencode-cli/test", workspace=tmp_path)
+    with patch.object(adapter, "_run_subprocess", side_effect=subprocess.TimeoutExpired("opencode", 4)):
+        with pytest.raises(CoderTimeoutError):
+            adapter.run_prompt("check", tmp_path, timeout_seconds=4)
