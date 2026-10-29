@@ -1813,12 +1813,13 @@ class TestReconManagerFailover:
         assert len(results) == 3
 
 
-@pytest.mark.parametrize("tool_result", ["x" * 100_500, "small result"])
-def test_call_agent_bounds_tool_message(tool_result, tmp_path, monkeypatch):
+@pytest.mark.parametrize("oversized", [True, False], ids=["oversized", "small"])
+def test_call_agent_bounds_tool_message(oversized, tmp_path, monkeypatch):
     from types import SimpleNamespace
     from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS
     from snodo.config import ConfigManager
 
+    tool_result = "x" * 100_500 if oversized else "small result"
     monkeypatch.setattr(ConfigManager, "resolve_litellm_model", staticmethod(lambda model: model))
     monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
     monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
