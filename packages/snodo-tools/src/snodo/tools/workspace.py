@@ -40,6 +40,7 @@ _MAX_SUMMARY_FILES = 200
 _MAX_SUMMARY_CHARS = 8000
 _MAX_LEADING_FIELDS = 6
 _MAX_TITLE_CHARS = 160
+_MAX_SEARCH_LINE_CHARS = 1000
 
 # Markdown conventions the documents actually use: a heading line, then plain
 # "Key: value" lines. There is deliberately no YAML front-matter handling —
@@ -766,6 +767,11 @@ class WorkspaceMCP:
                     for line_idx, line in enumerate(f, start=1):
                         if query in line:
                             clean_line = line.rstrip()
+                            if len(clean_line) > _MAX_SEARCH_LINE_CHARS:
+                                clean_line = (
+                                    clean_line[:_MAX_SEARCH_LINE_CHARS]
+                                    + "... [line truncated]"
+                                )
                             matches.append(f"{rel_path}:{line_idx}: {clean_line}")
                             if len(matches) >= max_matches:
                                 break
