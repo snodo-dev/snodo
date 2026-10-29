@@ -1811,3 +1811,40 @@ class TestReconManagerFailover:
         assert sorted(calls) == [["m1"], ["m2"], ["m3"]]
         results = mgr.get_results(recon_id)["results"]
         assert len(results) == 3
+
+
+@pytest.mark.parametrize("tool_result", ["x" * 100_500, "small result"])
+def test_call_agent_bounds_tool_message(tool_result, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS
+    from snodo.config import ConfigManager
+
+    monkeypatch.setattr(ConfigManager, "resolve_litellm_model", staticmethod(lambda model: model))
+    monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
+    monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: None)
+    monkeypatch.setattr(recon_module, "_execute_recon_read", lambda *args: tool_result)
+    requests = []
+
+    def completion(**kwargs):
+        requests.append(kwargs)
+        if len(requests) == 1:
+            tool_call = SimpleNamespace(id="read", function=SimpleNamespace(
+                name="read_file", arguments=json.dumps({"path": "sample.py"}),
+            ))
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content="", tool_calls=[tool_call]),
+            )])
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="answer", tool_calls=[]),
+        )])
+
+    with patch("litellm.completion", side_effect=completion):
+        recon_module.call_agent(str(tmp_path), "model", "query", [], "agent", max_turns=1)
+
+    tool_message = next(m for m in requests[1]["messages"] if m.get("role") == "tool")
+    if len(tool_result) > MAX_TOOL_RESULT_CHARS:
+        assert len(tool_message["content"]) <= MAX_TOOL_RESULT_CHARS
+        assert "[TRUNCATED:" in tool_message["content"]
+    else:
+        assert tool_message["content"] == tool_result

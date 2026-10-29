@@ -2694,3 +2694,46 @@ class TestSummarizeDirectoryTool:
     def test_summarize_directory_is_not_post_execute_only(self):
         from snodo.validators.llm_validator import _POST_EXECUTE_ONLY_TOOLS
         assert "summarize_directory" not in _POST_EXECUTE_ONLY_TOOLS
+
+    @pytest.mark.parametrize("tool_result", ["x" * 100_500, "small result"])
+    def test_tool_loop_bounds_results_before_model_message(self, security_validator, tool_result):
+        from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS
+        from snodo.validators.tool_registry import ValidatorTool, _default_registry
+
+        tool_name = "result_bound_probe"
+        _default_registry.register(ValidatorTool(
+            definition={"type": "function", "function": {"name": tool_name, "parameters": {"type": "object"}}},
+            handler=lambda args, ctx: tool_result,
+        ))
+        calls = []
+
+        def scripted(**kwargs):
+            calls.append(kwargs)
+            response = MagicMock()
+            response.choices = [MagicMock()]
+            tc = MagicMock()
+            tc.id = f"tc{len(calls)}"
+            if len(calls) == 1:
+                tc.function.name = tool_name
+                tc.function.arguments = "{}"
+            else:
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = '{"severity":"pass","justification":"checked"}'
+            response.choices[0].message.tool_calls = [tc]
+            response.choices[0].message.content = None
+            return response
+
+        completion = MagicMock(side_effect=scripted)
+        spec = Validator(validator_id="bounded", validator_type="security", validator_tools=[tool_name])
+        try:
+            result = LLMValidator(spec, completion).evaluate(self._make_post_context(completion, MagicMock(), MagicMock()))
+        finally:
+            _default_registry._tools.pop(tool_name, None)
+
+        assert result.severity == "pass"
+        tool_message = next(m for m in calls[1]["messages"] if m.get("role") == "tool")
+        if len(tool_result) > MAX_TOOL_RESULT_CHARS:
+            assert len(tool_message["content"]) <= MAX_TOOL_RESULT_CHARS
+            assert "[TRUNCATED:" in tool_message["content"]
+        else:
+            assert tool_message["content"] == tool_result
