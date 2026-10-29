@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "1.1_validator_tool_results_are_bounded": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0e951e1446578132",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-10-29T08:47:59.059176+00:00",
+      "judged": false
+    },
+    "1.2_search_string_bounds_matching_line_length": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f81fe7e21b5d3e69"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-tool-result-bound-956/integration",
+    "base_sha": "54bf3b0d8c9003daf98f6a818f86eed5b37114ca"
+  }
+}

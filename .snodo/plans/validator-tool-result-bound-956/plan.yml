@@ -1,0 +1,11 @@
+intent: The LLM validator and recon tool loop hands tool results to the model without
+  the bound the coder loop already applies, so one oversized result (a search hit
+  on a multi-megabyte line) makes the provider refuse the request and the validator
+  or recon agent fails.
+name: validator-tool-result-bound-956
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_validator_tool_results_are_bounded
+  - 1.2_search_string_bounds_matching_line_length

@@ -29,6 +29,8 @@ dist/
 !.snodo/protocol.yml
 !.snodo/plans/
 !.snodo/plans/**
+!.snodo/plans-archive/
+!.snodo/plans-archive/**
 
 # Agent memory / checkpoints
 *.db
