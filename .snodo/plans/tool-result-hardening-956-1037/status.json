@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_coder_test_output_is_bounded": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0cc09d0a92a84250"
+    },
+    "1.2_validator_probe_of_missing_path_is_a_result": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b2e13e2546ec40dd"
+    }
+  },
+  "integration": {
+    "branch": "plan/tool-result-hardening-956-1037/integration",
+    "base_sha": "c9e730ba51bed0053bfd9910ebe433588f678e3d"
+  }
+}

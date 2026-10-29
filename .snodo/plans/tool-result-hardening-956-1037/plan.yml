@@ -1,0 +1,12 @@
+intent: Two engine tool paths turn information into task failures. A coder's test
+  run can return unbounded output into the model conversation and halt the task (#956),
+  and a validator probing a path that is not in the repository ends the task as a
+  validator error (#1037). Both should behave as bounded, informative tool results
+  instead.
+name: tool-result-hardening-956-1037
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_coder_test_output_is_bounded
+  - 1.2_validator_probe_of_missing_path_is_a_result
