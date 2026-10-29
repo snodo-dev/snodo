@@ -1,5 +1,6 @@
 """Configured model canary checks."""
 
+import json
 import logging
 from typing import Any, Callable, Optional
 
@@ -122,6 +123,41 @@ def _completion_message(response: Any) -> Any:
     if not choices:
         return None
     return _message_value(choices[0], "message")
+
+
+def _judge_opencode_cli_run(exit_code: int, stdout: str, stderr: str) -> tuple[bool, Optional[str]]:
+    """Classify a finished OpenCode CLI run from its raw process output."""
+    error_message = _opencode_cli_error_event(stdout)
+    if error_message:
+        return False, _single_line_reason(error_message)
+    if exit_code == 0:
+        return True, None
+
+    stderr_tail = stderr.strip().splitlines()
+    reason = stderr_tail[-1] if stderr_tail else f"OpenCode CLI exited with code {exit_code}"
+    return False, _single_line_reason(reason)
+
+
+def _opencode_cli_error_event(stdout: str) -> Optional[str]:
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(event, dict) and event.get("type") == "error":
+            message = event.get("error", event.get("message"))
+            if isinstance(message, dict):
+                message = message.get("message")
+            if message:
+                return str(message)
+    return None
+
+
+def _single_line_reason(reason: str, limit: int = 200) -> str:
+    normalized = " ".join(reason.split())
+    if len(normalized) > limit:
+        return normalized[: limit - 3] + "..."
+    return normalized
 
 
 def _check_opencode_cli_model(model: str) -> str:

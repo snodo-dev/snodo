@@ -934,3 +934,26 @@ def test_cli_register_models(mock_providers_config, monkeypatch):
 
     res = runner.invoke(app, [])
     assert res.exit_code == 0
+
+
+@pytest.mark.parametrize("exit_code,stdout,stderr,expected", [
+    (0, '{"type":"text","text":"OK"}\n', "", (True, None)),
+    (1, '{"type":"error","message":"provider refused"}\n', "failure", (False, "provider refused")),
+    (1, "", "first line\nlast line\n", (False, "last line")),
+    (7, "", "", (False, "OpenCode CLI exited with code 7")),
+    (0, '{"type":"error","message":"clean exit refusal"}\n', "", (False, "clean exit refusal")),
+])
+def test_judge_opencode_cli_run(exit_code, stdout, stderr, expected):
+    from snodo.cli.commands.models_check import _judge_opencode_cli_run
+
+    assert _judge_opencode_cli_run(exit_code, stdout, stderr) == expected
+
+
+def test_judge_opencode_cli_run_bounds_error_reason():
+    from snodo.cli.commands.models_check import _judge_opencode_cli_run
+
+    stdout = json.dumps({"type": "error", "message": "x" * 1000})
+    healthy, reason = _judge_opencode_cli_run(1, stdout, "")
+    assert healthy is False
+    assert len(reason) == 200
+    assert reason.endswith("...")
