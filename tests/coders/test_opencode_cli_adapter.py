@@ -13,6 +13,8 @@ Covers:
 
 import io
 import json
+import os
+import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -656,3 +658,43 @@ def test_run_prompt_timeout_uses_existing_timeout_error(tmp_path):
     with patch.object(adapter, "_run_subprocess", side_effect=subprocess.TimeoutExpired("opencode", 4)):
         with pytest.raises(CoderTimeoutError):
             adapter.run_prompt("check", tmp_path, timeout_seconds=4)
+
+
+def test_run_prompt_uses_subprocess_confinement_in_supplied_directory(tmp_path, monkeypatch):
+    executable_dir = tmp_path / "bin"
+    executable_dir.mkdir()
+    fake_cli = executable_dir / "opencode"
+    fake_cli.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os\n"
+        "print(json.dumps({'cwd': os.getcwd(), 'config': json.loads(os.environ['OPENCODE_CONFIG_CONTENT'])}))\n"
+        "print('raw stderr', file=__import__('sys').stderr)\n"
+    )
+    fake_cli.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{executable_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    adapter = OpenCodeCLIAdapter(model="opencode-cli/openai/gpt-6-luna", workspace=tmp_path)
+
+    with patch.object(adapter, "_cli_major_version", return_value=1), \
+         patch.object(adapter, "_run_in_place", side_effect=AssertionError("task path called")), \
+         patch.object(adapter, "_implement_in_place", side_effect=AssertionError("commit path called")):
+        result = adapter.run_prompt("check", tmp_path)
+
+    payload = json.loads(result.stdout)
+    assert result.returncode == 0
+    assert payload["cwd"] == str(tmp_path)
+    assert payload["config"]["permission"]["edit"] == "deny"
+    assert payload["config"]["tools"] == {"session_move": False, "worktree_create": False}
+    assert result.stderr == "raw stderr\n"
+
+
+def test_run_prompt_argv_matches_dispatch_builder(tmp_path):
+    from snodo.coders.opencode_cli_adapter import OpenCodeCLI1Adapter
+
+    adapter = OpenCodeCLIAdapter(model="opencode-cli/openai/gpt-6-luna", workspace=tmp_path)
+    expected = OpenCodeCLI1Adapter.build_launch_argv(
+        "check", str(tmp_path), "openai/gpt-6-luna",
+    )
+    with patch.object(adapter, "_run_subprocess", return_value=subprocess.CompletedProcess([], 0, "", "")) as run:
+        adapter.run_prompt("check", tmp_path)
+    assert run.call_args.args[0] == expected
+    assert run.call_args.args[1] == str(tmp_path)
