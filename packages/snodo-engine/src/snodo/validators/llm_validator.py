@@ -51,7 +51,7 @@ from snodo.engine.progress import (
 
 import litellm as _litellm
 from litellm import supports_response_schema
-from snodo.coders.tool_result_text import provider_tool_result_text
+from snodo.coders.tool_result_text import model_tool_result_text
 
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
@@ -692,7 +692,7 @@ class LLMValidator(ValidatorBase):
                         )
                     messages.append({
                         "role": "tool", "tool_call_id": tc.id,
-                        "content": provider_tool_result_text(str(result)),
+                        "content": model_tool_result_text(str(result)),
                     })
                 if turn_progressed:
                     turns_used += 1

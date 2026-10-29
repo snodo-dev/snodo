@@ -20,6 +20,7 @@ from typing import Optional
 
 
 from pydantic import BaseModel
+from snodo.coders.tool_result_text import model_tool_result_text
 
 RECON_DEFAULT_MAX_TOOL_TURNS = 40
 RECON_DEFAULT_MAX_TOKENS = 16000
@@ -756,16 +757,18 @@ def call_agent(
                     result = _execute_recon_read(name, args, workspace)
                     read_tracker.record_read(name, args, raw_turn + 1)
                     turn_progressed = True
-                    if result.strip() and not result.startswith("Tool error:"):
-                        gathered_findings.append(result.strip())
+
+            bounded_result = model_tool_result_text(str(result))
+            if result.strip() and not result.startswith("Tool error:"):
+                gathered_findings.append(bounded_result.strip())
 
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": result,
+                "content": bounded_result,
             })
-            if result.strip():
-                tool_outputs.append(result.strip())
+            if bounded_result.strip():
+                tool_outputs.append(bounded_result.strip())
         if turn_progressed:
             turns_used += 1
             stall_streak = 0
