@@ -676,6 +676,30 @@ def test_opencode_cli_unconfigured_provider_is_not_failed(monkeypatch, capsys):
     assert "OK" in out and "FAILED" not in out
 
 
+
+def test_opencode_cli_unconfigured_provider_runs_and_reports_failure(monkeypatch, capsys):
+    """An unconfigured provider is only a catalog hint; the CLI verdict still wins."""
+    from snodo.cli.commands.models_check import check_configured_models
+    monkeypatch.setattr("snodo.coders.availability.check_coder_available", lambda name: None)
+    monkeypatch.setattr("snodo.config.ConfigManager.get_providers", lambda self: {})
+    monkeypatch.setattr(
+        "snodo.coders.opencode_cli_adapter.OpenCodeCLIAdapter.run_prompt",
+        lambda *a, **k: subprocess.CompletedProcess([], 1, "", "provider refused"),
+    )
+
+    result = check_configured_models(
+        lambda: [("coder", "opencode-cli/missing/model")],
+        lambda *a, **kw: pytest.fail("OpenCode CLI models must not use LiteLLM"),
+    )
+
+    output = capsys.readouterr().out
+    assert result == 1
+    assert "FAILED   opencode-cli/missing/model (coder)" in output
+    assert "provider refused" in output
+    assert "not configured in snodo" in output
+
+
+
 def test_opencode_cli_model_absent_from_snodo_list_is_failure_hint(monkeypatch, capsys):
     from snodo.cli.commands.models_check import check_configured_models
     from snodo.config import ProviderConfig
