@@ -2,6 +2,7 @@
 
 import json
 import logging
+import tempfile
 from typing import Any, Callable, Optional
 
 _logger = logging.getLogger(__name__)
@@ -216,7 +217,25 @@ def check_configured_models(
                 ))
             else:
                 if coder_name == "opencode-cli":
-                    results.append((role, model, None, _check_opencode_cli_model(model)))
+                    from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
+                    from snodo.coders.base import CoderTimeoutError, CoderUnavailableError
+
+                    try:
+                        with tempfile.TemporaryDirectory(prefix="snodo-model-check-") as directory:
+                            adapter = OpenCodeCLIAdapter(model=model, workspace=directory, timeout_seconds=20)
+                            run = adapter.run_prompt("Reply with OK.", directory, timeout_seconds=20)
+                        healthy, reason = _judge_opencode_cli_run(
+                            run.returncode, run.stdout or "", run.stderr or "",
+                        )
+                    except (CoderTimeoutError, CoderUnavailableError, ValueError) as error:
+                        healthy, reason = False, _single_line_reason(str(error))
+                    except Exception as error:
+                        healthy, reason = False, _single_line_reason(str(error))
+                    if not healthy:
+                        hint = _check_opencode_cli_model(model)
+                        if hint:
+                            reason = f"{reason}; {hint}" if reason else hint
+                    results.append((role, model, healthy, reason))
                     continue
                 results.append((
                     role, model, None,

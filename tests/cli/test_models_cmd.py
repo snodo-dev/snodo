@@ -573,90 +573,70 @@ def test_models_check_keeps_credential_rejection_failed(monkeypatch, capsys):
     assert "FAILED   openai/bad-credential (coder): turn 1 failed: invalid_api_key" in out
 
 
-def test_models_check_does_not_send_subprocess_coder_to_litellm(monkeypatch, capsys):
-    """A subprocess coder is not a provider canary and must not be failed by litellm."""
-    monkeypatch.setattr(
-        "snodo.cli.commands.models_cmd._configured_models",
-        lambda: [("coder", "opencode-cli/openai/gpt-4o")],
-    )
-    monkeypatch.setattr(
-        "snodo.coders.availability.check_coder_available",
-        lambda coder_name: None,
-    )
+def test_models_check_opencode_cli_runs_in_clean_temp_and_hides_raw_output(monkeypatch, capsys, tmp_path):
+    from snodo.cli.commands.models_check import check_configured_models
     from snodo.config import ProviderConfig
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("snodo.coders.availability.check_coder_available", lambda name: None)
     monkeypatch.setattr("snodo.config.ConfigManager.get_providers", lambda self: {"openai": ProviderConfig(api_key="test")})
-    monkeypatch.setattr("snodo.cli.commands.models_cmd._get_models", lambda provider, pc, force_refresh: [{"id": "gpt-4o"}])
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._get_models", lambda *a, **k: [{"id": "gpt-4o"}])
+    seen = {}
 
-    def canary(_model):
-        raise AssertionError("subprocess coder must not reach litellm")
+    def run_prompt(self, prompt, directory, timeout_seconds):
+        from pathlib import Path
+        seen.update(directory=Path(directory), prompt=prompt, timeout=timeout_seconds)
+        return subprocess.CompletedProcess([], 0, "SECRET RAW OUTPUT", "")
 
-    monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
-
-    assert models_check_command(SimpleNamespace()) == 0
+    monkeypatch.setattr("snodo.coders.opencode_cli_adapter.OpenCodeCLIAdapter.run_prompt", run_prompt)
+    assert check_configured_models(lambda: [("coder", "opencode-cli/openai/gpt-4o")], lambda *a, **k: pytest.fail()) == 0
     out = capsys.readouterr().out
-    assert "NOT CHECKABLE opencode-cli/openai/gpt-4o (coder)" in out
-    assert "FOUND" in out and "best-effort" in out and "opencode models" in out
-    assert "LLM Provider" not in out
+    assert "OK       opencode-cli/openai/gpt-4o (coder)" in out
+    assert "SECRET RAW OUTPUT" not in out
+    assert seen["directory"] != tmp_path and not seen["directory"].exists()
+    assert seen["prompt"] == "Reply with OK."
 
 
-def test_canary_shapes_recon_and_classifier_like_real_calls():
-    calls = []
-
-    def completion(**kwargs):
-        calls.append(kwargs)
-
-    run_canary_call("deepseek/deepseek-chat", completion, role="recon")
-    recon = calls.pop()
-    assert "tools" in recon and "tool_choice" not in recon
-    assert recon["max_tokens"] == 64 and "temperature" not in recon
-
-    run_canary_call("deepseek/deepseek-chat", completion, role="classifier")
-    classifier = calls.pop()
-    assert "tools" not in classifier and "tool_choice" not in classifier
-    assert classifier["max_tokens"] > 1
-    assert "response_format" not in classifier  # current LiteLLM has no support probe
-
-
-def test_validator_canary_generic_tool_choice_rejection_falls_back():
-    calls = []
-
-    def completion(**kwargs):
-        calls.append(kwargs)
-        if "tool_choice" in kwargs:
-            error = RuntimeError("Thinking mode does not support this tool_choice")
-            error.status_code = 400
-            raise error
-
-    run_canary_call("deepseek/deepseek-chat", completion, role="validator")
-    assert len(calls) == 2
-    assert calls[0]["tool_choice"]["function"]["name"] == "submit_verdict"
-    assert "tool_choice" not in calls[1]
-    assert any("provider could not enforce" in msg["content"] for msg in calls[1]["messages"])
-
-
-def test_opencode_cli_unconfigured_provider_is_not_failed(monkeypatch, capsys):
+def test_models_check_opencode_cli_failure_reports_cli_error_and_nonzero(monkeypatch, capsys):
     from snodo.cli.commands.models_check import check_configured_models
     monkeypatch.setattr("snodo.coders.availability.check_coder_available", lambda name: None)
-    monkeypatch.setattr("snodo.config.ConfigManager.get_providers", lambda self: {})
-    assert check_configured_models(
-        lambda: [("coder", "opencode-cli/other/model")],
-        lambda *a, **kw: pytest.fail("No LiteLLM call for subprocess coder"),
-    ) == 0
-    assert "not configured in snodo" in capsys.readouterr().out
+    monkeypatch.setattr("snodo.cli.commands.models_check._check_opencode_cli_model", lambda model: "")
+    monkeypatch.setattr("snodo.coders.opencode_cli_adapter.OpenCodeCLIAdapter.run_prompt",
+                        lambda *a, **k: subprocess.CompletedProcess([], 1, "SECRET", "CLI FAILED: nope\n"))
+    result = check_configured_models(lambda: [("coder", "opencode-cli/provider/model")], lambda *a, **k: pytest.fail())
+    out = capsys.readouterr().out
+    assert result == 1 and "FAILED" in out and "CLI FAILED: nope" in out
+    assert "SECRET" not in out
 
 
-def test_opencode_cli_model_absent_from_snodo_list_is_best_effort(monkeypatch, capsys):
+def test_models_check_litellm_still_uses_canary_not_cli(monkeypatch, capsys):
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._configured_models", lambda: [("coder", "openai/model")])
+    calls = []
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", lambda model, **kw: calls.append(model))
+    monkeypatch.setattr("snodo.coders.opencode_cli_adapter.OpenCodeCLIAdapter.run_prompt", lambda *a, **k: pytest.fail())
+    assert models_check_command(SimpleNamespace()) == 0
+    assert calls == ["openai/model"]
+
+
+def test_opencode_cli_unconfigured_provider_runs_and_reports_failure(monkeypatch, capsys):
+    from snodo.cli.commands.models_check import check_configured_models
+    monkeypatch.setattr("snodo.coders.availability.check_coder_available", lambda name: None)
+    monkeypatch.setattr("snodo.coders.opencode_cli_adapter.OpenCodeCLIAdapter.run_prompt",
+                        lambda *a, **k: subprocess.CompletedProcess([], 0, "{}", ""))
+    assert check_configured_models(lambda: [("coder", "opencode-cli/other/model")], lambda *a, **kw: pytest.fail()) == 0
+    assert "OK" in capsys.readouterr().out
+
+
+def test_opencode_cli_model_absent_from_snodo_list_is_failure_hint(monkeypatch, capsys):
     from snodo.cli.commands.models_check import check_configured_models
     from snodo.config import ProviderConfig
     monkeypatch.setattr("snodo.coders.availability.check_coder_available", lambda name: None)
     monkeypatch.setattr("snodo.config.ConfigManager.get_providers", lambda self: {"ocgo": ProviderConfig(api_key="test")})
     monkeypatch.setattr("snodo.cli.commands.models_cmd._get_models", lambda *args, **kwargs: [{"id": "another-model"}])
-    assert check_configured_models(
-        lambda: [("coder", "opencode-cli/ocgo/qwen3.8-flash")],
-        lambda *a, **kw: pytest.fail("No LiteLLM call for subprocess coder"),
-    ) == 0
+    monkeypatch.setattr("snodo.coders.opencode_cli_adapter.OpenCodeCLIAdapter.run_prompt",
+                        lambda *a, **k: subprocess.CompletedProcess([], 1, "", "CLI error"))
+    assert check_configured_models(lambda: [("coder", "opencode-cli/ocgo/qwen3.8-flash")], lambda *a, **kw: pytest.fail()) == 1
     out = capsys.readouterr().out
-    assert "NOT FOUND" in out and "opencode models" in out
+    assert "NOT FOUND" in out and "CLI error" in out
 
 
 def test_models_command_unconfigured_provider_failure(mock_providers_config, monkeypatch, capsys):
