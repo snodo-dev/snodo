@@ -2,6 +2,8 @@
 
 import json
 import logging
+import re
+import tempfile
 from typing import Any, Callable, Optional
 
 _logger = logging.getLogger(__name__)
@@ -154,7 +156,12 @@ def _opencode_cli_error_event(stdout: str) -> Optional[str]:
 
 
 def _single_line_reason(reason: str, limit: int = 200) -> str:
-    normalized = " ".join(reason.split())
+    # CLI output is untrusted: remove terminal control sequences before display.
+    from snodo.mcp.transport import sanitize_verbose_output
+
+    text = re.sub(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))", "", reason)
+    text = "".join(char for char in text if char in "\t\n\r" or ord(char) >= 32 and ord(char) != 127)
+    normalized = sanitize_verbose_output(text)
     if len(normalized) > limit:
         return normalized[: limit - 3] + "..."
     return normalized
@@ -216,7 +223,25 @@ def check_configured_models(
                 ))
             else:
                 if coder_name == "opencode-cli":
-                    results.append((role, model, None, _check_opencode_cli_model(model)))
+                    from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
+                    from snodo.coders.base import CoderTimeoutError, CoderUnavailableError
+
+                    try:
+                        with tempfile.TemporaryDirectory(prefix="snodo-model-check-") as directory:
+                            adapter = OpenCodeCLIAdapter(model=model, workspace=directory, timeout_seconds=20)
+                            run = adapter.run_prompt("Reply with OK.", directory, timeout_seconds=20)
+                        healthy, reason = _judge_opencode_cli_run(
+                            run.returncode, run.stdout or "", run.stderr or "",
+                        )
+                    except (CoderTimeoutError, CoderUnavailableError, ValueError) as error:
+                        healthy, reason = False, _single_line_reason(str(error))
+                    except Exception as error:
+                        healthy, reason = False, _single_line_reason(str(error))
+                    if not healthy:
+                        hint = _check_opencode_cli_model(model)
+                        if hint:
+                            reason = f"{reason}; {hint}" if reason else hint
+                    results.append((role, model, healthy, reason))
                     continue
                 results.append((
                     role, model, None,
