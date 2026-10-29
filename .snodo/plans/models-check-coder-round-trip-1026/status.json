@@ -13,16 +13,22 @@
       "spec_hash": "8854bd09d0326fe4"
     },
     "2.1_models_check_runs_the_coder_through_its_cli": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "60ab4be28d3882ce"
+      "spec_hash": "eaa4676c5b363f78",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-29T20:01:48.914109+00:00",
+      "judged": false
     },
     "2.2_provider_guide_describes_the_coder_check": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "5109935827975b81"
+      "spec_hash": "ea04f03ffbb5d6e8",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-29T20:01:49.296823+00:00",
+      "judged": false
     }
   },
   "integration": {
