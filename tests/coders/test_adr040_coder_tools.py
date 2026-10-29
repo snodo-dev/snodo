@@ -163,3 +163,95 @@ def test_model_tool_result_within_bound_is_unchanged():
 
     result = "short tool output"
     assert bound_tool_result(result) == result
+
+
+def test_large_test_result_is_bounded_with_exit_code_and_tail():
+    from snodo.coders.tool_result_text import (
+        MAX_TOOL_RESULT_CHARS,
+        bound_tool_result,
+        provider_tool_result_text,
+    )
+
+    result = (
+        "Test Execution Result (exit code: 1):\n"
+        "--- STDOUT ---\n" + "noise\n" * 400_000 +
+        "\n--- STDERR ---\nAssertionError: expected value\n"
+        "FAILED tests/test_example.py::test_failure"
+    )
+    # This is the composition used for message content sent to the provider:
+    # frame first, then bound, so framing cannot push the final value over cap.
+    model_result = bound_tool_result(
+        provider_tool_result_text(result), preserve_tail=True,
+    )
+
+    assert len(model_result) <= MAX_TOOL_RESULT_CHARS
+    assert "exit code: 1" in model_result
+    assert "TRUNCATED" in model_result
+    assert "characters omitted" in model_result
+    assert "run a narrower test target" in model_result
+    assert "FAILED tests/test_example.py::test_failure" in model_result
+
+
+def test_provider_framing_cannot_push_at_limit_result_over_bound():
+    from snodo.coders.tool_result_text import (
+        MAX_TOOL_RESULT_CHARS,
+        bound_tool_result,
+        provider_tool_result_text,
+    )
+
+    # JSON-shaped tool output receives a provider-facing prefix. The bounded
+    # value delivered to the model must include that prefix in its accounting.
+    result = "{" + ("x" * (MAX_TOOL_RESULT_CHARS - 2)) + "}"
+    framed = provider_tool_result_text(result)
+    model_result = bound_tool_result(framed)
+
+    assert len(result) == MAX_TOOL_RESULT_CHARS
+    assert len(model_result) <= MAX_TOOL_RESULT_CHARS
+    assert model_result.startswith("Tool result (text):\n{")
+    assert "TRUNCATED" in model_result
+    assert "characters omitted" in model_result
+    assert "run a narrower test target" in model_result
+
+
+def test_tool_loop_appends_only_bounded_provider_framed_result(tmp_path):
+    from snodo.coders.tool_result_text import MAX_TOOL_RESULT_CHARS
+
+    adapter = LiteLLMAdapter(model="gpt-4o", workspace_mcp=WorkspaceMCP(str(tmp_path)))
+    stdout = "noise\n" * 400_000
+    stderr = "AssertionError: expected value\nFAILED tests/test_example.py::test_failure"
+    cases = [
+        "Test Execution Result (exit code: 1):\n--- STDOUT ---\n" + stdout + "\n--- STDERR ---\n" + stderr,
+        "Test Execution Result (exit code: 1):\n" + ("x" * (MAX_TOOL_RESULT_CHARS - len("Test Execution Result (exit code: 1):\n"))),
+    ]
+
+    for result in cases:
+        run_tests = MagicMock()
+        run_tests.id = "run"
+        run_tests.function.name = "run_tests"
+        run_tests.function.arguments = json.dumps({"test_path": "tests/"})
+        first = MagicMock()
+        first.choices = [MagicMock(message=MagicMock(content=None, tool_calls=[run_tests]), finish_reason="tool_calls")]
+        second = MagicMock()
+        second.choices = [MagicMock(message=MagicMock(content=None, tool_calls=[]), finish_reason="stop")]
+        calls = iter([first, second])
+        seen = []
+
+        def completion(**kwargs):
+            seen.append(kwargs["messages"])
+            return next(calls)
+
+        adapter._completion_fn = completion
+        adapter._execute_coder_run_tests = MagicMock(return_value=result)
+        try:
+            adapter._call_llm_with_tools("test prompt")
+        except Exception:
+            pass
+        tool_text = seen[1][-1]["content"]
+        assert len(tool_text) <= MAX_TOOL_RESULT_CHARS
+        assert "exit code: 1" in tool_text
+        if len(result) > MAX_TOOL_RESULT_CHARS:
+            assert "TRUNCATED" in tool_text
+            assert "run a narrower test target" in tool_text
+            assert "FAILED tests/test_example.py::test_failure" in tool_text
+        else:
+            assert tool_text == result
