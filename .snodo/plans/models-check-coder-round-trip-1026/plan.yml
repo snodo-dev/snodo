@@ -1,0 +1,18 @@
+intent: '`snodo models --check` reports an opencode-cli coder model as NOT CHECKABLE
+  with only a catalog lookup, while every other role gets a live call. The coder line
+  should reflect a real round trip through the coder''s CLI with the configured model,
+  using the adapter''s own launch argv for the installed CLI version, and end as OK
+  or FAILED with the CLI''s error. No new statuses.'
+name: models-check-coder-round-trip-1026
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_opencode_adapter_offers_a_one_shot_model_check
+  - 1.2_coder_check_outcome_is_judged_by_a_helper
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_models_check_runs_the_coder_through_its_cli
+  - 2.2_provider_guide_describes_the_coder_check
