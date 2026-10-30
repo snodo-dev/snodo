@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_recovery_lineage_helper": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fc7769191a23cc79"
+    },
+    "1.2_protocol_guide_describes_gate_evidence": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "92769099a249dfac"
+    },
+    "2.1_merge_gate_counts_recovery_lineage": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "805ed5e5aa2e454c"
+    }
+  },
+  "integration": {
+    "branch": "plan/merge-gate-recovery-lineage-1039/integration",
+    "base_sha": "2306c0c3a55e889186aaf2bd9fcda84d41d53598"
+  }
+}

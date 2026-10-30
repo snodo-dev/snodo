@@ -1,0 +1,18 @@
+intent: A task whose recovery sub-task passes the quality gate ends "unmerged" because
+  the merge gate accepts a passing verification only when its task_ref equals the
+  original task id, while the recovery records it under "<task>_fix_<n>". The gate
+  should count a passing verification recorded for the task's own recovery lineage,
+  for the exact commit being delivered, and stay as strict as today about the commit
+  and about unrelated tasks. No new states, statuses, severities or halt types.
+name: merge-gate-recovery-lineage-1039
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_recovery_lineage_helper
+  - 1.2_protocol_guide_describes_gate_evidence
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_merge_gate_counts_recovery_lineage
