@@ -617,3 +617,71 @@ def test_queue_integration_merge_requires_verification_of_queue_head(tmp_path):
         if event.data.get("commit") == commit and event.data.get("outcome") == "pass"
     ]
     assert verified
+
+
+@pytest.mark.parametrize(
+    ("task_ref", "verified_commit_matches", "should_merge"),
+    [
+        ("task_recovery_gate_fix_1", True, True),
+        ("task_recovery_gate_fix_1", False, False),
+        ("unrelated-task_fix_1", True, False),
+        ("task_recovery_gate_extra_fix_1", True, False),
+    ],
+)
+def test_task_merge_accepts_only_own_recovery_verification(
+    tmp_path, task_ref, verified_commit_matches, should_merge,
+):
+    from git import Repo
+    from snodo.cli.commands.run_merge import _merge_on_success
+    from snodo.core.interfaces import Task
+    from snodo.infrastructure.audit import AuditLog
+    from snodo.infrastructure.worktree import task_branch_name
+
+    project, base = _repository(tmp_path)
+    task = Task(id="task_recovery_gate", spec="recovery verification")
+    branch = task_branch_name(task.id, task.spec)
+    _path, commit = _branch(project, base, branch, "recovery.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    verified_commit = commit if verified_commit_matches else base
+    _verification(audit, task_ref, verified_commit)
+
+    result = _merge_on_success(str(project), task, 0, None, audit)
+
+    assert (result[0] == 0) is should_merge
+    with Repo(str(project)) as repo:
+        assert ("recovery.txt" in repo.git.ls_tree("-r", "main")) is should_merge
+    if not should_merge:
+        blocked = audit.get_history("unverified_merge_blocked")
+        assert blocked[-1].data["task_ref"] == task.id
+
+
+def test_fast_path_merge_accepts_recovery_subtask_verification(tmp_path):
+    from git import Repo
+    from snodo.cli.commands.run_merge import _try_merge_unmerged_task
+    from snodo.compiler.models import Validator
+    from snodo.infrastructure.audit import AuditLog
+    from snodo.infrastructure.worktree import task_branch_name
+
+    project, base = _repository(tmp_path, remote=True)
+    task_id, spec = "task_fast_recovery", "fast path recovery delivery"
+    branch = task_branch_name(task_id, spec)
+    _path, commit = _branch(project, base, branch, "fast-recovery.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = SimpleNamespace(
+        validators=[Validator(validator_id="qa-gate", validator_type="quality")],
+        initial_mode="producer",
+        delivery_for=lambda mode: "push_branch" if mode == "producer" else "local_merge",
+        execution=SimpleNamespace(delivery_remote="origin"),
+        metadata={"provider": "test"},
+    )
+    audit.append_event("verification_executed", {
+        "op": "verification_executed", "task_ref": f"{task_id}_fix_1",
+        "validator_id": "qa-gate", "returncode": 0, "commit": commit,
+        "outcome": "pass", "command": "true",
+    })
+
+    assert _try_merge_unmerged_task(
+        str(project), task_id, spec, protocol=protocol, audit_log=audit,
+    ) is True
+    with Repo(str(tmp_path / "remote.git")) as remote:
+        assert remote.commit(branch).hexsha == commit

@@ -136,9 +136,11 @@ def _matching_task_verifications(
     quality_validator_ids: Optional[set[str]] = None,
 ) -> list:
     """Return quality-validator records for this task and merge target."""
+    from snodo.engine.recovery_lineage import belongs_to_recovery_lineage
+
     return [
         event for event in history
-        if event.data.get("task_ref") == task_id
+        if belongs_to_recovery_lineage(event.data.get("task_ref"), task_id)
         and event.data.get("validator_id") in (
             {"quality"} if quality_validator_ids is None else quality_validator_ids
         )
