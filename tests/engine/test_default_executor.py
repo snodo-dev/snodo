@@ -8,6 +8,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import ExecutionError, Task
+from snodo.coders.base import (
+    AdapterError, CoderTimeoutError, SnodoMutationError, TurnBudgetExhausted,
+)
 from snodo.engine.loop import GraphBuilder
 from snodo.infrastructure.tokens import ValidationToken
 
@@ -587,8 +590,8 @@ def test_findings_only_escape_check(sample_protocol, sample_task, mock_token, es
 
 
 @pytest.mark.parametrize("error", [
-    pytest.param(__import__("snodo.coders.base", fromlist=["CoderTimeoutError"]).CoderTimeoutError("timeout"), id="timeout"),
-    pytest.param(__import__("snodo.coders.base", fromlist=["TurnBudgetExhausted"]).TurnBudgetExhausted("budget"), id="turn-budget"),
+    pytest.param(CoderTimeoutError("timeout"), id="timeout"),
+    pytest.param(TurnBudgetExhausted("budget"), id="turn-budget"),
 ])
 @pytest.mark.parametrize("escaped", [True, False], ids=["escape", "clean"])
 def test_bounded_failure_escape_preserves_or_reports_failure(sample_protocol, sample_task, mock_token, error, escaped):
@@ -608,9 +611,8 @@ def test_bounded_failure_escape_preserves_or_reports_failure(sample_protocol, sa
 @pytest.mark.parametrize("kind", ["mutation", "adapter"])
 @pytest.mark.parametrize("escaped", [True, False], ids=["escape", "clean"])
 def test_classified_failures_keep_exception_and_log_escape(sample_protocol, sample_task, mock_token, kind, escaped, caplog):
-    from snodo.coders.base import AdapterError, SnodoMutationError
     builder = GraphBuilder(sample_protocol)
-    failure = SnodoMutationError("blocked path") if kind == "mutation" else AdapterError("adapter unavailable")
+    failure = SnodoMutationError([".snodo/protocol.yml"]) if kind == "mutation" else AdapterError("adapter unavailable")
     class BadCoder(DummyCoder):
         def implement(self, spec):
             raise failure
