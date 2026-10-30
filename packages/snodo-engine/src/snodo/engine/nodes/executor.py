@@ -303,6 +303,7 @@ class ExecutorMixin:
         )
         self._ensure_task_branch(git_mcp, task)
         refs_before = self._repo_ref_snapshot(git_mcp)
+        escape_checked = False
 
         try:
             code_artifact = coder.implement(spec)
@@ -350,14 +351,11 @@ class ExecutorMixin:
                         git_mcp, getattr(task, "base", None),
                         refs_before=refs_before, task=task,
                     )
-                    # Even a retry with recoverable work must not hide a
-                    # coder that escaped to another checkout this run.
-                    escaped = self._escaped_repo_commit(
-                        git_mcp, refs_before, task
-                    )
-                    if escaped:
-                        raise ExecutionError(escaped)
                     if existing is None and not has_findings:
+                        escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+                        escape_checked = True
+                        if escaped:
+                            raise ExecutionError(f"{escaped} Original failure: coder produced no file operations.")
                         raise NoFileOperationsError(
                             "Coder produced no file operations: it exited 0 "
                             "having written nothing. output_tail carries the "
@@ -387,6 +385,9 @@ class ExecutorMixin:
 
         except SnodoMutationError:
             self._record_coder_run_facts(coder)
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            if escaped:
+                _logger.error("%s", escaped)
             raise
         except TurnBudgetExhausted:
             recovered = self._recover_bounded_run_work(
@@ -398,11 +399,9 @@ class ExecutorMixin:
                 refs_before=refs_before,
                 task=task,
             )
-            # Recovered task-branch work must not pass if this coder escaped
-            # the dispatched workspace during this run.
             escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
             if escaped:
-                raise ExecutionError(escaped) from None
+                raise ExecutionError(f"{escaped} Original failure: turn budget exhausted.") from None
             if recovered is not None:
                 return recovered
             raise
@@ -412,22 +411,33 @@ class ExecutorMixin:
                 git_mcp, coder, artifacts, base_ref=getattr(task, "base", None),
                 refs_before=refs_before, task=task,
             )
-            # Recovered task-branch work must not pass if this coder escaped
-            # the dispatched workspace during this run.
             escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
             if escaped:
-                raise ExecutionError(escaped) from None
+                raise ExecutionError(f"{escaped} Original failure: coder timed out.") from None
             if recovered is not None:
                 return recovered
             raise
         except AdapterError:
             self._record_coder_run_facts(coder)
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            if escaped:
+                _logger.error("%s", escaped)
             raise
-        except ExecutionError:
+        except ExecutionError as e:
             self._record_coder_run_facts(coder)
+            escaped = None if escape_checked else self._escaped_repo_commit(git_mcp, refs_before, task)
+            if escaped:
+                raise ExecutionError(f"{e} {escaped}") from e
             raise
         except Exception as e:
             self._record_coder_run_facts(coder)
-            raise ExecutionError(f"Coder execution failed: {str(e)}") from e
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            message = f"Coder execution failed: {str(e)}"
+            if escaped:
+                message = f"{message} {escaped}"
+            raise ExecutionError(message) from e
 
+        escaped = None if escape_checked else self._escaped_repo_commit(git_mcp, refs_before, task)
+        if escaped:
+            raise ExecutionError(escaped)
         return artifacts
