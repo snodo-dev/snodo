@@ -13,6 +13,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Report a clear "not found at <ref>" for `git_show` on a path that is absent at that ref, instead of an error. (Fixes #1037)
 - Make `snodo models --check` send one short prompt through the OpenCode CLI for an `opencode-cli` coder and report OK or FAILED with the CLI's message, instead of NOT CHECKABLE. (Fixes #1026)
 - Let `snodo config set/get` handle the documented `llm.recon.deadline_seconds`, `llm.recon.max_tokens`, `llm.recon.max_tool_turns` and `llm.coder.silence_timeout_seconds` keys. (Fixes #1038)
+- Count a passing verification recorded for a task's own recovery sub-tasks when deciding whether to merge it, so a task that passes after recovery is no longer left unmerged. (Fixes #1039)
 
 ## [0.27.0] — 2026-10-27
 

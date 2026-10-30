@@ -13,10 +13,13 @@
       "spec_hash": "92769099a249dfac"
     },
     "2.1_merge_gate_counts_recovery_lineage": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "805ed5e5aa2e454c"
+      "spec_hash": "805ed5e5aa2e454c",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-30T04:21:27.989036+00:00",
+      "judged": false
     }
   },
   "integration": {
