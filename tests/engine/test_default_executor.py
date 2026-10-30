@@ -549,3 +549,73 @@ def test_default_executor_halts_on_workspace_escape(tmp_path, sample_protocol):
 
     git_mcp.repo.close()
 
+
+
+@pytest.mark.parametrize("escaped", [True, False], ids=["escape", "clean"])
+def test_escape_checked_before_nonempty_artifact_commit(sample_protocol, sample_task, mock_token, escaped):
+    builder = GraphBuilder(sample_protocol)
+    coder = DummyCoder([DummyFileOp("write", "result.py")])
+    workspace = MagicMock()
+    git = MagicMock()
+    builder._escaped_repo_commit = lambda *args: "Workspace escape detected" if escaped else None
+    if escaped:
+        with pytest.raises(ExecutionError, match="Workspace escape"):
+            builder._default_executor(sample_task, mock_token, coder, workspace, git)
+        git.stage_files.assert_not_called()
+        git.commit.assert_not_called()
+    else:
+        assert "result.py" in builder._default_executor(sample_task, mock_token, coder, workspace, git)
+        git.commit.assert_called_once()
+
+
+@pytest.mark.parametrize("escaped", [True, False], ids=["escape", "clean"])
+def test_findings_only_escape_check(sample_protocol, sample_task, mock_token, escaped):
+    builder = GraphBuilder(sample_protocol)
+    coder = DummyCoder([])
+    def implement(spec):
+        class Artifact:
+            files = []
+            findings = ["finding"]
+        return Artifact()
+    coder.implement = implement
+    builder._escaped_repo_commit = lambda *args: "Workspace escape detected" if escaped else None
+    if escaped:
+        with pytest.raises(ExecutionError, match="Workspace escape"):
+            builder._default_executor(sample_task, mock_token, coder, MagicMock(), None)
+    else:
+        assert builder._default_executor(sample_task, mock_token, coder, MagicMock(), None) == []
+
+
+@pytest.mark.parametrize("error", [
+    pytest.param(__import__("snodo.coders.base", fromlist=["CoderTimeoutError"]).CoderTimeoutError("timeout"), id="timeout"),
+    pytest.param(__import__("snodo.coders.base", fromlist=["TurnBudgetExhausted"]).TurnBudgetExhausted("budget"), id="turn-budget"),
+])
+@pytest.mark.parametrize("escaped", [True, False], ids=["escape", "clean"])
+def test_bounded_failure_escape_preserves_or_reports_failure(sample_protocol, sample_task, mock_token, error, escaped):
+    builder = GraphBuilder(sample_protocol)
+    class BadCoder(DummyCoder):
+        def implement(self, spec):
+            raise error
+    builder._escaped_repo_commit = lambda *args: "Workspace escape detected" if escaped else None
+    if escaped:
+        with pytest.raises(ExecutionError, match="Workspace escape"):
+            builder._default_executor(sample_task, mock_token, BadCoder(), MagicMock(), None)
+    else:
+        with pytest.raises(type(error)):
+            builder._default_executor(sample_task, mock_token, BadCoder(), MagicMock(), None)
+
+
+@pytest.mark.parametrize("kind", ["mutation", "adapter"])
+@pytest.mark.parametrize("escaped", [True, False], ids=["escape", "clean"])
+def test_classified_failures_keep_exception_and_log_escape(sample_protocol, sample_task, mock_token, kind, escaped, caplog):
+    from snodo.coders.base import AdapterError, SnodoMutationError
+    builder = GraphBuilder(sample_protocol)
+    failure = SnodoMutationError("blocked path") if kind == "mutation" else AdapterError("adapter unavailable")
+    class BadCoder(DummyCoder):
+        def implement(self, spec):
+            raise failure
+    builder._escaped_repo_commit = lambda *args: "Workspace escape detected" if escaped else None
+    with pytest.raises(type(failure)) as caught:
+        builder._default_executor(sample_task, mock_token, BadCoder(), MagicMock(), None)
+    assert caught.value is failure
+    assert ("Workspace escape detected" in caplog.text) is escaped

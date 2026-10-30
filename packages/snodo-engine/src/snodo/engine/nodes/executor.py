@@ -375,6 +375,10 @@ class ExecutorMixin:
                         self._last_existing_work_base_ref = existing[0]
                         artifacts.extend(existing[1])
                 else:
+                    escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+                    escape_checked = True
+                    if escaped:
+                        raise ExecutionError(escaped)
                     artifacts.extend(artifact_paths)
                     git_artifacts = self._commit_artifacts(
                         git_mcp, coder, artifact_paths, task
@@ -387,6 +391,8 @@ class ExecutorMixin:
             self._record_coder_run_facts(coder)
             escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
             if escaped:
+                # Preserve ADR 027's blocker halt and path-bearing audit event;
+                # logging makes the escape visible without replacing governance.
                 _logger.error("%s", escaped)
             raise
         except TurnBudgetExhausted:
@@ -421,6 +427,8 @@ class ExecutorMixin:
             self._record_coder_run_facts(coder)
             escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
             if escaped:
+                # Preserve ADR 015's environment-error classification; do not
+                # turn an operator-fixable adapter failure into engine failure.
                 _logger.error("%s", escaped)
             raise
         except ExecutionError as e:
