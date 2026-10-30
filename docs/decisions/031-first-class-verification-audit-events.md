@@ -43,3 +43,9 @@ Furthermore, self-reported summaries could theoretically be accepted without pro
      not strand its first task) while the merge line and the record both say that
      no tests were executed. A `"fail"` or `"error"` record never satisfies the
      gate, and neither does the absence of any record.
+
+
+**Clarification (2026-10-29):** In this rule, “the task” includes its own
+recovery sub-tasks (whose ids are the task id followed by `_fix_` and a number).
+The verification must still be a passing quality verification of the exact commit
+being delivered. The rest of this record stands.

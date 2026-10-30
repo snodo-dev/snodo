@@ -422,7 +422,10 @@ claiming a pass (Fixes #215).
 A protocol with no quality-type validator runs as a plain agent loop and may
 merge without verification evidence; snodo prints an ungated notice and warns
 rather than blocking the merge. If a quality validator is declared, merge still
-requires passing or `no_tests` verification for the exact commit.
+requires passing or `no_tests` verification for the exact commit. For a gated
+merge, the passing quality verification must be for the commit being delivered
+and recorded for the task or one of its own recovery sub-tasks. A verification
+for a different commit or a different task does not count.
 
 ### Validator types
 
