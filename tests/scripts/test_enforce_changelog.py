@@ -159,3 +159,17 @@ def test_reachable_base_and_empty_range_pass(tmp_path: Path, capsys) -> None:
     assert changelog_check.main(["--repo", str(repo), "--base", base]) == 0
     assert changelog_check.main(["--repo", str(repo), "--base", head]) == 0
     assert "fallback" not in capsys.readouterr().out
+
+
+def test_subject_cut_off_mid_number_does_not_close_the_shorter_issue() -> None:
+    subject = "coder: this work is tracked by the existing issue #956. Put \"Fixes #95"
+    message = f"{subject}\n\nFixes #956\n"
+
+    assert changelog_check._closing_issues(subject, message, 1) == {"956"}
+
+
+def test_distinct_closing_references_are_all_kept() -> None:
+    subject = "fix: two things (Fixes #95)"
+    message = f"{subject}\n\nFixes #956\n"
+
+    assert changelog_check._closing_issues(subject, message, 1) == {"95", "956"}

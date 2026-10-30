@@ -28,6 +28,9 @@ from pathlib import Path
 ISSUE_CLOSING = re.compile(
     r"\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)\b", re.IGNORECASE
 )
+TRAILING_CLOSING = re.compile(
+    r"\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)$", re.IGNORECASE
+)
 ISSUE_REFERENCE = re.compile(r"\B#(\d+)\b")
 SECTION = re.compile(r"(?m)^## (.+?)\s*$")
 PENDING_SECTION = re.compile(r"^\[Unreleased\]$", re.IGNORECASE)
@@ -120,7 +123,16 @@ def _commits(repo_root: Path, base: str) -> list[tuple[str, str, str, int]]:
 def _closing_issues(subject: str, message: str, parent_count: int) -> set[str]:
     if parent_count > 1 or subject.lower().startswith(("revert ", "release:")):
         return set()
-    return {match.group(1) for match in ISSUE_CLOSING.finditer(f"{subject}\n{message}")}
+    found = {match.group(1) for match in ISSUE_CLOSING.finditer(f"{subject}\n{message}")}
+    # A subject cut off mid-number ("... Fixes #95" for "Fixes #956") names an
+    # issue nobody meant to close; the body still carries the full reference.
+    cut = TRAILING_CLOSING.search(subject)
+    if cut:
+        body = message.split("\n", 1)[1] if "\n" in message else ""
+        longer = {m.group(1) for m in ISSUE_CLOSING.finditer(body)}
+        if any(other != cut.group(1) and other.startswith(cut.group(1)) for other in longer):
+            found.discard(cut.group(1))
+    return found
 
 
 def _issue_sections(changelog: str) -> dict[str, list[str]]:
