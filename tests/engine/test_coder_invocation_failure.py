@@ -136,6 +136,19 @@ def test_cli_rejects_model_is_execution_error_not_internal_error(git_fixture_rep
     assert tree.subtasks == []
 
 
+def test_host_cli_sandboxed_refusal_is_environment_error(git_fixture_repo):
+    coder = AGYAdapter(workspace=git_fixture_repo, sandboxed=True)
+    tree = _run_with_coder(coder, git_fixture_repo)
+
+    assert tree.outcome == "environment_error"
+    payload = tree.halt_payload
+    assert payload["halt_type"] == "environment_error"
+    assert "sandboxed: true" in (payload["reason"] or "")
+    assert "host CLI cannot be contained" in (payload["reason"] or "")
+    assert "Remove the sandboxed setting" in (payload["reason"] or "")
+    assert "container coder" in (payload["reason"] or "")
+
+
 def test_missing_binary_is_environment_error_not_a_verdict(git_fixture_repo):
     """A coder binary absent from PATH halts as an environment fault.
 

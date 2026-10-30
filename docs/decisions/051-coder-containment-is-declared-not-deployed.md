@@ -122,3 +122,7 @@ A global setting rather than a coder property was rejected. Containment is not
 uniformly meaningful — it is real for a coder that edits a filesystem and
 vacuous for one that returns an artifact over an API — and a setting that
 means nothing for half its subjects teaches operators to ignore it.
+
+## Clarification — 2026-10-30
+
+Following the Consequences above, a configured `sandboxed: true` on a host CLI coder is refused as `environment_error`, rather than only reported, because the host CLI cannot provide containment. An unset `sandboxed` setting and other settings the coder does not honour continue to be reported only.
