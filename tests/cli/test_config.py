@@ -982,6 +982,18 @@ class TestCLILLMModelKeys:
         assert "gpt-4o" in out
         assert "claude-sonnet-4-20250514" in out
 
+    def test_documented_recon_and_coder_limits_round_trip(self, capsys):
+        for key, value in (
+            ("llm.recon.deadline_seconds", "900"),
+            ("llm.recon.max_tokens", "8000"),
+            ("llm.recon.max_tool_turns", "30"),
+            ("llm.coder.silence_timeout_seconds", "420"),
+        ):
+            assert main(["config", "set", key, value]) == 0
+            capsys.readouterr()
+            assert main(["config", "get", key]) == 0
+            assert value in capsys.readouterr().out
+
     def test_int_llm_key_rejects_non_int(self, capsys):
         assert main(["config", "set", "llm.num_retries", "abc"]) == 1
         assert "must be a int" in capsys.readouterr().err

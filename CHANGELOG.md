@@ -12,6 +12,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Bound every tool result before it reaches a model, in the coder loop, the validator loop and the recon loop, and cap the length of each `search_string` match line, so one oversized result no longer makes the provider refuse the request. (Fixes #956)
 - Report a clear "not found at <ref>" for `git_show` on a path that is absent at that ref, instead of an error. (Fixes #1037)
 - Make `snodo models --check` send one short prompt through the OpenCode CLI for an `opencode-cli` coder and report OK or FAILED with the CLI's message, instead of NOT CHECKABLE. (Fixes #1026)
+- Let `snodo config set/get` handle the documented `llm.recon.deadline_seconds`, `llm.recon.max_tokens`, `llm.recon.max_tool_turns` and `llm.coder.silence_timeout_seconds` keys. (Fixes #1038)
 
 ## [0.27.0] — 2026-10-27
 

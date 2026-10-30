@@ -376,6 +376,7 @@ _LLM_SETTABLE_KEYS = {
     "coder.max_tokens": int,
     "coder.max_tool_turns": int,
     "coder.timeout_seconds": int,
+    "coder.silence_timeout_seconds": int,
     "coder.concurrency": int,
     "validator.model": str,
     "validator.max_tokens": int,
@@ -385,6 +386,9 @@ _LLM_SETTABLE_KEYS = {
     "classifier.temperature": float,
     "recon.num_agents": int,
     "recon.models": list,
+    "recon.max_tokens": int,
+    "recon.max_tool_turns": int,
+    "recon.deadline_seconds": int,
     "wave.max_age_days": int,
     "wave.max_idle_days": int,
 }
