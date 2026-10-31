@@ -435,6 +435,14 @@ class TestPlanManagement:
         assert auth_plan["status_counts"]["completed"] == 1
         assert auth_plan["status_counts"]["pending"] == 2
 
+    def test_list_plans_includes_optional_intent_ref(self, planner):
+        planner.decompose("Linked plan", "linked", intent_ref="int_123456")
+        planner.decompose("Unlinked plan", "unlinked")
+
+        plans = {plan["name"]: plan for plan in planner.list_plans()}
+        assert plans["linked"]["intent_ref"] == "int_123456"
+        assert "intent_ref" not in plans["unlinked"]
+
     def test_list_plans_sorted(self, planner):
         planner.decompose("Z plan", "z_plan")
         planner.decompose("A plan", "a_plan")
