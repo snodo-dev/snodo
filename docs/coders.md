@@ -90,7 +90,9 @@ declare an external executable requirement.
 Explicit `llm.coder.*` settings that the selected backend does not honour are
 reported at info level when that coder is selected. The message names the
 setting, its value, and the settings the coder does honour; this is advisory and
-does not reject the configuration. Unset defaults are not reported. Current
+does not reject the configuration. The exception is `sandboxed: true` on a host
+CLI coder: because it cannot provide containment, that configuration is refused
+with an `environment_error` halt; see [Coder workspace and `sandboxed`](configuration.md#coder-workspace-and-sandboxed). Unset defaults are not reported. Current
 settings honoured by each backend are:
 
 | Backend(s) | `llm.coder.*` settings honoured |

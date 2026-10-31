@@ -238,6 +238,25 @@ llm:
     max_idle_days: 5
 ```
 
+### Coder workspace and `sandboxed`
+
+`sandboxed: true` has different support by coder family. A contained `opencode`
+coder (and other adapters that implement containment) runs on a discarded copy
+of the task workspace; in-process coders already work against the task workspace
+and do not use this setting. Host CLI coders cannot provide containment: an
+explicit `sandboxed: true` is refused with an `environment_error` halt. Remove
+the setting or use a contained adapter to proceed.
+
+For host CLI coders, the engine checks after every coder exit whether the
+operator's checkout content changed from the pre-dispatch baseline. Changes
+block acceptance and the changed paths are listed. `.snodo/` runtime state is
+excluded; plan definition files and `protocol.yml` are watched. This detects
+changes after the fact: it neither prevents writes nor undoes damage, cannot
+see writes to arbitrary host paths outside the repository, and treats a
+concurrent operator edit like a coder edit. It does not apply to in-place work
+or in-process coders. True write prevention remains the contained adapter
+described in [ADR 051](decisions/051-coder-containment-is-declared-not-deployed.md).
+
 Older `llm.wave.max_tokens` and `llm.wave.temperature` keys are migrated to
 `llm.classifier` with a deprecation warning. Remove them after migration.
 
