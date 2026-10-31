@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Run the workspace-escape check on every way a coder run can end, refuse a configured `sandboxed: true` on a host CLI coder as an environment error, and block acceptance when a coder changes the content of the operator's checkout. (Fixes #946)
+- Record the operator's intent as its own local record that plans trace back to: `snodo intent record|show|list` and the MCP tools `record_intent`, `get_intent` and `list_intents`, an optional `intent_ref` on a plan (checked when the plan is proposed and shown by plan reads), and plans listed when an intent is read. Intents are written once and corrected by a new intent that supersedes the old one; no states, statuses, severities or halt types are added, and nothing reaches the cloud. (Fixes #1042)
+
 ## [0.27.1] — 2026-10-30
 
 - Bound every tool result before it reaches a model, in the coder loop, the validator loop and the recon loop, and cap the length of each `search_string` match line, so one oversized result no longer makes the provider refuse the request. (Fixes #956)

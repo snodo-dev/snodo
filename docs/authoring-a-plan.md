@@ -83,11 +83,11 @@ waves:
 - `intent_ref` — optional id of a recorded intent, in the form `int_` followed
   by six hexadecimal characters. Record the intent first with `record_intent`,
   then pass its id when proposing the plan; the id is checked against the intent
-  store. The reference appears in plan reads when set. `get_intent` reads the
-  intent record; whether it has been acted on is determined from plans that name
-  it. Intents are written once; a correction is a new intent with `supersedes`.
+  store. The reference appears in plan reads when set. `get_intent` and `snodo intent show`
+  read the intent record together with the plans that name it, which is how you
+  tell whether it has been acted on. Intents are written once; a correction is a new intent with `supersedes`.
   An intent may include an `issue` link, but has no status field. This is
-  described in ADR 060. It adds no states, statuses, severities, or halt types.
+  described in [ADR 060](decisions/060-intent-record.md). It adds no states, statuses, severities, or halt types.
   The `intent_recorded` audit event is local only; nothing about intents or this
   reference reaches the cloud, and plan history events and the cloud wire are
   unchanged.

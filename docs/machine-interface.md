@@ -408,8 +408,14 @@ Schema: `snodo.intent.record.v1`. Emits `{schema, ok, intent}`.
 
 ### `snodo intent show --json`
 
-Schema: `snodo.intent.show.v1`. Emits `{schema, ok, intent}`.
+Schema: `snodo.intent.show.v1`. Emits `{schema, ok, intent}`; `intent` carries a `plans` array of `{name, status_counts}` for the plans that name it.
 
 ### `snodo intent list --json`
 
 Schema: `snodo.intent.list.v1`. Emits `{schema, ok, intents}` (newest first).
+
+### `get_intent`
+
+The intent record is returned with a `plans` array. Each linked plan contains
+its `name` and `status_counts`, derived from that plan's `status.json`. Intent
+listing omits this lookup so it remains inexpensive.

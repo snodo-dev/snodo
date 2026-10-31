@@ -29,4 +29,4 @@ session to the project audit log.
 
 ## Intent tools
 
-MCP planning tools can record local intent with `record_intent` (required `text`, optional `issue` and `supersedes`), retrieve a record by `get_intent` using `intent_id`, and list newest-first records with `list_intents` (optional positive `limit`). These records are local context and are not linked to plans.
+MCP planning tools can record local intent with `record_intent` (required `text`, optional `issue` and `supersedes`), retrieve a record by `get_intent` using `intent_id`, and list newest-first records with `list_intents` (optional positive `limit`). `get_intent` also returns the plans whose `intent_ref` names the record, each with its task status counts; `list_intents` does not.

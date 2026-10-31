@@ -55,28 +55,34 @@
       "spec_hash": "a18a48c2c1ff66cb"
     },
     "4.1_get_plan_and_list_plans_show_intent_ref": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "ee59c094a3b29c6f"
     },
     "4.2_reading_an_intent_lists_its_plans": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "359870ea5c7a22e0"
+      "spec_hash": "365f0f37e5e635b1",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-31T10:00:22.775218+00:00",
+      "judged": false
     },
     "5.1_docs_describe_intents_and_intent_ref": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "091fb12bd9226803"
+      "spec_hash": "135501dc00b1a7fc"
     },
     "5.2_adr_038_dated_note_on_intent": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "2cdc03351cfbd11e"
+      "spec_hash": "53ae11f34d2083bc",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-31T10:50:20.867275+00:00",
+      "judged": false
     }
   },
   "integration": {

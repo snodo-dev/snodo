@@ -3,6 +3,7 @@
 from typing import Any
 
 from snodo.infrastructure.intent_store import IntentError, IntentStore
+from snodo.infrastructure.intent_trace import plans_for_intent
 
 
 class IntentToolHandler:
@@ -25,7 +26,9 @@ class IntentToolHandler:
 
     def handle_get_intent(self, arguments: dict[str, Any]) -> dict:
         try:
-            return self.store.get(arguments.get("intent_id"))
+            intent = self.store.get(arguments.get("intent_id"))
+            intent["plans"] = plans_for_intent(self.store.project_root, intent["id"])
+            return intent
         except IntentError as exc:
             self._error(exc)
 

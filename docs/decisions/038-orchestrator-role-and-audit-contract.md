@@ -48,4 +48,4 @@ The task specification is the single highest-leverage artifact in the system: it
 
 ## Clarification — 2026-10-31
 
-The intent behind orchestrated work is captured as its own record before planning (ADR 060). Plans may name that record with `intent_ref`; the `intent_recorded` event is local only.
+The intent behind orchestrated work is captured as its own record before planning ([ADR 060](060-intent-record.md)). Plans may name that record with `intent_ref`; the `intent_recorded` event is local only.

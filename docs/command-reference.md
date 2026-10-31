@@ -299,4 +299,4 @@ Managed tunnels configured with `--auth service-token` expose the saved Access p
 
 ### `snodo intent`
 
-Record and inspect local operator intents: `snodo intent record <text> [--issue ISSUE] [--supersedes ID]`, `snodo intent show <id>`, and `snodo intent list`. Each command accepts `--json`.
+Record and inspect local operator intents: `snodo intent record <text> [--issue ISSUE] [--supersedes ID]`, `snodo intent show <id>` (which also lists the plans that name the intent), and `snodo intent list`. Each command accepts `--json`.

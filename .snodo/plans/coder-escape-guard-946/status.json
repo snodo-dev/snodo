@@ -25,10 +25,10 @@
       "spec_hash": "dbc292e79ea24f33"
     },
     "3.1_executor_blocks_changes_to_operator_checkout": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "f37d29a723180c33"
+      "spec_hash": "857062bc72b3f2b1"
     },
     "4.1_docs_describe_escape_guard_and_limits": {
       "status": "pending",
