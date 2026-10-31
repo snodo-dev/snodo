@@ -9,9 +9,9 @@ Accepted. Fixes #1042.
 Plans explain what work will be done, but the operator's reason for asking for
 that work should remain independently traceable. If intent exists only as text
 inside a plan, later plans cannot reliably cite the original reasoning, and
-corrections risk erasing the historical account. ADR 038 establishes that
-orchestration-time artifacts belong in the append-only audit trail. ADR 054
-describes plan history events and the cloud contract; ADR 055 records the
+corrections risk erasing the historical account. [ADR 038](038-orchestrator-role-and-audit-contract.md) establishes that
+orchestration-time artifacts belong in the append-only audit trail. [ADR 054](054-cloud-sees-recons-queues-and-delivered-commits.md)
+describes plan history events and the cloud contract; [ADR 055](055-orchestrator-pubsub-by-plan.md) records the
 proposed client-side coordination direction for orchestrators.
 
 ## Decision
