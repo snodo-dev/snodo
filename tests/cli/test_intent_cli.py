@@ -31,3 +31,19 @@ def test_store_errors_are_reported(tmp_path, monkeypatch):
     bad = runner.invoke(app, ["record", "   ", "--json"])
     assert bad.exit_code != 0
     assert json.loads(bad.output)["ok"] is False
+
+
+def test_supersedes_requires_existing_intent(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".snodo").mkdir()
+    older = runner.invoke(app, ["record", "Old intent", "--json"])
+    assert older.exit_code == 0, older.output
+    older_item = json.loads(older.output)["intent"]
+    newer = runner.invoke(app, ["record", "Updated intent", "--supersedes", older_item["id"], "--json"])
+    assert newer.exit_code == 0, newer.output
+    newer_item = json.loads(newer.output)["intent"]
+    assert newer_item["supersedes"] == older_item["id"]
+
+    unknown = runner.invoke(app, ["record", "Invalid reference", "--supersedes", "int_abcdef"])
+    assert unknown.exit_code != 0
+    assert "Intent" in unknown.output

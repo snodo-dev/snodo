@@ -68,7 +68,7 @@ app = typer.Typer(
 
 HELP_PANELS = {
     "Daily loop": {"init", "ready", "run", "recon", "status", "logs", "dashboard"},
-    "Work records": {"job", "task", "plan", "queue", "runs", "meta", "worktree"},
+    "Work records": {"job", "task", "plan", "intent", "queue", "runs", "meta", "worktree"},
     "Governance": {"survey", "intake", "validate", "mode", "session", "audit", "authorize"},
     "Setup": {"config", "models", "cloud", "serve", "install", "uninstall", "cache", "protocol"},
     "Advanced": {"agent"},

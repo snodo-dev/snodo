@@ -6,7 +6,7 @@ on all commands; top-level options are `--version`, `--verbose`/`-v`,
 `--install-completion`, and `--show-completion`.
 
 The top-level help groups commands into **Daily loop** (init, ready, run, recon,
-status, logs, dashboard), **Work records** (job, task, plan, queue, runs, meta,
+status, logs, dashboard), **Work records** (job, task, plan, intent, queue, runs, meta,
 worktree), **Governance** (survey, intake, validate, mode, session, audit,
 authorize), **Setup** (config, models, cloud, serve, install, uninstall, cache,
 protocol), and **Advanced** (agent). Bare `snodo` shows the project readiness
