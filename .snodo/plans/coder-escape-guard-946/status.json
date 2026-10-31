@@ -1,22 +1,28 @@
 {
   "tasks": {
     "1.1_escape_check_runs_on_every_coder_exit": {
-      "status": "blocked",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "0c7e532c48b9ba9d"
+      "spec_hash": "51e6c5b2f67db902",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-31T00:11:45.267784+00:00",
+      "judged": false
     },
     "1.2_host_cli_coder_refuses_explicit_sandboxed": {
-      "status": "blocked",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "7910adbecafc3a69"
+      "spec_hash": "77f2f1153a6e00a3",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-31T00:11:45.735402+00:00",
+      "judged": false
     },
     "2.1_checkout_state_snapshot_helper": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "b30ec8f801599128"
+      "spec_hash": "dbc292e79ea24f33"
     },
     "3.1_executor_blocks_changes_to_operator_checkout": {
       "status": "pending",
