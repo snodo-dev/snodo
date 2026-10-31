@@ -296,3 +296,7 @@ Absent clients are skipped; restart each updated client after installing.
 
 
 Managed tunnels configured with `--auth service-token` expose the saved Access path (normally `/mcp-st`). Clients send `CF-Access-Client-Id` and `CF-Access-Client-Secret`; the server verifies Cloudflare Access assertion `Cf-Access-Jwt-Assertion` before MCP requests reach the handler. Service-token-only tunnels appear offline to cloud dispatch, so connect directly to that URL. OAuth remains at `/mcp`.
+
+### `snodo intent`
+
+Record and inspect local operator intents: `snodo intent record <text> [--issue ISSUE] [--supersedes ID]`, `snodo intent show <id>`, and `snodo intent list`. Each command accepts `--json`.
