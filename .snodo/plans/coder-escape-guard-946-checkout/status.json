@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_executor_blocks_changes_to_operator_checkout": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "db0319c530179fc7"
+    },
+    "2.1_docs_describe_escape_guard_and_limits": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7b0c03c297935269"
+    }
+  },
+  "integration": {
+    "branch": "plan/coder-escape-guard-946-checkout/integration",
+    "base_sha": "57cc5a3b28eb5f1210ca4e0b7be6bd9e5256544c"
+  }
+}

@@ -1,0 +1,21 @@
+intent: 'Finish issue #946 from a clean base. The first plan (coder-escape-guard-946)
+  delivered the escape check on every coder exit, the refusal of sandboxed on a host
+  CLI coder, and the checkout content snapshot helper, but its last waves were built
+  on an integration branch that predated the first two waves, so the executor guard
+  and the docs are redone here on top of main. A host CLI coder that edits the operator''s
+  checkout through its shell is stopped at acceptance by comparing checkout content
+  against a baseline taken before dispatch, failing closed when the baseline cannot
+  be established, and the behaviour and its limits are documented. True prevention
+  (a contained adapter per ADR 051) is out of scope. No new states, statuses, severities
+  or halt types.'
+name: coder-escape-guard-946-checkout
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_executor_blocks_changes_to_operator_checkout
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_docs_describe_escape_guard_and_limits
