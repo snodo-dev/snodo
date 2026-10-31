@@ -78,3 +78,55 @@ def test_git_unavailable_is_explicit(tmp_path, monkeypatch):
     result = take_checkout_snapshot(root)
     assert not result.available
     assert result.reason
+
+
+def test_dirty_baseline_then_further_edit(tmp_path):
+    root = repo(tmp_path)
+    (root / "tracked").write_text("already dirty")
+    baseline = take_checkout_snapshot(root).snapshot
+    assert baseline
+    (root / "tracked").write_text("changed again")
+    assert changes(root, baseline) == ("tracked",)
+
+
+def test_plan_definitions_are_not_runtime_state(tmp_path):
+    root = repo(tmp_path)
+    plan = root / ".snodo/plans/p1"
+    (plan / "wave_1").mkdir(parents=True)
+    (plan / "plan.yml").write_text("name: p1")
+    (plan / "wave_1/spec.yml").write_text("tasks: []")
+    baseline = take_checkout_snapshot(root).snapshot
+    assert baseline
+    (plan / "plan.yml").write_text("name: changed")
+    (plan / "wave_1/spec.yml").unlink()
+    assert changes(root, baseline) == (".snodo/plans/p1/plan.yml", ".snodo/plans/p1/wave_1/spec.yml")
+
+
+def test_path_cap_is_reported_and_honoured(tmp_path):
+    root = repo(tmp_path)
+    baseline = take_checkout_snapshot(root).snapshot
+    assert baseline
+    for name in ("a", "b", "c"):
+        (root / name).write_text(name)
+    result = compare_checkout_snapshot(baseline, max_paths=2)
+    assert result.changed_paths == ("a", "b")
+    assert result.truncated
+
+
+def test_non_repository_is_unavailable(tmp_path):
+    result = take_checkout_snapshot(tmp_path)
+    assert not result.available
+    assert result.reason
+
+
+def test_git_failure_is_unavailable(tmp_path, monkeypatch):
+    root = repo(tmp_path)
+    baseline = take_checkout_snapshot(root).snapshot
+    assert baseline
+    git_dir = root / ".git"
+    # Removing repository metadata makes the subsequent GitPython operation fail.
+    import shutil
+    shutil.rmtree(git_dir)
+    result = compare_checkout_snapshot(baseline)
+    assert not result.available
+    assert result.reason

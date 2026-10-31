@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+from git import GitCommandError, GitCommandNotFound, InvalidGitRepositoryError
+
+from snodo.tools.git import open_repo
 
 
 @dataclass(frozen=True)
@@ -13,6 +16,7 @@ class CheckoutSnapshot:
     root: Path
     head: str
     fingerprints: dict[str, str]
+    truncated: bool = False
 
 
 @dataclass(frozen=True)
@@ -26,15 +30,24 @@ class SnapshotResult:
     truncated: bool = False
 
 
-def _git(root: Path, *args: str) -> bytes:
-    return subprocess.run(
-        ["git", "-C", str(root), *args], check=True, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    ).stdout
+def _excluded(name: str) -> bool:
+    if not name.startswith(".snodo/"):
+        return False
+    parts = name.split("/")
+    # Plan definitions are user-authored inputs, unlike generated plan status.
+    if len(parts) >= 4 and parts[1] == "plans":
+        return parts[3] == "status.json"
+    runtime = {
+        "audit.jsonl", "audit.jsonl.1", "audit.jsonl.2", "audit.jsonl.3",
+        "jobs", "tasks", "locks", "worktrees", "recon", "queues",
+        "queue", "sessions",
+    }
+    return len(parts) > 1 and parts[1] in runtime
 
 
 def _primary_root(path: Path) -> Path:
-    listing = _git(path, "worktree", "list", "--porcelain").decode()
+    repo = open_repo(str(path))
+    listing = repo.git.worktree("list", "--porcelain")
     for block in listing.split("\n\n"):
         line = next((x for x in block.splitlines() if x.startswith("worktree ")), None)
         if line:
@@ -42,27 +55,26 @@ def _primary_root(path: Path) -> Path:
     raise RuntimeError("Git did not report a primary checkout")
 
 
-def _state(root: Path) -> tuple[str, dict[str, str]]:
-    head = _git(root, "rev-parse", "HEAD").decode().strip()
-    status = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
-    records = status.split(b"\0")
+def _state(root: Path, max_paths: int) -> tuple[str, dict[str, str], bool]:
+    repo = open_repo(str(root), search_parent_directories=False)
+    head = repo.head.commit.hexsha
+    raw = repo.git.status("--porcelain=v1", "-z", "--untracked-files=all")
+    fields = raw.split("\0")
     paths: set[str] = set()
     i = 0
-    while i < len(records):
-        rec = records[i]
+    while i < len(fields):
+        record = fields[i]
         i += 1
-        if not rec:
+        if not record:
             continue
-        # Porcelain v1 has a two-byte status, a space, then a path. Rename/copy
-        # records also carry a second path; fingerprint both sides.
-        paths.add(rec[3:].decode("utf-8", "surrogateescape"))
-        if rec[:2] in (b"R ", b" R", b"C ", b" C", b"RC", b"CR") and i < len(records):
-            paths.add(records[i].decode("utf-8", "surrogateescape"))
+        paths.add(record[3:])
+        if record[:2].strip() in {"R", "C"} and i < len(fields):
+            paths.add(fields[i])
             i += 1
-    result: dict[str, str] = {}
-    for name in paths:
-        if name == ".snodo" or name.startswith(".snodo/"):
-            continue
+    names = sorted(name for name in paths if not _excluded(name))
+    truncated = len(names) > max_paths
+    fingerprints: dict[str, str] = {}
+    for name in names[:max_paths]:
         file = root / name
         if not file.exists() and not file.is_symlink():
             value = "<deleted>"
@@ -72,31 +84,34 @@ def _state(root: Path) -> tuple[str, dict[str, str]]:
             value = hashlib.sha256(file.read_bytes()).hexdigest()
         else:
             value = "<non-file>"
-        result[name] = value
-    return head, result
+        fingerprints[name] = value
+    return head, fingerprints, truncated
 
 
 def take_checkout_snapshot(path: str | Path, *, max_paths: int = 1000) -> SnapshotResult:
-    """Capture HEAD and changed-path content fingerprints for the primary checkout."""
+    """Capture HEAD and content fingerprints for changed paths in the primary checkout."""
     try:
+        if max_paths < 0:
+            raise ValueError("max_paths must be non-negative")
         root = _primary_root(Path(path).resolve())
-        head, fingerprints = _state(root)
-        return SnapshotResult(snapshot=CheckoutSnapshot(root, head, fingerprints))
-    except (OSError, subprocess.SubprocessError, RuntimeError, UnicodeError) as exc:
+        head, fingerprints, truncated = _state(root, max_paths)
+        return SnapshotResult(snapshot=CheckoutSnapshot(root, head, fingerprints, truncated), truncated=truncated)
+    except (OSError, GitCommandError, GitCommandNotFound, InvalidGitRepositoryError, RuntimeError, ValueError) as exc:
         return SnapshotResult(available=False, reason=str(exc))
 
 
 def compare_checkout_snapshot(snapshot: CheckoutSnapshot, *, max_paths: int = 1000) -> SnapshotResult:
-    """Return sorted paths whose content/status differs from a captured baseline."""
+    """Return sorted paths whose content differs from the captured baseline."""
     try:
-        head, current = _state(snapshot.root)
+        if max_paths < 0:
+            raise ValueError("max_paths must be non-negative")
+        head, current, current_truncated = _state(snapshot.root, max_paths=max(max_paths, len(snapshot.fingerprints)) + 1)
         names = set(snapshot.fingerprints) | set(current)
         changed = sorted(name for name in names if snapshot.fingerprints.get(name) != current.get(name))
-        # A moved HEAD is itself a change, even if the resulting worktree is clean.
         if head != snapshot.head:
             changed.append("<HEAD>")
             changed.sort()
-        capped = len(changed) > max_paths
+        capped = snapshot.truncated or current_truncated or len(changed) > max_paths
         return SnapshotResult(changed_paths=tuple(changed[:max_paths]), truncated=capped)
-    except (OSError, subprocess.SubprocessError, RuntimeError, UnicodeError) as exc:
+    except (OSError, GitCommandError, GitCommandNotFound, InvalidGitRepositoryError, RuntimeError, ValueError) as exc:
         return SnapshotResult(available=False, reason=str(exc))
