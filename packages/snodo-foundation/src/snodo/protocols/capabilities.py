@@ -21,6 +21,7 @@ MODE_TOOL_MAP = {
     "plan": [
         "decompose", "generate_spec", "validate_plan",
         "propose_plan", "get_plan", "run_plan", "record_task_status",
+        "record_intent", "get_intent", "list_intents",
         "queue_list", "queue_create", "queue_move", "queue_remove", "queue_validate", "queue_run",
     ],
     "queue": ["queue_list", "queue_create", "queue_move", "queue_remove", "queue_validate", "queue_run"],
