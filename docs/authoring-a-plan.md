@@ -64,6 +64,7 @@ Directory is `wave_<N>` where N is the wave id. Spec file is
 name: w2
 intent: >
   Split the app onto its own host and put marketing on the freed www root.
+intent_ref: int_a1b2c3
 waves:
   - id: 1
     depends_on: []
@@ -79,6 +80,17 @@ waves:
 - `name` — matches the directory name.
 - `intent` — one or two sentences. What the whole plan is for. Not a summary
   of the tasks.
+- `intent_ref` — optional id of a recorded intent, in the form `int_` followed
+  by six hexadecimal characters. Record the intent first with `record_intent`,
+  then pass its id when proposing the plan; the id is checked against the intent
+  store. The reference appears in plan reads when set. `get_intent` reads the
+  intent record; whether it has been acted on is determined from plans that name
+  it. Intents are written once; a correction is a new intent with `supersedes`.
+  An intent may include an `issue` link, but has no status field. This is
+  described in ADR 060. It adds no states, statuses, severities, or halt types.
+  The `intent_recorded` audit event is local only; nothing about intents or this
+  reference reaches the cloud, and plan history events and the cloud wire are
+  unchanged.
 - `waves[].id` — an integer. Wave ids must be contiguous from 1: `1, 2, 3`.
   A plan with waves `1, 3` is refused.
 - `waves[].depends_on` — integer wave ids that must be complete first. May be
