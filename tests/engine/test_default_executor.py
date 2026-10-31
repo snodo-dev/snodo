@@ -642,8 +642,9 @@ def test_host_coder_checkout_content_escape(tmp_path, sample_protocol, mock_toke
     if edit_kind == "dirty":
         (root / "dirty.txt").write_text("pre-existing dirty")
     if edit_kind == "untracked-plan-delete":
+        # Keep the authored plan present when the executor captures its baseline,
+        # but make it untracked so the snapshot must include its content.
         _git(root, "rm", "--cached", ".snodo/plans/demo/plan.yml")
-        (root / ".snodo/plans/demo/plan.yml").unlink()
 
     class HostCoder(SubprocessCoderAdapter):
         def _build_argv(self, prompt, project_root, model):
@@ -655,7 +656,6 @@ def test_host_coder_checkout_content_escape(tmp_path, sample_protocol, mock_toke
             elif edit_kind == "dirty":
                 (root / "dirty.txt").write_text("changed again")
             else:
-                (root / ".snodo/plans/demo/plan.yml").write_text("plan")
                 (root / ".snodo/plans/demo/plan.yml").unlink()
             return type("Artifact", (), {"files": [], "findings": ["finding"]})()
 
@@ -668,7 +668,12 @@ def test_host_coder_checkout_content_escape(tmp_path, sample_protocol, mock_toke
     try:
         with pytest.raises(ExecutionError, match="operator checkout changed") as error:
             builder._default_executor(Task(id="task", spec="test"), mock_token, coder, workspace, git)
-        assert "clean.txt" in str(error.value) if edit_kind == "clean" else True
+        expected_path = {
+            "clean": "clean.txt",
+            "dirty": "dirty.txt",
+            "untracked-plan-delete": ".snodo/plans/demo/plan.yml",
+        }[edit_kind]
+        assert expected_path in str(error.value)
     finally:
         git.repo.close()
 
@@ -701,3 +706,70 @@ def test_host_coder_checkout_unchanged_passes_and_ignores_runtime_state(tmp_path
         assert builder._default_executor(Task(id="task", spec="test"), mock_token, coder, workspace, git) == []
     finally:
         git.repo.close()
+
+
+def test_checkout_guard_does_not_apply_to_in_process_coder(tmp_path, sample_protocol, mock_token):
+    root = (tmp_path / "primary").resolve()
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+    coder = DummyCoder([])
+    def edit_checkout(spec):
+        (root / "base.txt").write_text("edited")
+        return type("Artifact", (), {"files": [], "findings": ["finding"]})()
+    coder.implement = edit_checkout
+    builder = GraphBuilder(sample_protocol)
+    builder._project_root = str(root)
+    workspace = MagicMock(project_root=str(tmp_path / "isolated"))
+    assert builder._default_executor(Task(id="task", spec="test"), mock_token, coder, workspace, None) == []
+
+
+def test_checkout_snapshot_unavailable_halts_before_dispatch(tmp_path, sample_protocol, mock_token, monkeypatch):
+    from snodo.engine.checkout_snapshot import SnapshotResult
+    from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+
+    called = []
+    class HostCoder(SubprocessCoderAdapter):
+        def _build_argv(self, prompt, project_root, model): return []
+        def implement(self, spec): called.append(True)
+    root = tmp_path / "primary"
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base").write_text("base")
+    _git(root, "add", "base")
+    _git(root, "commit", "-m", "initial")
+    monkeypatch.setattr("snodo.engine.nodes.executor.take_checkout_snapshot", lambda path: SnapshotResult(available=False, reason="test unavailable"))
+    builder = GraphBuilder(sample_protocol)
+    builder._project_root = str(root)
+    with pytest.raises(ExecutionError, match="Could not examine the operator checkout"):
+        builder._default_executor(Task(id="task", spec="test"), mock_token, HostCoder(workspace=tmp_path / "isolated"), MagicMock(project_root=str(tmp_path / "isolated")), None)
+    assert called == []
+
+
+def test_checkout_snapshot_comparison_unavailable_is_distinct(tmp_path, sample_protocol, mock_token, monkeypatch):
+    from snodo.engine.checkout_snapshot import SnapshotResult
+    from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+
+    root = tmp_path / "primary"
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base").write_text("base")
+    _git(root, "add", "base")
+    _git(root, "commit", "-m", "initial")
+    class HostCoder(SubprocessCoderAdapter):
+        def _build_argv(self, prompt, project_root, model): return []
+        def implement(self, spec): return type("Artifact", (), {"files": [], "findings": ["finding"]})()
+    monkeypatch.setattr("snodo.engine.nodes.executor.compare_checkout_snapshot", lambda snapshot: SnapshotResult(available=False, reason="comparison failed"))
+    builder = GraphBuilder(sample_protocol)
+    builder._project_root = str(root)
+    with pytest.raises(ExecutionError, match="could not be compared") as caught:
+        builder._default_executor(Task(id="task", spec="test"), mock_token, HostCoder(workspace=tmp_path / "isolated"), MagicMock(project_root=str(tmp_path / "isolated")), None)
+    assert "changed (" not in str(caught.value)
