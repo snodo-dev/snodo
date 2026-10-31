@@ -1195,33 +1195,16 @@ def _benchmark_json_payload(
 
 def models_benchmark_command(args) -> int:
     """Benchmark one fixed prompt against one model selected by the model flags."""
-    named_model = getattr(args, "benchmark_model", None)
-    provider_name = getattr(args, "provider", None)
-    model_id = getattr(args, "id", None)
-    if named_model is not None:
-        if provider_name is not None or model_id is not None:
-            message = "Use --benchmark <provider>/<model> or --provider and --id, not both."
-            if getattr(args, "json", False):
-                from snodo.cli.json_output import emit_error
-                return emit_error("models-benchmark", message, 1)
-            print(message, file=sys.stderr)
-            return 1
-        if not named_model or "/" not in named_model:
-            message = "--benchmark model must be a non-empty <provider>/<model> value."
-            if getattr(args, "json", False):
-                from snodo.cli.json_output import emit_error
-                return emit_error("models-benchmark", message, 1)
-            print(message, file=sys.stderr)
-            return 1
-        provider_name, model_id = named_model.split("/", 1)
-        if not provider_name or not model_id:
-            message = "--benchmark model must have non-empty provider and model parts."
-            if getattr(args, "json", False):
-                from snodo.cli.json_output import emit_error
-                return emit_error("models-benchmark", message, 1)
-            print(message, file=sys.stderr)
-            return 1
-        args.id = model_id
+    from snodo.cli.commands.models_benchmark_name import resolve_benchmark_name
+    try:
+        provider_name, _ = resolve_benchmark_name(args)
+    except ValueError as exc:
+        message = str(exc)
+        if getattr(args, "json", False):
+            from snodo.cli.json_output import emit_error
+            return emit_error("models-benchmark", message, 1)
+        print(message, file=sys.stderr)
+        return 1
     if not provider_name:
         if getattr(args, "json", False):
             from snodo.cli.json_output import emit_error
