@@ -44,6 +44,7 @@ _LOCAL_EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
         "duration", "completed_at", "summary",
         "usage",
     ),
+    "intent_recorded": ("intent_id", "issue", "supersedes"),
     "retry_worktree_continued": (
         "prior_job_id", "prior_task_id", "prior_commit", "fresh_start",
         "fallback_to_main",
