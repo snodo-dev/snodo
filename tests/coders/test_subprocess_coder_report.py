@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+from snodo.coders.base import CoderUnavailableError
 from snodo.core.interfaces import TaskSpec
 
 _REPORT_FILENAME = "coder-report.json"
@@ -261,3 +262,24 @@ def test_no_job_state_means_no_invitation_and_todays_prompt(
 
     assert adapter._report_path() is None
     assert adapter._invite_report(prompt) == prompt
+
+
+def test_sandboxed_host_cli_refuses_before_subprocess(tmp_path):
+    workspace = _make_workspace(tmp_path, "ws_sandboxed")
+    adapter = _ReportingAdapter(script=tmp_path / "unused.py", mode="none", workspace=workspace, sandboxed=True)
+    with pytest.raises(CoderUnavailableError, match="sandboxed: true") as exc:
+        adapter.implement(TaskSpec(description="build a feature", constraints=[]))
+    assert "reporting-test" in str(exc.value)
+    assert "host CLI cannot be contained" in str(exc.value)
+    assert "Remove the sandboxed setting" in str(exc.value)
+    assert "container coder" in str(exc.value)
+
+
+@pytest.mark.parametrize("sandboxed", [False, None])
+def test_host_cli_allows_sandboxed_false_or_absent(tmp_path, sandboxed):
+    workspace = _make_workspace(tmp_path, f"ws_sandboxed_{sandboxed}")
+    kwargs = {} if sandboxed is None else {"sandboxed": sandboxed}
+    adapter = _ReportingAdapter(script=tmp_path / "fake_cli.py", mode="none", workspace=workspace, **kwargs)
+    adapter._script.write_text(_FAKE_CLI)
+    artifact = adapter.implement(TaskSpec(description="build a feature", constraints=[]))
+    assert "feature.py" in [f.path for f in artifact.files]

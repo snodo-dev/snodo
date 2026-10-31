@@ -166,6 +166,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         **kwargs: Any,
     ):
         self.model = model or self.model_prefix
+        self.sandboxed = bool(kwargs.get("sandboxed", False))
         self.temperature = temperature
         if timeout_seconds is not None:
             self.timeout_seconds = int(timeout_seconds)
@@ -616,6 +617,16 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             self._discard_coder_report(report_path)
 
     def _run_in_place(self, spec: TaskSpec) -> CodeArtifact:
+        if self.sandboxed:
+            coder_name = getattr(self, "coder_name", self.binary)
+            raise CoderUnavailableError(
+                self.binary,
+                message=(
+                    f"{coder_name} cannot honour sandboxed: true: a host CLI cannot be contained. "
+                    "Remove the sandboxed setting, or use the container coder that honours it "
+                    "(ADR 051)."
+                ),
+            )
         self._begin_subprocess_run()
         prompt = self._invite_report(self._build_prompt(spec))
         project_root = str(self._workspace)
