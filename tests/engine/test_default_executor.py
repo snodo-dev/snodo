@@ -621,3 +621,83 @@ def test_classified_failures_keep_exception_and_log_escape(sample_protocol, samp
         builder._default_executor(sample_task, mock_token, BadCoder(), MagicMock(), None)
     assert caught.value is failure
     assert ("Workspace escape detected" in caplog.text) is escaped
+
+
+@pytest.mark.parametrize("edit_kind", ["clean", "dirty", "untracked-plan-delete"])
+def test_host_coder_checkout_content_escape(tmp_path, sample_protocol, mock_token, edit_kind):
+    from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+    from snodo.tools.git import GitMCP
+
+    root = (tmp_path / "primary").resolve()
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "clean.txt").write_text("original")
+    (root / "dirty.txt").write_text("tracked")
+    (root / ".snodo/plans/demo").mkdir(parents=True)
+    (root / ".snodo/plans/demo/plan.yml").write_text("plan")
+    _git(root, "add", "clean.txt", "dirty.txt", ".snodo/plans/demo/plan.yml")
+    _git(root, "commit", "-m", "initial")
+    if edit_kind == "dirty":
+        (root / "dirty.txt").write_text("pre-existing dirty")
+    if edit_kind == "untracked-plan-delete":
+        _git(root, "rm", "--cached", ".snodo/plans/demo/plan.yml")
+        (root / ".snodo/plans/demo/plan.yml").unlink()
+
+    class HostCoder(SubprocessCoderAdapter):
+        def _build_argv(self, prompt, project_root, model):
+            return []
+
+        def implement(self, spec):
+            if edit_kind == "clean":
+                (root / "clean.txt").write_text("changed by shell")
+            elif edit_kind == "dirty":
+                (root / "dirty.txt").write_text("changed again")
+            else:
+                (root / ".snodo/plans/demo/plan.yml").write_text("plan")
+                (root / ".snodo/plans/demo/plan.yml").unlink()
+            return type("Artifact", (), {"files": [], "findings": ["finding"]})()
+
+    coder = HostCoder(workspace=tmp_path / "isolated")
+    builder = GraphBuilder(sample_protocol)
+    builder._project_root = str(root)
+    workspace = MagicMock()
+    workspace.project_root = str(tmp_path / "isolated")
+    git = GitMCP(str(root))
+    try:
+        with pytest.raises(ExecutionError, match="operator checkout changed") as error:
+            builder._default_executor(Task(id="task", spec="test"), mock_token, coder, workspace, git)
+        assert "clean.txt" in str(error.value) if edit_kind == "clean" else True
+    finally:
+        git.repo.close()
+
+
+def test_host_coder_checkout_unchanged_passes_and_ignores_runtime_state(tmp_path, sample_protocol, mock_token):
+    from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+    from snodo.tools.git import GitMCP
+    root = (tmp_path / "primary").resolve()
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+    class HostCoder(SubprocessCoderAdapter):
+        def _build_argv(self, prompt, project_root, model):
+            return []
+
+        def implement(self, spec):
+            (root / ".snodo/audit.jsonl").parent.mkdir(exist_ok=True)
+            (root / ".snodo/audit.jsonl").write_text("runtime")
+            return type("Artifact", (), {"files": [], "findings": ["finding"]})()
+    coder = HostCoder(workspace=tmp_path / "isolated")
+    builder = GraphBuilder(sample_protocol)
+    builder._project_root = str(root)
+    workspace = MagicMock(project_root=str(tmp_path / "isolated"))
+    git = GitMCP(str(root))
+    try:
+        assert builder._default_executor(Task(id="task", spec="test"), mock_token, coder, workspace, git) == []
+    finally:
+        git.repo.close()
