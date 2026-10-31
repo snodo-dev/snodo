@@ -1,0 +1,48 @@
+intent: 'Fixes #1042. Record the operator''s intent as a first-class record that plans
+  trace back to. Today the intent behind a body of work lives only in conversation,
+  and a plan carries just its own free-text intent, so there is no durable link from
+  a plan (and the waves and tasks under it) back to what the operator was trying to
+  achieve. This plan adds, in small increments: a local intent store under .snodo/intents/
+  with one record per intent (text, optional GitHub issue link, optional superseded
+  intent), written once and never edited in place (a correction is a new intent that
+  supersedes the old one, fix forward); one new local-only audit event, intent_recorded;
+  an optional intent_ref on a plan that must point to an existing intent; MCP and
+  CLI ways to record, read and list intents and to pass intent_ref when proposing
+  a plan; read paths that show a plan''s intent_ref and an intent''s plans; and documentation
+  (an ADR and a dated note on ADR 038). No new state, status, severity or halt type
+  is added, and the cloud wire (plan_proposed and plan_run payloads, cloud schema
+  baseline, interface version) does not change: intent_recorded is local only and
+  intent_ref does not ride on the plan history events.'
+name: intent-record-1042
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_intent_store_and_local_audit_event
+  - 1.2_adr_060_intent_record
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_plan_model_carries_optional_intent_ref
+  - 2.2_mcp_tools_record_and_read_intents
+  - 2.3_cli_intent_commands
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_verifier_checks_plan_intent_ref_exists
+  - 3.2_propose_plan_accepts_intent_ref
+  - 3.3_cli_plan_commands_show_intent_ref
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_get_plan_and_list_plans_show_intent_ref
+  - 4.2_reading_an_intent_lists_its_plans
+- depends_on:
+  - 4
+  id: 5
+  tasks:
+  - 5.1_docs_describe_intents_and_intent_ref
+  - 5.2_adr_038_dated_note_on_intent

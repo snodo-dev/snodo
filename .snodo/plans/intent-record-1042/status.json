@@ -1,0 +1,86 @@
+{
+  "tasks": {
+    "1.1_intent_store_and_local_audit_event": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c71bad4c641bb235"
+    },
+    "1.2_adr_060_intent_record": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "938d3c51b7565325",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-31T05:23:26.196765+00:00",
+      "judged": false
+    },
+    "2.1_plan_model_carries_optional_intent_ref": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "70fec6489e464512"
+    },
+    "2.2_mcp_tools_record_and_read_intents": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "260186007978f648"
+    },
+    "2.3_cli_intent_commands": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a600f136a2691033",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-31T07:56:58.182575+00:00",
+      "judged": false
+    },
+    "3.1_verifier_checks_plan_intent_ref_exists": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fce864d9e706674a"
+    },
+    "3.2_propose_plan_accepts_intent_ref": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "61c85e2385711b18"
+    },
+    "3.3_cli_plan_commands_show_intent_ref": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a18a48c2c1ff66cb"
+    },
+    "4.1_get_plan_and_list_plans_show_intent_ref": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ee59c094a3b29c6f"
+    },
+    "4.2_reading_an_intent_lists_its_plans": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "359870ea5c7a22e0"
+    },
+    "5.1_docs_describe_intents_and_intent_ref": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "091fb12bd9226803"
+    },
+    "5.2_adr_038_dated_note_on_intent": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2cdc03351cfbd11e"
+    }
+  },
+  "integration": {
+    "branch": "plan/intent-record-1042/integration",
+    "base_sha": "22e46d8a6cda481b0050c6128ac221ba56aae4d8"
+  }
+}
