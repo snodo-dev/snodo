@@ -62,3 +62,9 @@ def test_intent_tools_are_planning_mode_only(project_dir):
     assert not ({"record_intent", "get_intent", "list_intents"} & {t["name"] for t in reader.get_tools()})
     with pytest.raises(MCPError, match="Unknown tool: record_intent"):
         reader.call_tool("record_intent", {"text": "not allowed"})
+
+
+@pytest.mark.parametrize("limit", [0, -1, "1", True])
+def test_list_intents_rejects_invalid_limit(project_dir, limit):
+    with pytest.raises(MCPError, match="positive integer"):
+        _server(project_dir).call_tool("list_intents", {"limit": limit})
