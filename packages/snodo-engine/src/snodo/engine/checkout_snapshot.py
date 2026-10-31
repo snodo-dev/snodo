@@ -31,18 +31,17 @@ class SnapshotResult:
 
 
 def _excluded(name: str) -> bool:
+    """Ignore generated state under .snodo; retain only authored definitions."""
     if not name.startswith(".snodo/"):
         return False
     parts = name.split("/")
-    # Plan definitions are user-authored inputs, unlike generated plan status.
-    if len(parts) >= 4 and parts[1] == "plans":
-        return parts[3] == "status.json"
-    runtime = {
-        "audit.jsonl", "audit.jsonl.1", "audit.jsonl.2", "audit.jsonl.3",
-        "jobs", "tasks", "locks", "worktrees", "recon", "queues",
-        "queue", "sessions",
-    }
-    return len(parts) > 1 and parts[1] in runtime
+    if len(parts) == 2 and parts[1] == "protocol.yml":
+        return False
+    if len(parts) == 4 and parts[1] == "plans" and parts[3] == "plan.yml":
+        return False
+    if len(parts) >= 5 and parts[1] == "plans" and parts[3].startswith("wave_"):
+        return False
+    return True
 
 
 def _primary_root(path: Path) -> Path:

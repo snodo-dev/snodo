@@ -67,7 +67,17 @@ def test_ignored_and_snodo_runtime_excluded_but_plan_is_not(tmp_path):
     assert baseline
     (root / "ignored").write_text("x")
     (root / ".snodo").mkdir()
-    (root / ".snodo" / "audit.jsonl").write_text("runtime")
+    runtime_files = (
+        ".snodo/audit.log",
+        ".snodo/audit.log.2026-w42",
+        ".snodo/queues.json",
+        ".snodo/.merge.lock",
+        ".snodo/plans/p1/status.json",
+    )
+    for name in runtime_files:
+        file = root / name
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text("runtime")
     (root / "plan.md").write_text("plan")
     assert changes(root, baseline) == ("plan.md",)
 
@@ -130,3 +140,14 @@ def test_git_failure_is_unavailable(tmp_path, monkeypatch):
     result = compare_checkout_snapshot(baseline)
     assert not result.available
     assert result.reason
+
+
+def test_protocol_definition_is_watched(tmp_path):
+    root = repo(tmp_path)
+    protocol = root / ".snodo/protocol.yml"
+    protocol.parent.mkdir()
+    protocol.write_text("version: 1")
+    baseline = take_checkout_snapshot(root).snapshot
+    assert baseline
+    protocol.write_text("version: 2")
+    assert changes(root, baseline) == (".snodo/protocol.yml",)
