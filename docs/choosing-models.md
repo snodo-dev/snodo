@@ -14,6 +14,10 @@ turn without a tool call is reported as successful with the second turn skipped.
 Classifier checks are single-turn. This is a smoke test, not a guarantee that a
 model will complete every task.
 
+## Benchmark one model
+
+Benchmark a specific model by name with `snodo models --benchmark <provider>/<model>`, for example `snodo models --benchmark openai/gpt-4o`. The equivalent longer form is `snodo models --provider <provider> --id <model> --benchmark`. The benchmark makes a billed call and reports timing and throughput measurements; use it when you want a like-for-like measurement rather than aggregate job statistics.
+
 ## Discover configured models
 
 Call `list_models` to inspect the models discovered from Snodo's configured
