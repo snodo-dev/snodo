@@ -37,7 +37,7 @@ stderr. Set `SNODO_NO_UPDATE_CHECK=1` to disable the update check.
 | `snodo session switch` | `<session_id>` |
 | `snodo session delete` | `<session_id>` |
 | `snodo session prune` | `--days` |
-| `snodo models` | `--provider`/`-p`, `--flush`, `--stats`, `--provenance`, `--provenance-limit`, `--check`, `--benchmark`, `--benchmark-runs`, `--set-baseline`, `--compare`, `--benchmark-run`, `--model`, `--plan`, `--task`/`--task-id`, `--job`, `--json`, `--id`, `--id-contains`, `--max-output-cost`, `--min-output-cost`, `--max-input-cost`, `--min-context` |
+| `snodo models` | `--provider`/`-p`, `--flush`, `--stats`, `--provenance`, `--provenance-limit`, `--check`, `--benchmark[=<provider>/<model>]`, `--benchmark-runs`, `--set-baseline`, `--compare`, `--benchmark-run`, `--model`, `--plan`, `--task`/`--task-id`, `--job`, `--json`, `--id`, `--id-contains`, `--max-output-cost`, `--min-output-cost`, `--max-input-cost`, `--min-context` |
 | `snodo cloud connect` | `<api_key>` |
 | `snodo cloud login` | `--no-browser` |
 | `snodo cloud logout` | — |
@@ -50,6 +50,8 @@ stderr. Set `SNODO_NO_UPDATE_CHECK=1` to disable the update check.
 | `snodo protocol diff` | `[PATH]`, `--template NAME`, `--json` |
 | `snodo install` | `--protocol` |
 | `snodo uninstall` | `--mode`, `--all`, `--purge`, `--orphans`, `--yes`/`-y` |
+
+Benchmark one model by its fully qualified name with `snodo models --benchmark <provider>/<model>`; for example, `snodo models --benchmark openai/gpt-4o`. This is equivalent to `snodo models --provider <provider> --id <model> --benchmark`. The benchmark reports measurements for the selected model; benchmark results can be compared with stored task baselines using `snodo models --compare` (with `--plan` and `--task`).
 
 `snodo config set/get` take dotted configuration keys (for example
 `llm.coder.max_tokens`). Only the top-level `model`, `engine.*`, and `llm.*`

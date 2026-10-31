@@ -297,7 +297,10 @@ recorded are omitted, while measured zeroes remain zeroes.
 Schema: `snodo.models-benchmark.v1`
 
 Runs the same fixed prompt and performs the same measurements as human mode,
-but emits one JSON object instead of the intent and report prose. A failed API
+but emits one JSON object instead of the intent and report prose. The model may
+be selected with `snodo models --benchmark <provider>/<model> --json` or the
+equivalent `snodo models --provider <provider> --id <model> --benchmark --json`;
+both forms produce this same `snodo.models-benchmark.v1` output. A failed API
 call is still a sample, so `attempted_runs` can exceed `succeeded_runs`.
 Aggregates in `statistics` cover successful samples only; consumers that need
 to combine runs retain the individual `samples`.
