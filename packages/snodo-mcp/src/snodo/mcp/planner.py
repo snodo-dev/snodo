@@ -293,7 +293,10 @@ class PlannerMCP:
                 break
             current_ref = ancestor_entry.get("parent_task_ref")
 
-    def decompose(self, intent: str, plan_name: str, waves: int = 1) -> dict:
+    def decompose(
+        self, intent: str, plan_name: str, waves: int = 1,
+        intent_ref: Optional[str] = None,
+    ) -> dict:
         """Create an empty plan scaffold on disk with N empty wave slots.
 
         LLM-based automatic decomposition is deferred. Creates the plan
@@ -345,6 +348,8 @@ class PlannerMCP:
             "intent": intent,
             "waves": waves_list,
         }
+        if intent_ref is not None:
+            plan_data["intent_ref"] = intent_ref
 
         _atomic_write_yaml(plan_dir, plan_data)
 

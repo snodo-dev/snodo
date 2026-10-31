@@ -158,6 +158,11 @@ Each value maps installed entry-point names to `{status, error}` records;
 `status` is `installed` or `failed`, and failed entries include their load
 error. The schema version is bumped because this is a payload-shape change.
 
+### `snodo plan list --json`
+
+Schema: `snodo.plan.v1`. Each entry in `plans` contains the plan listing facts;
+`intent_ref` is included only when the plan declares one.
+
 ### `snodo survey --json`
 
 Schema: `snodo.survey.v1`

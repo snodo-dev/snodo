@@ -108,6 +108,56 @@ def test_plan_list_json_contains_same_facts_without_paging(plan_env, capsys):
     assert item["status"] == "in_progress"
 
 
+def _set_intent_ref(project_dir, name, intent_ref=None):
+    plan_file = project_dir / ".snodo" / "plans" / name / "plan.yml"
+    data = yaml.safe_load(plan_file.read_text())
+    if intent_ref is not None:
+        data["intent_ref"] = intent_ref
+    plan_file.write_text(yaml.safe_dump(data))
+
+
+def test_plan_list_intent_ref_is_optional_in_text_and_json(plan_env, capsys):
+    import json
+
+    planner = _planner(plan_env)
+    _create_plan(plan_env, "with_ref")
+    _create_plan(plan_env, "without_ref")
+    planner.generate_spec("with_ref", "1.1_task", "spec")
+    planner.generate_spec("without_ref", "1.1_task", "spec")
+    from snodo.infrastructure.intent_store import IntentStore
+    intent_ref = IntentStore(plan_env).record("Build the plan")["id"]
+    _set_intent_ref(plan_env, "with_ref", intent_ref)
+    assert planner.get_plan("with_ref").intent_ref == intent_ref
+
+    assert _plan_list(planner) == 0
+    text = capsys.readouterr().out
+    assert f"Intent ref: with_ref = {intent_ref}" in text
+
+    assert _plan_list(planner, SimpleNamespace(json=True)) == 0
+    plans = json.loads(capsys.readouterr().out)["plans"]
+    with_ref = next(item for item in plans if item["name"] == "with_ref")
+    without_ref = next(item for item in plans if item["name"] == "without_ref")
+    assert with_ref["intent_ref"] == intent_ref
+    assert "intent_ref" not in without_ref
+
+
+def test_plan_status_prints_optional_intent_ref(plan_env, capsys):
+    _create_plan(plan_env, "with_ref")
+    _planner(plan_env).generate_spec("with_ref", "1.1_task", "spec")
+    from snodo.infrastructure.intent_store import IntentStore
+    intent_ref = IntentStore(plan_env).record("Build the plan")["id"]
+    _set_intent_ref(plan_env, "with_ref", intent_ref)
+    assert plan_command(SimpleNamespace(plan_action="status", name="with_ref")) == 0
+    output = capsys.readouterr().out
+    assert output.index("Intent:") < output.index(f"Intent ref: {intent_ref}")
+
+    _create_plan(plan_env, "without_ref")
+    _planner(plan_env).generate_spec("without_ref", "1.1_task", "spec")
+    assert plan_command(SimpleNamespace(plan_action="status", name="without_ref")) == 0
+    output = capsys.readouterr().out
+    assert "Intent ref:" not in output
+
+
 def test_plan_list_includes_task_without_plan(plan_env, capsys):
     """A manually run task remains visible outside the plan hierarchy."""
     import json

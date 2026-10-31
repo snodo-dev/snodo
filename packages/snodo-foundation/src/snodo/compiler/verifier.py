@@ -503,6 +503,18 @@ def verify_plan(
     if plan.parse_errors:
         errors.extend(plan.parse_errors)
 
+    if plan.intent_ref is not None:
+        root = workspace_root
+        if root is None and plan_dir is not None:
+            root = plan_dir.parents[2]
+        if root is not None:
+            from snodo.infrastructure.intent_store import IntentError, IntentStore
+
+            try:
+                IntentStore(root).get(plan.intent_ref)
+            except IntentError:
+                errors.append(f"Intent not found: {plan.intent_ref}")
+
     if not plan.intent:
         errors.append("Missing intent")
 

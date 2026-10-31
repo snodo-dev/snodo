@@ -14,6 +14,7 @@ from snodo.compiler.models import (
     Mode,
     Module,
     Protocol,
+    Plan,
     Role,
     Validator,
 )
@@ -29,6 +30,7 @@ from snodo.compiler.verifier import (
     WF5Violation,
     MalformedModuleDeclarationError,
     verify_protocol,
+    verify_plan,
 )
 from snodo.core.interfaces import Task
 
@@ -1147,3 +1149,44 @@ def test_modules_error_messages_no_wf6_reference():
     assert "malformed" in combined_errors.lower(), (
         f"Error message should describe the module as malformed; got: {combined_errors}"
     )
+
+
+def _minimal_plan(intent_ref=None):
+    return Plan.from_dict({
+        "name": "test",
+        "intent": "test intent",
+        **({"intent_ref": intent_ref} if intent_ref is not None else {}),
+        "waves": [{"id": 1, "tasks": ["task-1"]}],
+    })
+
+
+def test_plan_without_intent_ref_passes_without_intent_store(tmp_path):
+    result = verify_plan(_minimal_plan(), workspace_root=tmp_path)
+    assert not any("Intent" in error for error in result.errors)
+
+
+def test_plan_with_existing_intent_ref_passes(tmp_path):
+    intent_id = "int_abcdef"
+    record_dir = tmp_path / ".snodo" / "intents" / intent_id
+    record_dir.mkdir(parents=True)
+    (record_dir / "intent.json").write_text(
+        '{"id":"int_abcdef","text":"test intent"}', encoding="utf-8"
+    )
+
+    result = verify_plan(_minimal_plan(intent_id), workspace_root=tmp_path)
+    assert not any("Intent" in error for error in result.errors)
+
+
+def test_plan_with_missing_intent_ref_fails_naming_id(tmp_path):
+    result = verify_plan(_minimal_plan("int_abcdef"), workspace_root=tmp_path)
+    assert result.errors == ["Intent not found: int_abcdef"]
+
+
+def test_plan_malformed_intent_ref_reports_parse_error_without_crashing(tmp_path):
+    plan = Plan.from_dict({
+        "name": "test", "intent": "test intent", "intent_ref": "not-an-id",
+        "waves": [{"id": 1, "tasks": ["task-1"]}],
+    })
+    result = verify_plan(plan, workspace_root=tmp_path)
+    assert any("Invalid intent_ref" in error for error in result.errors)
+    assert not any("Intent not found" in error for error in result.errors)

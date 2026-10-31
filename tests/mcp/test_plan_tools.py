@@ -185,6 +185,33 @@ class TestProposePlan:
             json.dumps(fetched, default=str)
         )
 
+    def test_propose_accepts_recorded_intent_ref(self, server, project_dir):
+        recorded = server.call_tool("record_intent", {"text": "Ship the widget"})
+        result = server.call_tool("propose_plan", {
+            "intent": "Ship the widget", "plan_name": "linked",
+            "intent_ref": recorded["id"],
+        })
+
+        plan_file = Path(project_dir) / ".snodo" / "plans" / "linked" / "plan.yml"
+        assert yaml.safe_load(plan_file.read_text())["intent_ref"] == recorded["id"]
+        assert result["plan"]["intent_ref"] == recorded["id"]
+
+    @pytest.mark.parametrize("intent_ref", ["unknown", "int_000000"])
+    def test_invalid_intent_ref_refuses_before_creating_plan(self, server, project_dir, intent_ref):
+        with pytest.raises(MCPError, match="Malformed intent id|Intent not found"):
+            server.call_tool("propose_plan", {
+                "intent": "Ship the widget", "plan_name": "unlinked",
+                "intent_ref": intent_ref,
+            })
+        assert not (Path(project_dir) / ".snodo" / "plans" / "unlinked").exists()
+
+    def test_plan_proposed_audit_shape_is_unchanged(self, server):
+        captured = []
+        server._audit = lambda event, data: captured.append((event, data))
+        _propose(server, name="audit-shape")
+        data = next(data for event, data in captured if event == "plan_proposed")
+        assert set(data) == {"op", "plan_name", "intent", "waves"}
+
     def test_propose_writes_the_plan_files(self, server, project_dir):
         result = _propose(server, name="ondisk")
         plan_dir = Path(project_dir) / ".snodo" / "plans" / "ondisk"

@@ -253,9 +253,19 @@ class PlanToolHandler:
         intent = arguments.get("intent") or ""
         plan_name = str(arguments.get("plan_name") or "")
         waves = arguments.get("waves", 1)
+        intent_ref = arguments.get("intent_ref")
 
         try:
-            plan_data = self._planner.decompose(intent, plan_name, waves=waves)
+            if intent_ref is not None:
+                from snodo.infrastructure.intent_store import IntentError, IntentStore
+
+                try:
+                    IntentStore(self._planner.project_root).get(intent_ref)
+                except IntentError as e:
+                    raise MCPError(str(e)) from e
+            plan_data = self._planner.decompose(
+                intent, plan_name, waves=waves, intent_ref=intent_ref,
+            )
         except PlannerError as e:
             raise MCPError(str(e)) from e
 

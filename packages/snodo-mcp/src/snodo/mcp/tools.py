@@ -323,6 +323,7 @@ TOOL_REGISTRY = {
                 "intent": {"type": "string", "description": "The intent/goal the plan is for"},
                 "plan_name": {"type": "string", "description": "Plan name (stable identifier, used as directory name)"},
                 "waves": {"type": "integer", "description": "Number of sequential wave slots to scaffold (default 1)"},
+                "intent_ref": {"type": "string", "description": "Optional id of a recorded intent this plan implements"},
             },
             "required": ["intent", "plan_name"],
         },
