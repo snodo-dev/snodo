@@ -636,15 +636,17 @@ def test_host_coder_checkout_content_escape(tmp_path, sample_protocol, mock_toke
     (root / "clean.txt").write_text("original")
     (root / "dirty.txt").write_text("tracked")
     (root / ".snodo/plans/demo").mkdir(parents=True)
-    (root / ".snodo/plans/demo/plan.yml").write_text("plan")
-    _git(root, "add", "clean.txt", "dirty.txt", ".snodo/plans/demo/plan.yml")
+    if edit_kind != "untracked-plan-delete":
+        (root / ".snodo/plans/demo/plan.yml").write_text("plan")
+    _git(root, "add", "clean.txt", "dirty.txt")
+    if edit_kind != "untracked-plan-delete":
+        _git(root, "add", ".snodo/plans/demo/plan.yml")
     _git(root, "commit", "-m", "initial")
     if edit_kind == "dirty":
         (root / "dirty.txt").write_text("pre-existing dirty")
     if edit_kind == "untracked-plan-delete":
-        # Keep the authored plan present when the executor captures its baseline,
-        # but make it untracked so the snapshot must include its content.
-        _git(root, "rm", "--cached", ".snodo/plans/demo/plan.yml")
+        # This is a genuinely untracked operator-authored plan record.
+        (root / ".snodo/plans/demo/plan.yml").write_text("plan")
 
     class HostCoder(SubprocessCoderAdapter):
         def _build_argv(self, prompt, project_root, model):
@@ -773,3 +775,90 @@ def test_checkout_snapshot_comparison_unavailable_is_distinct(tmp_path, sample_p
     with pytest.raises(ExecutionError, match="could not be compared") as caught:
         builder._default_executor(Task(id="task", spec="test"), mock_token, HostCoder(workspace=tmp_path / "isolated"), MagicMock(project_root=str(tmp_path / "isolated")), None)
     assert "changed (" not in str(caught.value)
+
+
+@pytest.mark.parametrize("kind", ["mutation", "adapter"])
+def test_classified_failure_with_real_checkout_change_keeps_classification(
+    tmp_path, sample_protocol, mock_token, kind, caplog
+):
+    from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+    from snodo.tools.git import GitMCP
+
+    root = (tmp_path / "primary").resolve()
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base").write_text("base")
+    _git(root, "add", "base")
+    _git(root, "commit", "-m", "initial")
+    failure = SnodoMutationError([".snodo/protocol.yml"]) if kind == "mutation" else AdapterError("adapter unavailable")
+
+    class HostCoder(SubprocessCoderAdapter):
+        def _build_argv(self, prompt, project_root, model): return []
+        def implement(self, spec):
+            (root / "base").write_text("changed")
+            raise failure
+
+    builder = GraphBuilder(sample_protocol)
+    builder._project_root = str(root)
+    workspace = MagicMock(project_root=str(tmp_path / "isolated"))
+    git = GitMCP(str(root))
+    try:
+        with pytest.raises(type(failure)) as caught:
+            builder._default_executor(Task(id="task", spec="test"), mock_token, HostCoder(workspace=tmp_path / "isolated"), workspace, git)
+        assert caught.value is failure
+        assert "operator checkout changed" in caplog.text
+    finally:
+        git.repo.close()
+
+
+def test_host_coder_in_primary_checkout_is_not_blocked(tmp_path, sample_protocol, mock_token):
+    from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+    from snodo.tools.git import GitMCP
+    root = (tmp_path / "primary").resolve()
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base").write_text("base")
+    _git(root, "add", "base")
+    _git(root, "commit", "-m", "initial")
+    class HostCoder(SubprocessCoderAdapter):
+        def _build_argv(self, prompt, project_root, model): return []
+        def implement(self, spec):
+            (root / "base").write_text("changed in place")
+            return type("Artifact", (), {"files": [], "findings": ["finding"]})()
+    builder = GraphBuilder(sample_protocol)
+    builder._project_root = str(root)
+    git = GitMCP(str(root))
+    try:
+        assert builder._default_executor(Task(id="task", spec="test"), mock_token, HostCoder(workspace=root), MagicMock(project_root=str(root)), git) == []
+    finally:
+        git.repo.close()
+
+
+def test_checkout_snapshot_fingerprints_duplicate_porcelain_path_from_disk(tmp_path):
+    from snodo.engine.checkout_snapshot import compare_checkout_snapshot, take_checkout_snapshot
+    root = tmp_path / "repo"
+    root.mkdir()
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "tracked.txt").write_text("base")
+    _git(root, "add", "tracked.txt")
+    _git(root, "commit", "-m", "initial")
+    target = root / ".snodo/plans/demo/plan.yml"
+    target.parent.mkdir(parents=True)
+    target.write_text("operator plan")
+    _git(root, "add", str(target.relative_to(root)))
+    _git(root, "commit", "-m", "plan")
+    target.unlink()
+    _git(root, "rm", "--cached", str(target.relative_to(root)))
+    target.write_text("operator plan")
+    baseline = take_checkout_snapshot(root)
+    assert baseline.available
+    target.unlink()
+    compared = compare_checkout_snapshot(baseline.snapshot)
+    assert compared.available
+    assert ".snodo/plans/demo/plan.yml" in compared.changed_paths
