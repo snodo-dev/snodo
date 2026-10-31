@@ -63,4 +63,5 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [057](057-headless-login-by-pasted-code.md) | Headless cloud login by pasting an OAuth code | 2026-10-04 | `cloud_oauth_client.py` + `cloud_cmd.py` |
 | [058](058-protected-path-advisory-guidance-and-merge-base-detection.md) | Protected-path guidance is advisory; detection uses the task's merge base | 2026-10-15 | `Protocol.protected_paths` + post-execute gate |
 | [059](059-verdict-names-its-task.md) | A submitted verdict names the task it judged | 2026-10-16 | Fixes #951; `validators/verdict_subject.py` + `validators/llm_validator.py` |
+| [060](060-intent-record.md) | Operator intent is a first-class record | 2026-10-31 | Fixes #1042; intent audit record + plan reference |
 
