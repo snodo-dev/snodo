@@ -6,7 +6,7 @@ on all commands; top-level options are `--version`, `--verbose`/`-v`,
 `--install-completion`, and `--show-completion`.
 
 The top-level help groups commands into **Daily loop** (init, ready, run, recon,
-status, logs, dashboard), **Work records** (job, task, plan, queue, runs, meta,
+status, logs, dashboard), **Work records** (job, task, plan, intent, queue, runs, meta,
 worktree), **Governance** (survey, intake, validate, mode, session, audit,
 authorize), **Setup** (config, models, cloud, serve, install, uninstall, cache,
 protocol), and **Advanced** (agent). Bare `snodo` shows the project readiness
@@ -296,3 +296,7 @@ Absent clients are skipped; restart each updated client after installing.
 
 
 Managed tunnels configured with `--auth service-token` expose the saved Access path (normally `/mcp-st`). Clients send `CF-Access-Client-Id` and `CF-Access-Client-Secret`; the server verifies Cloudflare Access assertion `Cf-Access-Jwt-Assertion` before MCP requests reach the handler. Service-token-only tunnels appear offline to cloud dispatch, so connect directly to that URL. OAuth remains at `/mcp`.
+
+### `snodo intent`
+
+Record and inspect local operator intents: `snodo intent record <text> [--issue ISSUE] [--supersedes ID]`, `snodo intent show <id>`, and `snodo intent list`. Each command accepts `--json`.

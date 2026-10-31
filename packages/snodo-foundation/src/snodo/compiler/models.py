@@ -5,6 +5,7 @@ All models are immutable and include validation logic.
 """
 
 from enum import Enum
+import re
 from typing import Any, Dict, List, Literal, Optional, Set, Union
 from pydantic import BaseModel, Field, field_validator, field_serializer, model_validator, ConfigDict
 
@@ -742,6 +743,7 @@ class Plan(BaseModel):
 
     name: str
     intent: str
+    intent_ref: Optional[str] = None
     waves: List[PlanWave] = Field(default_factory=list)
     tasks: Dict[str, PlanTask] = Field(default_factory=dict)
     parse_errors: List[str] = Field(default_factory=list)
@@ -758,7 +760,7 @@ class Plan(BaseModel):
 
     def to_dict(self) -> Dict[str, Any]:
         """Return dict representation matching plan.yml on-disk format."""
-        return {
+        data = {
             "name": self.name,
             "intent": self.intent,
             "waves": [
@@ -770,6 +772,9 @@ class Plan(BaseModel):
                 for w in self.waves
             ],
         }
+        if self.intent_ref is not None:
+            data["intent_ref"] = self.intent_ref
+        return data
 
     @classmethod
     def from_dict(
@@ -783,11 +788,18 @@ class Plan(BaseModel):
         """
         name = str(plan_data.get("name") or "")
         intent = str(plan_data.get("intent") or "")
+        intent_ref = plan_data.get("intent_ref")
         raw_waves = plan_data.get("waves") or []
 
         waves: List[PlanWave] = []
         wave_task_ids: List[str] = []
         parse_errors: List[str] = []
+        if intent_ref is not None and (
+            not isinstance(intent_ref, str)
+            or re.fullmatch(r"int_[0-9a-f]{6}", intent_ref) is None
+        ):
+            parse_errors.append(f"Invalid intent_ref {intent_ref!r}; expected int_<6-hex>")
+            intent_ref = None
 
         def _is_int(val: Any) -> bool:
             if val is None or isinstance(val, bool):
@@ -897,6 +909,7 @@ class Plan(BaseModel):
         return cls(
             name=name,
             intent=intent,
+            intent_ref=intent_ref,
             waves=waves,
             tasks=tasks_map,
             parse_errors=parse_errors,

@@ -395,3 +395,16 @@ The `pr` capability exposes vendor-neutral change-request tools:
 `merge_change_request` merges by id. The older `create_pr`, `read_pr_diff`,
 `post_review_comment`, `approve_pr`, `reject_pr`, and `merge_pr` names remain
 available as deprecated aliases, respectively.
+
+
+### `snodo intent record --json`
+
+Schema: `snodo.intent.record.v1`. Emits `{schema, ok, intent}`.
+
+### `snodo intent show --json`
+
+Schema: `snodo.intent.show.v1`. Emits `{schema, ok, intent}`.
+
+### `snodo intent list --json`
+
+Schema: `snodo.intent.list.v1`. Emits `{schema, ok, intents}` (newest first).
