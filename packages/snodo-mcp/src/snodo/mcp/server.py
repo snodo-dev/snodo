@@ -37,6 +37,7 @@ from snodo.mcp.model_handlers import ModelToolHandler
 from snodo.mcp.decision_handlers import DecisionToolHandler
 from snodo.mcp.recon_handlers import ReconToolHandler
 from snodo.mcp.plan_handlers import PlanToolHandler
+from snodo.mcp.intent_handlers import IntentToolHandler
 from snodo.mcp.queue_handlers import QueueToolHandler
 from snodo.mcp.diagnostic_handlers import DiagnosticToolHandler
 
@@ -149,6 +150,7 @@ class ProtocolMCPServer:
 
         self._core_handler = CoreToolHandler(self)
         self._plan_handler = PlanToolHandler(self)
+        self._intent_handler = IntentToolHandler(project_root, audit_log=self._audit_log)
         self._queue_handler = QueueToolHandler(project_root)
 
         # Build registry of tool handlers, detecting collisions
@@ -159,6 +161,7 @@ class ProtocolMCPServer:
             self._decision_handler,
             self._recon_handler,
             self._plan_handler,
+            self._intent_handler,
             self._queue_handler,
             self._diagnostic_handler,
             self._core_handler,

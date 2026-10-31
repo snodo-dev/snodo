@@ -25,3 +25,8 @@ name the allowed prefixes. The tool writes directly without staging or
 committing and returns the project-relative path and UTF-8 byte count. Each
 successful write appends its path, byte count, SHA-256 content hash, mode, and
 session to the project audit log.
+
+
+## Intent tools
+
+MCP planning tools can record local intent with `record_intent` (required `text`, optional `issue` and `supersedes`), retrieve a record by `get_intent` using `intent_id`, and list newest-first records with `list_intents` (optional positive `limit`). These records are local context and are not linked to plans.

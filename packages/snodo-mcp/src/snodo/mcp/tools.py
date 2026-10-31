@@ -349,6 +349,29 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "record_intent": {
+        "description": "Record an immutable intent before decomposing it into plans.",
+        "inputSchema": {"type": "object", "properties": {
+            "text": {"type": "string", "description": "Intent text"},
+            "issue": {"type": "string", "description": "Optional issue reference"},
+            "supersedes": {"type": "string", "description": "Optional id of an earlier intent this replaces"},
+        }, "required": ["text"]},
+        "mcp": None, "method": None,
+    },
+    "get_intent": {
+        "description": "Read a recorded intent by id.",
+        "inputSchema": {"type": "object", "properties": {
+            "intent_id": {"type": "string", "description": "Intent id"},
+        }, "required": ["intent_id"]},
+        "mcp": None, "method": None,
+    },
+    "list_intents": {
+        "description": "List recorded intents newest first, optionally limited.",
+        "inputSchema": {"type": "object", "properties": {
+            "limit": {"type": "integer", "minimum": 1, "description": "Maximum records to return"},
+        }},
+        "mcp": None, "method": None,
+    },
     "record_task_status": {
         "description": (
             "Record a task's status as an operator's account made outside the "
@@ -852,6 +875,9 @@ PLANNING_TOOLS = [
     "get_plan",
     "run_plan",
     "record_task_status",
+    "record_intent",
+    "get_intent",
+    "list_intents",
     "queue_list",
     "queue_create",
     "queue_move",
