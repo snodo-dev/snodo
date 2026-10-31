@@ -906,3 +906,54 @@ def test_protocol_modules_field_in_serialised_dict():
     assert "modules" in d
     assert len(d["modules"]) == 1
     assert d["modules"][0]["module_id"] == "api"
+
+
+# ========== PLAN INTENT REFERENCE TESTS ==========
+
+
+def test_plan_without_intent_ref_round_trips_unchanged():
+    from snodo.compiler.models import Plan
+
+    old_style = {"name": "Example", "intent": "Do the work", "waves": []}
+    plan = Plan.from_dict(old_style)
+
+    assert plan.intent_ref is None
+    assert plan.to_dict() == old_style
+    assert Plan.from_dict(plan.to_dict()).intent_ref is None
+
+
+def test_plan_intent_ref_round_trips():
+    from snodo.compiler.models import Plan
+
+    plan = Plan.from_dict(
+        {"name": "Example", "intent": "Do the work", "intent_ref": "int_a1b2c3", "waves": []}
+    )
+
+    assert plan.intent_ref == "int_a1b2c3"
+    assert plan.to_dict()["intent_ref"] == "int_a1b2c3"
+    assert Plan.from_dict(plan.to_dict()).intent_ref == "int_a1b2c3"
+
+
+def test_plan_malformed_intent_ref_is_reported():
+    from snodo.compiler.models import Plan
+
+    plan = Plan.from_dict(
+        {"name": "Example", "intent": "Do the work", "intent_ref": "intent-123", "waves": []}
+    )
+
+    assert plan.intent_ref is None
+    assert any("intent_ref" in error for error in plan.parse_errors)
+
+
+def test_old_style_plan_dict_is_unaffected():
+    from snodo.compiler.models import Plan
+
+    old_style = {"name": "Legacy", "intent": "Legacy intent", "waves": [{"id": 1, "tasks": ["task-1"]}]}
+    plan = Plan.from_dict(old_style)
+
+    assert plan.parse_errors == []
+    assert plan.to_dict() == {
+        "name": "Legacy",
+        "intent": "Legacy intent",
+        "waves": [{"id": 1, "depends_on": [], "tasks": ["task-1"]}],
+    }
