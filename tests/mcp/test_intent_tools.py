@@ -1,11 +1,8 @@
 """Tests for recording and reading intents over the MCP tool surface."""
 
-import shutil
 import subprocess
-from pathlib import Path
 
 import pytest
-import yaml
 
 from snodo.compiler.models import Protocol
 from snodo.mcp.server import MCPError, ProtocolMCPServer
