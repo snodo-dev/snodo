@@ -927,55 +927,11 @@ def _benchmark_prompt_identity(prompt: str) -> str:
 
 
 def _select_benchmark_model(provider_name: str, args) -> Optional[str]:
-    """Resolve exactly one model from the flags that already select a model.
-
-    Reuses ``--provider`` plus the discrete filters, so the benchmark is scoped
-    by the same surface as a listing. More than one match is an error that names
-    the candidates rather than an arbitrary pick — benchmarking "a provider" is
-    not a measurement.
-    """
-    from snodo.config import ConfigManager
-    providers = ConfigManager().get_providers()
-    pc = providers.get(provider_name)
-    if not pc:
-        print(f"Provider not configured: {provider_name}", file=sys.stderr)
-        print(f"  Configured: {', '.join(sorted(providers.keys()))}",
-              file=sys.stderr)
-        return None
-
-    models = _get_models(provider_name, pc, force_refresh=getattr(args, "flush", False))
-    if not models:
-        print(f"No models discovered for {provider_name}", file=sys.stderr)
-        return None
-
-    models = _apply_discrete_filters(
-        models,
-        model_id=getattr(args, "id", None),
-        id_contains=getattr(args, "id_contains", None),
-        max_output_cost=getattr(args, "max_output_cost", None),
-        min_output_cost=getattr(args, "min_output_cost", None),
-        max_input_cost=getattr(args, "max_input_cost", None),
-        min_context=getattr(args, "min_context", None),
+    """Compatibility wrapper for benchmark model selection."""
+    from snodo.cli.commands.models_benchmark_name import select_benchmark_model
+    return select_benchmark_model(
+        provider_name, args, _get_models, _apply_discrete_filters
     )
-    if not models:
-        model_id = getattr(args, "id", None)
-        if model_id is not None:
-            print(f"No model matched --id={model_id}.", file=sys.stderr)
-        else:
-            print("No models matched the specified filters.", file=sys.stderr)
-        return None
-
-    if len(models) > 1:
-        print(
-            f"--benchmark needs exactly one model, but {len(models)} matched. "
-            "Select one with --id=<exact-id> or --id-contains=<substring>:",
-            file=sys.stderr,
-        )
-        for m in models:
-            print(f"  {m.get('full_string', m.get('id', ''))}", file=sys.stderr)
-        return None
-
-    return models[0].get("full_string") or models[0].get("id")
 
 
 def _print_benchmark_intent(model: str, prompt: str, runs: int) -> None:
@@ -1216,7 +1172,10 @@ def models_benchmark_command(args) -> int:
         )
         return 1
 
-    model = _select_benchmark_model(provider_name, args)
+    from snodo.cli.commands.models_benchmark_name import select_benchmark_model
+    model = select_benchmark_model(
+        provider_name, args, _get_models, _apply_discrete_filters
+    )
     if model is None:
         if getattr(args, "json", False):
             from snodo.cli.json_output import emit_error
