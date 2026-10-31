@@ -21,3 +21,15 @@ Operators and coders get advance notice, while the post-execution diff remains t
 ## Alternatives
 
 Treating prompt guidance as enforcement was rejected: instructions do not prevent writes. Comparing against a base ref that may have advanced or been moved by a rebase was rejected because it can attribute base-branch changes to the task.
+
+## Clarification — 2026-10-30
+
+For host CLI coders, the executor also checks the operator's checkout against a
+pre-dispatch baseline after each coder exit and blocks acceptance when content
+changed, listing the paths; `.snodo/` runtime state is excluded while plan
+definition files and `protocol.yml` are watched. This is after-the-fact
+detection, not write prevention or repair: arbitrary host paths outside the
+repository are invisible, and concurrent operator edits are indistinguishable
+from coder edits. It does not apply to in-place work or in-process coders.
+Prevention remains out of scope here; it requires the contained adapter in
+[ADR 051](051-coder-containment-is-declared-not-deployed.md).
