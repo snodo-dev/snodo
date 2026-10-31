@@ -45,3 +45,7 @@ The task specification is the single highest-leverage artifact in the system: it
 - The Orchestrator role is explicitly bounded, making it clear what actions an agent acting as operator may and may not take.
 - Every task specification and framing decision is immutably recorded in `.snodo/audit.log`, eliminating blind spots in post-mortem analysis and audit reports.
 - Future audit inspection tools can trace a task from initial orchestrator specification through inner-loop execution, validator verdicts, and final operator review.
+
+## Clarification — 2026-10-31
+
+The intent behind orchestrated work is captured as its own record before planning (ADR 060). Plans may name that record with `intent_ref`; the `intent_recorded` event is local only.
