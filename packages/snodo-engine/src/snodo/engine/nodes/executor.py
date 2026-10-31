@@ -20,6 +20,10 @@ from snodo.tools.git import GitMCP
 from snodo.engine.state import _task_branch_name, _branch_exists
 from snodo.engine.nodes.work_recovery import existing_task_branch_work
 from snodo.infrastructure.worktree import worktree_dir
+from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+from snodo.engine.checkout_snapshot import (
+    CheckoutSnapshot, compare_checkout_snapshot, take_checkout_snapshot,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -282,6 +286,35 @@ class ExecutorMixin:
             _logger.debug("Could not inspect repository escape: %s", e)
         return None
 
+    def _checkout_snapshot_for_run(self, coder: Any, workspace_mcp: Any) -> Optional[CheckoutSnapshot]:
+        """Snapshot the operator checkout only for isolated host CLI runs."""
+        if not isinstance(coder, SubprocessCoderAdapter):
+            return None
+        primary = getattr(self, "_project_root", None) or getattr(self, "project_root", None)
+        workspace = getattr(workspace_mcp, "project_root", None) if workspace_mcp else None
+        if not primary or not workspace or Path(primary).resolve() == Path(workspace).resolve():
+            return None
+        result = take_checkout_snapshot(primary)
+        if not result.available or result.snapshot is None:
+            raise ExecutionError(f"Could not examine the operator checkout: {result.reason or 'snapshot unavailable'}")
+        if result.snapshot.root == Path(workspace).resolve():
+            return None
+        return result.snapshot
+
+    @staticmethod
+    def _checkout_escape(snapshot: Optional[CheckoutSnapshot]) -> Optional[str]:
+        if snapshot is None:
+            return None
+        result = compare_checkout_snapshot(snapshot)
+        if not result.available:
+            return f"Workspace escape detected: operator checkout could not be compared ({result.reason or 'comparison unavailable'})."
+        if result.changed_paths:
+            count = len(result.changed_paths)
+            paths = ", ".join(result.changed_paths[:5])
+            omitted = " (additional paths omitted)" if result.truncated or count > 5 else ""
+            return f"Workspace escape detected: operator checkout changed ({count} path(s)): {paths}{omitted}. Rescue the work and rerun."
+        return None
+
     def _default_executor(
         self,
         task: Task,
@@ -303,6 +336,7 @@ class ExecutorMixin:
         )
         self._ensure_task_branch(git_mcp, task)
         refs_before = self._repo_ref_snapshot(git_mcp)
+        checkout_snapshot = self._checkout_snapshot_for_run(coder, workspace_mcp)
         escape_checked = False
 
         try:
@@ -352,7 +386,7 @@ class ExecutorMixin:
                         refs_before=refs_before, task=task,
                     )
                     if existing is None and not has_findings:
-                        escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+                        escaped = self._escaped_repo_commit(git_mcp, refs_before, task) or self._checkout_escape(checkout_snapshot)
                         escape_checked = True
                         if escaped:
                             raise ExecutionError(f"{escaped} Original failure: coder produced no file operations.")
@@ -375,7 +409,7 @@ class ExecutorMixin:
                         self._last_existing_work_base_ref = existing[0]
                         artifacts.extend(existing[1])
                 else:
-                    escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+                    escaped = self._escaped_repo_commit(git_mcp, refs_before, task) or self._checkout_escape(checkout_snapshot)
                     escape_checked = True
                     if escaped:
                         raise ExecutionError(escaped)
@@ -389,7 +423,7 @@ class ExecutorMixin:
 
         except SnodoMutationError:
             self._record_coder_run_facts(coder)
-            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task) or self._checkout_escape(checkout_snapshot)
             if escaped:
                 # Preserve ADR 027's blocker halt and path-bearing audit event;
                 # logging makes the escape visible without replacing governance.
@@ -405,7 +439,7 @@ class ExecutorMixin:
                 refs_before=refs_before,
                 task=task,
             )
-            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task) or self._checkout_escape(checkout_snapshot)
             if escaped:
                 raise ExecutionError(f"{escaped} Original failure: turn budget exhausted.") from None
             if recovered is not None:
@@ -417,7 +451,7 @@ class ExecutorMixin:
                 git_mcp, coder, artifacts, base_ref=getattr(task, "base", None),
                 refs_before=refs_before, task=task,
             )
-            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task) or self._checkout_escape(checkout_snapshot)
             if escaped:
                 raise ExecutionError(f"{escaped} Original failure: coder timed out.") from None
             if recovered is not None:
@@ -425,7 +459,7 @@ class ExecutorMixin:
             raise
         except AdapterError:
             self._record_coder_run_facts(coder)
-            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task) or self._checkout_escape(checkout_snapshot)
             if escaped:
                 # Preserve ADR 015's environment-error classification; do not
                 # turn an operator-fixable adapter failure into engine failure.
@@ -433,19 +467,19 @@ class ExecutorMixin:
             raise
         except ExecutionError as e:
             self._record_coder_run_facts(coder)
-            escaped = None if escape_checked else self._escaped_repo_commit(git_mcp, refs_before, task)
+            escaped = None if escape_checked else (self._escaped_repo_commit(git_mcp, refs_before, task) or self._checkout_escape(checkout_snapshot))
             if escaped:
                 raise ExecutionError(f"{e} {escaped}") from e
             raise
         except Exception as e:
             self._record_coder_run_facts(coder)
-            escaped = self._escaped_repo_commit(git_mcp, refs_before, task)
+            escaped = self._escaped_repo_commit(git_mcp, refs_before, task) or self._checkout_escape(checkout_snapshot)
             message = f"Coder execution failed: {str(e)}"
             if escaped:
                 message = f"{message} {escaped}"
             raise ExecutionError(message) from e
 
-        escaped = None if escape_checked else self._escaped_repo_commit(git_mcp, refs_before, task)
+        escaped = None if escape_checked else (self._escaped_repo_commit(git_mcp, refs_before, task) or self._checkout_escape(checkout_snapshot))
         if escaped:
             raise ExecutionError(escaped)
         return artifacts
