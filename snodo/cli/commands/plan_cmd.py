@@ -364,7 +364,7 @@ def _plan_list(planner, args=None) -> int:
         active = _activity_timestamp(plan_dir, status_data, project_root, p["name"])
         counts = {s: statuses.count(s) for s in _PLAN_STATUSES}
         total = len(statuses)
-        facts.append({
+        fact = {
             "name": p["name"],
             "summary": _summary(p.get("intent")),
             "last_active": datetime.fromtimestamp(active, timezone.utc).isoformat() if active else None,
@@ -375,7 +375,11 @@ def _plan_list(planner, args=None) -> int:
             "waves": [
                 {"id": w.id, "tasks": list(w.tasks)} for w in getattr(plan, "waves", [])
             ] if plan is not None else [],
-        })
+        }
+        intent_ref = getattr(plan, "intent_ref", None) if plan is not None else None
+        if intent_ref is not None:
+            fact["intent_ref"] = intent_ref
+        facts.append(fact)
     facts.sort(key=lambda item: item["last_active"] or "", reverse=True)
     unassigned = _unassigned_tasks(project_root, planned_tasks)
     if getattr(args, "json", False):
@@ -394,8 +398,12 @@ def _plan_list(planner, args=None) -> int:
         active = item["last_active"] or "never"
         if active != "never":
             active = active.replace("T", " ").split("+", 1)[0]
-        table.add_row(item["name"], _spec_excerpt(item["summary"]), _age_label(item["last_active"]), active,
-                      f'{item["progress"]["completed"]}/{item["progress"]["total"]}', item["status"])
+        plan_name = item["name"]
+        if item.get("intent_ref") is not None:
+            plan_name = f'{plan_name} ({item["intent_ref"]})'
+        row = [plan_name, _spec_excerpt(item["summary"]), _age_label(item["last_active"]), active,
+               f'{item["progress"]["completed"]}/{item["progress"]["total"]}', item["status"]]
+        table.add_row(*row)
     if unassigned:
         for task in unassigned:
             table.add_row(
@@ -405,7 +413,8 @@ def _plan_list(planner, args=None) -> int:
     console = Console(file=sys.stdout, markup=False, highlight=False)
     if getattr(args, "tree", False):
         for item in facts:
-            print(f"{item['name']} [{item['status']}]")
+            intent_suffix = f" (intent ref: {item['intent_ref']})" if item.get("intent_ref") else ""
+            print(f"{item['name']} [{item['status']}]{intent_suffix}")
             for wave in item["waves"]:
                 print(f"  Wave {wave['id']}")
                 for task in wave["tasks"]:
@@ -419,6 +428,9 @@ def _plan_list(planner, args=None) -> int:
                 console.print(table)
         else:
             console.print(table)
+            for item in facts:
+                if item.get("intent_ref") is not None:
+                    print(f"Intent ref: {item['name']} = {item['intent_ref']}")
     return 0
 
 
@@ -439,6 +451,8 @@ def _plan_status(planner, name: str, run_summary: bool = False, json_output: boo
     tasks = status_data.get("tasks", {})
     print(f"Plan: {plan_data.get('name', name)}")
     print(f"Intent: {plan_data.get('intent', 'N/A')}")
+    if plan_data.get("intent_ref") is not None:
+        print(f"Intent ref: {plan_data['intent_ref']}")
     print()
 
     plan_job_id, task_jobs = _plan_job_index(planner.project_root, name)
