@@ -32,7 +32,7 @@ def register(app: typer.Typer) -> None:
         check: bool = typer.Option(False, "--check", "--validate", help="Make one cheap live call against each configured model"),
         benchmark: bool = typer.Option(
             False, "--benchmark",
-            help="Time a fixed prompt against the selected model. Makes real, billed API calls.",
+            help="Time a fixed prompt against the selected model; use --benchmark <provider>/<model>. Makes real, billed API calls.",
         ),
         benchmark_runs: int = typer.Option(
             1, "--benchmark-runs", min=1, max=_MAX_BENCHMARK_RUNS,
@@ -55,6 +55,9 @@ def register(app: typer.Typer) -> None:
         min_output_cost: Optional[float] = typer.Option(None, "--min-output-cost", help="Output cost/1M >= value. Excludes unknown costs."),
         max_input_cost: Optional[float] = typer.Option(None, "--max-input-cost", help="Input cost/1M <= value. Excludes unknown costs."),
         min_context: Optional[int] = typer.Option(None, "--min-context", help="Context window >= value. Excludes context==0."),
+        benchmark_model: Optional[str] = typer.Argument(
+            None, help="Optional provider/model value for --benchmark",
+        ),
     ):
         """List configured providers and their models."""
         args = SimpleNamespace(
@@ -65,6 +68,7 @@ def register(app: typer.Typer) -> None:
             provenance_limit=provenance_limit,
             check=check,
             benchmark=benchmark,
+            benchmark_model=benchmark_model,
             benchmark_runs=benchmark_runs,
             set_baseline=set_baseline,
             compare=compare,
@@ -81,7 +85,10 @@ def register(app: typer.Typer) -> None:
             max_input_cost=max_input_cost,
             min_context=min_context,
         )
-        return models_command(args)
+        result = models_command(args)
+        if result and benchmark_model is not None:
+            raise typer.Exit(code=result)
+        return result
 
 
 
@@ -1188,7 +1195,33 @@ def _benchmark_json_payload(
 
 def models_benchmark_command(args) -> int:
     """Benchmark one fixed prompt against one model selected by the model flags."""
+    named_model = getattr(args, "benchmark_model", None)
     provider_name = getattr(args, "provider", None)
+    model_id = getattr(args, "id", None)
+    if named_model is not None:
+        if provider_name is not None or model_id is not None:
+            message = "Use --benchmark <provider>/<model> or --provider and --id, not both."
+            if getattr(args, "json", False):
+                from snodo.cli.json_output import emit_error
+                return emit_error("models-benchmark", message, 1)
+            print(message, file=sys.stderr)
+            return 1
+        if not named_model or "/" not in named_model:
+            message = "--benchmark model must be a non-empty <provider>/<model> value."
+            if getattr(args, "json", False):
+                from snodo.cli.json_output import emit_error
+                return emit_error("models-benchmark", message, 1)
+            print(message, file=sys.stderr)
+            return 1
+        provider_name, model_id = named_model.split("/", 1)
+        if not provider_name or not model_id:
+            message = "--benchmark model must have non-empty provider and model parts."
+            if getattr(args, "json", False):
+                from snodo.cli.json_output import emit_error
+                return emit_error("models-benchmark", message, 1)
+            print(message, file=sys.stderr)
+            return 1
+        args.id = model_id
     if not provider_name:
         if getattr(args, "json", False):
             from snodo.cli.json_output import emit_error

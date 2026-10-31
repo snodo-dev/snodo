@@ -525,3 +525,71 @@ def test_benchmark_json_preserves_schema_samples_and_failed_attempt(monkeypatch,
     assert payload["samples"][0]["time_to_first_token"] == 0.5
     assert payload["samples"][1] == {"run": 2, "ok": False, "error": "rate limited"}
     assert "About to benchmark" not in captured.out
+
+
+def test_benchmark_provider_model_cli_argument_runs_exact_model(monkeypatch, capsys):
+    app = typer.Typer()
+    register(app)
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.get_providers",
+        lambda self: {"router": SimpleNamespace(api_key="test")},
+    )
+    monkeypatch.setattr(
+        models_cmd, "_get_models",
+        lambda *a, **k: [{"id": "vendor/model", "full_string": "router/vendor/model"}],
+    )
+    monkeypatch.setattr(models_cmd, "_load_benchmark_prompt", lambda: "prompt")
+    monkeypatch.setattr(models_cmd, "_run_benchmark_call", lambda *a, **k: {
+        "output_tokens": 2, "prompt_tokens": 1, "counts_basis": "test",
+        "time_to_first_token": 0.1, "wall_seconds": 0.2,
+        "decode_tok_per_sec": 10.0, "overall_tok_per_sec": 10.0,
+    })
+
+    result = CliRunner().invoke(app, ["--benchmark", "router/vendor/model"])
+    assert result.exit_code == 0, result.output
+    assert "router/vendor/model" in result.output
+
+
+def test_benchmark_named_model_rejects_bad_value_and_json(monkeypatch):
+    app = typer.Typer()
+    register(app)
+    result = CliRunner().invoke(app, ["--benchmark", "malformed", "--json"])
+    assert result.exit_code != 0
+    assert "non-empty <provider>/<model>" in result.output
+
+
+def test_benchmark_named_model_rejects_conflicting_filters(capsys):
+    args = SimpleNamespace(
+        benchmark=True, benchmark_model="openai/gpt-4o", provider=None,
+        id="other", json=False,
+    )
+    assert models_benchmark_command(args) == 1
+    assert "Use --benchmark" in capsys.readouterr().err
+
+
+def test_benchmark_named_model_unknown_provider_is_nonzero(monkeypatch, capsys):
+    monkeypatch.setattr("snodo.config.ConfigManager.get_providers", lambda self: {})
+    args = SimpleNamespace(
+        benchmark=True, benchmark_model="missing/model", provider=None, id=None,
+        json=False,
+    )
+    assert models_benchmark_command(args) == 1
+    assert "Provider not configured: missing" in capsys.readouterr().err
+
+
+def test_benchmark_named_model_unknown_model_is_nonzero(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.get_providers",
+        lambda self: {"openai": SimpleNamespace(api_key="test")},
+    )
+    monkeypatch.setattr(
+        models_cmd, "_get_models",
+        lambda *a, **k: [{"id": "known", "full_string": "openai/known"}],
+    )
+    args = SimpleNamespace(
+        benchmark=True, benchmark_model="openai/missing", provider=None, id=None,
+        json=False, flush=False, id_contains=None, max_output_cost=None,
+        min_output_cost=None, max_input_cost=None, min_context=None,
+    )
+    assert models_benchmark_command(args) == 1
+    assert "No model matched --id=missing" in capsys.readouterr().err
