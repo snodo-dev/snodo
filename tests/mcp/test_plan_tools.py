@@ -588,8 +588,19 @@ class TestGetPlan:
 
         assert fetched["name"] == "durable"
         assert fetched["intent"] == "Ship the widget"
+        assert "intent_ref" not in fetched
         assert fetched["waves"][0]["tasks"] == ["1.1_only"]
         assert fetched["validation"]["valid"] is True
+
+    def test_get_plan_includes_optional_intent_ref(self, server, project_dir):
+        _propose(server, name="linked")
+        plan_file = Path(project_dir) / ".snodo" / "plans" / "linked" / "plan.yml"
+        plan_data = yaml.safe_load(plan_file.read_text())
+        plan_data["intent_ref"] = "int_123456"
+        plan_file.write_text(yaml.safe_dump(plan_data, sort_keys=False))
+
+        fetched = server.call_tool("get_plan", {"plan_name": "linked"})
+        assert fetched["intent_ref"] == "int_123456"
 
     def test_unknown_plan_is_reported_not_invented(self, server):
         with pytest.raises(MCPError, match="Plan not found"):

@@ -308,6 +308,8 @@ class PlanToolHandler:
             "run_summary": self._run_summary(plan_name, plan_data),
             "validation": self._validation(plan_dir),
         }
+        if "intent_ref" in plan_data:
+            result["intent_ref"] = plan_data["intent_ref"]
         instruction = self._blocked_plan_instruction(plan_name, plan_data, statuses)
         if instruction:
             result["instruction"] = instruction

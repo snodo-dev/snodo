@@ -826,13 +826,16 @@ class PlannerMCP:
                         "Could not read plan status %s: %s", status_file, e,
                     )
 
-            plans.append({
+            plan_summary = {
                 "name": data.get("name", plan_dir.name),
                 "intent": data.get("intent", ""),
                 "wave_count": len(waves),
                 "task_count": task_count,
                 "status_counts": status_counts,
-            })
+            }
+            if "intent_ref" in data:
+                plan_summary["intent_ref"] = data["intent_ref"]
+            plans.append(plan_summary)
 
         return plans
 
