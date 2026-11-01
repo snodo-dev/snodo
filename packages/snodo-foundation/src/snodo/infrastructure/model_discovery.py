@@ -265,6 +265,27 @@ def _discover_deepseek(pc: ProviderConfig) -> List[ModelInfo]:
     return results
 
 
+def _discover_chatgpt_oauth(provider_name: str) -> List[ModelInfo]:
+    """List LiteLLM-known ChatGPT models without claiming account availability."""
+    import litellm
+
+    results = []
+    for full_string, metadata in litellm.model_cost.items():
+        if not full_string.startswith("chatgpt/") or not isinstance(metadata, dict):
+            continue
+        if metadata.get("litellm_provider") != "chatgpt":
+            continue
+        model_id = full_string.removeprefix("chatgpt/")
+        results.append(ModelInfo(
+            provider=provider_name,
+            id=model_id,
+            full_string=f"{provider_name}/{model_id}",
+            display_name=model_id,
+            context_window=metadata.get("max_input_tokens", 0) or 0,
+        ))
+    return results
+
+
 def _discover_openai_compatible(pc: ProviderConfig, provider_name: str = "openai") -> List[ModelInfo]:
     """GET /models with Bearer auth or custom headers, parsing standard OpenAI {"data": [{"id": ...}]}."""
     import httpx
@@ -276,8 +297,9 @@ def _discover_openai_compatible(pc: ProviderConfig, provider_name: str = "openai
         endpoint = "https://api.openai.com/v1/models"
 
     if not endpoint:
-        if getattr(pc, "auth", "") != "chatgpt-oauth":
-            _logger.warning("No models_endpoint or base_url for provider %s", provider_name)
+        if getattr(pc, "auth", "") == "chatgpt-oauth":
+            return _discover_chatgpt_oauth(provider_name)
+        _logger.warning("No models_endpoint or base_url for provider %s", provider_name)
         return []
 
     api_key = None if getattr(pc, "auth", "") == "chatgpt-oauth" else _resolve_api_key(provider_name, pc)
@@ -386,8 +408,6 @@ def discover_models(
     failed: List[str] = []
 
     for name, pc in providers.items():
-        if getattr(pc, "auth", "") == "chatgpt-oauth" and not pc.models_endpoint:
-            continue
         discover_fn = _DISCOVERY_DISPATCH.get(name)
         try:
             if discover_fn is not None:

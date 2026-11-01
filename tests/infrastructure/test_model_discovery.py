@@ -288,18 +288,39 @@ class TestDiscoverModels:
         assert len(DEFAULT_PROVIDER_CATALOG) == 6
 
 
-def test_oauth_provider_without_models_endpoint_is_quiet_and_does_not_resolve_key(caplog, monkeypatch):
+def test_oauth_provider_without_endpoint_lists_litellm_models_without_network(monkeypatch, temp_cache_dir):
     from snodo.infrastructure.model_discovery import _discover_openai_compatible
 
     provider = ProviderConfig(auth="chatgpt-oauth")
+    model_map = {
+        "chatgpt/gpt-test": {
+            "litellm_provider": "chatgpt",
+            "max_input_tokens": 128000,
+        },
+        "chatgpt/other-test": {
+            "litellm_provider": "chatgpt",
+            "max_input_tokens": 64000,
+        },
+        "openai/not-chatgpt": {
+            "litellm_provider": "openai",
+            "max_input_tokens": 32000,
+        },
+    }
+    monkeypatch.setattr("litellm.model_cost", model_map)
     monkeypatch.setattr(
         "snodo.infrastructure.model_discovery._resolve_api_key",
         lambda *args: pytest.fail("OAuth discovery must not resolve an API key"),
     )
-    with caplog.at_level("WARNING"):
-        assert _discover_openai_compatible(provider, provider_name="chatgpt") == []
-    assert "No API key" not in caplog.text
-    assert "No models_endpoint" not in caplog.text
+    with patch("httpx.get") as mock_get:
+        results = _discover_openai_compatible(provider, provider_name="chatgpt")
+        all_provider_results = discover_models({"chatgpt": provider}, force_refresh=True)
+
+    assert [(model.provider, model.id, model.context_window) for model in results] == [
+        ("chatgpt", "gpt-test", 128000),
+        ("chatgpt", "other-test", 64000),
+    ]
+    assert [model.id for model in all_provider_results] == ["gpt-test", "other-test"]
+    mock_get.assert_not_called()
 
 
 def test_api_key_provider_discovery_still_resolves_key(monkeypatch):
