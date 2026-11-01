@@ -446,6 +446,31 @@ class TestJudgeAdapter:
 
         assert calls == ["m1"]
 
+    def test_auto_mode_includes_oauth_and_key_models_only(self, tmp_path, monkeypatch):
+        from snodo.config import ConfigManager
+        from snodo.cli.commands.survey_cmd import build_survey_judge
+
+        cfg_dir = ConfigManager().config_dir
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "config.yml").write_text(
+            "model: some/unknown-default\n"
+            "providers:\n  chatgpt:\n    auth: chatgpt-oauth\n"
+            "  deepseek:\n    api_key: configured\n"
+            "  missing:\n    api_key: ''\n"
+            "llm:\n  recon:\n    models: "
+            "[chatgpt/gpt-5, deepseek/chat, missing/model]\n"
+            "    num_agents: 1\n"
+        )
+        monkeypatch.setattr(
+            ConfigManager, "get_key_for_model",
+            lambda self, model: "configured" if model == "deepseek/chat" else None,
+        )
+
+        judge = build_survey_judge(tmp_path, "auto")
+        assert judge.models == ["chatgpt/gpt-5", "deepseek/chat"]
+        forced = build_survey_judge(tmp_path, "force")
+        assert forced.models == ["chatgpt/gpt-5", "deepseek/chat", "missing/model"]
+
     def test_auto_mode_uses_a_recon_configured_model_with_a_key(self, tmp_path):
         from snodo.config import ConfigManager
         from snodo.cli.commands.survey_cmd import build_survey_judge

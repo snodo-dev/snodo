@@ -85,12 +85,15 @@ _JUDGE_MAX_TURNS = 3  # classify the dossier; exploring the repo is not the job
 
 
 def _agent_is_configured(mgr, model: str) -> bool:
-    """True when *model*'s provider has a key in snodo's own config.
+    """True when *model* uses a configured key or OAuth provider.
 
     Ambient environment keys do not count: this mirrors "a configured agent",
     the thing the operator set up, so survey's auto mode stays predictable.
     """
     try:
+        provider = mgr.provider_for_model(model)
+        if provider and mgr.provider_uses_oauth(provider):
+            return True
         return bool(mgr.get_key_for_model(model))
     except Exception:
         return False

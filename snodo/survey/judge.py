@@ -21,7 +21,13 @@ def build_survey_judge(project_root, mode: str):
     for lane in lanes:
         for candidate in lane:
             model = resolve_agent_model(candidate)
-            if model not in chain and (mode == "force" or manager.get_key_for_model(model)):
+            configured = mode == "force"
+            if not configured:
+                provider = manager.provider_for_model(model)
+                configured = bool(
+                    provider and manager.provider_uses_oauth(provider)
+                ) or bool(manager.get_key_for_model(model))
+            if model not in chain and configured:
                 chain.append(model)
     if not chain:
         return None
