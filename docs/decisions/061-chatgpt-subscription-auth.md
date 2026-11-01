@@ -1,4 +1,4 @@
-# ADR 061: ChatGPT subscription authentication through an explicit provider mode
+# ADR 061 — ChatGPT subscription authentication through an explicit provider mode
 
 **Status:** Accepted  
 **Date:** 2026-11-01
