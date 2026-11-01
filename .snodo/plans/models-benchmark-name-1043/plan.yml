@@ -1,0 +1,15 @@
+intent: 'Fixes #1043. Let `snodo models --benchmark` take a `<provider>/<model>` name
+  so one model can be benchmarked the way it is named in config and dispatch forms,
+  while `--provider` plus `--id` plus `--benchmark` keeps working. An unknown or malformed
+  name prints a clear message and exits non-zero (a machine-readable error under `--json`),
+  and the help text and the docs show the short form. Small increments: the option
+  and its resolution with tests, then the documentation. No new state, status, severity
+  or halt type, and no change to the cloud wire.'
+intent_ref: int_b85cc5
+name: models-benchmark-name-1043
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_benchmark_accepts_provider_model_name
+  - 1.2_docs_show_short_benchmark_form

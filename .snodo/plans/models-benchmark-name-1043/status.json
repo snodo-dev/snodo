@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "1.1_benchmark_accepts_provider_model_name": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e720d464d03a09a0",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-10-31T22:32:13.100193+00:00",
+      "judged": false
+    },
+    "1.2_docs_show_short_benchmark_form": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "aa49ba297ec0d615"
+    }
+  },
+  "integration": {
+    "branch": "plan/models-benchmark-name-1043/integration",
+    "base_sha": "7f1925ba9af3763404958b0460c0f338e2ed4600"
+  }
+}
