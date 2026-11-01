@@ -276,11 +276,11 @@ def _discover_openai_compatible(pc: ProviderConfig, provider_name: str = "openai
         endpoint = "https://api.openai.com/v1/models"
 
     if not endpoint:
-        if pc.auth != "chatgpt-oauth":
+        if getattr(pc, "auth", "") != "chatgpt-oauth":
             _logger.warning("No models_endpoint or base_url for provider %s", provider_name)
         return []
 
-    api_key = None if pc.auth == "chatgpt-oauth" else _resolve_api_key(provider_name, pc)
+    api_key = None if getattr(pc, "auth", "") == "chatgpt-oauth" else _resolve_api_key(provider_name, pc)
     headers: Dict[str, str] = {}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
