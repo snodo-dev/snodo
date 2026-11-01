@@ -617,3 +617,29 @@ def test_opencode_cli_readiness_flags_are_checked_best_effort(monkeypatch):
     assert complete == []
     assert check("2.1.0", error=TimeoutError()) == []
     assert check("2.1.0") == []
+
+
+def test_oauth_provider_readiness_uses_local_sign_in_state(monkeypatch):
+    from types import SimpleNamespace
+
+    from snodo.config import ConfigManager
+    from snodo.infrastructure import chatgpt_oauth
+    from snodo.readiness.checker import _check_model_readiness
+
+    provider = SimpleNamespace(api_key_ref=None)
+    monkeypatch.setattr(ConfigManager, "provider_for_model", staticmethod(lambda model: "chatgpt"))
+    monkeypatch.setattr(ConfigManager, "get_providers", lambda self: {"chatgpt": provider})
+    monkeypatch.setattr(ConfigManager, "provider_uses_oauth", lambda self, name: name == "chatgpt")
+    findings = []
+
+    monkeypatch.setattr(chatgpt_oauth, "chatgpt_sign_in_state", lambda: {"signed_in": True})
+    _check_model_readiness("chatgpt/gpt-5", ["build"], findings)
+    assert findings == []
+
+    monkeypatch.setattr(chatgpt_oauth, "chatgpt_sign_in_state", lambda: None)
+    _check_model_readiness("chatgpt/gpt-5", ["build"], findings)
+    assert len(findings) == 1
+    assert findings[0].severity == FindingSeverity.WARN
+    assert "not signed in" in findings[0].description
+    assert "snodo models --provider chatgpt --authenticate" in findings[0].remediation
+    assert "API_KEY" not in findings[0].description

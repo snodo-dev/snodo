@@ -349,6 +349,18 @@ def _check_model_readiness(model: str, modes: List[str], findings: List[Readines
         return
     try:
         pc = manager.get_providers().get(provider)
+        if manager.provider_uses_oauth(provider):
+            from snodo.infrastructure.chatgpt_oauth import chatgpt_sign_in_state
+
+            if not chatgpt_sign_in_state():
+                findings.append(ReadinessFinding(
+                    id=f"credential_missing:{provider}", kind=ReadinessKind.WORKSTATION,
+                    severity=FindingSeverity.WARN, modes=modes,
+                    description=f"Provider '{provider}' is not signed in for model '{model}'.",
+                    remediation=f"Sign in with 'snodo models --provider {provider} --authenticate'.",
+                    fix_cost=3,
+                ))
+            return
         if pc and pc.api_key_ref and pc.api_key_ref.strip().startswith("command:"):
             findings.append(ReadinessFinding(
                 id=f"credential_missing:{provider}", kind=ReadinessKind.WORKSTATION,
