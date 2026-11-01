@@ -91,10 +91,11 @@ def _agent_is_configured(mgr, model: str) -> bool:
     the thing the operator set up, so survey's auto mode stays predictable.
     """
     try:
-        provider = mgr.provider_for_model(model)
-        if provider and mgr.provider_uses_oauth(provider):
+        configured_key = mgr.get_key_for_model(model)
+        if configured_key:
             return True
-        return bool(mgr.get_key_for_model(model))
+        provider = mgr.provider_for_model(model)
+        return bool(provider and mgr.provider_uses_oauth(provider))
     except Exception:
         return False
 

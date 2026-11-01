@@ -23,10 +23,12 @@ def build_survey_judge(project_root, mode: str):
             model = resolve_agent_model(candidate)
             configured = mode == "force"
             if not configured:
-                provider = manager.provider_for_model(model)
-                configured = bool(
-                    provider and manager.provider_uses_oauth(provider)
-                ) or bool(manager.get_key_for_model(model))
+                configured = bool(manager.get_key_for_model(model))
+                if not configured:
+                    provider = manager.provider_for_model(model)
+                    configured = bool(
+                        provider and manager.provider_uses_oauth(provider)
+                    )
             if model not in chain and configured:
                 chain.append(model)
     if not chain:
