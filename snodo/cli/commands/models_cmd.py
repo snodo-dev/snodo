@@ -48,6 +48,8 @@ def register(app: typer.Typer) -> None:
         plan: Optional[str] = typer.Option(None, "--plan", help="Plan owning the baseline task (--set-baseline / --compare)"),
         task: Optional[str] = typer.Option(None, "--task", "--task-id", help="Plan task id (--set-baseline / --compare)"),
         job: Optional[str] = typer.Option(None, "--job", help="Candidate job id for --compare (latest matching job by default)"),
+        authenticate: bool = typer.Option(False, "--authenticate", help="Sign in to an OAuth provider (OAuth providers only)"),
+        reauthenticate: bool = typer.Option(False, "--reauthenticate", help="Sign in again even if already authenticated"),
         json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
         id: Optional[str] = typer.Option(None, "--id", help="Exact model id"),
         id_contains: Optional[str] = typer.Option(None, "--id-contains", help="Substring on id/display_name (case-insensitive)"),
@@ -77,6 +79,8 @@ def register(app: typer.Typer) -> None:
             plan=plan,
             task=task,
             job=job,
+            authenticate=authenticate,
+            reauthenticate=reauthenticate,
             json=json,
             id=id,
             id_contains=id_contains,
@@ -127,6 +131,9 @@ def _write_cache(provider: str, models: list) -> None:
 
 def models_command(args) -> int:
     """List configured providers, their models, or project usage stats."""
+    if getattr(args, "authenticate", False):
+        from snodo.cli.commands.models_authenticate import models_authenticate_command
+        return models_authenticate_command(args)
     if getattr(args, "set_baseline", False):
         return models_set_baseline_command(args)
 
