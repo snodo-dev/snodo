@@ -246,3 +246,49 @@ def test_settings_panel_explains_malformed_config_without_crashing(tmp_path, mon
             assert _grid(screen.query_one("#settings-providers"))[0][1] == "Config unavailable"
 
     asyncio.run(run())
+
+
+def test_settings_panel_shows_oauth_sign_in_state_and_preserves_key_status(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from snodo.config import ConfigManager
+    from snodo.infrastructure import chatgpt_oauth
+
+    project, _ = _project(tmp_path, monkeypatch)
+    providers = {
+        "oauth": SimpleNamespace(auth="chatgpt-oauth", default_model="oauth/model"),
+        "keyed": SimpleNamespace(default_model="key/model"),
+    }
+    monkeypatch.setattr(ConfigManager, "get_providers", lambda self: providers)
+    monkeypatch.setattr(
+        ConfigManager,
+        "provider_uses_oauth",
+        lambda self, name: name == "oauth",
+    )
+    monkeypatch.setattr(ConfigManager, "get_key", lambda self, name: "secret" if name == "keyed" else None)
+    states = iter(({"account": "local"}, None))
+    monkeypatch.setattr(chatgpt_oauth, "chatgpt_sign_in_state", lambda: next(states))
+
+    async def run():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = await _push(app, pilot, "settings", project)
+            rows = _grid(screen.query_one("#settings-providers"))
+            assert ["oauth", "oauth/model", "[green]Signed in[/]"] in rows
+            assert ["keyed", "key/model", "[green]✓[/]"] in rows
+
+    asyncio.run(run())
+
+    # The absent local token produces the explicit unsigned-in presentation.
+    async def run_signed_out():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = await _push(app, pilot, "settings", project)
+            rows = _grid(screen.query_one("#settings-providers"))
+            assert ["oauth", "oauth/model", "[yellow]Not signed in[/]"] in rows
+
+    asyncio.run(run_signed_out())
