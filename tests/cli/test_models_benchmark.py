@@ -593,3 +593,92 @@ def test_benchmark_named_model_unknown_model_is_nonzero(monkeypatch, capsys):
     )
     assert models_benchmark_command(args) == 1
     assert "No model matched --id=missing" in capsys.readouterr().err
+
+
+def _oauth_benchmark_args(**overrides):
+    values = dict(
+        provider="chatgpt-oauth", id="gpt-5", benchmark_model=None,
+        flush=False, benchmark=True, benchmark_runs=1, json=False,
+        id_contains=None, max_output_cost=None, min_output_cost=None,
+        max_input_cost=None, min_context=None,
+    )
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _stub_empty_oauth_discovery(monkeypatch, signed_in=True):
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.get_providers",
+        lambda self: {"chatgpt-oauth": SimpleNamespace()},
+    )
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.provider_uses_oauth",
+        lambda self, provider: provider == "chatgpt-oauth",
+    )
+    monkeypatch.setattr(models_cmd, "_get_models", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "snodo.infrastructure.chatgpt_oauth.chatgpt_sign_in_state",
+        lambda: {"signed_in": True} if signed_in else None,
+    )
+
+
+def test_oauth_empty_discovery_benchmarks_exact_id(monkeypatch):
+    _stub_empty_oauth_discovery(monkeypatch)
+    calls = []
+    monkeypatch.setattr(models_cmd, "_load_benchmark_prompt", lambda: "prompt")
+    monkeypatch.setattr(models_cmd, "_run_benchmark_call", lambda model, prompt: calls.append(model) or {
+        "output_tokens": 1, "prompt_tokens": 1, "counts_basis": "test",
+        "time_to_first_token": 0.1, "wall_seconds": 0.2,
+        "decode_tok_per_sec": 10.0, "overall_tok_per_sec": 5.0,
+    })
+    assert models_benchmark_command(_oauth_benchmark_args()) == 0
+    assert calls == ["chatgpt-oauth/gpt-5"]
+
+
+def test_oauth_empty_discovery_benchmarks_short_form(monkeypatch):
+    _stub_empty_oauth_discovery(monkeypatch)
+    calls = []
+    monkeypatch.setattr(models_cmd, "_load_benchmark_prompt", lambda: "prompt")
+    monkeypatch.setattr(models_cmd, "_run_benchmark_call", lambda model, prompt: calls.append(model) or {
+        "output_tokens": 1, "prompt_tokens": 1, "counts_basis": "test",
+        "time_to_first_token": 0.1, "wall_seconds": 0.2,
+        "decode_tok_per_sec": 10.0, "overall_tok_per_sec": 5.0,
+    })
+    args = _oauth_benchmark_args(provider=None, id=None, benchmark_model="chatgpt-oauth/gpt-5")
+    assert models_benchmark_command(args) == 0
+    assert calls == ["chatgpt-oauth/gpt-5"]
+
+
+def test_oauth_empty_discovery_requires_exact_id(monkeypatch, capsys):
+    _stub_empty_oauth_discovery(monkeypatch)
+    args = _oauth_benchmark_args(id=None)
+    assert models_benchmark_command(args) == 1
+    err = capsys.readouterr().err
+    assert "cannot list its models" in err
+    assert "exact --id is required" in err
+    assert "No models discovered" not in err
+
+
+def test_oauth_empty_discovery_signed_out_prompts_authentication(monkeypatch, capsys):
+    _stub_empty_oauth_discovery(monkeypatch, signed_in=False)
+    calls = []
+    monkeypatch.setattr(models_cmd, "_run_benchmark_call", lambda *a, **k: calls.append(a))
+    assert models_benchmark_command(_oauth_benchmark_args()) == 1
+    assert "snodo models --provider chatgpt-oauth --authenticate" in capsys.readouterr().err
+    assert calls == []
+
+
+def test_non_oauth_empty_discovery_keeps_existing_message(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.get_providers",
+        lambda self: {"openai": SimpleNamespace()},
+    )
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.provider_uses_oauth", lambda self, provider: False,
+    )
+    monkeypatch.setattr(models_cmd, "_get_models", lambda *a, **k: [])
+    args = _oauth_benchmark_args(provider="openai", id="unknown")
+    assert models_benchmark_command(args) == 1
+    err = capsys.readouterr().err
+    assert "No models discovered for openai" in err
+    assert "cannot list its models" not in err
