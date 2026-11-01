@@ -160,8 +160,18 @@ class SettingsScreen(Screen):
             pt.add_row("—", "Config unavailable", "—")
             return
         for pname, pcfg in config.get_providers().items():
-            has_key = bool(config.get_key(pname))
-            key_status = "[green]✓[/]" if has_key else "[yellow]—[/]"
+            auth = getattr(pcfg, "auth", None)
+            if auth == "chatgpt-oauth" and config.provider_uses_oauth(pname):
+                from snodo.infrastructure.chatgpt_oauth import chatgpt_sign_in_state
+
+                key_status = (
+                    "[green]Signed in[/]"
+                    if chatgpt_sign_in_state() is not None
+                    else "[yellow]Not signed in[/]"
+                )
+            else:
+                has_key = bool(config.get_key(pname))
+                key_status = "[green]✓[/]" if has_key else "[yellow]—[/]"
             model = getattr(pcfg, "default_model", "") or "—"
             pt.add_row(pname, str(model)[:40], key_status)
 
