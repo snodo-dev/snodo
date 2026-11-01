@@ -1,0 +1,14 @@
+intent: Follow-up to the ChatGPT OAuth provider (#1055). `snodo models --provider
+  chatgpt` prints "No models discovered" because the ChatGPT subscription provider
+  has no models endpoint, even though LiteLLM ships a list of chatgpt/ models with
+  context sizes. List those models so the operator can see what to pick, and stop
+  describing subscription benchmark calls as billed API calls. Two small independent
+  changes. No new state, status, severity or halt type, and no change to the cloud
+  wire.
+name: chatgpt-model-listing
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_chatgpt_provider_lists_litellm_models
+  - 1.2_benchmark_wording_for_subscription_providers

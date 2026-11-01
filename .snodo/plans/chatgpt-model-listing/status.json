@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "1.1_chatgpt_provider_lists_litellm_models": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fa0350505cbddc63",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T17:40:10.386089+00:00",
+      "judged": false
+    },
+    "1.2_benchmark_wording_for_subscription_providers": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2002a51d8b6a1f89"
+    }
+  },
+  "integration": {
+    "branch": "plan/chatgpt-model-listing/integration",
+    "base_sha": "9a84c85cbc2cdb3fb93e521e4176c4357f9d1b89"
+  }
+}
