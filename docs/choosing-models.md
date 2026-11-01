@@ -16,6 +16,8 @@ model will complete every task.
 
 ## Benchmark one model
 
+For models accessed through a ChatGPT subscription, configure `auth: chatgpt-oauth` and sign in with `snodo models --provider chatgpt --authenticate`; see the [ChatGPT provider guide](providers/chatgpt.md). A known model can be benchmarked by name even if that provider cannot list models.
+
 Benchmark a specific model by name with `snodo models --benchmark <provider>/<model>`, for example `snodo models --benchmark openai/gpt-4o`. The equivalent longer form is `snodo models --provider <provider> --id <model> --benchmark`. The benchmark makes a billed call and reports timing and throughput measurements; use it when you want a like-for-like measurement rather than aggregate job statistics.
 
 ## Discover configured models
@@ -23,7 +25,7 @@ Benchmark a specific model by name with `snodo models --benchmark <provider>/<mo
 Call `list_models` to inspect the models discovered from Snodo's configured
 providers. For setup instructions, see the guides for [Cloudflare](providers/cloudflare.md),
 [Ollama](providers/ollama.md), [OpenCode Go](providers/opencode-go.md),
-[Anthropic](providers/anthropic.md), [OpenAI](providers/openai.md),
+[Anthropic](providers/anthropic.md), [OpenAI](providers/openai.md), [ChatGPT subscription](providers/chatgpt.md),
 [Google](providers/google.md), [OpenRouter](providers/openrouter.md), and
 [DeepSeek](providers/deepseek.md). It returns an object with a `models` array.
 Each item contains:

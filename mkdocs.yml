@@ -46,6 +46,7 @@ nav:
           - OpenCode Go: providers/opencode-go.md
           - Anthropic: providers/anthropic.md
           - OpenAI: providers/openai.md
+          - ChatGPT subscription: providers/chatgpt.md
           - Google: providers/google.md
           - OpenRouter: providers/openrouter.md
           - DeepSeek: providers/deepseek.md

@@ -63,7 +63,7 @@ Snodo user-config settings; current callers do not read them.
 For step-by-step setup, see the guides for [Cloudflare](providers/cloudflare.md),
 [Ollama](providers/ollama.md), [OpenCode Go](providers/opencode-go.md),
 [Anthropic](providers/anthropic.md), [OpenAI](providers/openai.md),
-[Google](providers/google.md), [OpenRouter](providers/openrouter.md), and
+[ChatGPT subscription](providers/chatgpt.md), [Google](providers/google.md), [OpenRouter](providers/openrouter.md), and
 [DeepSeek](providers/deepseek.md).
 
 Each entry under `providers` is keyed by a provider name. Built-in entries are
@@ -74,6 +74,7 @@ provider, the defaults are empty strings and an empty `extra_headers` map.
 
 | Provider key | Default | Description |
 |---|---|---|
+| `auth` | `""` | Authentication mode. Set to `chatgpt-oauth` for a ChatGPT subscription; then sign in with `snodo models --provider chatgpt --authenticate` (see the [ChatGPT guide](providers/chatgpt.md)). This is separate from API-key credentials. |
 | `api_key` | `""` | Literal API key, encrypted reference `@keys/<provider>.key`, or empty to use another source. Prefer an environment reference for portable setups. |
 | `api_key_env` | `""` | Name of an environment variable containing the key. Built-in provider defaults set this (for example `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `CLOUDFLARE_API_KEY`, or `DEEPSEEK_API_KEY`). |
 | `api_key_ref` | `""` | Named credential reference: `env:VARIABLE_NAME` or `command:COMMAND`. A command is split into arguments, has a 10-second timeout and uses trimmed stdout. |
