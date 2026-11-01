@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from snodo.paths import resolve_home
 
@@ -48,6 +48,15 @@ class ProviderConfig(BaseModel):
     extra_headers: Dict[str, str] = Field(default_factory=dict)
     probe_model: str = ""
     catalog_provider: str = ""
+    auth: str = ""
+
+    @model_validator(mode="after")
+    def validate_auth(self):
+        if self.auth and self.auth != "chatgpt-oauth":
+            raise ValueError("auth must be one of: chatgpt-oauth")
+        if self.auth and any((self.api_key, self.api_key_env, self.api_key_ref)):
+            raise ValueError("An OAuth provider takes no API key (api_key, api_key_env, or api_key_ref).")
+        return self
 
 
 DEFAULT_CLOUD_MODELS_URL = "https://models.snodo.dev/v1"
@@ -370,6 +379,11 @@ class ConfigManager:
                 catalog_provider="snodo-cloud",
             )
         return result
+
+    def provider_uses_oauth(self, provider: str) -> bool:
+        """Return whether a configured provider uses OAuth authentication."""
+        config = self.get_providers().get(provider)
+        return bool(config and config.auth == "chatgpt-oauth")
 
     @staticmethod
     def resolve_api_base(model: str) -> Optional[str]:
