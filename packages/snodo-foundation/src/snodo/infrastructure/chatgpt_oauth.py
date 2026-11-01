@@ -10,6 +10,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Iterator
 
+from snodo.infrastructure.atomic_json import atomic_write_json
+
 _THREAD_LOCK = RLock()
 SAFETY_MARGIN_SECONDS = 300.0
 
@@ -32,7 +34,9 @@ def chatgpt_token_lock() -> Iterator[None]:
     path = token_path()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(path.parent, 0o700)
-    fd = os.open(path.with_name(path.name + ".lock"), os.O_CREAT | os.O_RDWR, 0o600)
+    lock_path = path.with_name(path.name + ".lock")
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    os.chmod(lock_path, 0o600)
     try:
         with _THREAD_LOCK:
             fcntl.flock(fd, fcntl.LOCK_EX)
@@ -67,6 +71,9 @@ def ensure_chatgpt_access_token(provider_name: str, *, authenticator=None,
     """Return a sufficiently fresh token, refreshing at most once under lock."""
     path = token_path()
     try:
+        data = _read(path)
+        if data.get("access_token") and float(data.get("expires_at", 0)) > time.time() + safety_margin:
+            return data["access_token"]
         with chatgpt_token_lock():
             data = _read(path)
             if data.get("access_token") and float(data.get("expires_at", 0)) > time.time() + safety_margin:
@@ -80,7 +87,7 @@ def ensure_chatgpt_access_token(provider_name: str, *, authenticator=None,
                 if not isinstance(updated, dict) or not updated.get("access_token"):
                     raise ValueError("invalid refresh response")
                 data.update(updated)
-                path.write_text(json.dumps(data), encoding="utf-8")
+                atomic_write_json(path, data, trailing_newline=True)
                 os.chmod(path, 0o600)
                 os.chmod(path.parent, 0o700)
                 return data["access_token"]
