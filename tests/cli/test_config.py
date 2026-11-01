@@ -1160,6 +1160,41 @@ class TestProviders:
         assert "api_key" not in providers.get("openai", {})
 
 
+    def test_provider_oauth_can_be_set_and_read(self, mgr, capsys):
+        from snodo.cli.commands.config_cmd import _config_set
+        assert _config_set(mgr, "providers.chatgpt.auth", "chatgpt-oauth") == 0
+        assert mgr.load()["providers"]["chatgpt"]["auth"] == "chatgpt-oauth"
+        assert mgr.provider_uses_oauth("chatgpt") is True
+
+    def test_provider_oauth_rejects_unknown_auth(self, mgr, capsys):
+        from snodo.config_validation import set_config_value
+        from snodo.config_validation import ConfigKeyError as RuntimeConfigKeyError
+        with pytest.raises(RuntimeConfigKeyError, match="chatgpt-oauth"):
+            set_config_value(mgr, "providers.chatgpt.auth", "password")
+
+    @pytest.mark.parametrize("field", ["api_key", "api_key_env", "api_key_ref"])
+    def test_provider_oauth_rejects_api_key_fields(self, mgr, field):
+        from snodo.config_validation import set_config_value, ConfigKeyError as RuntimeConfigKeyError
+        mgr.save({"providers": {"chatgpt": {field: "credential"}}})
+        with pytest.raises(RuntimeConfigKeyError, match="OAuth provider takes no API key"):
+            set_config_value(mgr, "providers.chatgpt.auth", "chatgpt-oauth")
+
+    def test_provider_without_auth_keeps_api_key_behavior(self, mgr):
+        mgr.save({"providers": {"chatgpt": {}}})
+        assert mgr.provider_uses_oauth("chatgpt") is False
+        assert mgr.provider_uses_oauth("openai") is False
+
+    def test_provider_auth_schemas_agree(self):
+        from pydantic import ValidationError
+        from snodo.config_validation import _ProviderConfig as AppProvider
+        from snodo.config import ProviderConfig as CoreProvider
+        assert "auth" in AppProvider.model_fields
+        assert "auth" in CoreProvider.model_fields
+        assert AppProvider(auth="chatgpt-oauth").auth == CoreProvider(auth="chatgpt-oauth").auth
+        for schema in (AppProvider, CoreProvider):
+            with pytest.raises(ValidationError, match="chatgpt-oauth"):
+                schema(auth="not-oauth")
+
     def test_default_catalog_has_six_providers(self):
         """DEFAULT_PROVIDER_CATALOG has anthropic, openai, openrouter, google, cloudflare, deepseek."""
         from snodo.infrastructure.config import DEFAULT_PROVIDER_CATALOG

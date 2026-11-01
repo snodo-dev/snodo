@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, ValidationError, model_validator
 
 from snodo.config import ConfigManager, ProviderConfig
 from snodo.infrastructure.config import LlmConfig
@@ -52,6 +52,15 @@ class _NotificationsConfig(BaseModel):
 
 class _ProviderConfig(ProviderConfig):
     model_config = ConfigDict(extra="forbid")
+    auth: StrictStr = ""
+
+    @model_validator(mode="after")
+    def validate_auth(self):
+        if self.auth and self.auth != "chatgpt-oauth":
+            raise ValueError("auth must be one of: chatgpt-oauth")
+        if self.auth and any((self.api_key, self.api_key_env, self.api_key_ref)):
+            raise ValueError("An OAuth provider takes no API key (api_key, api_key_env, or api_key_ref).")
+        return self
 
 
 class _UserConfig(BaseModel):
