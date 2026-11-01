@@ -1367,3 +1367,16 @@ class TestCloudServiceUrls:
 
         override_without_path = {"cloud": {"liveness_api_url": "https://custom.app.snodo.dev"}}
         assert get_cloud_liveness_url(override_without_path) == "https://custom.app.snodo.dev"
+
+
+def test_config_test_reports_oauth_sign_in_state(mgr, monkeypatch, capsys):
+    from snodo.cli.commands.config_cmd import _config_test
+
+    mgr.save({"providers": {"chatgpt": {"auth": "chatgpt-oauth"}}})
+    monkeypatch.setattr(
+        "snodo.infrastructure.chatgpt_oauth.chatgpt_sign_in_state",
+        lambda: {"signed_in": True},
+    )
+
+    assert _config_test(mgr) == 0
+    assert "chatgpt: ✓ signed in" in capsys.readouterr().out

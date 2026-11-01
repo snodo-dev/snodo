@@ -288,6 +288,16 @@ def _config_test(mgr: ConfigManager) -> int:
 
     print("Testing API keys...")
     results = mgr.test_keys()
+    oauth_providers = [
+        name for name, pc in providers.items()
+        if getattr(pc, "auth", "") == "chatgpt-oauth"
+    ]
+    if oauth_providers:
+        from snodo.infrastructure.chatgpt_oauth import chatgpt_sign_in_state
+
+        signed_in = chatgpt_sign_in_state() is not None
+        for provider in oauth_providers:
+            results[provider] = "signed in" if signed_in else "not signed in"
     has_invalid = False
     for provider, status in results.items():
         if status == "valid":
