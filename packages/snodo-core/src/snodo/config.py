@@ -390,7 +390,7 @@ class ConfigManager:
     def provider_uses_oauth(self, provider: str) -> bool:
         """Return whether a configured provider uses OAuth authentication."""
         config = self.get_providers().get(provider)
-        return bool(config and config.auth == "chatgpt-oauth")
+        return bool(config and getattr(config, "auth", "") == "chatgpt-oauth")
 
     @staticmethod
     def resolve_api_base(model: str) -> Optional[str]:

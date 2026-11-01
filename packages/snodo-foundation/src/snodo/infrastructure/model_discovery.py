@@ -269,8 +269,6 @@ def _discover_openai_compatible(pc: ProviderConfig, provider_name: str = "openai
     """GET /models with Bearer auth or custom headers, parsing standard OpenAI {"data": [{"id": ...}]}."""
     import httpx
 
-    api_key = _resolve_api_key(provider_name, pc)
-
     endpoint = pc.models_endpoint
     if not endpoint and pc.base_url:
         endpoint = pc.base_url.rstrip("/") + "/models"
@@ -278,9 +276,11 @@ def _discover_openai_compatible(pc: ProviderConfig, provider_name: str = "openai
         endpoint = "https://api.openai.com/v1/models"
 
     if not endpoint:
-        _logger.warning("No models_endpoint or base_url for provider %s", provider_name)
+        if pc.auth != "chatgpt-oauth":
+            _logger.warning("No models_endpoint or base_url for provider %s", provider_name)
         return []
 
+    api_key = None if pc.auth == "chatgpt-oauth" else _resolve_api_key(provider_name, pc)
     headers: Dict[str, str] = {}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -386,6 +386,8 @@ def discover_models(
     failed: List[str] = []
 
     for name, pc in providers.items():
+        if getattr(pc, "auth", "") == "chatgpt-oauth" and not pc.models_endpoint:
+            continue
         discover_fn = _DISCOVERY_DISPATCH.get(name)
         try:
             if discover_fn is not None:

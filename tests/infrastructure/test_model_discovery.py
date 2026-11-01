@@ -286,3 +286,30 @@ class TestDiscoverModels:
         from snodo.infrastructure.config import DEFAULT_PROVIDER_CATALOG, ProviderConfig
         assert ProviderConfig is not None
         assert len(DEFAULT_PROVIDER_CATALOG) == 6
+
+
+def test_oauth_provider_without_models_endpoint_is_quiet_and_does_not_resolve_key(caplog, monkeypatch):
+    from snodo.infrastructure.model_discovery import _discover_openai_compatible
+
+    provider = ProviderConfig(auth="chatgpt-oauth")
+    monkeypatch.setattr(
+        "snodo.infrastructure.model_discovery._resolve_api_key",
+        lambda *args: pytest.fail("OAuth discovery must not resolve an API key"),
+    )
+    with caplog.at_level("WARNING"):
+        assert _discover_openai_compatible(provider, provider_name="chatgpt") == []
+    assert "No API key" not in caplog.text
+    assert "No models_endpoint" not in caplog.text
+
+
+def test_api_key_provider_discovery_still_resolves_key(monkeypatch):
+    provider = ProviderConfig(api_key="secret", models_endpoint="https://example.test/models")
+    response = MagicMock()
+    response.json.return_value = {"data": []}
+    monkeypatch.setattr(
+        "snodo.infrastructure.model_discovery._resolve_api_key", lambda *args: "secret"
+    )
+    get = MagicMock(return_value=response)
+    monkeypatch.setattr("httpx.get", get)
+    _discover_openai_compatible(provider, provider_name="custom")
+    assert get.call_args.kwargs["headers"]["Authorization"] == "Bearer secret"
