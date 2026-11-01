@@ -29,6 +29,7 @@ dist/
 !.snodo/protocol.yml
 !.snodo/plans/
 !.snodo/plans/**
+.snodo/plans/**/.*.lock
 !.snodo/plans-archive/
 !.snodo/plans-archive/**
 
