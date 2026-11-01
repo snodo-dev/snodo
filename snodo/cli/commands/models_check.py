@@ -254,18 +254,18 @@ def check_configured_models(
         oauth_provider = bool(provider and manager.provider_uses_oauth(provider))
         reauth_message = None
         if oauth_provider:
-            from snodo.infrastructure.chatgpt_oauth import (
-                ChatGPTReauthenticationRequired, chatgpt_sign_in_state,
+            from snodo.infrastructure.chatgpt_oauth import chatgpt_sign_in_state
+            reauth_message = (
+                f"ChatGPT sign-in is required; run `snodo models --provider "
+                f"{provider} --authenticate` again."
             )
-            reauth_message = str(ChatGPTReauthenticationRequired(provider))
             if chatgpt_sign_in_state() is None:
                 results.append((role, model, False, reauth_message))
                 continue
         try:
             canary_detail = canary_call(model, role=role)
         except Exception as error:
-            from snodo.infrastructure.chatgpt_oauth import ChatGPTReauthenticationRequired
-            reason = reauth_message if oauth_provider and isinstance(error, ChatGPTReauthenticationRequired) else str(error)
+            reason = str(error)
             results.append((role, model, False, reason))
         else:
             from snodo.config import ConfigManager
