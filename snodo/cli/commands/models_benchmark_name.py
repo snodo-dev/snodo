@@ -35,6 +35,22 @@ def select_benchmark_model(provider_name, args, get_models=None, apply_filters=N
         return None
     models = get_models(provider_name, pc, force_refresh=getattr(args, "flush", False))
     if not models:
+        if ConfigManager().provider_uses_oauth(provider_name):
+            model_id = getattr(args, "id", None)
+            if not model_id:
+                print(
+                    f"Provider {provider_name} cannot list its models; an exact --id is required.",
+                    file=sys.stderr,
+                )
+                return None
+            from snodo.infrastructure.chatgpt_oauth import chatgpt_sign_in_state
+            if chatgpt_sign_in_state() is None:
+                print(
+                    f"ChatGPT sign-in is required; run `snodo models --provider {provider_name} --authenticate`.",
+                    file=sys.stderr,
+                )
+                return None
+            return f"{provider_name}/{model_id}"
         print(f"No models discovered for {provider_name}", file=sys.stderr)
         return None
     models = apply_filters(
