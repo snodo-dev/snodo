@@ -109,12 +109,19 @@ DEFAULT_TUNNEL_API_URL = "https://app.snodo.dev"
 DEFAULT_CLOUD_LIVENESS_URL = "https://app.snodo.dev"
 DEFAULT_CLOUD_OAUTH_METADATA_URL = "https://mcp-auth.snodo.dev/.well-known/oauth-authorization-server"
 _cloud_model_credential_resolver = None
+_chatgpt_oauth_credential_resolver = None
 
 
 def register_cloud_model_credential_resolver(resolver) -> None:
-    """Register the foundation-layer OAuth credential capability."""
+    """Register the foundation-layer cloud credential capability."""
     global _cloud_model_credential_resolver
     _cloud_model_credential_resolver = resolver
+
+
+def register_chatgpt_oauth_credential_resolver(resolver) -> None:
+    """Register the foundation-layer ChatGPT OAuth refresh capability."""
+    global _chatgpt_oauth_credential_resolver
+    _chatgpt_oauth_credential_resolver = resolver
 
 
 def derive_liveness_url(api_url: str) -> str:
@@ -822,6 +829,10 @@ class ConfigManager:
             cloud = self.load().get("cloud", {})
             key = cloud.get("api_key") if isinstance(cloud, dict) else None
             return key.strip() or None if isinstance(key, str) else None
+        if self.provider_uses_oauth(provider):
+            if _chatgpt_oauth_credential_resolver is not None:
+                _chatgpt_oauth_credential_resolver(provider)
+            return None
         return self.get_key(provider)
 
     def provider_key_available(self, provider: str) -> bool:

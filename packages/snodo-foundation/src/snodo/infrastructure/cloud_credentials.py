@@ -6,7 +6,7 @@ import socket
 import time
 import logging
 
-from snodo.config import register_cloud_model_credential_resolver
+from snodo.config import register_chatgpt_oauth_credential_resolver, register_cloud_model_credential_resolver
 from snodo.infrastructure.cloud_oauth_store import (
     CloudOAuthState,
     load_oauth_state,
@@ -144,3 +144,13 @@ def _cloud_model_credential(config: dict) -> str | None:
 # Foundation owns OAuth persistence/refresh; register its capability with core
 # without making core depend on this package.
 register_cloud_model_credential_resolver(_cloud_model_credential)
+
+
+def _chatgpt_model_credential(provider_name: str) -> None:
+    """Refresh ChatGPT OAuth credentials before LiteLLM reads its token file."""
+    from snodo.infrastructure.chatgpt_oauth import ensure_chatgpt_access_token
+
+    ensure_chatgpt_access_token(provider_name)
+
+
+register_chatgpt_oauth_credential_resolver(_chatgpt_model_credential)
