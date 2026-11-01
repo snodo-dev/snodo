@@ -452,6 +452,27 @@ class TestCLIConfigShow:
         out = capsys.readouterr().out
         assert "gpt-4" in out
 
+    @pytest.mark.parametrize(
+        "sign_in_state, expected",
+        [
+            ({"account_id": "test-account"}, "chatgpt: signed in"),
+            (None, "chatgpt: not signed in; run snodo models --provider chatgpt --authenticate"),
+        ],
+    )
+    def test_show_oauth_provider_sign_in_state(
+        self, cli_config_dir, capsys, monkeypatch, sign_in_state, expected
+    ):
+        cli_config_dir.save({"providers": {"chatgpt": {"auth": "chatgpt-oauth"}}})
+        monkeypatch.setattr(
+            "snodo.infrastructure.chatgpt_oauth.chatgpt_sign_in_state",
+            lambda: sign_in_state,
+        )
+
+        assert main(["config", "show"]) == 0
+        output = capsys.readouterr().out
+        assert expected in output
+        assert "No API keys configured" not in output
+
     def test_show_displays_credential_reference_without_resolving(self, cli_config_dir, capsys):
         cli_config_dir.save({"providers": {"github": {"api_key_ref": "command:gh auth --token secret-value"}}})
         with patch("subprocess.run", side_effect=AssertionError("must not execute reference")):
@@ -641,6 +662,50 @@ class TestCLIConfigTest:
         result = main(["config", "test"])
         assert result == 1
         assert "openai: ✗ invalid (authentication)" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        "sign_in_state, expected",
+        [
+            ({"account_id": "test-account"}, "chatgpt: ✓ signed in"),
+            (None, "chatgpt: ✗ not signed in; run snodo models --provider chatgpt --authenticate"),
+        ],
+    )
+    def test_test_oauth_provider_reports_sign_in_state(
+        self, cli_config_dir, capsys, monkeypatch, sign_in_state, expected
+    ):
+        cli_config_dir.save({"providers": {"chatgpt": {"auth": "chatgpt-oauth"}}})
+        monkeypatch.setattr(
+            "snodo.infrastructure.chatgpt_oauth.chatgpt_sign_in_state",
+            lambda: sign_in_state,
+        )
+
+        assert main(["config", "test"]) == 0
+        output = capsys.readouterr().out
+        assert expected in output
+        assert "No API keys configured" not in output
+
+    @patch("snodo.config.ConfigManager._test_single_key", return_value="valid")
+    def test_show_and_test_mixed_key_and_oauth_providers(
+        self, _mock_test, cli_config_dir, capsys, monkeypatch
+    ):
+        cli_config_dir.save({"providers": {
+            "openai": {"api_key": "sk-test-key"},
+            "chatgpt": {"auth": "chatgpt-oauth"},
+        }})
+        monkeypatch.setattr(
+            "snodo.infrastructure.chatgpt_oauth.chatgpt_sign_in_state",
+            lambda: {"account_id": "test-account"},
+        )
+
+        assert main(["config", "show"]) == 0
+        show_output = capsys.readouterr().out
+        assert "openai" in show_output
+        assert "chatgpt: signed in" in show_output
+
+        assert main(["config", "test"]) == 0
+        test_output = capsys.readouterr().out
+        assert "openai: ✓ valid" in test_output
+        assert "chatgpt: ✓ signed in" in test_output
 
     def test_test_no_keys(self, cli_config_dir, capsys):
         result = main(["config", "test"])
