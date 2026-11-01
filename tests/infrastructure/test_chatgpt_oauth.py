@@ -66,8 +66,12 @@ def test_fresh_token_does_not_wait_for_refresh_lock(tmp_path, monkeypatch):
     holder = threading.Thread(target=hold_lock)
     holder.start()
     assert entered.wait(2)
+    from concurrent.futures import ThreadPoolExecutor
+
     try:
-        assert oauth.ensure_chatgpt_access_token("openai", authenticator=object()) == "old"
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            result = pool.submit(oauth.ensure_chatgpt_access_token, "openai", authenticator=object())
+            assert result.result(timeout=1) == "old"
     finally:
         release.set()
         holder.join(2)
@@ -125,3 +129,18 @@ def test_processes_refresh_expired_token_once(tmp_path, monkeypatch):
     assert tokens == ["process-new"] * 8
     assert counter.value == 1
     manager.shutdown()
+
+
+def test_litellm_refresh_only_hook_is_used_without_interactive_login(tmp_path, monkeypatch):
+    path = setup_token(tmp_path, monkeypatch, 0)
+
+    class Auth:
+        def _refresh_tokens(self, refresh_token):
+            assert refresh_token == "refresh"
+            updated = {"access_token": "litellm-new", "refresh_token": "rotated"}
+            path.write_text(json.dumps({**updated, "expires_at": time.time() + 3600}))
+            return updated
+
+    assert oauth.ensure_chatgpt_access_token("openai", authenticator=Auth()) == "litellm-new"
+    assert json.loads(path.read_text())["refresh_token"] == "rotated"
+    assert path.stat().st_mode & 0o777 == 0o600

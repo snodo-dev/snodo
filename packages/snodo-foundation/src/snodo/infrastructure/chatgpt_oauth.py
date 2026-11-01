@@ -79,14 +79,25 @@ def ensure_chatgpt_access_token(provider_name: str, *, authenticator=None,
             if data.get("access_token") and float(data.get("expires_at", 0)) > time.time() + safety_margin:
                 return data["access_token"]
             if authenticator is None:
-                from litellm.llms.chatgpt.authenticator import ChatGPTAuthenticator
-                authenticator = ChatGPTAuthenticator()
+                from litellm.llms.chatgpt.authenticator import Authenticator
+                authenticator = Authenticator()
             try:
-                refresh = getattr(authenticator, "refresh_access_token")
-                updated = refresh(data)
-                if not isinstance(updated, dict) or not updated.get("access_token"):
-                    raise ValueError("invalid refresh response")
-                data.update(updated)
+                refresh = getattr(authenticator, "refresh_access_token", None)
+                if refresh is not None:
+                    updated = refresh(data)
+                    if not isinstance(updated, dict) or not updated.get("access_token"):
+                        raise ValueError("invalid refresh response")
+                    data.update(updated)
+                else:
+                    refresh_tokens = getattr(authenticator, "_refresh_tokens")
+                    updated = refresh_tokens(data["refresh_token"])
+                    if not isinstance(updated, dict) or not updated.get("access_token"):
+                        raise ValueError("invalid refresh response")
+                    # LiteLLM writes in place; read its result while still locked,
+                    # then replace it atomically with owner-only permissions.
+                    data = _read(path)
+                    if not data.get("access_token"):
+                        data.update(updated)
                 atomic_write_json(path, data, trailing_newline=True)
                 os.chmod(path, 0o600)
                 os.chmod(path.parent, 0o700)
