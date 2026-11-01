@@ -28,6 +28,7 @@ from snodo.cli.commands.task_record import (  # noqa: F401
     _record_task_start,
     _record_task_completion,
 )
+from snodo.cli.commands.run_preflight import preflight_provider_credential as _preflight_provider_credential
 from snodo.cli.commands.run_merge import (
     _merge_on_success,
     _deliver_on_success,
@@ -289,33 +290,6 @@ def _print_missing_template_validators(protocol) -> None:
         f"{', '.join(missing)}. Run 'snodo protocol diff' to inspect the full "
         f"comparison; regenerate with 'snodo init --force' or update the "
         f"protocol manually."
-    )
-
-
-def _preflight_provider_credential(model: str) -> Optional[str]:
-    """Return an error message when *model*'s provider has no credential, else None.
-
-    Reuses ConfigManager's resolution so the preflight cannot disagree with the
-    thing that actually loads the key: the provider is resolved via
-    ``_provider_for_model`` and the credential via ``get_key_for_model`` (config)
-    or the provider's ``api_key_env`` (environment). A provider that declares no
-    credential env var (e.g. a local endpoint) is not preflighted.
-    """
-    mgr = ConfigManager()
-    provider = ConfigManager._provider_for_model(model)
-    if provider is None:
-        return None
-    pc = mgr.get_providers().get(provider)
-    env_var = pc.api_key_env if pc else ""
-    if mgr.get_key_for_model(model):
-        return None
-    if env_var and os.environ.get(env_var):
-        return None
-    if not env_var:
-        return None
-    return (
-        f"Error: No credential for provider '{provider}' (model {model}). "
-        f"Set {env_var} or run: snodo config add {provider} <key>"
     )
 
 
