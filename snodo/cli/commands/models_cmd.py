@@ -32,7 +32,7 @@ def register(app: typer.Typer) -> None:
         check: bool = typer.Option(False, "--check", "--validate", help="Make one cheap live call against each configured model"),
         benchmark: bool = typer.Option(
             False, "--benchmark",
-            help="Time a fixed prompt against the selected model; use --benchmark <provider>/<model>. Makes real, billed API calls.",
+            help="Time a fixed prompt against the selected model; use --benchmark <provider>/<model>. Calls may be billed or use a subscription.",
         ),
         benchmark_runs: int = typer.Option(
             1, "--benchmark-runs", min=1, max=_MAX_BENCHMARK_RUNS,
@@ -945,7 +945,8 @@ def _print_benchmark_intent(model: str, prompt: str, runs: int) -> None:
     print(f"  model:  {model}")
     print(f"  prompt: {_benchmark_prompt_identity(prompt)}")
     print(f"  source: {_BENCHMARK_PROMPT_PATH}")
-    print(f"  This makes {runs} real, billed API call(s).")
+    from snodo.cli.commands.models_benchmark_wording import benchmark_cost_message
+    print(f"  {benchmark_cost_message(model, runs)}")
     print()
 
 
