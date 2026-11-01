@@ -918,6 +918,10 @@ class ConfigManager:
         for name, pc in providers.items():
             key = self.get_key(name)
             if not key:
+                if getattr(pc, "auth", "") == "chatgpt-oauth":
+                    from snodo.infrastructure.chatgpt_oauth import chatgpt_sign_in_state
+
+                    results[name] = "signed in" if chatgpt_sign_in_state() is not None else "not signed in"
                 continue
             results[name] = self._test_single_key(name, key, pc)
 

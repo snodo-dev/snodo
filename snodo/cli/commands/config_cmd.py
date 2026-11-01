@@ -201,13 +201,22 @@ def _config_show(mgr: ConfigManager) -> int:
             if key:
                 configured.append((name, key))
 
+    oauth_providers = [name for name, pc in providers.items() if getattr(pc, "auth", "") == "chatgpt-oauth"]
     if configured:
         print("API Keys:")
         for name, key in configured:
             print(f"  {name}: {ConfigManager.mask_key(key)}")
-    elif not references:
+    elif not references and not oauth_providers:
         print("No API keys configured.")
         print("  Add one: snodo config add <provider> <key>")
+    if oauth_providers:
+        from snodo.infrastructure.chatgpt_oauth import chatgpt_sign_in_state
+
+        for name in oauth_providers:
+            if chatgpt_sign_in_state() is not None:
+                print(f"  {name}: signed in")
+            else:
+                print(f"  {name}: not signed in; run snodo models --provider {name} --authenticate")
     if references:
         print("Credential references:")
         for name, reference in references:
@@ -271,7 +280,8 @@ def _config_test(mgr: ConfigManager) -> int:
     """Test all configured API keys."""
     providers = mgr.get_providers()
     any_key = any(mgr.get_key(name) for name in providers)
-    if not any_key:
+    any_oauth = any(getattr(pc, "auth", "") == "chatgpt-oauth" for pc in providers.values())
+    if not any_key and not any_oauth:
         print("No API keys configured. Add one first:")
         print("  snodo config add <provider> <key>")
         return 1
@@ -282,6 +292,10 @@ def _config_test(mgr: ConfigManager) -> int:
     for provider, status in results.items():
         if status == "valid":
             print(f"  {provider}: ✓ valid")
+        elif status == "signed in":
+            print(f"  {provider}: ✓ signed in")
+        elif status == "not signed in":
+            print(f"  {provider}: ✗ not signed in; run snodo models --provider {provider} --authenticate")
         elif status == "untestable":
             print(f"  {provider}: ? untestable")
         else:
