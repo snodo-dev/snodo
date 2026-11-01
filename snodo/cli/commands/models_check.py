@@ -248,10 +248,25 @@ def check_configured_models(
                     f"{coder_name} uses a subprocess; provider canary not applicable",
                 ))
             continue
+        from snodo.config import ConfigManager
+        manager = ConfigManager()
+        provider = manager._provider_for_model(model)
+        oauth_provider = bool(provider and manager.provider_uses_oauth(provider))
+        reauth_message = None
+        if oauth_provider:
+            from snodo.infrastructure.chatgpt_oauth import (
+                ChatGPTReauthenticationRequired, chatgpt_sign_in_state,
+            )
+            reauth_message = str(ChatGPTReauthenticationRequired(provider))
+            if chatgpt_sign_in_state() is None:
+                results.append((role, model, False, reauth_message))
+                continue
         try:
             canary_detail = canary_call(model, role=role)
         except Exception as error:
-            results.append((role, model, False, str(error)))
+            from snodo.infrastructure.chatgpt_oauth import ChatGPTReauthenticationRequired
+            reason = reauth_message if oauth_provider and isinstance(error, ChatGPTReauthenticationRequired) else str(error)
+            results.append((role, model, False, reason))
         else:
             from snodo.config import ConfigManager
             resolved = ConfigManager.resolve_litellm_model(model)
