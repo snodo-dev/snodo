@@ -323,6 +323,22 @@ def test_oauth_provider_without_endpoint_lists_litellm_models_without_network(mo
     mock_get.assert_not_called()
 
 
+def test_oauth_provider_without_models_endpoint_is_quiet_and_does_not_resolve_key(
+    monkeypatch,
+):
+    provider = ProviderConfig(auth="chatgpt-oauth")
+    monkeypatch.setattr("litellm.model_cost", {})
+    monkeypatch.setattr(
+        "snodo.infrastructure.model_discovery._resolve_api_key",
+        lambda *args: pytest.fail("OAuth discovery must not resolve an API key"),
+    )
+    with patch("httpx.get") as mock_get:
+        results = _discover_openai_compatible(provider, provider_name="chatgpt")
+
+    assert results == []
+    mock_get.assert_not_called()
+
+
 def test_api_key_provider_discovery_still_resolves_key(monkeypatch):
     provider = ProviderConfig(api_key="secret", models_endpoint="https://example.test/models")
     response = MagicMock()
