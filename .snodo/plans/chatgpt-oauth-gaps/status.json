@@ -1,0 +1,41 @@
+{
+  "tasks": {
+    "1.1_readiness_accepts_oauth_provider": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c598958958287325",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T18:47:29.178369+00:00",
+      "judged": false
+    },
+    "1.2_config_commands_know_oauth_provider": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "06c89f39210eaf65"
+    },
+    "1.3_survey_counts_oauth_provider_models": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f1ef6637d197d1b0",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T18:47:29.663362+00:00",
+      "judged": false
+    },
+    "1.4_dashboard_shows_oauth_provider_state": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4243a904f7948079",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T18:53:19.547195+00:00",
+      "judged": false
+    }
+  },
+  "integration": {
+    "branch": "plan/chatgpt-oauth-gaps/integration",
+    "base_sha": "9b2266e92d3d1435cdabdc47e2397f1eae7e4bd7"
+  }
+}

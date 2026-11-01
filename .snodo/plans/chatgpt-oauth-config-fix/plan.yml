@@ -1,0 +1,12 @@
+name: chatgpt-oauth-config-fix
+intent: 'Corrective follow-up to issue 1059 (config show and config test for OAuth providers). The first attempt put the sign-in lookup inside ConfigManager.test_keys in the core config module, which imports the infrastructure layer and breaks the import-linter contract that core depends on nothing above it, so the gate fails. It also shipped without tests. No new state, status, severity or halt type, and no change to the cloud wire.'
+waves:
+- id: 1
+  depends_on: []
+  tasks:
+  - 1.1_config_test_oauth_state_in_cli_layer
+- id: 2
+  depends_on:
+  - 1
+  tasks:
+  - 2.1_config_oauth_tests

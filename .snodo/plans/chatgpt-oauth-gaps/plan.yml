@@ -1,0 +1,17 @@
+intent: 'Follow-up to the ChatGPT OAuth provider (#1055). A provider that signs in
+  with a ChatGPT subscription has no API key by design, but four places still read
+  "no key" as "not set up": the readiness check warns about a missing credential and
+  tells the operator to add a key, the config show and test commands and the key test
+  report no keys configured, survey and the judge chain drop the provider''s models
+  because the model credential lookup is empty by design for it, and the dashboard
+  shows Key Set as false. Four small independent changes in different files. No new
+  state, status, severity or halt type, and no change to the cloud wire.'
+name: chatgpt-oauth-gaps
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_readiness_accepts_oauth_provider
+  - 1.2_config_commands_know_oauth_provider
+  - 1.3_survey_counts_oauth_provider_models
+  - 1.4_dashboard_shows_oauth_provider_state

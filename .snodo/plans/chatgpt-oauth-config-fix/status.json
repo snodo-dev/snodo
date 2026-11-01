@@ -1,0 +1,20 @@
+{
+  "integration": {
+    "branch": "plan/chatgpt-oauth-config-fix/integration",
+    "base_sha": "9e95659c930fe777f0d414ddf6fb0be6b4bf1127"
+  },
+  "tasks": {
+    "1.1_config_test_oauth_state_in_cli_layer": {
+      "status": "completed",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T19:32:58.755529+00:00",
+      "judged": false
+    },
+    "2.1_config_oauth_tests": {
+      "status": "completed",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T19:53:57.740512+00:00",
+      "judged": false
+    }
+  }
+}
