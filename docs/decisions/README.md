@@ -64,5 +64,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [058](058-protected-path-advisory-guidance-and-merge-base-detection.md) | Protected-path guidance is advisory; detection uses the task's merge base | 2026-10-15 | `Protocol.protected_paths` + post-execute gate |
 | [059](059-verdict-names-its-task.md) | A submitted verdict names the task it judged | 2026-10-16 | Fixes #951; `validators/verdict_subject.py` + `validators/llm_validator.py` |
 | [060](060-intent-record.md) | Operator intent is a first-class record | 2026-10-31 | Fixes #1042; intent audit record + plan reference |
-
 | [061](061-chatgpt-subscription-auth.md) | ChatGPT subscription authentication through an explicit provider mode | 2026-11-01 | Fixes #1055; ChatGPT OAuth provider |

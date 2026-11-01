@@ -1,0 +1,71 @@
+{
+  "tasks": {
+    "1.1_chatgpt_token_refresh_under_lock": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ea4df18f018ab767",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T02:38:38.565880+00:00",
+      "judged": false
+    },
+    "1.2_provider_oauth_setting": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a857dee2ec563409"
+    },
+    "3.1_check_reports_oauth_signin_state": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a64fad6c6a090356"
+    },
+    "3.2_benchmark_named_model_without_discovery": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "48cf6e477b85aaeb"
+    },
+    "3.3_docs_oauth_provider": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "497a24858b1b73aa",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T06:39:24.343015+00:00",
+      "judged": false
+    },
+    "2.1_credential_resolution_refreshes_oauth_token_r2": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1c530cc8cbff1c92",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T05:14:45.924870+00:00",
+      "judged": false
+    },
+    "2.2_oauth_provider_counts_as_available_r2": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "76ccc4bb3a833a7f",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T05:37:21.212623+00:00",
+      "judged": false
+    },
+    "2.3_models_authenticate_command_r2": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "aaa5afe821c49420",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-01T05:14:46.246875+00:00",
+      "judged": false
+    }
+  },
+  "integration": {
+    "branch": "plan/chatgpt-oauth-provider/integration",
+    "base_sha": "465f13398e10cbdf9e80e0df4605049c7e375152"
+  }
+}

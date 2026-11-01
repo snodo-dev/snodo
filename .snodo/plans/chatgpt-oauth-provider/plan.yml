@@ -1,0 +1,31 @@
+intent: 'Fixes #1055. Let a provider sign in with a ChatGPT subscription through OAuth
+  instead of an API key. A provider says so explicitly in its settings; `snodo models
+  --provider <name> --authenticate` signs in headless and refuses API-key providers;
+  snodo refreshes the token under a cross-process lock where credentials are resolved
+  so all model call sites share it without racing; an expired sign-in produces a message
+  asking the operator to authenticate again. Small increments: token module and provider
+  setting first, then credential hook, availability checks and the command, then check
+  and benchmark behaviour, then documentation. No new state, status, severity or halt
+  type, and no change to the cloud wire.'
+intent_ref: int_24ce9a
+name: chatgpt-oauth-provider
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_chatgpt_token_refresh_under_lock
+  - 1.2_provider_oauth_setting
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_credential_resolution_refreshes_oauth_token_r2
+  - 2.2_oauth_provider_counts_as_available_r2
+  - 2.3_models_authenticate_command_r2
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_check_reports_oauth_signin_state
+  - 3.2_benchmark_named_model_without_discovery
+  - 3.3_docs_oauth_provider
