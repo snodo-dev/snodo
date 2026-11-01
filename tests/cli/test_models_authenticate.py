@@ -29,12 +29,13 @@ def setup_auth(monkeypatch):
 
 
 def test_auth_success(setup_auth, monkeypatch, capsys):
-    setup_auth["value"] = {"signed_in": True, "expires_at": 4_000_000_000}
+    setup_auth["value"] = {"signed_in": True, "expires_at": 1}
     class Authenticator:
         def get_access_token(self):
             print("https://auth.example and code ABCD")
+            setup_auth["value"] = {"signed_in": True, "expires_at": 4_000_000_000}
     monkeypatch.setitem(__import__("sys").modules, "litellm.llms.chatgpt.authenticator", SimpleNamespace(Authenticator=Authenticator))
-    result = command.models_authenticate_command(SimpleNamespace(provider="chatgpt", json=False, reauthenticate=True))
+    result = command.models_authenticate_command(SimpleNamespace(provider="chatgpt", json=False))
     assert result == 0
     assert "code ABCD" in capsys.readouterr().out
 
@@ -81,6 +82,6 @@ def test_denied_sign_in_is_reported(setup_auth, monkeypatch, capsys):
         def get_access_token(self):
             raise RuntimeError("device authorization denied")
     monkeypatch.setitem(__import__("sys").modules, "litellm.llms.chatgpt.authenticator", SimpleNamespace(Authenticator=Authenticator))
-    result = command.models_authenticate_command(SimpleNamespace(provider="chatgpt", reauthenticate=True))
+    result = command.models_authenticate_command(SimpleNamespace(provider="chatgpt"))
     assert result == 1
     assert "denied" in capsys.readouterr().err

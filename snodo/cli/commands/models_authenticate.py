@@ -40,7 +40,7 @@ def models_authenticate_command(args) -> int:
         valid = bool(state and float(expiry) > time.time() + 300)
     except (TypeError, ValueError):
         valid = False
-    if valid and not getattr(args, "reauthenticate", False):
+    if valid:
         if not getattr(args, "json", False):
             print(f"Provider '{provider}' is already signed in until {datetime.fromtimestamp(float(expiry)).astimezone().isoformat()}.")
         return 0
