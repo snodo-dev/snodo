@@ -386,6 +386,8 @@ def discover_models(
     failed: List[str] = []
 
     for name, pc in providers.items():
+        if getattr(pc, "auth", "") == "chatgpt-oauth" and not pc.models_endpoint:
+            continue
         discover_fn = _DISCOVERY_DISPATCH.get(name)
         try:
             if discover_fn is not None:
