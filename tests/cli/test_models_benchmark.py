@@ -682,3 +682,32 @@ def test_non_oauth_empty_discovery_keeps_existing_message(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "No models discovered for openai" in err
     assert "cannot list its models" not in err
+
+
+def test_benchmark_cost_wording_for_oauth_subscription(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.provider_uses_oauth",
+        lambda self, provider: provider == "chatgpt-oauth",
+    )
+    models_cmd._print_benchmark_intent("chatgpt-oauth/gpt-6.1-sol", "prompt", 3)
+    out = capsys.readouterr().out
+    assert "These 3 call(s) use your provider subscription" in out
+    assert "not billed per API call" in out
+
+
+def test_benchmark_cost_wording_keeps_api_key_message(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.provider_uses_oauth", lambda self, provider: False,
+    )
+    models_cmd._print_benchmark_intent("openai/gpt-4o", "prompt", 3)
+    assert "This makes 3 real, billed API call(s)." in capsys.readouterr().out
+
+
+def test_benchmark_help_does_not_claim_all_calls_are_billed():
+    app = typer.Typer()
+    register(app)
+    result = CliRunner().invoke(app, ["--help"])
+    assert result.exit_code == 0
+    output = " ".join(result.output.split())
+    assert "Calls may be billed" in output
+    assert "use a subscription." in output
