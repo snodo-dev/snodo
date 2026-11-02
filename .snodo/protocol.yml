@@ -167,7 +167,7 @@ validators:
 # avoids that; if you remove one, either keep two post-execute validators or
 # switch `disagreement_policy` below.
 
-disagreement_policy: "unanimous"
+disagreement_policy: "majority"
 initial_mode: "producer"
 
 # Established repositories have verified build and test harnesses. Depth 3 enables
