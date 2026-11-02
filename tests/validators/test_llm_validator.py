@@ -1182,7 +1182,7 @@ class TestPostExecuteToolLoop:
         assert result.error is False
         assert len(calls) == 2
 
-    def test_git_show_unknown_ref_fails_closed(self, security_validator):
+    def test_git_show_unknown_ref_returns_feedback_and_verdict_succeeds(self, security_validator):
         from snodo.tools.git import GitError
 
         git = MagicMock()
@@ -1194,9 +1194,19 @@ class TestPostExecuteToolLoop:
             resp = MagicMock()
             resp.choices = [MagicMock()]
             tc = MagicMock()
-            tc.id = "tc_unknown_ref"
-            tc.function.name = "git_show"
-            tc.function.arguments = '{"ref":"no-such-ref","path":"README.md"}'
+            tc.id = f"tc_{len(calls)}"
+            if len(calls) == 1:
+                tc.function.name = "git_show"
+                tc.function.arguments = '{"ref":"no-such-ref","path":"README.md"}'
+            else:
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "task_id": "t1", "severity": "pass", "justification": "Reviewed",
+                })
+                assert any(
+                    m.get("role") == "tool" and "bad revision" in m.get("content", "")
+                    for m in kwargs["messages"]
+                )
             resp.choices[0].message.content = None
             resp.choices[0].message.tool_calls = [tc]
             return resp
@@ -1205,11 +1215,9 @@ class TestPostExecuteToolLoop:
         validator = LLMValidator(self._make_post_validator(security_validator), completion)
         result = validator.evaluate(self._make_post_context(completion, MagicMock(), git))
 
-        assert result.severity == "blocker"
-        assert result.error is True
-        assert "git_show" in result.justification
-        assert "GitError" in result.justification
-        assert len(calls) == 1
+        assert result.severity == "pass"
+        assert result.error is False
+        assert len(calls) == 2
 
     def test_tool_loop_executes_git_log(self, security_validator):
         """Tool loop should call git.log for git_log tool."""
