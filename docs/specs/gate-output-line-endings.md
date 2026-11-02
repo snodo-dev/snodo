@@ -49,6 +49,8 @@ fi
   lines they always did. `pipefail` still carries a failing check's status out
   of `cat`.
 
+The gate targets are `make gate-task`, `make gate` and `make gate-ci`.
+
 The lifetime mechanism is untouched: the session still runs over the pty and the
 trap still reaps the whole tree on a hangup, interrupt or kill.
 

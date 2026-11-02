@@ -1,7 +1,7 @@
 # Spec: a gate run ends on the gate host when it ends on the operator's
 
 ## Root cause
-`make gate` / `make gate-ci` run, roughly:
+`make gate-task` / `make gate` / `make gate-ci` run, roughly:
 
 ```
 ssh $(GATE_HOST) '… uv run pytest tests/ -q -n $(GATE_JOBS) …'

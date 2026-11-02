@@ -65,40 +65,37 @@ snodo run "implement hello world" --mock   # deterministic, no API calls
 
 ## Testing and checks
 
-There are **two gates, and they are not the same**. Read the one you ran.
+There are **three checks, with different scope and authority**. For a task's own
+change, run `make gate-task`; run `make gate` for the full fast suite. The CI gate
+is the check that decides: only that last check is authoritative for whether a
+change passes.
 
-### Local (fast) gate — reduced, does not decide
+### Per-task check — `make gate-task`
 
-```bash
-uv run pytest tests/          # ~47s — unit + integration; e2e DESELECTED
-```
+This check runs the same ruff, import-contract and ratchet steps as `make gate`,
+but selects tests touched by the diff against the merge base using
+`scripts/select_affected_tests.py`. Changes to shared files such as
+`pyproject.toml` or the protocol select the whole suite, since their impact
+cannot be confined safely. Documentation-only changes run no tests.
 
-`pyproject.toml` sets `addopts = "-m 'not e2e'"`, so this command **skips the
-e2e suite** (about 124 tests) for a fast loop. It is the quick check, **not** the
-gate that decides. It announces the reduction on the same screen and prints the
-full command: a green run here does **not** mean CI is green, because the reduced
-command cannot see the e2e class of failure at all.
-
-### The gate CI runs — this is what decides
-
-CI clears the marker filter and adds two checks the local gate never runs:
+### Full fast suite — `make gate`
 
 ```bash
-uv run pytest tests/ -m "" -n auto --tb=short --timeout=60 \
-  --cov --cov-report=term-missing --cov-fail-under=80
-uv run python scripts/enforce_patch_coverage.py
+make gate
 ```
 
-That is the whole suite (e2e included) plus a **80% total-coverage floor** and an
-**80% patch-coverage check**. Run it before pushing — do not stop at the fast
-gate. This is also exactly what every task ticket's verification line refers to
-when it points at the full suite.
+This runs the full non-e2e suite along with ruff, import contracts and the
+ratchets. It is a broader local check, but it is not the deciding gate.
 
-The release workflow also runs these full release checks through package build
-on every push to `main` and on manual dispatch, without publishing packages or
-creating a GitHub Release. Use the **Release dry run** check to catch
-GitHub Actions environment differences before tagging; tag/CHANGELOG validation
-is performed only by the tag-triggered release workflow.
+### CI gate — this is what decides
+
+CI runs the whole suite, including e2e, plus total-coverage and patch-coverage
+checks. Only this gate decides whether the change passes; neither `make gate-task`
+nor `make gate` can substitute for it. The release workflow also runs the full
+release checks through package build on pushes to `main` and on manual dispatch,
+without publishing packages or creating a GitHub Release. Use the **Release dry
+run** check to catch GitHub Actions environment differences before tagging;
+tag/CHANGELOG validation is performed only by the tag-triggered release workflow.
 
 ### Documentation links
 
