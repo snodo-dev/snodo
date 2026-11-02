@@ -128,11 +128,13 @@ validators:
     # (marker files) and `snodo init --test-command` override it; while it
     # stands the quality validator records that NO tests were executed rather
     # than claiming a pass. Replace it with your stack's command:
-    # The repo gate: pushes the branch to the gate host and runs the fast suite,
-    # ruff, import contracts, ratchets and the changelog/vocabulary/schema checks.
-    # It deselects e2e tests; `make gate-ci` includes them plus coverage (slower).
+    # The per-task gate: pushes the branch to the gate host and runs ruff, import
+    # contracts, ratchets and the changelog/vocabulary/schema checks, with only the
+    # tests the task's diff touches (a shared file such as pyproject.toml or this
+    # protocol selects the whole suite). It does not decide: `make gate` runs the
+    # full fast suite and `make gate-ci` adds e2e tests and coverage (slower).
     tooling:
-      test_command: "make gate"
+      test_command: "make gate-task"
       timeout: 600
 
   - validator_id: "meta-spec"

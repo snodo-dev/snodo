@@ -24,6 +24,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Hand a non-blocking pre-execute warning to the coder as evidence, instead of leaving it only in the audit log. (Fixes #1067)
 - Bring a plan's integration branch up to date with the base branch before each wave, so tasks start from work hand-merged during the plan. (Fixes #1044)
 - Deliver a completed wave's integration work when the wave is run again, instead of exiting without a merge. (Fixes #1045)
+- Add `make gate-task`, a fast per-task check that runs the same lint, import-contract and ratchet steps as `make gate` but only the tests the diff touches (chosen by `scripts/select_affected_tests.py`), and use it for the quality validator, so a task no longer runs the whole suite twice. (Fixes #1068)
 
 ## [0.28.0] — 2026-11-02
 
