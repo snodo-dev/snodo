@@ -1,0 +1,23 @@
+intent: 'Let an operator watch a recon work. Each recon records progress events to
+  an append-only log in its own directory while its agents run, and snodo logs for
+  a recon id with --watch shows them live (issue 1065). The recon state machine is
+  unchanged: no new state, status, severity or halt type, and no change to the cloud
+  wire.'
+name: recon-event-stream
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_recon_event_log_module
+  - 1.2_recon_event_log_spec_doc
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_recon_emit_events
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_logs_watch_recon_events
+  - 3.2_recon_event_stream_docs

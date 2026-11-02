@@ -1,0 +1,34 @@
+{
+  "tasks": {
+    "1.1_recon_event_log_module": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0d5e24f47de81bd0"
+    },
+    "1.2_recon_event_log_spec_doc": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7721301fa7d89932"
+    },
+    "2.1_recon_emit_events": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3c4de3fd5ad3c3f7"
+    },
+    "3.1_logs_watch_recon_events": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b965f9bf0356cc82"
+    },
+    "3.2_recon_event_stream_docs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6c6a7df4eaf0f1f8"
+    }
+  }
+}
