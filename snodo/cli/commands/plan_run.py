@@ -938,6 +938,26 @@ def _execute_wave_tasks_concurrent(
     return not wave_failed
 
 
+def _sync_plan_integration(project_root: str, integration_path: Path, integration_branch: str) -> str:
+    """Merge the current base branch into the plan integration worktree."""
+    from snodo.tools.git import open_repo, resolve_base_branch
+
+    base_ref = resolve_base_branch(project_root)
+    with open_repo(str(integration_path)) as repo:
+        try:
+            repo.git.merge("--no-edit", base_ref)
+        except Exception as exc:
+            try:
+                repo.git.merge("--abort")
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"Cannot update plan integration branch '{integration_branch}' from '{base_ref}': "
+                f"merge conflict; resolve the conflict and retry ({exc})"
+            ) from exc
+        return repo.commit("HEAD").hexsha
+
+
 def _execute_waves(waves, planner, args, protocol, model,
                    all_waves, interactive, effective_concurrency: int = 1,
                    on_wave_complete=None) -> bool:
@@ -948,6 +968,12 @@ def _execute_waves(waves, planner, args, protocol, model,
     """
     has_failed_or_blocked = False
     for wave in waves:
+        if on_wave_start is not None:
+            try:
+                on_wave_start()
+            except Exception as exc:
+                print(f"Error before wave {wave.get('id')}: {exc}", file=sys.stderr)
+                return True
         status_data = planner.get_status(args.plan)
         tasks_status = status_data.get("tasks", {})
         completed_waves = _get_completed_waves(all_waves, tasks_status)
@@ -1224,10 +1250,21 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                     str(project_root), integration_branch, args.plan, plan_data,
                     protocol, active_mode, audit_log,
                 )
+        def sync_integration_before_wave():
+            if not integration_branch:
+                return
+            from snodo.infrastructure.worktree import _name_component, worktree_dir
+            integration_path = worktree_dir(str(project_root)) / _name_component(args.plan) / "integration"
+            base_sha = _sync_plan_integration(str(project_root), integration_path, integration_branch)
+            from snodo.infrastructure.state import atomic_update_json
+            atomic_update_json(plan_dir, "status.json", lambda data: data.update(
+                integration={"branch": integration_branch, "base_sha": base_sha}
+            ), strict=True)
+
         failed = _execute_waves(
             waves, planner, args, protocol, model,
             all_waves, interactive, effective_concurrency=effective_concurrency,
-            on_wave_complete=deliver_wave,
+            on_wave_complete=deliver_wave, on_wave_start=sync_integration_before_wave,
         )
         if previous_integration_branch is None:
             os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
