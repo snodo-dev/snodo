@@ -510,6 +510,28 @@ def _job_retry(manager, args) -> int:
         session_manager=session_manager,
     )
 
+    if task_data.get("task_plan"):
+        fields = ("task_plan", "task_wave", "parent_job", "base")
+        missing = [key for key in fields if task_data.get(key) in (None, "")]
+        if missing:
+            print(f"Cannot safely retry plan child job {job_id}: missing plan lineage field(s): {', '.join(missing)}", file=sys.stderr)
+            return 1
+        from snodo.jobs import JobManager, index_plan_jobs
+        latest_parent, _ = index_plan_jobs(project_root, task_data["task_plan"])
+        if latest_parent != task_data["parent_job"]:
+            print(f"Cannot safely retry plan child job {job_id}: its plan run {task_data['parent_job']} is no longer the latest run", file=sys.stderr)
+            return 1
+        from git import Repo
+        if task_data["base"] not in {ref.name for ref in Repo(project_root).references}:
+            print(f"Cannot safely retry plan child job {job_id}: integration base {task_data['base']} is gone", file=sys.stderr)
+            return 1
+        description = _resumed_spec(task_data.get("description", ""), guidance, replace_spec)
+        task_args = {key: task_data[key] for key in fields}
+        task_args.update(description=description, cwd=project_root, task_id=task_id,
+                         retry_task_id=task_id, retry_continuation={"job_id": job_id, "task_id": task_id})
+        new_id = JobManager(project_root).submit(task_args)
+        print(f"Retry submitted: {new_id}")
+        return 0
     return _retry_task(retry_args, task_id, project_root, session_manager)
 
 

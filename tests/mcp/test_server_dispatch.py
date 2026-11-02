@@ -508,3 +508,38 @@ class TestHandleRetryJob:
                 server._handle_retry_job({"job_id": "j-queue"})
             MockJM.return_value.submit.assert_not_called()
         assert "calling queue_run again" in str(exc_info.value)
+
+
+class TestRetryPlanChildLineage:
+    def test_retry_carries_plan_lineage_and_plain_retry_does_not(self, server, tmp_path):
+        job_dir = tmp_path / "j-child"
+        job_dir.mkdir()
+        lineage = {"task_plan": "release", "task_wave": 2, "parent_job": "j-plan", "base": "snodo/plan/release/j-plan"}
+        (job_dir / "task.json").write_text(json.dumps({"task_id": "t-child", "description": "task spec", **lineage}))
+        captured = {}
+        with patch("snodo.jobs.JobManager") as MockJM, patch("snodo.jobs.index_plan_jobs", return_value=("j-plan", {})), patch("git.Repo") as Repo:
+            Repo.return_value.references = [type("Ref", (), {"name": lineage["base"]})()]
+            MockJM.return_value._job_dir.return_value = job_dir
+            MockJM.return_value.submit.side_effect = lambda args: (captured.update(args) or "j-retry")
+            server._handle_retry_job({"job_id": "j-child"})
+        assert {key: captured[key] for key in lineage} == lineage
+
+        plain_dir = tmp_path / "j-plain"
+        plain_dir.mkdir()
+        captured.clear()
+        (plain_dir / "task.json").write_text(json.dumps({"task_id": "t-plain", "description": "plain"}))
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = plain_dir
+            MockJM.return_value.submit.side_effect = lambda args: (captured.update(args) or "j-plain-retry")
+            server._handle_retry_job({"job_id": "j-plain"})
+        assert not set(lineage).intersection(captured)
+
+    def test_retry_refuses_superseded_plan_child_with_reason(self, server, tmp_path):
+        job_dir = tmp_path / "j-stale-child"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(json.dumps({"task_id": "t-child", "description": "task spec", "task_plan": "release", "task_wave": 2, "parent_job": "j-old", "base": "snodo/plan/release/j-old"}))
+        with patch("snodo.jobs.JobManager") as MockJM, patch("snodo.jobs.index_plan_jobs", return_value=("j-new", {})):
+            MockJM.return_value._job_dir.return_value = job_dir
+            with pytest.raises(MCPError, match="no longer the latest"):
+                server._handle_retry_job({"job_id": "j-stale-child"})
+            MockJM.return_value.submit.assert_not_called()
