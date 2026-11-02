@@ -1,10 +1,14 @@
 {
   "tasks": {
     "1.1_acceptance_gate_evidence": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "c436b013edab3893"
     }
+  },
+  "integration": {
+    "branch": "plan/acceptance-gate-evidence/integration",
+    "base_sha": "0f862872b99b6c4f6434caf6f52e3912bcd324b3"
   }
 }
