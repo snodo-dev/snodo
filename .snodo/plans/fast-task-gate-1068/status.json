@@ -1,10 +1,11 @@
 {
   "integration": {
     "branch": "plan/fast-task-gate-1068/integration",
-    "base_sha": "00c22adf6eba16cae4da6f9fe1a6b5b78c52fbef"
+    "base_sha": "de97ac43f365dbc3a96d456b35a8c25f32f65a1b"
   },
   "tasks": {
     "1.1_select_affected_tests": "completed",
-    "1.2_docs_describe_task_gate": "completed"
+    "1.2_docs_describe_task_gate": "completed",
+    "2.1_gate_task_target": "completed"
   }
 }
