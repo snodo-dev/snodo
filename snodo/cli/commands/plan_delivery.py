@@ -44,6 +44,7 @@ def deliver_healthy_plan_wave(project_root, integration_branch, plan_name,
     except Exception:
         already_delivered = False
     if already_delivered:
+        print(f"Plan integration for wave is already delivered ({integration_branch}); nothing to merge.")
         return False
     result = _deliver_plan_integration(
         str(project_root), integration_branch, str(plan_data.get("name", plan_name)),
@@ -142,3 +143,14 @@ def verify_queue_merge_head(project_root, working_directory, task_ref, protocol,
             "reason": reason, "session_id": None,
         })
     return False
+
+
+def filter_plan_waves(waves: list, wave_filter):
+    """Filter waves by ID. Returns None on error."""
+    if wave_filter is None:
+        return waves
+    filtered = [w for w in waves if str(w.get("id")) == str(wave_filter)]
+    if not filtered:
+        print(f"Error: Wave {wave_filter} not found in plan", file=sys.stderr)
+        return None
+    return filtered

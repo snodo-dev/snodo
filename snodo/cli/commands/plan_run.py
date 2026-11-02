@@ -20,10 +20,12 @@ from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 from snodo.cli.commands import followup
 from snodo.cli.commands.plan_delivery import (
-    _remote_branch_matches, deliver_healthy_plan_wave, verify_queue_merge_head,
+    _remote_branch_matches as _remote_branch_matches_impl,
+    deliver_healthy_plan_wave, filter_plan_waves, verify_queue_merge_head,
 )
 
 _verify_queue_merge_head = verify_queue_merge_head
+_remote_branch_matches = _remote_branch_matches_impl
 
 _logger = logging.getLogger(__name__)
 
@@ -689,17 +691,6 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
         return False
 
 
-def _filter_waves(waves: list, wave_filter) -> Optional[list]:
-    """Filter waves by ID. Returns None on error."""
-    if wave_filter is None:
-        return waves
-    filtered = [w for w in waves if str(w.get("id")) == str(wave_filter)]
-    if not filtered:
-        print(f"Error: Wave {wave_filter} not found in plan", file=sys.stderr)
-        return None
-    return filtered
-
-
 def _should_skip_task(task_id, tasks_status, interactive) -> bool:
     """Check if a task should be skipped (completed or user declined).
 
@@ -995,6 +986,15 @@ def _execute_waves(waves, planner, args, protocol, model,
             tasks_to_run.append(task_id)
 
         if not tasks_to_run:
+            # A completed wave can still have undelivered integration work (for
+            # example, its final task status was recorded manually). Re-running
+            # it must cross the same delivery boundary as a freshly completed wave.
+            wave_status = planner.get_status(args.plan).get("tasks", {})
+            wave_complete = bool(wave.get("tasks")) and all(
+                _task_completed(wave_status, task_id) for task_id in wave.get("tasks", [])
+            )
+            if wave_complete and on_wave_complete is not None and on_wave_complete():
+                has_failed_or_blocked = True
             continue
 
         wave_specs = []
@@ -1217,7 +1217,7 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
         print()
 
         all_waves = plan_data.get("waves", [])
-        waves = _filter_waves(all_waves, getattr(args, "wave", None))
+        waves = filter_plan_waves(all_waves, getattr(args, "wave", None))
         if waves is None:
             return 1
 
@@ -1302,40 +1302,10 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                 except Exception as exc:
                     print(f"Queue integration merge failed for {args.plan}: {exc}", file=sys.stderr)
                     failed = True
-            elif all_complete:
-                from snodo.cli.commands.run_merge import _deliver_plan_integration
-                from snodo.tools.git import open_repo
-                delivery_mode = protocol.delivery_for(active_mode)
-                already_delivered = False
-                try:
-                    with open_repo(str(project_root)) as repo:
-                        if integration_branch not in repo.heads:
-                            already_delivered = delivery_mode == "local_merge"
-                        elif delivery_mode == "local_merge":
-                            already_delivered = repo.git.merge_base(
-                                "--is-ancestor", integration_branch, "HEAD", with_exceptions=False
-                            ) == 0
-                        elif delivery_mode in {"push_branch", "change_request"}:
-                            local_sha = repo.commit(integration_branch).hexsha
-                            remote = getattr(protocol.execution, "delivery_remote", "origin")
-                            already_delivered = _remote_branch_matches(
-                                repo, remote, integration_branch, local_sha
-                            )
-                except Exception:
-                    already_delivered = False
-                if not already_delivered:
-                    from snodo.infrastructure.worktree import _name_component, worktree_dir
-                    delivery_result = _deliver_plan_integration(
-                        str(project_root), integration_branch,
-                        str(plan_data.get("name", args.plan)),
-                        str(plan_data.get("intent", "")),
-                        protocol, active_mode, audit_log,
-                        integration_path=(
-                            worktree_dir(str(project_root)) / _name_component(args.plan) / "integration"
-                        ),
-                    )
-                    if delivery_result:
-                        failed = True
+            elif all_complete and deliver_wave is not None:
+                if deliver_wave():
+                    failed = True
+
 
         _print_plan_progress(planner, args.plan)
         from snodo.cli.commands.plan_delivery import print_blocked_plan_outcome

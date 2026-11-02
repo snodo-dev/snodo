@@ -2368,3 +2368,50 @@ disagreement_policy: "unanimous"
     assert status["tasks"]["task_1_a"]["status"] == "completed"
     assert status["tasks"]["task_1_a"]["corrected_from"] == "unmerged"
     repo.close()
+
+
+def test_completed_wave_rerun_invokes_delivery_without_dispatching_tasks(capsys):
+    from snodo.cli.commands.plan_run import _execute_waves
+
+    planner = SimpleNamespace(get_status=lambda _plan: {"tasks": {"a": "completed", "b": "completed"}})
+    args = SimpleNamespace(plan="rerun")
+    delivered = []
+
+    failed = _execute_waves(
+        [{"id": 1, "tasks": ["a", "b"]}], planner, args, None, None,
+        [{"id": 1, "tasks": ["a", "b"]}], False,
+        on_wave_complete=lambda: delivered.append(True) or False,
+    )
+
+    assert not failed
+    assert delivered == [True]
+    assert "skipped (completed)" in capsys.readouterr().out
+
+
+def test_completed_wave_rerun_with_nothing_to_deliver_reports_no_change(capsys):
+    from snodo.cli.commands.plan_delivery import deliver_healthy_plan_wave
+
+    class Repo:
+        heads = {"plan/demo/integration"}
+
+        class git:
+            @staticmethod
+            def merge_base(*_args, **_kwargs):
+                return 0
+
+    class Context:
+        def __enter__(self):
+            return Repo()
+
+        def __exit__(self, *_args):
+            return False
+
+    from snodo.cli.commands import plan_delivery
+    from unittest.mock import patch
+    protocol = SimpleNamespace(delivery_for=lambda _mode: "local_merge")
+    with patch.object(plan_delivery, "open_repo", return_value=Context()):
+        failed = deliver_healthy_plan_wave(
+            "/tmp/project", "plan/demo/integration", "demo", {}, protocol, "producer", None,
+        )
+    assert not failed
+    assert "already delivered" in capsys.readouterr().out
