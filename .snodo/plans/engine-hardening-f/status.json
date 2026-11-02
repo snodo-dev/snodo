@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "1.1_preexecute_warn_reaches_coder": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "18b569ccac122af9"
+    },
+    "1.2_integration_tree_follows_main": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "aead7418e6dd5394"
+    },
+    "2.1_rerun_completed_wave_delivers": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c1bc9a99430d203e"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+intent: 'Retry of engine-hardening-e from the current main, with the lint on main
+  fixed: let a pre-execute warn reach the coder as evidence (issue 1067), make plan
+  runs follow main after hand-merges (issue 1044), and finish a rerun wave that is
+  already complete (issue 1045). Each task fixes one issue with a regression test
+  that is written and committed first. No new state, status, severity or halt type,
+  and no change to the cloud wire.'
+name: engine-hardening-f
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_preexecute_warn_reaches_coder
+  - 1.2_integration_tree_follows_main
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_rerun_completed_wave_delivers
