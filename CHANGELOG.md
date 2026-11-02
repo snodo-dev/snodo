@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Let `snodo recon` run on the models you name: `--model <name>` (repeatable, one agent each) and `--models a,b,c` (comma-separated list), which override the recon configuration, cannot be combined with `--agents` / `-n`, and are refused before dispatch for an unknown model or unconfigured provider. (Fixes #1062)
 - Treat a ChatGPT subscription provider as set up in the readiness check, `snodo config show` and `snodo config test`, the survey and judge model chains, and the dashboard settings panel, which now show its sign-in state instead of a missing key. (Fixes #1058, #1059, #1060, #1061)
 - List the LiteLLM-known models for a ChatGPT subscription provider in `snodo models`, and describe benchmark calls on such a provider as using the subscription instead of billed API calls.
 - Sign in to a model provider with a ChatGPT subscription through OAuth instead of an API key: a provider declares `auth: chatgpt-oauth`, `snodo models --provider <name> --authenticate` signs in headless (and refuses API-key providers), the token is refreshed under a cross-process lock wherever credentials are resolved, `snodo models` and run preflight treat the provider as set up and report its sign-in state, `--check` reports sign-in state, `--benchmark` takes a named model without discovery, and an expired sign-in asks the operator to authenticate again. Documented in `docs/providers/chatgpt.md` and ADR 061. (Fixes #1055)

@@ -1,0 +1,15 @@
+{
+  "integration": {
+    "branch": "plan/recon-model-flag/integration",
+    "base_sha": "565d7b8be473eb7abc22aad92d7e6a1370ba294d"
+  },
+  "tasks": {
+    "1.1_recon_cli_model_option": {
+      "status": "completed",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-02T00:40:11.447584+00:00",
+      "judged": false
+    },
+    "1.2_recon_model_option_docs": "errored"
+  }
+}

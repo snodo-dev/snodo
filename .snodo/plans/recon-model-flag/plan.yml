@@ -1,0 +1,8 @@
+name: recon-model-flag
+intent: 'Let an operator choose which models a CLI recon runs. Today snodo recon takes only a count (--agents or -n) and uses the first models from the recon configuration; the MCP recon tool can already take an explicit list of models. Add a repeatable --model option to the CLI so the number of values is the number of agents and the values are the models. No new state, status, severity or halt type, and no change to the cloud wire.'
+waves:
+- id: 1
+  depends_on: []
+  tasks:
+  - 1.1_recon_cli_model_option
+  - 1.2_recon_model_option_docs

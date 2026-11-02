@@ -1,0 +1,8 @@
+name: recon-models-flag-fix
+intent: 'Corrective follow-up to issue 1062 (snodo recon --model). The first version let one --model value carry a comma-separated failover chain and had no --models option, and its documentation task did not run. The agreed design is one model per --model use, plus a --models option that takes a comma-separated list. No new state, status, severity or halt type, and no change to the cloud wire.'
+waves:
+- id: 1
+  depends_on: []
+  tasks:
+  - 1.1_recon_one_model_per_flag_and_models_list
+  - 1.2_recon_model_option_docs
