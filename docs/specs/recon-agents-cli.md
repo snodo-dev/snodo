@@ -98,6 +98,19 @@ command line. When neither model option is supplied, the configured count and
 models continue to determine the agents as described above, including the
 configured model list's single-agent failover behavior.
 
+## Recon event log — live progress
+
+Each recon directory may contain an `events.jsonl` file. While agents run,
+append one JSON object per line with a timestamp, lane position, agent label,
+model, kind, and detail. Kinds are `agent started`, `tool turn`, `failover`,
+`agent finished`, and `agent failed`. Tool-turn argument summaries are short
+and must never include file contents. Reading the log is optional, and a log
+write failure must never affect the recon. This event log does not change the
+recon's own status values.
+
+`snodo logs <recon id> --watch` renders the event log live, then prints the
+agents' answers as it does today.
+
 ## Tests
 - resolve(None, [m1,m2,m3], 2)        -> [m1,m2]            (config default applies)
 - resolve(3,    [m1,m2,m3], 2)        -> [m1,m2,m3]         (caller overrides default)
