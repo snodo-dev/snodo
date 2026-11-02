@@ -26,12 +26,36 @@ def register(app: typer.Typer) -> None:
         ),
     ):
         """Dispatch a read-only exploration query to one or more agents."""
+        ordered_models = _models_in_argv_order(models, model_list)
         args = SimpleNamespace(
             query=query, paths=paths or ["./"], num_agents=num_agents,
-            models=models, model_list=model_list,
+            models=models, model_list=model_list, ordered_models=ordered_models,
         )
         return recon_command(args)
 
+
+
+def _models_in_argv_order(models, model_list):
+    """Merge CLI option values in their command-line order."""
+    argv = sys.argv[1:]
+    ordered = []
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        option, separator, inline = token.partition("=")
+        if option in ("--model", "--models"):
+            value = inline if separator else None
+            if value is None and index + 1 < len(argv):
+                index += 1
+                value = argv[index]
+            if value is not None:
+                ordered.append((option, value))
+        index += 1
+    if ordered:
+        return ordered
+    return [("--model", value) for value in (models or [])] + [
+        ("--models", value) for value in (model_list or [])
+    ]
 
 
 def recon_command(args) -> int:
@@ -41,9 +65,16 @@ def recon_command(args) -> int:
     num_agents = getattr(args, "num_agents", None)
     model_values = getattr(args, "models", None) or []
     model_lists = getattr(args, "model_list", None) or []
-    explicit_models = list(model_values)
-    for value in model_lists:
-        explicit_models.extend(part.strip() for part in value.split(",") if part.strip())
+    entries = getattr(args, "ordered_models", None) or (
+        [("--model", value) for value in model_values]
+        + [("--models", value) for value in model_lists]
+    )
+    explicit_models = []
+    for option, value in entries:
+        if option == "--model":
+            explicit_models.append(value)
+        else:
+            explicit_models.extend(part.strip() for part in value.split(",") if part.strip())
 
     if explicit_models and num_agents is not None:
         print("Error: --agents/-n cannot be used with --model or --models; agent count comes from the number of models listed.", file=sys.stderr)

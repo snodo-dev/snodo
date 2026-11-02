@@ -101,3 +101,35 @@ def test_cli_exposes_model_options():
     assert result.exit_code == 0
     assert "--model" in result.stdout
     assert "--models" in result.stdout
+
+
+def test_cli_exposes_repeatable_model_option():
+    from typer import Typer
+    app = Typer()
+    recon_cmd.register(app)
+    result = CliRunner().invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--model" in result.stdout
+
+
+def test_explicit_model_lanes(wired_recon):
+    assert recon_cmd.recon_command(args(models=["openai/a"])) == 0
+    assert wired_recon == [[["openai/a"]]]
+
+
+def test_explicit_models_define_separate_lanes(wired_recon):
+    assert recon_cmd.recon_command(args(model_list=["openai/a,openai/b"])) == 0
+    assert wired_recon == [[["openai/a"], ["openai/b"]]]
+
+
+def test_models_and_agent_count_refused_before_dispatch(wired_recon, capsys):
+    assert recon_cmd.recon_command(args(model_list=["openai/a"], num_agents=2)) == 1
+    assert not wired_recon
+    assert "--model or --models" in capsys.readouterr().err
+
+
+def test_mixed_cli_option_order_is_preserved(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["snodo", "recon", "q", "--models", "openai/a,openai/b", "--model", "openai/c"])
+    assert recon_cmd._models_in_argv_order(["openai/c"], ["openai/a,openai/b"]) == [
+        ("--models", "openai/a,openai/b"), ("--model", "openai/c")
+    ]
