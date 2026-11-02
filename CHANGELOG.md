@@ -10,6 +10,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 - Make `snodo logs <recon id> --watch` follow a running recon until it completes or fails, printing each agent's answer once as it arrives, instead of printing once and returning. (Fixes #1064)
+- Record recon progress as it happens in an append-only event log for each recon, and let `snodo logs <recon id> --watch` stream each agent's start, tool turns, failovers and result live. (Fixes #1065)
+- Give the acceptance validator the gate's verdict, so a task whose gate passed is no longer warned for lack of independent evidence and sent through recovery. (Fixes #1046)
+- Wait for a locked checkpoint database instead of failing with "database is locked" when several jobs run at once. (Fixes #1041)
+- Build the `read_diff_between_refs` range once, for a bare ref, `X..HEAD` or two refs, instead of passing a doubled range to git. (Fixes #1047)
+- Tell a validator what was wrong with a malformed tool call and let it correct it, instead of halting the task with `validator_error`. (Fixes #1048)
+- Apply a carried-forward validator verdict only to the task and spec it was recorded for, so another task's stored verdict no longer escalates the wrong task. (Fixes #1049)
+- Keep a retried plan task attached to its plan, wave and parent job, so its outcome reaches the plan's status. (Fixes #1040)
+- Make the flaky recon, plan-tool and quality-timeout tests wait for background work and clean up the processes they start, so the task gate fails only for a task's own changes. (Fixes #1051)
+- Accept a path in `validate_plan` when an earlier task in the same plan creates it. (Fixes #1052)
+- Return a compact summary per job from `list_jobs`, so the result can be read in one call. (Fixes #1053)
+- Keep CI green: ignore the filelock advisories that only a filelock 4.x release fixes, and make the CLI help tests independent of terminal colour. (Fixes #1066)
+- Hand a non-blocking pre-execute warning to the coder as evidence, instead of leaving it only in the audit log. (Fixes #1067)
+- Bring a plan's integration branch up to date with the base branch before each wave, so tasks start from work hand-merged during the plan. (Fixes #1044)
+- Deliver a completed wave's integration work when the wave is run again, instead of exiting without a merge. (Fixes #1045)
 
 ## [0.28.0] — 2026-11-02
 
