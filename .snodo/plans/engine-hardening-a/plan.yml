@@ -1,0 +1,27 @@
+intent: 'Fix a batch of small, independent engine defects reported as open issues
+  1041, 1047, 1049, 1048, 1046, 1053, 1052 and 1051 (the flaky tests): each task fixes
+  one issue with a regression test. No new state, status, severity or halt type, and
+  no change to the cloud wire.'
+name: engine-hardening-a
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_checkpoint_db_busy_timeout
+  - 1.2_diff_between_refs_range
+  - 1.3_verdict_carry_forward_same_task
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_validator_bad_tool_arguments
+  - 2.2_acceptance_gate_evidence
+  - 2.3_list_jobs_compact
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_validate_plan_created_paths
+  - 3.2_flaky_recon_persist_test
+  - 3.3_flaky_plan_run_list_jobs_test
+  - 3.4_flaky_quality_timeout_test

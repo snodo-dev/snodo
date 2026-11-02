@@ -1,0 +1,17 @@
+intent: 'Make plan runs keep their lineage and their tree: a retried plan child job
+  keeps its plan, wave and parent job (issue 1040), later waves start from a tree
+  that includes work hand-merged to main (issue 1044), and rerunning a wave with every
+  task completed still delivers the integration branch (issue 1045). No new state,
+  status, severity or halt type, and no change to the cloud wire.'
+name: plan-run-integrity
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_retry_keeps_plan_lineage
+  - 1.2_integration_tree_follows_main
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_rerun_completed_wave_delivers

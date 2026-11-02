@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "1.1_retry_keeps_plan_lineage": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "dc7eb36f26ec48c1"
+    },
+    "1.2_integration_tree_follows_main": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7b458870fd80a657"
+    },
+    "2.1_rerun_completed_wave_delivers": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b6e2106f6e1d14e1"
+    }
+  }
+}
