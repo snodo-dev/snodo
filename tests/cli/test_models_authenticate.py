@@ -1,5 +1,6 @@
 """Tests for OAuth sign-in via ``snodo models``."""
 
+import re
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -73,8 +74,10 @@ def test_help_mentions_oauth():
     app = __import__("typer").Typer()
     register(app)
     result = CliRunner().invoke(app, ["models", "--help"], terminal_width=200)
-    assert "--authenticate" in result.output
-    assert "OAuth" in result.output and "providers only" in result.output
+    # CI forces colored help; strip ANSI so option names are contiguous text.
+    output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "--authenticate" in output
+    assert "OAuth" in output and "providers only" in output
 
 
 def test_denied_sign_in_is_reported(setup_auth, monkeypatch, capsys):

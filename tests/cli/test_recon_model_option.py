@@ -1,11 +1,17 @@
 """Tests for explicit recon model selection."""
 
+import re
 from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
 
 from snodo.cli.commands import recon_cmd
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI styling: CI forces colored help, which splits option names."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 @pytest.fixture
@@ -99,8 +105,8 @@ def test_cli_exposes_model_options():
     recon_cmd.register(app)
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "--model" in result.stdout
-    assert "--models" in result.stdout
+    assert "--model" in _plain(result.stdout)
+    assert "--models" in _plain(result.stdout)
 
 
 def test_cli_exposes_repeatable_model_option():
@@ -109,7 +115,7 @@ def test_cli_exposes_repeatable_model_option():
     recon_cmd.register(app)
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "--model" in result.stdout
+    assert "--model" in _plain(result.stdout)
 
 
 def test_explicit_model_lanes(wired_recon):
