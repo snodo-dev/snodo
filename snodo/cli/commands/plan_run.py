@@ -3,6 +3,7 @@
 Extracted from cli/commands/run_cmd.py to isolate plan execution logic.
 """
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -947,10 +948,8 @@ def _sync_plan_integration(project_root: str, integration_path: Path, integratio
         try:
             repo.git.merge("--no-edit", base_ref)
         except Exception as exc:
-            try:
+            with contextlib.suppress(Exception):
                 repo.git.merge("--abort")
-            except Exception:
-                pass
             raise RuntimeError(
                 f"Cannot update plan integration branch '{integration_branch}' from '{base_ref}': "
                 f"merge conflict; resolve the conflict and retry ({exc})"
