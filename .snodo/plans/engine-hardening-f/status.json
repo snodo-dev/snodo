@@ -16,14 +16,17 @@
       "judged": false
     },
     "2.1_rerun_completed_wave_delivers": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "c1bc9a99430d203e"
+      "spec_hash": "c1bc9a99430d203e",
+      "completed_by": "orchestrator (Claude)",
+      "completed_at": "2026-11-02T22:12:15.036763+00:00",
+      "judged": false
     }
   },
   "integration": {
     "branch": "plan/engine-hardening-f/integration",
-    "base_sha": "eb02dfbc1d8856a243b8644ef8fa7c20016ddc95"
+    "base_sha": "fc5625f6422625a72e8a190845a4ab4071372195"
   }
 }
