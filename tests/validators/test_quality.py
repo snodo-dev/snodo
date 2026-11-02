@@ -434,6 +434,9 @@ class TestQualityValidatorEvaluate:
             assert result.severity == "pass"
             assert result.validator_id == "quality"
             assert "passed" in result.justification.lower()
+            assert "Command: pytest" in result.justification
+            assert "exit code 0" in result.justification
+            assert "5 passed" in result.justification
 
     def test_tracked_dirty_file_prevents_passing_verification(self, quality_spec, project_dir):
         from snodo.infrastructure.audit import AuditLog

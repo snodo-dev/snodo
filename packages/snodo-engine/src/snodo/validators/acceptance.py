@@ -252,9 +252,12 @@ class AcceptanceValidator(LLMValidator):
             "Do not count these as MET or imply they passed; these alone are NEVER a finding.\n",
             "- EXECUTION: tests, make gate, builds, and other command requirements rely "
             "only on Independent Execution Evidence above. Cite the validator, verdict, "
-            "and justification relied on. Passing quality evidence can satisfy a covered "
-            "criterion; failing evidence means unmet. If no evidence covers it, plainly "
-            "say it was not verified and treat it as unmet. Never infer success from the "
+            "and justification relied on. A passing quality gate includes its command, "
+            "exit code and bounded output excerpt; that result is execution evidence for "
+            "command-based criteria, even if you cannot rerun the gate yourself. Do not "
+            "call a gate-only criterion unmet when the gate passed. Failing evidence means "
+            "unmet. If no evidence covers it, plainly say it was not verified and treat it "
+            "as unmet. Never infer success from the "
             "tree or coder claims.\n",
             "\n",
             "A tree-verifiable unmet criterion or execution criterion without passing "

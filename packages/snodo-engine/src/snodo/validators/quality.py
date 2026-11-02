@@ -405,7 +405,11 @@ class QualityValidator(ValidatorBase):
                 return ValidatorResult(
                     validator_id=self.validator_id,
                     severity="pass",
-                    justification=f"Tests passed: {summary}",
+                    justification=(
+                        f"Tests passed: {summary}\n"
+                        f"Command: {command} (exit code 0). Output excerpt:\n"
+                        f"{self._output_tail(stdout, stderr)}"
+                    ),
                 )
 
             res = self._classify_failure(command, process.returncode, stdout, stderr)
