@@ -280,15 +280,13 @@ class DecisionRecordIssuer:
                 ):
                     return payload
 
-        # Carry-forward: session-scoped adjudication from a prior task.
-        # The record was already in this session's decision_records list,
-        # which means a human authorized it for this session.  A retry
-        # task with a new task_id should still benefit from it.
+        # Carry-forward is limited to a caller-defined task lineage. Without
+        # an explicit matcher, only the exact-task pass above can authorize.
         for r_jwt in records_jwt:
             payload = self.verify_record(r_jwt)
             if payload is None:
                 continue
-            if task_matcher is not None and not task_matcher(payload.get("task_ref"), task_ref):
+            if task_matcher is None or not task_matcher(payload.get("task_ref"), task_ref):
                 continue
             if (
                 payload.get("validator_id") == validator_id

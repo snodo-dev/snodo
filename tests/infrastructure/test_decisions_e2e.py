@@ -343,24 +343,7 @@ class TestAttackScenarios:
     # ------------------------------------------------------------------
 
     def test_attack_replay_valid_jwt_for_different_task_CARRIES_FORWARD(self):
-        """PASSES via carry-forward — documented intentional behaviour, not a bug.
-
-        A valid signed record for task T1 is replayed when evaluating task T2
-        in the same session, via the session-scoped carry-forward in
-        find_adjudicated().
-
-        This is INTENTIONAL: when a task is adjudicated and re-dispatched with
-        a new task_id (retry), the human's approval should not need to be
-        re-entered.
-
-        CONSEQUENCE: The session boundary is the true scope of an adjudication,
-        not the task_id.  Any valid record from the same session resolves the
-        same (validator_id, severity) concern for any other task in that session.
-
-        This test pins the current behaviour so that any future change to tighten
-        the replay boundary is a visible, intentional breaking change.  It is NOT
-        a vulnerability report — it is documentation of the design.
-        """
+        """An unrelated task cannot reuse another task's adjudication."""
         from snodo.compiler.models import DisagreementPolicy
         from snodo.engine.policy import PolicyEvaluator
 

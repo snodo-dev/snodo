@@ -502,3 +502,36 @@ class TestPendingDecisionsAndRetryable:
         }
         assert pending_retryable_task(session, "t1") is True
 
+
+
+class TestDecisionRecordCarryForwardAudit:
+    def test_audit_only_records_same_lineage_carry_forward(self):
+        from snodo.core.task_lineage import same_task_lineage
+
+        audit_log = MagicMock()
+        issuer = _make_issuer(audit_log=audit_log)
+        warn = _make_result("architecture", "warn")
+        record = issuer.issue_record("root", "architecture", warn, "proceed", "OK")
+        audit_log.reset_mock()
+
+        carried = issuer.find_adjudicated(
+            [record.jwt], "root_fix_1", "architecture", "warn", same_task_lineage
+        )
+        assert carried is not None
+        carry_events = [
+            call for call in audit_log.append_event.call_args_list
+            if call.args[0] == "adjudication_carry_forward"
+        ]
+        assert len(carry_events) == 1
+        assert carry_events[0].args[1]["original_task_ref"] == "root"
+        assert carry_events[0].args[1]["current_task_ref"] == "root_fix_1"
+
+        audit_log.reset_mock()
+        ignored = issuer.find_adjudicated(
+            [record.jwt], "unrelated", "architecture", "warn", same_task_lineage
+        )
+        assert ignored is None
+        assert not any(
+            call.args[0] == "adjudication_carry_forward"
+            for call in audit_log.append_event.call_args_list
+        )
