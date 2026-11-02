@@ -173,6 +173,7 @@ deploy-docs: docs
 #   make gate        the fast loop: non-e2e suite, ruff, import contracts,
 #                    file-length ratchet, docs-coverage ratchet, vocabulary and changelog checks
 #   make gate-ci     what CI decides on: full suite with coverage
+#   make gate-task   fast per-task check: affected tests, same remaining checks
 #   make gate-init   one-time (implied by the above): create the remote repo
 #
 # Override GATE_HOST / GATE_HOME to point somewhere else.
@@ -213,7 +214,7 @@ GATE_SSH   = ssh -q -tt $(GATE_HOST)
 # the pushed HEAD and cannot infer the agent branch's base after the push.
 GATE_BASE  ?= $(shell git merge-base origin/main HEAD 2>/dev/null)
 
-.PHONY: gate gate-ci gate-init _gate-push
+.PHONY: gate gate-ci gate-task gate-init _gate-push
 
 gate-init:
 	@ssh $(GATE_HOST) 'mkdir -p $(GATE_DIR) && cd $(GATE_DIR) && { [ -d .git ] || { git init -q && git config receive.denyCurrentBranch updateInstead; }; }'
@@ -236,6 +237,9 @@ gate: gate-init _gate-push
 
 gate-ci: gate-init _gate-push
 	@$(GATE_SSH) '$(GATE_PATH); cd $(GATE_DIR) && $(GATE_ENV) CHANGELOG_BASE=$(GATE_BASE) bash scripts/gate_remote.sh gate-ci'
+
+gate-task: gate-init _gate-push
+	@$(GATE_SSH) '$(GATE_PATH); cd $(GATE_DIR) && $(GATE_ENV) CHANGELOG_BASE=$(GATE_BASE) bash scripts/gate_remote.sh gate-task'
 
 # ──────────────────────────────────────────────
 # Agent worktrees

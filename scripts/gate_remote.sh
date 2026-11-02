@@ -27,28 +27,50 @@
 set -o pipefail
 
 # Run the checks for one target, in the order the target has always run them.
-# `gate` and `gate-ci` differ only in the pytest invocation — that divergence
-# is the one CONTRIBUTING documents, and nothing else here may drift.
+# `gate` and `gate-ci` differ only in pytest invocation. `gate-task` uses the
+# affected-test selector, then shares every remaining check and its order.
 gate_run() {
   local target="$1"
-  local -a pytest_args
+  local -a pytest_args task_tests
+  local selection
   case "$target" in
     gate)
       pytest_args=(tests/ -q -n "$GATE_JOBS" --timeout=60 --timeout-method=signal)
+      ;;
+    gate-task)
+      pytest_args=()
       ;;
     gate-ci)
       pytest_args=(tests/ -m "" -n "$GATE_JOBS" --tb=short --timeout=60 --timeout-method=signal \
         --cov --cov-report=term-missing --cov-fail-under=80)
       ;;
     *)
-      echo "gate_remote.sh: unknown target: $target" >&2
+      echo "gate_remote.sh: unknown target: $target (expected gate, gate-ci, or gate-task)" >&2
       return 2
       ;;
   esac
   printf 'Gate: syncing dependencies.\n' >&3
-  uv sync --all-extras -q \
-    && { printf 'Gate: starting test suite.\n' >&3; CI=true uv run pytest "${pytest_args[@]}"; } \
-    && uv run ruff check . \
+  uv sync --all-extras -q || return $?
+  if [ "$target" = gate-task ]; then
+    selection=$(uv run python scripts/select_affected_tests.py --base "${CHANGELOG_BASE:?CHANGELOG_BASE must be set}") || return $?
+    if [ "$selection" = tests/ ]; then
+      pytest_args=(tests/ -q -n "$GATE_JOBS" --timeout=60 --timeout-method=signal)
+      printf 'Gate: reduced test set: tests/ (full test suite); this gate does not decide.\n' >&3
+    elif [ -n "$selection" ]; then
+      while IFS= read -r test_path; do task_tests+=("$test_path"); done <<<"$selection"
+      pytest_args=("${task_tests[@]}" -q -n "$GATE_JOBS" --timeout=60 --timeout-method=signal)
+      printf 'Gate: reduced test set: %s; this gate does not decide.\n' "${task_tests[*]}" >&3
+    else
+      printf 'Gate: reduced test set: no tests selected; skipping pytest; this gate does not decide.\n' >&3
+    fi
+  fi
+  if [ "$target" = gate-task ] && [ -z "$selection" ]; then
+    :
+  else
+    printf 'Gate: starting test suite.\n' >&3
+    CI=true uv run pytest "${pytest_args[@]}" || return $?
+  fi
+  uv run ruff check . \
     && uv run lint-imports \
     && uv run python scripts/enforce_file_length.py \
     && uv run python scripts/enforce_docs_coverage.py \
@@ -170,7 +192,7 @@ gate_supervise() {
 }
 
 gate_main() {
-  local target="${1:?usage: gate_remote.sh <gate|gate-ci>}"
+  local target="${1:?usage: gate_remote.sh <gate|gate-ci|gate-task>}"
   : "${GATE_HOME:?GATE_HOME must be set}"
   : "${GATE_ROOT:=$HOME/Dev/gates}"
   : "${GATE_JOBS:=24}"

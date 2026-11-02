@@ -487,3 +487,75 @@ def test_slot_wait_has_a_timeout_and_reports_elapsed_time(tmp_path: Path):
         _kill_group(lock2.pid)
         lock.wait(timeout=5)
         lock2.wait(timeout=5)
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected_pytest", "expected_notice"),
+    [
+        ("tests/scripts/test_gate_remote.py\ntests/test_hello.py", "tests/scripts/test_gate_remote.py tests/test_hello.py", "tests/scripts/test_gate_remote.py tests/test_hello.py"),
+        ("tests/", "tests/", "tests/"),
+        ("", None, "no tests"),
+    ],
+)
+def test_gate_task_selector_outcomes(tmp_path: Path, selection: str, expected_pytest: str | None, expected_notice: str):
+    """Task gate selects tests locally and keeps the rest of the gate runnable."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "calls"
+    log.touch()
+    uv = bin_dir / "uv"
+    uv.write_text(
+        '#!/usr/bin/env bash\n'
+        'if [[ "$*" == *"scripts/select_affected_tests.py"* ]]; then\n'
+        '  printf "%s\\n" "$SELECTION" | sed "/^$/d"\n'
+        '  exit "${SELECTOR_STATUS:-0}"\n'
+        'fi\n'
+        'printf "%s\\n" "$*" >> "$CALL_LOG"\n',
+        encoding="utf-8",
+    )
+    uv.chmod(0o755)
+    proc = subprocess.run(
+        ["bash", "-c", f'exec 3>&2; source "{GATE_REMOTE}"; gate_run gate-task'],
+        cwd=ROOT,
+        env=dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", CALL_LOG=str(log),
+                 SELECTION=selection, CHANGELOG_BASE="base", GATE_JOBS="2"),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    calls = log.read_text(encoding="utf-8").splitlines()
+    pytest_calls = [call for call in calls if "pytest" in call]
+    if expected_pytest is None:
+        assert not pytest_calls
+    else:
+        assert expected_pytest in pytest_calls[0]
+    assert expected_notice in proc.stderr
+    assert "does not decide" in proc.stderr
+    assert all(check in "\n".join(calls) for check in ("ruff", "lint-imports", "enforce_file_length"))
+
+
+def test_gate_task_selector_failure_fails_before_checks(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "calls"
+    log.touch()
+    uv = bin_dir / "uv"
+    uv.write_text(
+        '#!/usr/bin/env bash\n'
+        'if [[ "$*" == *"scripts/select_affected_tests.py"* ]]; then exit 9; fi\n'
+        'printf "%s\\n" "$*" >> "$CALL_LOG"\n', encoding="utf-8"
+    )
+    uv.chmod(0o755)
+    proc = subprocess.run(
+        ["bash", "-c", f'exec 3>&2; source "{GATE_REMOTE}"; gate_run gate-task'], cwd=ROOT,
+        env=dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", CALL_LOG=str(log),
+                 CHANGELOG_BASE="base", GATE_JOBS="2"), capture_output=True, text=True,
+    )
+    assert proc.returncode != 0
+    assert "pytest" not in log.read_text(encoding="utf-8")
+
+
+def test_gate_task_is_wired_through_makefile():
+    text = MAKEFILE.read_text(encoding="utf-8")
+    assert "gate-task: gate-init _gate-push" in text
+    assert "bash scripts/gate_remote.sh gate-task'" in text
