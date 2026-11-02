@@ -831,8 +831,22 @@ def _watch_recon(state_path: Path, results_path: Path, recon_id: str) -> int:
         state = {}
     _print_recon_header(recon_id, state)
     seen = 0
+    from snodo.recon.event_log import ReconEventLog
+
+    event_log = ReconEventLog(state_path.parent)
+    event_offset = 0
+
+    def emit_events() -> None:
+        nonlocal event_offset
+        events, event_offset = event_log.read(event_offset)
+        for event in events:
+            print(event_log.format(event))
+
     try:
         while True:
+            # Progress precedes answers landing in the same poll. The reader
+            # preserves incomplete JSONL tails until their newline arrives.
+            emit_events()
             state = _read_recon_json(state_path, {})
             results = _read_recon_json(results_path, [])
             if not isinstance(state, dict):
@@ -845,8 +859,8 @@ def _watch_recon(state_path: Path, results_path: Path, recon_id: str) -> int:
                     _print_recon_result(result)
                 seen += 1
             if state.get("status") in _RECON_TERMINAL_STATUSES:
+                emit_events()
                 return 0
             time.sleep(0.5)
     except KeyboardInterrupt:
-        print(f"Stopped watching recon {recon_id}; it keeps running.")
         return 130

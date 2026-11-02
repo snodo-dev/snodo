@@ -1082,7 +1082,7 @@ def test_recon_watch_interrupt_is_quiet_and_returns_130(capsys, monkeypatch):
         monkeypatch.setattr(logs_cmd.time, "sleep", interrupt)
         with patch("snodo.infrastructure.paths.require_project_root", return_value=root):
             assert logs_command(SimpleNamespace(composite_id="rec_test", watch=True)) == 130
-    assert "keeps running" in capsys.readouterr().out
+    assert "keeps running" not in capsys.readouterr().out
 
 
 def test_recon_non_watch_output_unchanged(capsys):
@@ -1094,3 +1094,86 @@ def test_recon_non_watch_output_unchanged(capsys):
         "Recon: rec_test\nQuery: test query\nStatus: complete\nAgents: agent\n\n"
         "--- a (m) ---\nanswer\n\n"
     )
+
+
+def test_recon_watch_interleaves_events_and_results_and_drains(capsys, monkeypatch):
+    import json
+    from snodo.cli.commands import logs_cmd
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        recon_dir = Path(tmp_dir) / ".snodo" / "recons" / "rec_watch"
+        recon_dir.mkdir(parents=True)
+        state = recon_dir / "state.json"
+        results = recon_dir / "results.json"
+        events = recon_dir / "events.jsonl"
+        state.write_text('{"status":"running","query":"q"}')
+        results.write_text("[]")
+        events.write_text('{"timestamp":"t1","lane":1,"agent":"A","model":"same","kind":"start","detail":{}}\n')
+        polls = iter([
+            ('{"timestamp":"t2","lane":2,"agent":"B","model":"same","kind":"tool_turn","detail":{"tools":["search"]}}',
+             [{"agent": "A", "model": "same", "result": "answer A"}], False),
+            ('{"timestamp":"t3","lane":1,"agent":"A","model":"same","kind":"finish","detail":{}}',
+             [{"agent": "A", "model": "same", "result": "answer A"}, {"agent": "B", "model": "same", "result": "answer B"}], True),
+        ])
+
+        def sleep(_):
+            event, rows, done = next(polls)
+            with events.open("a") as f:
+                f.write(event + "\n")
+            results.write_text(json.dumps(rows))
+            if done:
+                state.write_text('{"status":"complete","query":"q"}')
+
+        monkeypatch.setattr(logs_cmd.time, "sleep", sleep)
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            assert logs_command(SimpleNamespace(composite_id="rec_watch", watch=True)) == 0
+
+    out = capsys.readouterr().out
+    assert out.index("lane 2 B") < out.index("--- A")
+    assert out.index("lane 1 A") < out.index("--- B")
+    assert out.count("answer A") == 1
+    assert out.count("answer B") == 1
+    assert out.index("lane 1 A") < out.index("--- B")
+
+
+def test_recon_watch_preserves_partial_event_until_next_poll(capsys, monkeypatch):
+    import json
+    from snodo.cli.commands import logs_cmd
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        d = Path(tmp_dir) / ".snodo" / "recons" / "rec_partial"
+        d.mkdir(parents=True)
+        (d / "state.json").write_text('{"status":"running"}')
+        (d / "results.json").write_text("[]")
+        event_path = d / "events.jsonl"
+        event = json.dumps({"timestamp": "t", "lane": 3, "agent": "C", "model": "m", "kind": "start", "detail": {}})
+        event_path.write_text(event[:20])
+        calls = iter([False, True])
+
+        def sleep(_):
+            if next(calls):
+                with event_path.open("a") as f:
+                    f.write(event[20:] + "\n")
+                (d / "state.json").write_text('{"status":"complete"}')
+
+        monkeypatch.setattr(logs_cmd.time, "sleep", sleep)
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            assert logs_command(SimpleNamespace(composite_id="rec_partial", watch=True)) == 0
+    assert capsys.readouterr().out.count("lane 3 C") == 1
+
+
+def test_recon_watch_without_events_file_and_nonwatch_output_unchanged(capsys, monkeypatch):
+    from snodo.cli.commands import logs_cmd
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        d = Path(tmp_dir) / ".snodo" / "recons" / "rec_old"
+        d.mkdir(parents=True)
+        (d / "state.json").write_text('{"status":"running","query":"q"}')
+        (d / "results.json").write_text("[]")
+        monkeypatch.setattr(logs_cmd.time, "sleep", lambda _: (d / "state.json").write_text('{"status":"complete","query":"q"}'))
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            assert logs_command(SimpleNamespace(composite_id="rec_old", watch=True)) == 0
+            watched = capsys.readouterr().out
+            assert "No results yet." not in watched
+            assert logs_command(SimpleNamespace(composite_id="rec_old", watch=False)) == 0
+    assert capsys.readouterr().out == "Recon: rec_old\nQuery: q\nStatus: complete\n\nNo results yet.\n"
