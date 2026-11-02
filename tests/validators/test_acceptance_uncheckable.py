@@ -1,5 +1,6 @@
 """Tests for acceptance validator uncheckable command execution criteria & contradiction detection (Fixes #75)."""
 
+import json
 from unittest.mock import MagicMock
 
 from snodo.compiler.models import Validator
@@ -34,6 +35,54 @@ def test_acceptance_prompt_cites_quality_evidence():
     prompt = val._build_tool_loop_prompt(context, set())
     assert "quality: pass; make gate passed (exit 0)" in prompt
     assert "Cite the validator, verdict," in prompt
+    assert "passing quality gate includes its command, exit code and bounded output excerpt" in prompt
+    assert "Do not call a gate-only criterion unmet when the gate passed" in prompt
+    failed_context = ValidatorContext(
+        task=task, working_directory="/tmp", execution_evidence=[ValidatorResult(
+            validator_id="quality", severity="blocker",
+            justification="Command: make gate (exit code 2). Output excerpt: docs check FAILED",
+        )],
+    )
+    failed_prompt = val._build_tool_loop_prompt(failed_context, set())
+    assert "quality: blocker; Command: make gate (exit code 2)" in failed_prompt
+    assert "Failing evidence means unmet" in failed_prompt
+
+
+def test_gate_pass_and_tree_met_criteria_pass_acceptance():
+    """A passed gate supplies execution evidence; acceptance can pass without rerunning it."""
+    val_spec = Validator(
+        validator_id="acceptance", name="acceptance", validator_type="acceptance",
+        tools=["read_file", "list_files"],
+    )
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = None
+    call = MagicMock()
+    call.id = "verdict"
+    call.function.name = "submit_verdict"
+    call.function.arguments = json.dumps({
+        "task_id": "t1", "severity": "pass",
+        "justification": "Gate passed and the documentation criterion is met in the tree.",
+    })
+    response.choices[0].message.tool_calls = [call]
+    response.choices[0].finish_reason = "tool_calls"
+    completion = MagicMock(return_value=response)
+    task = Task(id="t1", spec="ACCEPTANCE CRITERIA:\n1. make gate passes\n2. docs updated")
+    context = ValidatorContext(
+        task=task, working_directory="/tmp", completion_fn=completion,
+        workspace_mcp=MagicMock(), git_mcp=MagicMock(), phase="post_execute",
+        execution_evidence=[ValidatorResult(
+            validator_id="quality", severity="pass",
+            justification="Command: make gate (exit code 0). Output excerpt: docs check OK",
+        )],
+    )
+
+    result = AcceptanceValidator(val_spec).evaluate(context)
+
+    assert result.severity == "pass"
+    prompt = completion.call_args[1]["messages"][0]["content"]
+    assert "Command: make gate (exit code 0)" in prompt
+    assert "docs check OK" in prompt
 
 
 def test_post_validate_contradiction_detection():
