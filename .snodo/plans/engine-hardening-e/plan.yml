@@ -1,0 +1,16 @@
+intent: Make plan runs trustworthy after hand-merges and reruns (issues 1044, 1045)
+  and let a pre-execute warn reach the coder as evidence (issue 1067). Each task fixes
+  one issue with a regression test. No new state, status, severity or halt type, and
+  no change to the cloud wire.
+name: engine-hardening-e
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_preexecute_warn_reaches_coder
+  - 1.2_integration_tree_follows_main
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_rerun_completed_wave_delivers
