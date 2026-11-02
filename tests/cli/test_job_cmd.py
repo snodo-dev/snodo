@@ -674,8 +674,10 @@ class TestJobRetryPlanChildLineage:
         job_dir.mkdir()
         lineage = {"task_plan": "release", "task_wave": 2, "parent_job": "j-plan", "base": "snodo/plan/release/j-plan"}
         (job_dir / "task.json").write_text(json.dumps({"task_id": "t-child", "description": "spec", **lineage}))
-        manager = MagicMock(); manager._job_dir.return_value = job_dir
-        submitted = {}; job_manager = MagicMock()
+        manager = MagicMock()
+        manager._job_dir.return_value = job_dir
+        submitted = {}
+        job_manager = MagicMock()
         job_manager.submit.side_effect = lambda args: (submitted.update(args) or "j-retry")
         with patch("snodo.infrastructure.paths.require_project_root", return_value=str(tmp_path)), patch("snodo.project.get_project_id", return_value=("project", None)), patch("snodo.infrastructure.audit.get_audit_log"), patch("snodo.infrastructure.session.SessionManager"), patch("snodo.jobs.JobManager", return_value=job_manager), patch("snodo.jobs.index_plan_jobs", return_value=("j-plan", {})), patch("git.Repo") as Repo:
             Repo.return_value.references = [type("Ref", (), {"name": lineage["base"]})()]
@@ -688,7 +690,8 @@ class TestJobRetryPlanChildLineage:
         job_dir = tmp_path / "j-child"
         job_dir.mkdir()
         (job_dir / "task.json").write_text(json.dumps({"task_id": "t-child", "description": "spec", "task_plan": "release", "task_wave": 2, "parent_job": "j-old", "base": "snodo/plan/release/j-old"}))
-        manager = MagicMock(); manager._job_dir.return_value = job_dir
+        manager = MagicMock()
+        manager._job_dir.return_value = job_dir
         with patch("snodo.infrastructure.paths.require_project_root", return_value=str(tmp_path)), patch("snodo.project.get_project_id", return_value=("project", None)), patch("snodo.infrastructure.audit.get_audit_log"), patch("snodo.infrastructure.session.SessionManager"), patch("snodo.jobs.index_plan_jobs", return_value=("j-new", {})):
             assert _job_retry(manager, SimpleNamespace(job_id="j-child", description="", replace_spec="")) == 1
         assert "no longer the latest run" in capsys.readouterr().err
