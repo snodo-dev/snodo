@@ -1,19 +1,19 @@
 {
   "tasks": {
     "1.3_verdict_carry_forward_same_task": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "9804157573ba84f0"
     },
     "2.1_validator_bad_tool_arguments": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "6e709c37ed7e8935"
     },
     "2.3_list_jobs_compact": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "720cb99b3779c290"
@@ -42,5 +42,9 @@
       "depth": 0,
       "spec_hash": "caee4a30182f652f"
     }
+  },
+  "integration": {
+    "branch": "plan/engine-hardening-b/integration",
+    "base_sha": "6475c94fadcbe7134ea97cc72d73c2bb2194f9b0"
   }
 }
