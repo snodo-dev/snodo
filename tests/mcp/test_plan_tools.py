@@ -750,19 +750,42 @@ class TestPlanRunAsJob:
         result = server.call_tool("run_plan", {"plan_name": "distinct", "mock": True})
         job_id = result["job_id"]
         mgr = JobManager(project_dir)
-        _wait_terminal(mgr, job_id)
+        pid = mgr.get_status(job_id).get("pid")
+        try:
+            assert pid is not None, "the plan run should have been spawned"
+            # The plan's child task can be slow under concurrent test load. Wait
+            # for the state this listing assertion needs, within pytest's bound.
+            _wait_terminal(mgr, job_id, timeout=50.0)
 
-        rows = mgr.list_jobs()
-        plan_row = next(r for r in rows if r["id"] == job_id)
-        assert plan_row["plan"] == "distinct"
-        assert plan_row["task_ref"] == ""
+            rows = mgr.list_jobs()
+            plan_row = next(r for r in rows if r["id"] == job_id)
+            assert plan_row["plan"] == "distinct"
+            assert plan_row["task_ref"] == ""
 
-        child_rows = [r for r in rows if r["id"] != job_id]
-        # Any task spawned by the plan names the plan run as its parent.
-        for row in child_rows:
-            assert row["plan"] == ""
-            assert row["parent_job"] == job_id
-            assert row["task_ref"]
+            child_rows = [r for r in rows if r["id"] != job_id]
+            # Any task spawned by the plan names the plan run as its parent.
+            for row in child_rows:
+                assert row["plan"] == ""
+                assert row["parent_job"] == job_id
+                assert row["task_ref"]
+        finally:
+            # On timeout/assertion failure, stop the still-running wrapper and
+            # its detached process group, then reap the direct child. A terminal
+            # job may have had its PID reused, so never signal it in that case.
+            if pid is not None:
+                with contextlib.suppress(Exception):
+                    status = mgr.get_status(job_id)
+                    if status.get("status") not in (
+                        "completed", "failed", "unmerged", "cancelled",
+                    ):
+                        with contextlib.suppress(ProcessLookupError, PermissionError):
+                            if os.getpgid(pid) == pid:
+                                os.killpg(pid, signal.SIGTERM)
+                            else:
+                                os.kill(pid, signal.SIGTERM)
+                # Reap even after a successful terminal run: the test process
+                # owns the wrapper child created by the job launcher.
+                _reap(pid)
 
 
 # === End-to-end over the real tool surface ===
