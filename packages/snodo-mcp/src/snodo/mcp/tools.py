@@ -519,14 +519,18 @@ TOOL_REGISTRY = {
     },
     "list_jobs": {
         "description": (
-            "List all jobs for this project as bounded one-line summaries: "
-            "id, status, exit_code, task_ref, title, timestamps, duration. "
-            "Cheap to call repeatedly — task specs are not included; read "
-            "one job's spec with get_job_status."
+            "List at most 50 jobs by default (maximum 100) as compact summaries: "
+            "id, type, status, timestamps, available plan/wave/parent/task identity, and a brief error when present. "
+            "Optional status filters the existing job statuses. The response includes "
+            "truncated when more matching jobs remain. Task specs and logs are never "
+            "included; use get_job_status or get_job_logs for details."
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50, "description": "Maximum jobs to return"},
+                "status": {"type": "string", "enum": ["queued", "running", "completed", "failed", "cancelled", "unmerged"], "description": "Optional exact status filter"},
+            },
         },
         "mcp": None,
         "method": None,

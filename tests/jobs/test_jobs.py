@@ -498,8 +498,25 @@ class TestBoundedListing:
         assert set(jobs[0]) == {
             "id", "status", "task_ref", "title", "exit_code",
             "created_at", "started_at", "completed_at", "duration_seconds",
-            "plan", "parent_job",
+            "plan", "parent_job", "job_type", "wave", "error",
         }
+
+    def test_plan_child_wave_uses_task_wave(self, manager):
+        job_dir = manager.jobs_dir / "j_plan_child"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(json.dumps({
+            "description": "implement the plan task",
+            "task_id": "T-42",
+            "task_wave": "3",
+            "parent_job": "j_plan",
+        }))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed", "pid": None, "created_at": 1.0,
+            "started_at": 2.0, "completed_at": 3.0, "exit_code": 0,
+        }))
+
+        job = manager.list_jobs()[0]
+        assert job["wave"] == "3"
 
     def test_running_job_duration_advances_queued_job_none(self, manager):
         job_dir = manager.jobs_dir / "j_running"

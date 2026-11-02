@@ -767,7 +767,7 @@ class TestDispatchTask:
         with patch("snodo.jobs.JobManager") as mock_cls:
             mock_jm = MagicMock()
             mock_jm.list_jobs.return_value = [
-                {"id": "j_1", "status": "completed", "task_ref": "T-1",
+                {"id": "j_1", "status": "completed", "job_type": "queue", "wave": 2, "error": "brief failure", "task_ref": "T-1",
                  "title": "task A", "exit_code": 0, "created_at": 100.0,
                  "started_at": 100.0, "completed_at": 130.0,
                  "duration_seconds": 30.0},
@@ -779,12 +779,35 @@ class TestDispatchTask:
             mock_cls.return_value = mock_jm
             result = dispatch_server.call_tool("list_jobs", {})
 
-        assert isinstance(result, list)
-        assert len(result) == 2
-        assert result[0]["id"] == "j_1"
-        assert result[1]["status"] == "running"
-        # no row is a carrier for spec prose
-        assert not any("description" in row for row in result)
+        assert set(result) == {"jobs", "limit", "truncated"}
+        assert result["limit"] == 50
+        assert result["truncated"] is False
+        assert len(result["jobs"]) == 2
+        assert set(result["jobs"][0]) == {"id", "type", "status", "created", "started", "completed", "wave", "title", "task_id", "error"}
+        assert result["jobs"][0]["type"] == "queue"
+        assert result["jobs"][0]["wave"] == 2
+        assert result["jobs"][0]["error"] == "brief failure"
+        assert result["jobs"][0]["id"] == "j_1"
+        assert result["jobs"][1]["status"] == "running"
+        assert "description" not in result["jobs"][0]
+
+    def test_list_jobs_filters_and_reports_truncation(self, dispatch_server):
+        from snodo.mcp.server import MCPError
+
+        with patch("snodo.jobs.JobManager") as mock_cls:
+            mock_jm = MagicMock()
+            mock_jm.list_jobs.return_value = [
+                {"id": f"j_{i}", "status": "failed" if i % 2 else "running",
+                 "task_ref": f"T-{i}", "created_at": i}
+                for i in range(4)
+            ]
+            mock_cls.return_value = mock_jm
+            result = dispatch_server.call_tool("list_jobs", {"limit": 1, "status": "failed"})
+            assert result["truncated"] is True
+            assert result["jobs"][0]["status"] == "failed"
+            assert result["limit"] == 1
+            with pytest.raises(MCPError, match="Unknown job status"):
+                dispatch_server.call_tool("list_jobs", {"status": "mystery"})
 
     def test_list_jobs_size_bounded_on_a_real_project(self, dispatch_server):
         """A project with many jobs answers the listing at bounded size."""
@@ -813,13 +836,11 @@ class TestDispatchTask:
                 rows = dispatch_server.call_tool("list_jobs", {})
 
             payload = json_mod.dumps(rows)
-            # 40 fat specs inline would exceed 40KB; rows are bounded
-            assert len(payload) < 40 * 400
+            assert len(payload) < 50 * 400
             assert "prose of the specification" not in payload
-            assert rows[0]["exit_code"] == 1
-            assert rows[0]["task_ref"].startswith("T-")
-            assert rows[0]["title"] == "Payment retry engine"
-            assert rows[0]["duration_seconds"] == 8.0
+            assert rows["truncated"] is False
+            assert rows["jobs"][0]["task_id"].startswith("T-")
+            assert rows["jobs"][0]["title"] == "Payment retry engine"
 
     def test_get_job_status_carries_the_full_spec(self, dispatch_server):
         """The spec is a detail of one job — available per job, still."""

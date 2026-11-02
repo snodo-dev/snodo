@@ -106,7 +106,7 @@ class TestJobToolsTravelWithRunPlan:
         server = ProtocolMCPServer(
             Protocol(**NO_DISPATCH_PROTOCOL_DATA), project_dir
         )
-        assert server.call_tool("list_jobs", {}) == []
+        assert server.call_tool("list_jobs", {}) == {"jobs": [], "limit": 50, "truncated": False}
         with pytest.raises(Exception, match="Job not found"):
             server.call_tool("get_job_status", {"job_id": "j_missing"})
         with pytest.raises(Exception, match="Job not found"):

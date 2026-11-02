@@ -17,12 +17,13 @@ Call `get_plan` with the plan name for the source-of-truth plan view. Its
 status, and `task_runs` joins tasks to their latest child job when one exists.
 Read it during the run as well as after it finishes.
 
-Use `list_jobs` to see the job rows and connect the hierarchy:
+Use `list_jobs` to see compact job rows and connect the hierarchy. It defaults
+to 50 rows (maximum 100), accepts an exact `status` filter, and reports whether
+results were truncated:
 
-1. Find the plan-run row by its returned `id`. It has `plan` set and an empty
-   `task_ref`.
+1. Find the plan-run row by its returned `id`; its `plan` field names the plan.
 2. Find child rows whose `parent_job` equals that plan job id. Their
-   `task_ref` identifies the task they ran.
+   `task_id` identifies the task they ran.
 3. For a child that needs detail, call `get_job_status` with its `id`. This
    gives its status, exit code, timestamps, and task specification. Call
    `get_job_logs` with the same id when the task needs diagnostic output.
