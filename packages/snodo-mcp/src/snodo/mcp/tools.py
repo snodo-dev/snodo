@@ -520,7 +520,7 @@ TOOL_REGISTRY = {
     "list_jobs": {
         "description": (
             "List at most 50 jobs by default (maximum 100) as compact summaries: "
-            "id, type, status, timestamps, and available plan/wave/parent/task identity. "
+            "id, type, status, timestamps, available plan/wave/parent/task identity, and a brief error when present. "
             "Optional status filters the existing job statuses. The response includes "
             "truncated when more matching jobs remain. Task specs and logs are never "
             "included; use get_job_status or get_job_logs for details."
