@@ -20,6 +20,7 @@ from snodo.infrastructure.worktree import (
     teardown_task_worktree,
     worktree_path,
     workspace_roots,
+    planned_spec_paths,
 )
 from snodo.infrastructure.worktree import _spec_overlap_paths, _spec_referenced_paths
 from snodo.tools.git import GitError, resolve_base_branch
@@ -816,3 +817,11 @@ def test_task_branch_is_merged_none_when_branch_missing(tmp_path):
     _init_repo_on_main(root)
 
     assert task_branch_is_merged(str(root), "1.1_x", "Add feature") is None
+
+
+def test_planned_spec_paths_recognizes_path_on_following_line():
+    assert planned_spec_paths("Create a new module:\n- `src/new_module.py`") == ["src/new_module.py"]
+
+
+def test_planned_spec_paths_recognizes_creation_bullet_with_path_after():
+    assert planned_spec_paths("- Create the command module\n  at `src/commands/new.py`.") == ["src/commands/new.py"]
