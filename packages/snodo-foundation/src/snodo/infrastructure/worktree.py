@@ -454,7 +454,7 @@ def planned_spec_paths(spec: str) -> List[str]:
     language as declared.
     """
     lines = spec.splitlines()
-    creation = re.compile(r"\b(?:new file|create|created|will create|add .*file)\b", re.I)
+    creation = re.compile(r"\b(?:new file|new (?:\w+\s+)*module|create|created|will create|add .*file)\b", re.I)
     creator_lines = [i for i, line in enumerate(lines) if creation.search(line)]
     paths: List[str] = []
     for index, line in enumerate(lines):
