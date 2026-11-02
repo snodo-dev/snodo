@@ -72,17 +72,49 @@ class JobToolHandler:
             }
         return result
 
-    def handle_list_jobs(self, arguments: Dict[str, Any]) -> list:
-        """List all jobs as bounded one-line summaries.
-
-        Rows identify the work (task_ref, title) and how it ended (status,
-        exit_code, duration) without carrying task spec prose; the full spec
-        of a job is available per job from get_job_status.
-        """
+    def handle_list_jobs(self, arguments: Dict[str, Any]) -> dict:
+        """List bounded, compact job summaries for orchestrators."""
         from snodo.jobs import JobManager
+        from snodo.mcp.server import MCPError
 
-        job_mgr = JobManager(self.project_root)
-        return job_mgr.list_jobs()
+        default_limit, maximum_limit = 50, 100
+        raw_limit = arguments.get("limit", default_limit)
+        if isinstance(raw_limit, bool) or not isinstance(raw_limit, int) or raw_limit < 1:
+            raise MCPError("list_jobs limit must be an integer between 1 and 100")
+        limit = min(raw_limit, maximum_limit)
+        status = arguments.get("status")
+        allowed_statuses = {"queued", "running", "completed", "failed", "cancelled", "unmerged"}
+        if status is not None and status not in allowed_statuses:
+            choices = ", ".join(sorted(allowed_statuses))
+            raise MCPError(f"Unknown job status {status!r}; expected one of: {choices}")
+
+        rows = JobManager(self.project_root).list_jobs()
+        if status is not None:
+            rows = [row for row in rows if row.get("status") == status]
+        truncated = len(rows) > limit
+        compact = []
+        for row in rows[:limit]:
+            item = {
+                "id": row.get("id"),
+                "type": row.get("job_type") or row.get("type") or ("plan" if row.get("plan") else "task"),
+                "status": row.get("status"),
+                "created": row.get("created_at"),
+                "started": row.get("started_at"),
+                "completed": row.get("completed_at"),
+            }
+            for key in ("plan", "wave", "parent_job"):
+                if row.get(key) not in (None, ""):
+                    item[key] = row[key]
+            title = row.get("title") or row.get("task_ref")
+            if title:
+                item["title"] = str(title)[:160]
+            if row.get("task_ref"):
+                item["task_id"] = str(row["task_ref"])[:100]
+            error = row.get("error")
+            if error:
+                item["error"] = str(error)[:240]
+            compact.append(item)
+        return {"jobs": compact, "limit": limit, "truncated": truncated}
 
     def handle_get_job_logs(self, arguments: Dict[str, Any]) -> dict:
         """Fetch logs for a job."""

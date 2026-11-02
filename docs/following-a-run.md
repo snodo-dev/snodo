@@ -65,8 +65,9 @@ For a plan run, use `get_plan` when you need the per-task status map and task
 relationships. A host-rendered panel, when supported, follows the plan-run
 job's own stdout log. For a queue run, it follows the queue-run job's own output
 and final status.
-Use `list_jobs` to inspect child jobs, then their ids with `get_job_status` and
-`get_job_logs` when you need child-task detail.
+Use `list_jobs` to inspect compact child-job summaries (default limit 50, maximum
+100; optionally filter by status). Check `truncated` and increase the limit if
+needed, then use child ids with `get_job_status` and `get_job_logs` for detail.
 
 Do not infer task outcomes from the parent job alone. Keep the plan task
 vocabulary (`pending`, `in_progress`, `completed`, `blocked`, `errored`, and

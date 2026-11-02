@@ -371,8 +371,11 @@ dispatch surface provides the following task loop:
   hold a token, and no tool call is refused for lack of one.
 - `dispatch_task` takes required `task_spec`, with optional `coding_model` and
   `module`. It returns a job id for background execution. Use `get_job_status`,
-  `get_job_logs`, or `watch_job` to follow the job; `list_jobs` lists project
-  jobs.
+  `get_job_logs`, or `watch_job` to follow the job. `list_jobs` returns compact
+  rows (id, type, status, timestamps, and available plan/wave/parent/task identity),
+  defaults to 50 rows and caps `limit` at 100. Filter with an exact `status`
+  (queued, running, completed, failed, cancelled, or unmerged); `truncated` indicates
+  whether more matching rows remain. Specs and logs are available from the detail tools.
 - `retry_job` takes required `job_id`. By default it keeps the recorded
   specification and continues from the previous attempt's worktree and changes.
   `fresh_start: true` starts from main instead. `append_spec` adds guidance to
