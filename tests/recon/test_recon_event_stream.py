@@ -76,7 +76,9 @@ def test_failover_raising_observer_and_default_no_observer(monkeypatch):
 
     def raising(_event):
         raise RuntimeError("observer unavailable")
-    monkeypatch.setattr(recon_module, "call_agent", lambda *a, **kw: recon_module.ReconResult(
-        agent="agent", model="one", result="answer",
-    ))
+    def observed_call(*args, **kwargs):
+        recon_module._notify_recon_observer(kwargs.get("observer"), "one", "agent", "start", {})
+        return recon_module.ReconResult(agent="agent", model="one", result="answer")
+
+    monkeypatch.setattr(recon_module, "call_agent", observed_call)
     assert recon_module.call_agent_chain(".", ["one"], "q", [], "agent", observer=raising).result == "answer"
