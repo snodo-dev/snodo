@@ -414,6 +414,17 @@ def normalize_recon_agents(agents: list) -> list[list[str]]:
     return lanes or [["default"]]
 
 
+def _notify_recon_observer(observer, model: str, agent: str, kind: str, detail: dict) -> None:
+    if observer is None:
+        return
+    from datetime import datetime, timezone
+    from snodo.recon.event_log import ReconEvent
+    try:
+        observer(ReconEvent(datetime.now(timezone.utc).isoformat(), -1, agent, model, kind, detail))
+    except Exception:
+        _logger.debug("Recon progress observer failed", exc_info=True)
+
+
 def call_agent_chain(
     project_root: str,
     models: list[str],
@@ -422,6 +433,7 @@ def call_agent_chain(
     agent_label: str,
     max_turns: int = RECON_DEFAULT_MAX_TOOL_TURNS,
     max_tokens: int = RECON_DEFAULT_MAX_TOKENS,
+    observer=None,
 ) -> ReconResult:
     """Ask *models* in order and return the first answer.
 
@@ -435,18 +447,22 @@ def call_agent_chain(
     attempts: list[ReconAttempt] = []
     usage: list[dict] = []
     failed_results: list[ReconResult] = []
-    for model in models:
+    for model_index, model in enumerate(models):
+        if model_index:
+            _notify_recon_observer(observer, model, agent_label, "failover", {"model": model})
         from snodo.infrastructure.provider_errors import (
             is_transient_provider_error, provider_retry_delay,
         )
 
-        result = call_agent(project_root, model, query, paths, agent_label, max_turns, max_tokens)
+        call_args = (project_root, model, query, paths, agent_label, max_turns, max_tokens)
+        result = call_agent(*call_args, **({"observer": observer} if observer is not None else {}))
         if result.error and is_transient_provider_error(result.error):
             attempts.append(ReconAttempt(model=model, error=result.error))
             usage.extend(result.usage)
             delay = provider_retry_delay(result.error)
+            _notify_recon_observer(observer, model, agent_label, "failover", {"model": model, "retry": True})
             time.sleep(delay if delay is not None else 1.0)
-            result = call_agent(project_root, model, query, paths, agent_label, max_turns, max_tokens)
+            result = call_agent(*call_args, **({"observer": observer} if observer is not None else {}))
         if not result.error and result.result.strip():
             result.attempts = attempts + [ReconAttempt(model=model)]
             result.usage = usage + result.usage
@@ -483,6 +499,7 @@ def call_agent(
     agent_label: str,
     max_turns: int = RECON_DEFAULT_MAX_TOOL_TURNS,
     max_tokens: int = RECON_DEFAULT_MAX_TOKENS,
+    observer=None,
 ) -> ReconResult:
     """Run a single recon agent: LLM with read-only tools, returning raw text.
 
@@ -490,6 +507,7 @@ def call_agent(
     synchronous agent call (e.g. survey judgements) without the background
     ReconManager state directories.
     """
+    _notify_recon_observer(observer, model, agent_label, "start", {})
     import litellm
     from snodo.infrastructure.model_provenance import served_model_of
     litellm.suppress_debug_info = True
@@ -683,6 +701,7 @@ def call_agent(
         try:
             response = _complete(with_read_tools=not is_final_turn, force_answer=is_final_turn)
         except Exception as e:
+            _notify_recon_observer(observer, model, agent_label, "failure", {"error": str(e)})
             usage_records.append(_usage_record("failed"))
             return ReconResult(
                 agent=agent_label,
@@ -738,6 +757,15 @@ def call_agent(
             for tc in msg.tool_calls
         ]})
 
+        from snodo.recon.event_log import ReconEventLog
+        tool_summaries = []
+        for tc in msg.tool_calls:
+            try:
+                parsed_args = json.loads(tc.function.arguments)
+            except (json.JSONDecodeError, TypeError):
+                parsed_args = {}
+            tool_summaries.append({"name": tc.function.name, "arguments": ReconEventLog.summarize_arguments(parsed_args) if isinstance(parsed_args, dict) else {}})
+        _notify_recon_observer(observer, model, agent_label, "tool_turn", {"tools": tool_summaries})
         turn_progressed = False
         for tc in msg.tool_calls:
             name = tc.function.name
@@ -792,6 +820,7 @@ def call_agent(
         try:
             response = _complete(with_read_tools=False, force_answer=True)
         except Exception as e:
+            _notify_recon_observer(observer, model, agent_label, "failure", {"error": str(e)})
             usage_records.append(_usage_record("failed"))
             return ReconResult(
                 agent=agent_label,
@@ -821,6 +850,7 @@ def call_agent(
         trace["ended"] = "completed"
 
     if not final_answer.strip():
+        _notify_recon_observer(observer, model, agent_label, "failure", {"error": trace.get("ended", "empty result")})
         _logger.warning(
             "Recon agent returned empty result on model=%s — "
             "possible model disengagement or auth issue",
@@ -839,6 +869,7 @@ def call_agent(
             trace=trace,
         )
 
+    _notify_recon_observer(observer, model, agent_label, "finish", {})
     return ReconResult(
         agent=agent_label,
         model=model,
@@ -1000,6 +1031,8 @@ class ReconManager:
             resolved = [resolve_agent_model(model) for model in lane]
             resolved_lanes.append((lane[0], resolved))
 
+        from snodo.recon.event_log import ReconEventLog
+        event_log = ReconEventLog(recon_dir)
         results = []
         # Persist each lane as it finishes. A recon interrupted while another
         # provider is still running must not lose completed answers/traces.
@@ -1007,12 +1040,14 @@ class ReconManager:
         executor = ThreadPoolExecutor(max_workers=min(len(resolved_lanes), 4))
         try:
             futures = {}
-            for agent_label, models in resolved_lanes:
-                future = executor.submit(
-                    call_agent_chain,
-                    self.project_root, models, query, paths, agent_label,
-                    max_tool_turns, max_tokens,
-                )
+            for lane_position, (agent_label, models) in enumerate(resolved_lanes):
+                def observe(event, lane=lane_position):
+                    event_log.append(lane, event.agent, event.model, event.kind, event.detail)
+                import inspect
+                chain_args = (self.project_root, models, query, paths, agent_label, max_tool_turns, max_tokens)
+                parameters = inspect.signature(call_agent_chain).parameters
+                chain_kwargs = {"observer": observe} if "observer" in parameters else {}
+                future = executor.submit(call_agent_chain, *chain_args, **chain_kwargs)
                 futures[future] = agent_label
 
             pending = set(futures)
