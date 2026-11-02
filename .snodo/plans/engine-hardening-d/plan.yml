@@ -1,0 +1,14 @@
+intent: 'Fix three small, independent engine defects from open issues 1049, 1048 and
+  1040: a validator verdict must never carry over to a different task, a validator
+  should get feedback on a malformed tool call instead of halting the task, and a
+  retried plan child task must keep its plan identity. Each task fixes one issue with
+  a regression test. No new state, status, severity or halt type, and no change to
+  the cloud wire.'
+name: engine-hardening-d
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_verdict_carry_forward_same_task
+  - 1.2_validator_bad_tool_arguments
+  - 1.3_retry_keeps_plan_lineage

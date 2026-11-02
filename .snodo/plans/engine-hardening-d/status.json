@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "1.1_verdict_carry_forward_same_task": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "72d80c2341b28ec9"
+    },
+    "1.2_validator_bad_tool_arguments": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ff6dd2c65f5df4ed"
+    },
+    "1.3_retry_keeps_plan_lineage": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "673955d7c782489c"
+    }
+  }
+}
