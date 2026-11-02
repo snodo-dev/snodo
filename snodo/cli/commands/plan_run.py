@@ -3,7 +3,6 @@
 Extracted from cli/commands/run_cmd.py to isolate plan execution logic.
 """
 
-import contextlib
 import hashlib
 import json
 import logging
@@ -23,6 +22,9 @@ from snodo.cli.commands.plan_delivery import (
     _remote_branch_matches as _remote_branch_matches_impl,
     deliver_healthy_plan_wave, filter_plan_waves, verify_queue_merge_head,
 )
+
+from snodo.cli.commands.plan_format import _format_duration, _format_timestamp
+from snodo.cli.commands.plan_integration import refresh_plan_integration
 
 _verify_queue_merge_head = verify_queue_merge_head
 _remote_branch_matches = _remote_branch_matches_impl
@@ -479,32 +481,6 @@ def _get_completed_waves(waves: list, tasks_status: dict) -> set:
     return completed
 
 
-def _format_duration(seconds: float) -> str:
-    """Format duration in seconds as a human-readable string with s, m, h buckets."""
-    if seconds < 0:
-        seconds = 0.0
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    if seconds < 3600:
-        minutes = int(seconds // 60)
-        rem_s = seconds % 60
-        return f"{minutes}m {rem_s:.1f}s"
-    hours = int(seconds // 3600)
-    rem_minutes = int((seconds % 3600) // 60)
-    rem_s = seconds % 60
-    return f"{hours}h {rem_minutes}m {rem_s:.1f}s"
-
-
-def _format_timestamp(ts: Optional[float]) -> str:
-    """Format a timestamp as YYYY-MM-DD HH:MM:SS."""
-    if not ts:
-        return "N/A"
-    try:
-        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
-    except (TypeError, ValueError, OSError):
-        return "N/A"
-
-
 def _session_for_task(args, planner, protocol, task_id: str):
     """Resolve the active session whose checkpoint holds *task_id*'s halt record.
 
@@ -930,24 +906,6 @@ def _execute_wave_tasks_concurrent(
     return not wave_failed
 
 
-def _sync_plan_integration(project_root: str, integration_path: Path, integration_branch: str) -> str:
-    """Merge the current base branch into the plan integration worktree."""
-    from snodo.tools.git import open_repo, resolve_base_branch
-
-    base_ref = resolve_base_branch(project_root)
-    with open_repo(str(integration_path)) as repo:
-        try:
-            repo.git.merge("--no-edit", base_ref)
-        except Exception as exc:
-            with contextlib.suppress(Exception):
-                repo.git.merge("--abort")
-            raise RuntimeError(
-                f"Cannot update plan integration branch '{integration_branch}' from '{base_ref}': "
-                f"merge conflict; resolve the conflict and retry ({exc})"
-            ) from exc
-        return repo.commit("HEAD").hexsha
-
-
 def _execute_waves(waves, planner, args, protocol, model,
                    all_waves, interactive, effective_concurrency: int = 1,
                    on_wave_complete=None, on_wave_start=None) -> bool:
@@ -1250,15 +1208,7 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                     protocol, active_mode, audit_log,
                 )
         def sync_integration_before_wave():
-            if not integration_branch:
-                return
-            from snodo.infrastructure.worktree import _name_component, worktree_dir
-            integration_path = worktree_dir(str(project_root)) / _name_component(args.plan) / "integration"
-            base_sha = _sync_plan_integration(str(project_root), integration_path, integration_branch)
-            from snodo.infrastructure.state import atomic_update_json
-            atomic_update_json(plan_dir, "status.json", lambda data: data.update(
-                integration={"branch": integration_branch, "base_sha": base_sha}
-            ), strict=True)
+            refresh_plan_integration(str(project_root), args.plan, plan_dir, integration_branch)
 
         failed = _execute_waves(
             waves, planner, args, protocol, model,
