@@ -28,7 +28,6 @@ def wired_recon(monkeypatch):
 
     monkeypatch.setattr("snodo.infrastructure.paths.require_project_root", lambda: ".")
     monkeypatch.setattr("snodo.config.ConfigManager.load", lambda self: {"llm": {"recon": {"models": ["configured/model"]}}})
-    monkeypatch.setattr(recon_cmd, "__name__", recon_cmd.__name__)
     monkeypatch.setitem(__import__("sys").modules, "snodo.recon", SimpleNamespace(
         RECON_DEFAULT_MAX_TOKENS=100, RECON_DEFAULT_MAX_TOOL_TURNS=3,
         ReconManager=Manager,
@@ -43,47 +42,62 @@ def wired_recon(monkeypatch):
     return submitted
 
 
-def test_explicit_models_define_separate_lanes(wired_recon, capsys):
-    args = SimpleNamespace(query="q", paths=["./"], num_agents=None, models=["openai/a", "openai/b"])
-    assert recon_cmd.recon_command(args) == 0
+def args(models=None, model_list=None, num_agents=None):
+    return SimpleNamespace(query="q", paths=["./"], num_agents=num_agents, models=models, model_list=model_list)
+
+
+def test_repeated_model_values_define_agents(wired_recon, capsys):
+    assert recon_cmd.recon_command(args(models=["openai/a", "openai/b"])) == 0
     assert wired_recon == [[["openai/a"], ["openai/b"]]]
     assert "Agents: openai/a, openai/b" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("models,expected", [
-    (["openai/a,openai/b"], [[["openai/a", "openai/b"]]]),
-    (["openai/a", "openai/a"], [[["openai/a"], ["openai/a"]]]),
-])
-def test_explicit_model_lanes(wired_recon, models, expected):
-    args = SimpleNamespace(query="q", paths=["./"], num_agents=None, models=models)
-    assert recon_cmd.recon_command(args) == 0
-    assert wired_recon == expected
+def test_models_list_expands_in_order(wired_recon):
+    assert recon_cmd.recon_command(args(model_list=["openai/a,openai/b"])) == 0
+    assert wired_recon == [[["openai/a"], ["openai/b"]]]
 
 
-def test_models_and_agent_count_refused_before_dispatch(wired_recon, capsys):
-    args = SimpleNamespace(query="q", paths=["./"], num_agents=2, models=["openai/a"])
-    assert recon_cmd.recon_command(args) == 1
+def test_both_forms_and_duplicate_models_preserve_order(wired_recon):
+    assert recon_cmd.recon_command(args(models=["openai/a"], model_list=["openai/b,openai/a"])) == 0
+    assert wired_recon == [[["openai/a"], ["openai/b"], ["openai/a"]]]
+
+
+@pytest.mark.parametrize("models,model_list", [(["openai/a,openai/b"], None), (None, ["openai/a,,openai/b"])])
+def test_comma_model_option_and_empty_entry_behavior(wired_recon, models, model_list, capsys):
+    # --model rejects comma syntax; --models ignores empty entries.
+    result = recon_cmd.recon_command(args(models=models, model_list=model_list))
+    if models:
+        assert result == 1
+        assert "--models" in capsys.readouterr().err
+        assert not wired_recon
+    else:
+        assert result == 0
+        assert wired_recon == [[["openai/a"], ["openai/b"]]]
+
+
+@pytest.mark.parametrize("models,model_list", [(["openai/a"], None), (None, ["openai/a"])])
+def test_agent_count_refused_with_explicit_model_forms(wired_recon, models, model_list, capsys):
+    assert recon_cmd.recon_command(args(models=models, model_list=model_list, num_agents=2)) == 1
     assert not wired_recon
-    assert "count comes from the number of --model values" in capsys.readouterr().err
+    assert "--model or --models" in capsys.readouterr().err
 
 
 def test_unknown_model_refused_before_dispatch(wired_recon, capsys):
-    args = SimpleNamespace(query="q", paths=["./"], num_agents=None, models=["unknown-model"])
-    assert recon_cmd.recon_command(args) == 1
+    assert recon_cmd.recon_command(args(model_list=["unknown-model"])) == 1
     assert not wired_recon
     assert "unknown-model" in capsys.readouterr().err
 
 
 def test_no_model_uses_configuration_unchanged(wired_recon):
-    args = SimpleNamespace(query="q", paths=["./"], num_agents=None)
-    assert recon_cmd.recon_command(args) == 0
+    assert recon_cmd.recon_command(args()) == 0
     assert wired_recon == [[["configured/model"]]]
 
 
-def test_cli_exposes_repeatable_model_option():
+def test_cli_exposes_model_options():
     from typer import Typer
     app = Typer()
     recon_cmd.register(app)
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "--model" in result.stdout
+    assert "--models" in result.stdout

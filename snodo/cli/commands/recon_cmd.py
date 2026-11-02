@@ -18,10 +18,18 @@ def register(app: typer.Typer) -> None:
         query: str = typer.Argument(..., help="The exploration question to answer"),
         paths: Optional[List[str]] = typer.Argument(None, help="Paths to search (default: current directory)"),
         num_agents: Optional[int] = typer.Option(None, "--agents", "-n", help="Number of agents to fan out (uses config if omitted)"),
-        models: Optional[List[str]] = typer.Option(None, "--model", help="Model for an agent; repeat for more agents, separate failover models with commas"),
+        models: Optional[List[str]] = typer.Option(
+            None, "--model", help="Model; models listed override recon configuration, and their count is the number of agents",
+        ),
+        model_list: Optional[List[str]] = typer.Option(
+            None, "--models", help="Comma-separated models; models listed override recon configuration, and their count is the number of agents",
+        ),
     ):
         """Dispatch a read-only exploration query to one or more agents."""
-        args = SimpleNamespace(query=query, paths=paths or ["./"], num_agents=num_agents, models=models)
+        args = SimpleNamespace(
+            query=query, paths=paths or ["./"], num_agents=num_agents,
+            models=models, model_list=model_list,
+        )
         return recon_command(args)
 
 
@@ -31,10 +39,14 @@ def recon_command(args) -> int:
     query = getattr(args, "query", "")
     paths = getattr(args, "paths", ["./"])
     num_agents = getattr(args, "num_agents", None)
-    explicit_models = getattr(args, "models", None)
+    model_values = getattr(args, "models", None) or []
+    model_lists = getattr(args, "model_list", None) or []
+    explicit_models = list(model_values)
+    for value in model_lists:
+        explicit_models.extend(part.strip() for part in value.split(",") if part.strip())
 
     if explicit_models and num_agents is not None:
-        print("Error: --agents/-n cannot be used with --model; agent count comes from the number of --model values.", file=sys.stderr)
+        print("Error: --agents/-n cannot be used with --model or --models; agent count comes from the number of models listed.", file=sys.stderr)
         return 1
 
     if not query:
@@ -69,20 +81,23 @@ def recon_command(args) -> int:
         config_manager = ConfigManager()
         lanes = []
         for value in explicit_models:
-            lane = [resolve_agent_model(part.strip()) for part in value.split(",") if part.strip()]
-            if not lane:
-                print("Error: --model must name at least one model", file=sys.stderr)
+            if "," in value:
+                print("Error: --model accepts one model; use --models for a comma-separated list", file=sys.stderr)
                 return 1
-            for model in lane:
-                provider = ConfigManager.provider_for_model(model)
-                providers = config_manager.get_providers()
-                if not provider or provider not in providers:
-                    print(f"Error: unknown model or provider for '{model}'", file=sys.stderr)
-                    return 1
-                if not config_manager.get_key_for_model(model) and not config_manager.provider_uses_oauth(provider):
-                    print(f"Error: provider for model '{model}' is not configured", file=sys.stderr)
-                    return 1
-            lanes.append(lane)
+            model = value.strip()
+            if not model:
+                print("Error: model names cannot be empty", file=sys.stderr)
+                return 1
+            model = resolve_agent_model(model)
+            provider = ConfigManager.provider_for_model(model)
+            providers = config_manager.get_providers()
+            if not provider or provider not in providers:
+                print(f"Error: unknown model or provider for '{model}'", file=sys.stderr)
+                return 1
+            if not config_manager.get_key_for_model(model) and not config_manager.provider_uses_oauth(provider):
+                print(f"Error: provider for model '{model}' is not configured", file=sys.stderr)
+                return 1
+            lanes.append([model])
         agent_count_notice = None
     else:
         lanes, agent_count_notice = resolve_recon_agents_with_notice(
