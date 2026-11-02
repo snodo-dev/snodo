@@ -884,6 +884,58 @@ class TestPostExecuteToolLoop:
         assert result.severity == "pass"
         assert any("list_files snodo/protocol_validation.py" in item for item in result.examined)
 
+    def test_malformed_tool_arguments_can_be_corrected(self, security_validator):
+        workspace = MagicMock()
+        workspace.list_files.return_value = ["README.md"]
+        calls = []
+
+        def respond(**kwargs):
+            calls.append(kwargs["messages"])
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            tc = MagicMock()
+            tc.id = f"tc_{len(calls)}"
+            if len(calls) == 1:
+                tc.function.name = "list_files"
+                tc.function.arguments = '{"directory":}'
+            elif len(calls) == 2:
+                assert "expected a JSON object" in calls[-1][-1]["content"]
+                tc.function.name = "list_files"
+                tc.function.arguments = '{"directory":"."}'
+            else:
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({"task_id": "t1", "severity": "pass", "justification": "Reviewed"})
+            resp.choices[0].message.content = None
+            resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion = MagicMock(side_effect=respond)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion)
+        result = validator.evaluate(self._make_post_context(completion, workspace, MagicMock()))
+        assert result.error is False
+        assert result.severity == "pass"
+        assert len(calls) == 3
+
+    def test_repeated_malformed_tool_arguments_fail_closed(self, security_validator):
+        completion = MagicMock()
+        responses = []
+        for index in range(20):
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            tc = MagicMock()
+            tc.id = f"tc_{index}"
+            tc.function.name = "list_files"
+            tc.function.arguments = "[]"
+            resp.choices[0].message.content = None
+            resp.choices[0].message.tool_calls = [tc]
+            responses.append(resp)
+        completion.side_effect = responses
+        validator = LLMValidator(self._make_post_validator(security_validator), completion)
+        result = validator.evaluate(self._make_post_context(completion, MagicMock(), MagicMock()))
+        assert result.error is True
+        assert "did not return a verdict" in result.justification
+        assert completion.call_count == 20
+
     def test_unexpected_value_error_from_tool_implementation_fails_closed(self, security_validator):
         completion_fn = MagicMock()
         resp = MagicMock()
@@ -1182,11 +1234,11 @@ class TestPostExecuteToolLoop:
         assert result.error is False
         assert len(calls) == 2
 
-    def test_git_show_unknown_ref_fails_closed(self, security_validator):
+    def test_git_show_unknown_ref_returns_feedback_and_verdict_succeeds(self, security_validator):
         from snodo.tools.git import GitError
 
         git = MagicMock()
-        git.show.side_effect = GitError("Git command failed: bad revision")
+        git.show.side_effect = GitError("Git command failed: Ref 'no-such-ref' did not resolve to an object")
         calls = []
 
         def completion_side_effect(**kwargs):
@@ -1194,9 +1246,19 @@ class TestPostExecuteToolLoop:
             resp = MagicMock()
             resp.choices = [MagicMock()]
             tc = MagicMock()
-            tc.id = "tc_unknown_ref"
-            tc.function.name = "git_show"
-            tc.function.arguments = '{"ref":"no-such-ref","path":"README.md"}'
+            tc.id = f"tc_{len(calls)}"
+            if len(calls) == 1:
+                tc.function.name = "git_show"
+                tc.function.arguments = '{"ref":"no-such-ref","path":"README.md"}'
+            else:
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "task_id": "t1", "severity": "pass", "justification": "Reviewed",
+                })
+                assert any(
+                    m.get("role") == "tool" and "did not resolve to an object" in m.get("content", "")
+                    for m in kwargs["messages"]
+                )
             resp.choices[0].message.content = None
             resp.choices[0].message.tool_calls = [tc]
             return resp
@@ -1205,11 +1267,9 @@ class TestPostExecuteToolLoop:
         validator = LLMValidator(self._make_post_validator(security_validator), completion)
         result = validator.evaluate(self._make_post_context(completion, MagicMock(), git))
 
-        assert result.severity == "blocker"
-        assert result.error is True
-        assert "git_show" in result.justification
-        assert "GitError" in result.justification
-        assert len(calls) == 1
+        assert result.severity == "pass"
+        assert result.error is False
+        assert len(calls) == 2
 
     def test_tool_loop_executes_git_log(self, security_validator):
         """Tool loop should call git.log for git_log tool."""

@@ -31,13 +31,22 @@ def workspace_root(workspace: Any) -> Path:
 def is_tool_argument_error(error: Exception) -> bool:
     """Classify invalid read-tool inputs separately from operational failures."""
     from snodo.tools.workspace import PathValidationError
+    from snodo.tools.git import GitError
 
     if isinstance(error, (PathValidationError, FileNotFoundError, KeyError, TypeError)):
         return True
     message = str(error).lower()
-    return isinstance(error, ValueError) and any(marker in message for marker in (
+    if isinstance(error, ValueError) and any(marker in message for marker in (
         "path is not a ", "directory not found:", "file not found:",
         "start must be", "end must be", "invalid path",
+    )):
+        return True
+    # Git MCP wraps rejected refs, paths, and command-line arguments in GitError.
+    # Limit recovery to Git input diagnostics; repository failures still fail closed.
+    return isinstance(error, GitError) and any(marker in message for marker in (
+        "bad revision", "unknown revision", "unknown switch", "unknown option",
+        "ambiguous argument", "pathspec", "needed a single revision",
+        "could not resolve", "not a valid object", "did not resolve to an object",
     ))
 
 
