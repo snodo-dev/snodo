@@ -6,6 +6,7 @@ FILE: tests/recon/test_recon.py
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1686,11 +1687,24 @@ def test_two_agent_recon_persists_usage_and_unknowns_as_null(project_with_snodo,
             choices=[SimpleNamespace(message=SimpleNamespace(content="answer", tool_calls=None))],
         )
 
-    with patch("litellm.completion", side_effect=completion):
-        recon_id = manager.submit("q", ["./"], agents=[["m1"], ["m2"]])
-        manager.shutdown()
+    try:
+        with patch("litellm.completion", side_effect=completion):
+            recon_id = manager.submit("q", ["./"], agents=[["m1"], ["m2"]])
+            deadline = time.monotonic() + 10
+            while True:
+                status = manager.get_status(recon_id)
+                if status["status"] in {"complete", "failed"}:
+                    break
+                remaining = deadline - time.monotonic()
+                assert remaining > 0, (
+                    f"Recon {recon_id} did not finish within 10 seconds; "
+                    f"last status was {status['status']!r}"
+                )
+                time.sleep(min(0.01, remaining))
 
-    records = manager.get_results(recon_id)["results"]
+        records = manager.get_results(recon_id)["results"]
+    finally:
+        manager.shutdown()
     by_agent = {item["agent"]: item["usage"][0] for item in records}
     assert by_agent["m1"]["input_tokens"] == 11
     assert by_agent["m1"]["output_tokens"] == 4
