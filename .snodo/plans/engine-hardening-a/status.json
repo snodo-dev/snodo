@@ -13,10 +13,10 @@
       "spec_hash": "1bb50691052fc859"
     },
     "1.3_verdict_carry_forward_same_task": {
-      "status": "blocked",
+      "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "a7df1dcdaef44700"
+      "spec_hash": "9804157573ba84f0"
     },
     "2.1_validator_bad_tool_arguments": {
       "status": "pending",
