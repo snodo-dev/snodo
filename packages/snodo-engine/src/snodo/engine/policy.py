@@ -201,8 +201,10 @@ class PolicyEvaluator:
             for r in list(results):
                 if r.severity != "warn":
                     continue
+                from snodo.core.task_lineage import same_task_lineage
                 payload = issuer.find_adjudicated(
-                    decision_records, task_ref, r.validator_id, "warn"
+                    decision_records, task_ref, r.validator_id, "warn",
+                    task_matcher=same_task_lineage,
                 )
                 if payload is not None:
                     warn_count -= 1

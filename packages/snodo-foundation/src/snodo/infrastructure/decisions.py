@@ -263,13 +263,12 @@ class DecisionRecordIssuer:
         task_ref: str,
         validator_id: str,
         severity: str,
+        task_matcher=None,
     ) -> Optional[Dict[str, Any]]:
         """Find a valid DecisionRecord matching a specific concern.
 
-        Exact match on task_ref first.  If none found, falls back to
-        a session-scoped match (same validator/severity/decision,
-        any task_ref) so that adjudications carry forward to retry
-        tasks in the same session.
+        Exact task match first. Optional task_matcher permits explicitly
+        defined recovery-lineage carry-forward; unrelated tasks never match.
         """
         for r_jwt in records_jwt:
             payload = self.verify_record(r_jwt, expected_task_ref=task_ref)
@@ -281,13 +280,13 @@ class DecisionRecordIssuer:
                 ):
                     return payload
 
-        # Carry-forward: session-scoped adjudication from a prior task.
-        # The record was already in this session's decision_records list,
-        # which means a human authorized it for this session.  A retry
-        # task with a new task_id should still benefit from it.
+        # Carry-forward is limited to a caller-defined task lineage. Without
+        # an explicit matcher, only the exact-task pass above can authorize.
         for r_jwt in records_jwt:
             payload = self.verify_record(r_jwt)
             if payload is None:
+                continue
+            if task_matcher is None or not task_matcher(payload.get("task_ref"), task_ref):
                 continue
             if (
                 payload.get("validator_id") == validator_id
