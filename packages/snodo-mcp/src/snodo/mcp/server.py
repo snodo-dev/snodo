@@ -957,6 +957,29 @@ class CoreToolHandler:
         else:
             description = original_spec
 
+        plan_fields = ("task_plan", "task_wave", "parent_job", "base")
+        if task_data.get("task_plan"):
+            missing = [key for key in plan_fields if task_data.get(key) in (None, "")]
+            if missing:
+                raise MCPError(
+                    f"Cannot safely retry plan child job {job_id}: missing plan lineage "
+                    f"field(s): {', '.join(missing)}"
+                )
+            from snodo.jobs import index_plan_jobs
+            latest_parent, _ = index_plan_jobs(self.server.project_root, task_data["task_plan"])
+            if latest_parent != task_data["parent_job"]:
+                raise MCPError(
+                    f"Cannot safely retry plan child job {job_id}: its plan run "
+                    f"{task_data['parent_job']} is no longer the latest run"
+                )
+            from git import Repo
+            repo = Repo(self.server.project_root)
+            if task_data["base"] not in {ref.name for ref in repo.references}:
+                raise MCPError(
+                    f"Cannot safely retry plan child job {job_id}: integration base "
+                    f"{task_data['base']} is gone"
+                )
+
         task_args: Dict[str, Any] = {
             "description": description,
             "cwd": self.server.project_root,
@@ -972,6 +995,8 @@ class CoreToolHandler:
                 "fresh_start": False,
             },
         }
+        if task_data.get("task_plan"):
+            task_args.update({key: task_data[key] for key in plan_fields})
         if self.server.mode_id:
             task_args["mode"] = self.server.mode_id
 
