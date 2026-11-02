@@ -1,40 +1,44 @@
 {
   "tasks": {
     "1.3_verdict_carry_forward_same_task": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "9804157573ba84f0"
     },
     "2.1_validator_bad_tool_arguments": {
-      "status": "pending",
+      "status": "errored",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "6e709c37ed7e8935"
     },
     "3.1_validate_plan_created_paths": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "45e1043c5b56b464"
     },
     "3.2_flaky_recon_persist_test": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "a5e017d1c1f555e5"
     },
     "3.3_flaky_plan_run_list_jobs_test": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "a1106b946002b6d4"
     },
     "3.4_flaky_quality_timeout_test": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "caee4a30182f652f"
     }
+  },
+  "integration": {
+    "branch": "plan/engine-hardening-c/integration",
+    "base_sha": "6f56fc637e21cb193a1905ca7bedefbb4d8ee1e1"
   }
 }
