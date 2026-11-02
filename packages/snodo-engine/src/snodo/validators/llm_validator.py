@@ -954,8 +954,21 @@ class LLMValidator(ValidatorBase):
             if rejection is not None:
                 _logger.warning("Validator %s: %s", self.validator_spec.validator_id, rejection.justification)
                 return rejection
-            severity = str(args.get("severity", "")).lower().strip()
-            justification = str(args.get("justification", "No justification provided"))
+            # Subject binding is deliberately checked first (ADR 059). Other
+            # malformed fields, including extras, are correctable tool input.
+            if not isinstance(args, dict):
+                continue
+            allowed = {"task_id", "severity", "justification", "tool_access_missing"}
+            if set(args) - allowed:
+                continue
+            if not isinstance(args.get("severity"), str):
+                continue
+            if not isinstance(args.get("justification"), str):
+                continue
+            if "tool_access_missing" in args and not isinstance(args["tool_access_missing"], dict):
+                continue
+            severity = args["severity"].lower().strip()
+            justification = args["justification"]
             if severity in self.VALID_SEVERITIES:
                 return ValidatorResult(
                     validator_id=self.validator_spec.validator_id,

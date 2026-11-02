@@ -46,7 +46,7 @@ def is_tool_argument_error(error: Exception) -> bool:
     return isinstance(error, GitError) and any(marker in message for marker in (
         "bad revision", "unknown revision", "unknown switch", "unknown option",
         "ambiguous argument", "pathspec", "needed a single revision",
-        "could not resolve", "not a valid object",
+        "could not resolve", "not a valid object", "did not resolve to an object",
     ))
 
 
