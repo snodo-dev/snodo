@@ -85,6 +85,19 @@ If BOTH passed: explicit agents wins, WARN that num_agents ignored.
 - explicit agents=[...]         -> exactly those, ignore counts (warn)
 - no models configured + N>1    -> default once + warn
 
+## CLI explicit model selection
+
+`snodo recon` also accepts repeatable `--model <provider/model>` values (one
+model per agent) or `--models <provider/model,...>` (a comma-separated list).
+For example, `snodo recon "Find the cache implementation" --models
+openai/gpt-4o,anthropic/claude-sonnet-4` runs two agents. The number of models
+listed determines the number of agents, and the same model may be repeated.
+Explicitly listed models always override configured recon models and cannot be
+combined with `--agents`/`-n`. Failover chains are not available from the
+command line. When neither model option is supplied, the configured count and
+models continue to determine the agents as described above, including the
+configured model list's single-agent failover behavior.
+
 ## Tests
 - resolve(None, [m1,m2,m3], 2)        -> [m1,m2]            (config default applies)
 - resolve(3,    [m1,m2,m3], 2)        -> [m1,m2,m3]         (caller overrides default)

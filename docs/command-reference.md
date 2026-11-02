@@ -175,7 +175,15 @@ stored task baseline through `snodo models --compare` (with `--plan` and
 to 300 seconds, and prints each agent's answer. `--agents`/`-n` requests the
 number of agent lanes; if omitted, the configured count is used. Configured
 models supply the lanes in order, and failed model attempts are reported to
-stderr. See [CLI recon](decompose-and-recon.md#cli-recon).
+stderr. To choose models directly, use repeatable `--model <provider/model>`
+(one model per agent) or `--models <provider/model,...>` (a comma-separated
+list). For example, `snodo recon "Find the cache implementation" --models
+openai/gpt-4o,anthropic/claude-sonnet-4` runs two agents. The number of listed
+models determines the number of agents; a model may be repeated. Explicit
+models always override configured recon models. `--model`/`--models` cannot be
+combined with `--agents`/`-n`, and CLI model lists do not support failover
+chains. Without either explicit model option, the configured count and models
+are used as described above. See [CLI recon](decompose-and-recon.md#cli-recon).
 
 ## Jobs, status, and cleanup
 

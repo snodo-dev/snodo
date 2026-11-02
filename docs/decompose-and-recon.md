@@ -35,6 +35,17 @@ The CLI form is `snodo recon <query> [paths...]`; omit paths to search from the
 current directory. `--agents`/`-n` requests a count of agent lanes, otherwise
 the configured recon count is used. Configured recon models provide the agents
 in order; with a single lane, the configured model list is its failover order.
+To choose models directly, pass repeatable `--model <provider/model>` values
+(one per agent) or `--models <provider/model,...>` as a comma-separated list.
+For example, `snodo recon "Find the cache implementation" --models
+openai/gpt-4o,anthropic/claude-sonnet-4` runs two agents. The number of models
+listed is the number of agents, and the same model may be listed more than
+once. Explicit model lists always override configured recon models and cannot
+be combined with `--agents`/`-n`. Failover chains are not available from the
+command line. With neither model option, the configured count and models retain
+the behavior described above, including the configured single-lane failover
+order.
+
 The command dispatches the question, waits up to 300 seconds, and prints each
 agent's answer. Failed model attempts in a lane and agent errors are reported
 on stderr. This is a synchronous CLI interaction; the asynchronous recon MCP
