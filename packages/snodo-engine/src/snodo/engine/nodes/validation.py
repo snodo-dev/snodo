@@ -19,6 +19,22 @@ from snodo.engine.absent_claims import detect_absent_claims
 _logger = logging.getLogger(__name__)
 
 
+def _pre_execute_warn_briefing(results):
+    """Frame non-blocking pre-execute warnings as work for the coder to address."""
+    def field(result, name, default=None):
+        return result.get(name, default) if isinstance(result, dict) else getattr(result, name, default)
+
+    warnings = [r for r in (results or []) if field(r, "severity") == "warn" and not field(r, "error", False)]
+    if not warnings:
+        return ""
+    lines = [
+        "PRE-EXECUTE WARNINGS TO ADDRESS IN THIS WORK:",
+        "These validators allowed the task to proceed; address their concerns within the task's intent:",
+    ]
+    lines.extend(f"- {field(r, 'validator_id', '?')}: {field(r, 'justification', '')}" for r in warnings)
+    return "\n".join(lines)
+
+
 def _resolved_base_branch(project_root: Any) -> str:
     """Return the repository's base branch, or "" when it cannot be resolved.
 
@@ -182,6 +198,18 @@ class ValidationNodeMixin:
 
         return self._state_to_dict(loop_state)
 
+    @staticmethod
+    def _coder_memory_summary(loop_state: LoopState) -> str:
+        summary = loop_state.summary or ""
+        # Recovery specs already contain accumulated findings; don't duplicate them.
+        if loop_state.task.depth > 0 or loop_state.task.prior_failures:
+            return summary
+        pre_validation = loop_state.metadata.get("pre_validation") or {}
+        if pre_validation.get("outcome") != "passed":
+            return summary
+        briefing = _pre_execute_warn_briefing(pre_validation.get("validator_results", []))
+        return "\n\n".join(part for part in (summary, briefing) if part)
+
     def _execute_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Stage 3: Execute task (REAL IMPLEMENTATION - writes files!)."""
         loop_state = self._dict_to_state(state)
@@ -254,7 +282,7 @@ class ValidationNodeMixin:
                     self.coder,
                     self.workspace_mcp,
                     self.git_mcp,
-                    memory_summary=loop_state.summary,
+                    memory_summary=self._coder_memory_summary(loop_state),
                     project_context=self._project_context_cache,
                 )
                 self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")

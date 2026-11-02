@@ -3,12 +3,14 @@
 FILE: tests/engine/test_loop_validation.py
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.loop import GraphBuilder
+from snodo.engine.nodes.validation import _pre_execute_warn_briefing
 from snodo.engine.nodes import validation
 
 
@@ -831,3 +833,46 @@ def test_resolved_base_branch_logs_resolution_failure(monkeypatch, caplog):
         record.levelname == "DEBUG" and "base ref unavailable" in record.message
         for record in caplog.records
     )
+
+
+def test_pre_execute_warn_briefing_includes_warns_but_not_passes_or_blockers():
+    results = [
+        ValidatorResult(validator_id="security", severity="warn", justification="Escape user input"),
+        ValidatorResult(validator_id="architecture", severity="pass", justification="Looks good"),
+        ValidatorResult(validator_id="meta", severity="blocker", justification="Must halt"),
+    ]
+    briefing = _pre_execute_warn_briefing(results)
+    assert "PRE-EXECUTE WARNINGS TO ADDRESS IN THIS WORK" in briefing
+    assert "security: Escape user input" in briefing
+    assert "architecture" not in briefing
+    assert "Must halt" not in briefing
+
+
+def test_pre_execute_warn_briefing_empty_without_warns():
+    assert _pre_execute_warn_briefing([
+        ValidatorResult(validator_id="security", severity="pass", justification="Clear")
+    ]) == ""
+
+
+def test_coder_memory_summary_delivers_pre_execute_warn():
+    loop_state = SimpleNamespace(
+        summary="existing summary",
+        task=SimpleNamespace(depth=0, prior_failures=[]),
+        metadata={"pre_validation": {"outcome": "passed", "validator_results": [
+            {"validator_id": "architecture", "severity": "warn", "justification": "Keep the boundary stable"}
+        ]}},
+    )
+    summary = validation.ValidationNodeMixin._coder_memory_summary(loop_state)
+    assert "existing summary" in summary
+    assert "architecture: Keep the boundary stable" in summary
+
+
+def test_coder_memory_summary_does_not_duplicate_recovery_evidence():
+    loop_state = SimpleNamespace(
+        summary="existing recovery evidence",
+        task=SimpleNamespace(depth=1, prior_failures=[{"validator_id": "security"}]),
+        metadata={"pre_validation": {"outcome": "passed", "validator_results": [
+            {"validator_id": "security", "severity": "warn", "justification": "Already in recovery spec"}
+        ]}},
+    )
+    assert validation.ValidationNodeMixin._coder_memory_summary(loop_state) == "existing recovery evidence"
