@@ -1,0 +1,10 @@
+intent: 'Stop acceptance from warning that it cannot verify a gate that passed (issue
+  1046): give it the gate verdict as evidence. Every plan loses up to an hour per
+  task to this loop today. No new state, status, severity or halt type, and no change
+  to the cloud wire.'
+name: acceptance-gate-evidence
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_acceptance_gate_evidence

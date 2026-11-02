@@ -1,16 +1,22 @@
 {
   "tasks": {
     "1.1_recon_event_log_module": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "0d5e24f47de81bd0"
+      "spec_hash": "0d5e24f47de81bd0",
+      "completed_by": "orchestrator (Claude, overnight)",
+      "completed_at": "2026-11-02T08:44:43.032775+00:00",
+      "judged": false
     },
     "1.2_recon_event_log_spec_doc": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "7721301fa7d89932"
+      "spec_hash": "7721301fa7d89932",
+      "completed_by": "orchestrator (Claude, overnight)",
+      "completed_at": "2026-11-02T08:44:43.417507+00:00",
+      "judged": false
     },
     "2.1_recon_emit_events": {
       "status": "pending",
@@ -30,5 +36,9 @@
       "depth": 0,
       "spec_hash": "6c6a7df4eaf0f1f8"
     }
+  },
+  "integration": {
+    "branch": "plan/recon-event-stream/integration",
+    "base_sha": "d29fac001b0931714d8e302f6c5efdde365c9f60"
   }
 }

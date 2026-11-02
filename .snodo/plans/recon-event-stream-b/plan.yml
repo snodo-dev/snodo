@@ -1,0 +1,17 @@
+intent: 'Finish live recon progress (issue 1065) on top of the event log module and
+  spec section already merged to main: recon agents write events while they work,
+  and snodo logs for a recon id with --watch shows them. The recon state machine is
+  unchanged: no new state, status, severity or halt type, and no change to the cloud
+  wire.'
+name: recon-event-stream-b
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_recon_emit_events
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_logs_watch_recon_events
+  - 2.2_recon_event_stream_docs

@@ -24,12 +24,6 @@
       "depth": 0,
       "spec_hash": "6e709c37ed7e8935"
     },
-    "2.2_acceptance_gate_evidence": {
-      "status": "pending",
-      "parent_task_ref": null,
-      "depth": 0,
-      "spec_hash": "11e685be68e28211"
-    },
     "2.3_list_jobs_compact": {
       "status": "pending",
       "parent_task_ref": null,

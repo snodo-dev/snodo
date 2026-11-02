@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_acceptance_gate_evidence": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c436b013edab3893"
+    }
+  }
+}

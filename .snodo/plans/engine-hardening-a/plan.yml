@@ -15,7 +15,6 @@ waves:
   id: 2
   tasks:
   - 2.1_validator_bad_tool_arguments
-  - 2.2_acceptance_gate_evidence
   - 2.3_list_jobs_compact
 - depends_on:
   - 2

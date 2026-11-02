@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "1.1_recon_emit_events": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d4102838a95148f4"
+    },
+    "2.1_logs_watch_recon_events": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ae4bcb127ea5d5e3"
+    },
+    "2.2_recon_event_stream_docs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e4ac86615cc04bad"
+    }
+  }
+}
