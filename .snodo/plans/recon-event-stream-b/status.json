@@ -1,7 +1,7 @@
 {
   "tasks": {
     "1.1_recon_emit_events": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "d4102838a95148f4"
@@ -18,5 +18,9 @@
       "depth": 0,
       "spec_hash": "e4ac86615cc04bad"
     }
+  },
+  "integration": {
+    "branch": "plan/recon-event-stream-b/integration",
+    "base_sha": "3376686e8ea24a12183293c820081141312fc2a8"
   }
 }
