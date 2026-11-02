@@ -894,3 +894,22 @@ def test_merge_branch_fails_with_staged_unrelated_file(temp_git_repo):
 
     assert "Staged changes in index would be overwritten by merge" in str(exc_info.value)
     assert "scripts/deploy.sh" in str(exc_info.value)
+
+
+def test_diff_between_refs_accepts_ref_range_and_two_refs(temp_git_repo):
+    git_mcp, tmpdir = temp_git_repo
+    path = Path(tmpdir) / "README.md"
+    path.write_text("# Changed\n")
+    subprocess.run(["git", "add", "README.md"], cwd=tmpdir, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "change"], cwd=tmpdir, check=True, capture_output=True)
+    head = git_mcp.get_head_sha()
+    parent = f"{head}^"
+
+    assert "# Changed" in git_mcp.diff_between_refs(parent)
+    assert "# Changed" in git_mcp.diff_between_refs(f"{parent}..{head}", "HEAD")
+    assert "# Changed" in git_mcp.diff_between_refs(parent, head)
+    # Issue #1047: do not append HEAD to a range that already ends in HEAD.
+    assert "# Changed" in git_mcp.diff_between_refs(f"{parent}..HEAD", "HEAD")
+
+    with pytest.raises(GitError, match="Could not read diff"):
+        git_mcp.diff_between_refs("not-a-real-ref", "HEAD")
