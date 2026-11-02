@@ -382,13 +382,9 @@ class TestAttackScenarios:
             decision_records=[record.jwt],
             task_ref="task-t2",  # DIFFERENT task
         )
-        # The carry-forward logic resolves the warn for T2 using T1's adjudication.
-        # This is intentional (retry sessions), not a vulnerability.
-        assert decision.action.value == "proceed", (
-            "Carry-forward replay should resolve the warn for the retry task. "
-            "If this changes, update this test and the docs — it is a policy change."
-        )
-        assert decision.warn_count == 0
+        # An unrelated task must receive a fresh validator decision.
+        assert decision.action.value == "escalate"
+        assert decision.warn_count == 1
 
 
 # ---------------------------------------------------------------------------

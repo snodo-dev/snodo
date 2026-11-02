@@ -297,12 +297,7 @@ class TestPolicyDecisionRecordConsultation:
         assert decision.action.value == "escalate"  # not unanimous (1 warn remains)
 
     def test_carry_forward_on_retry_task(self):
-        """Adjudication from a prior task carries forward to a retry task.
-
-        When a task is blocked, adjudicated, and re-dispatched with a new
-        task_id, the adjudicated concern should follow — the human already
-        authorized the override for this session.
-        """
+        """A verdict carries forward only within its root recovery lineage."""
         issuer = _make_issuer()
         evaluator, policy = self._make_evaluator(issuer)
         warn_result = _make_result("architecture", "warn", "Concern")
@@ -316,7 +311,7 @@ class TestPolicyDecisionRecordConsultation:
             results, policy,
             "post_execute",
             decision_records=[record.jwt],
-            task_ref="t1",  # Different task — retry
+            task_ref="t2_fix_1",  # Recovery sub-task of the adjudicated root
         )
         assert decision.pass_count == 2
         assert decision.warn_count == 0
