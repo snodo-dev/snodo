@@ -767,7 +767,7 @@ class TestDispatchTask:
         with patch("snodo.jobs.JobManager") as mock_cls:
             mock_jm = MagicMock()
             mock_jm.list_jobs.return_value = [
-                {"id": "j_1", "status": "completed", "task_ref": "T-1",
+                {"id": "j_1", "status": "completed", "job_type": "queue", "wave": 2, "error": "brief failure", "task_ref": "T-1",
                  "title": "task A", "exit_code": 0, "created_at": 100.0,
                  "started_at": 100.0, "completed_at": 130.0,
                  "duration_seconds": 30.0},
@@ -783,7 +783,10 @@ class TestDispatchTask:
         assert result["limit"] == 50
         assert result["truncated"] is False
         assert len(result["jobs"]) == 2
-        assert set(result["jobs"][0]) == {"id", "type", "status", "created", "started", "completed", "title", "task_id"}
+        assert set(result["jobs"][0]) == {"id", "type", "status", "created", "started", "completed", "wave", "title", "task_id", "error"}
+        assert result["jobs"][0]["type"] == "queue"
+        assert result["jobs"][0]["wave"] == 2
+        assert result["jobs"][0]["error"] == "brief failure"
         assert result["jobs"][0]["id"] == "j_1"
         assert result["jobs"][1]["status"] == "running"
         assert "description" not in result["jobs"][0]

@@ -372,7 +372,7 @@ dispatch surface provides the following task loop:
 - `dispatch_task` takes required `task_spec`, with optional `coding_model` and
   `module`. It returns a job id for background execution. Use `get_job_status`,
   `get_job_logs`, or `watch_job` to follow the job. `list_jobs` returns compact
-  rows (id, type, status, timestamps, and available plan/wave/parent/task identity),
+  rows (id, type, status, timestamps, and available plan/wave/parent/task identity and brief error),
   defaults to 50 rows and caps `limit` at 100. Filter with an exact `status`
   (queued, running, completed, failed, cancelled, or unmerged); `truncated` indicates
   whether more matching rows remain. Specs and logs are available from the detail tools.

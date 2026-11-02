@@ -24,7 +24,7 @@ results were truncated:
 1. Find the plan-run row by its returned `id`. It has `plan` set and an empty
    `task_ref`.
 2. Find child rows whose `parent_job` equals that plan job id. Their
-   `task_ref` identifies the task they ran.
+   `task_id` identifies the task they ran.
 3. For a child that needs detail, call `get_job_status` with its `id`. This
    gives its status, exit code, timestamps, and task specification. Call
    `get_job_logs` with the same id when the task needs diagnostic output.

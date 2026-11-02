@@ -498,7 +498,7 @@ class TestBoundedListing:
         assert set(jobs[0]) == {
             "id", "status", "task_ref", "title", "exit_code",
             "created_at", "started_at", "completed_at", "duration_seconds",
-            "plan", "parent_job",
+            "plan", "parent_job", "job_type", "wave", "error",
         }
 
     def test_running_job_duration_advances_queued_job_none(self, manager):

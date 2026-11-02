@@ -492,6 +492,9 @@ class JobManager:
         return {
             "id": job_id,
             "status": state.get("status", "unknown"),
+            "job_type": state.get("job_type") or ("plan" if plan else "queue" if task.get("queue_run") else "task"),
+            "wave": task.get("wave"),
+            "error": state.get("error"),
             "task_ref": "" if plan else (
                 task.get("task_id") or task.get("retry_task_id") or ""
             ),
