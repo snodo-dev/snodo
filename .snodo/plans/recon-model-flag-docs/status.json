@@ -1,0 +1,9 @@
+{
+  "integration": {
+    "branch": "plan/recon-model-flag-docs/integration",
+    "base_sha": "82f4aef18c82f04cc3f583746b05d45ec5ea1c13"
+  },
+  "tasks": {
+    "1.1_recon_model_option_docs": "completed"
+  }
+}
