@@ -1,19 +1,19 @@
 {
   "tasks": {
     "1.1_checkpoint_db_busy_timeout": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "7255de3e68475039"
     },
     "1.2_diff_between_refs_range": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "1bb50691052fc859"
     },
     "1.3_verdict_carry_forward_same_task": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "a7df1dcdaef44700"
@@ -54,5 +54,9 @@
       "depth": 0,
       "spec_hash": "caee4a30182f652f"
     }
+  },
+  "integration": {
+    "branch": "plan/engine-hardening-a/integration",
+    "base_sha": "9c983833cd82159327d0df792c0d3e5e30366710"
   }
 }
