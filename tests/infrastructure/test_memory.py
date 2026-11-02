@@ -341,6 +341,48 @@ class TestCheckpointer:
         finally:
             saver.conn.close()
 
+    def test_checkpointer_configures_busy_timeout_and_wal(self, manager):
+        saver = manager.get_checkpointer()
+        try:
+            assert saver.conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+            assert saver.conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+        finally:
+            saver.conn.close()
+
+    def test_concurrent_connections_wait_for_checkpoint_write(self, manager):
+        import threading
+
+        saver = manager.get_checkpointer()
+        writer = sqlite3.connect(str(manager.db_path), timeout=0, check_same_thread=False)
+        writer.execute("PRAGMA busy_timeout=5000")
+        errors = []
+        try:
+            writer.execute("CREATE TABLE IF NOT EXISTS contention_test (value TEXT)")
+            writer.commit()
+            writer.execute("BEGIN IMMEDIATE")
+            writer.execute("INSERT INTO contention_test VALUES ('first')")
+
+            def competing_write():
+                try:
+                    saver.conn.execute("INSERT INTO contention_test VALUES ('second')")
+                    saver.conn.commit()
+                except Exception as exc:
+                    errors.append(exc)
+
+            thread = threading.Thread(target=competing_write)
+            thread.start()
+            time.sleep(0.1)
+            writer.commit()
+            thread.join(timeout=6)
+            assert not thread.is_alive()
+            assert errors == []
+            assert saver.conn.execute("SELECT COUNT(*) FROM contention_test").fetchone()[0] == 2
+        finally:
+            if writer.in_transaction:
+                writer.rollback()
+            writer.close()
+            saver.conn.close()
+
 
 # === CLI Integration Tests ===
 

@@ -509,20 +509,26 @@ class GitMCP:
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
-    def diff_between_refs(self, ref1: str, ref2: str) -> str:
-        """Read diff between two git refs.
+    def diff_between_refs(self, ref1: str, ref2: str = "HEAD") -> str:
+        """Read a diff expressed as a ref, a range, or two refs.
 
-        Args:
-            ref1: First ref (e.g. "HEAD~1")
-            ref2: Second ref (e.g. "HEAD")
-
-        Returns:
-            Diff output as string
+        A single ref is compared with HEAD. An existing ``..``/``...`` range
+        is passed through unchanged; two ordinary refs are joined into a range.
         """
+        first, second = str(ref1).strip(), str(ref2).strip()
+        if not first:
+            raise GitError("Could not read diff: provide a ref or ref range")
+        if ".." in first:
+            if second != "HEAD":
+                raise GitError("Could not read diff: provide a range or two refs, not both")
+            range_spec = first
+        else:
+            range_spec = f"{first}..{second or 'HEAD'}"
         try:
-            return self.repo.git.diff(f"{ref1}..{ref2}")
+            return self.repo.git.diff(range_spec)
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
+            detail = e.stderr.strip() if e.stderr else str(e)
+            raise GitError(f"Could not read diff for '{range_spec}': {detail}") from e
 
     def changed_paths_between_refs(self, ref1: str, ref2: str) -> List[str]:
         """Return every path changed between two refs, including rename sides."""
