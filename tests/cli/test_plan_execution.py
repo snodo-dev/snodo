@@ -2388,6 +2388,42 @@ def test_completed_wave_rerun_invokes_delivery_without_dispatching_tasks(capsys)
     assert "skipped (completed)" in capsys.readouterr().out
 
 
+def test_recorded_completion_on_rerun_delivers_integration_to_main(plan_project_env):
+    """A hand-recorded final task still crosses the wave delivery boundary."""
+    import subprocess
+    from snodo.cli.commands.plan_run import _execute_waves
+    from snodo.mcp.planner import PlannerMCP
+
+    planner = PlannerMCP(str(plan_project_env))
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "recorded_rerun_plan")
+    repo = _init_git_project(plan_project_env)
+    integration = "plan/recorded_rerun_plan/integration"
+    subprocess.run(["git", "checkout", "-qb", integration], cwd=plan_project_env, check=True)
+    (plan_project_env / "integrated.txt").write_text("delivered\n")
+    subprocess.run(["git", "add", "integrated.txt"], cwd=plan_project_env, check=True)
+    subprocess.run(["git", "commit", "-qm", "integration work"], cwd=plan_project_env, check=True)
+    integration_sha = repo.commit(integration).hexsha
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=plan_project_env, check=True)
+    planner.record_status(plan_name, "task_1_a", "completed", "operator")
+    planner.record_status(plan_name, "task_1_b", "completed", "operator")
+
+    def deliver():
+        subprocess.run(["git", "merge", "--no-ff", "-qm", "deliver integration", integration], cwd=plan_project_env, check=True)
+        return False
+
+    failed = _execute_waves(
+        [{"id": 1, "tasks": ["task_1_a", "task_1_b"]}],
+        planner, SimpleNamespace(plan=plan_name), None, None,
+        [{"id": 1, "tasks": ["task_1_a", "task_1_b"]}], False,
+        on_wave_complete=deliver,
+    )
+
+    assert not failed
+    assert repo.git.merge_base("--is-ancestor", integration_sha, "main", with_exceptions=False) == 0
+    assert (plan_project_env / "integrated.txt").read_text() == "delivered\n"
+    repo.close()
+
+
 def test_completed_wave_rerun_with_nothing_to_deliver_reports_no_change(capsys):
     from snodo.cli.commands.plan_delivery import deliver_healthy_plan_wave
 
