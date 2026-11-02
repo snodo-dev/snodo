@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---|---|
-| 0.27.x | ✅ |
-| < 0.27 | ❌ |
+| 0.28.x | ✅ |
+| < 0.28 | ❌ |
 
 snodo is pre-1.0 and ships frequent patch releases. Only the latest
 minor series receives security fixes; upgrade to the current release
