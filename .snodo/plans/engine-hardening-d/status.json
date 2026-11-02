@@ -1,7 +1,7 @@
 {
   "tasks": {
     "1.1_verdict_carry_forward_same_task": {
-      "status": "pending",
+      "status": "in_progress",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "72d80c2341b28ec9"
@@ -18,5 +18,9 @@
       "depth": 0,
       "spec_hash": "673955d7c782489c"
     }
+  },
+  "integration": {
+    "branch": "plan/engine-hardening-d/integration",
+    "base_sha": "4405bc3e73da43355dc2ec378e0f3cd1b0ebffce"
   }
 }
