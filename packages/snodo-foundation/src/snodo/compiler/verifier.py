@@ -604,6 +604,14 @@ def verify_plan(
         )
 
         root = workspace_root or plan_dir.parents[2]
+        ordered_tasks = [task_id for wave in plan.waves for task_id in wave.tasks]
+        creators: Dict[str, int] = {}
+        for position, task_id in enumerate(ordered_tasks):
+            wave = next(w for w in plan.waves if task_id in w.tasks)
+            spec_file = plan_dir / f"wave_{wave.id}" / f"{task_id}_task.md"
+            if spec_file.exists():
+                for path in planned_spec_paths(spec_file.read_text()):
+                    creators.setdefault(path, position)
         earlier_created: Set[str] = set()
         for w in plan.waves:
             wave_dir = plan_dir / f"wave_{w.id}"
@@ -622,7 +630,14 @@ def verify_plan(
                 missing_paths = check_spec_paths_exist(str(root), spec)
                 for path in missing_paths:
                     if path not in earlier_created and path not in created_by_task:
-                        errors.append(f"Missing referenced path in spec {task_id}: {path}")
+                        creator_position = creators.get(path)
+                        current_position = ordered_tasks.index(task_id)
+                        if creator_position is not None and creator_position > current_position:
+                            errors.append(
+                                f"Referenced path in spec {task_id} is created by a later task: {path}"
+                            )
+                        else:
+                            errors.append(f"Missing referenced path in spec {task_id}: {path}")
                 earlier_created.update(created_by_task)
 
             for path, task_ids in cited_by_path.items():

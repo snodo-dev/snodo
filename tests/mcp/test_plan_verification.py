@@ -271,6 +271,64 @@ def test_verify_plan_rejects_spec_path_missing_from_all_workspace_roots(tmp_path
     assert "Missing referenced path in spec 1.1_paths: consumers/nowhere.ts" in result.errors
 
 
+
+def _write_created_path_plan(tmp_path, creator_spec: str, *, creator_first: bool = True):
+    """Write a two-wave plan whose specs cite a path absent from the checkout."""
+    plan_dir = tmp_path / ".snodo" / "plans" / "created_path"
+    for wave_id in (1, 2):
+        (plan_dir / f"wave_{wave_id}").mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text(yaml.safe_dump({
+        "name": "created_path",
+        "intent": "Validate planned path references",
+        "waves": [
+            {"id": 1, "depends_on": [], "tasks": ["1.1_creator" if creator_first else "1.1_reader"]},
+            {"id": 2, "depends_on": [1], "tasks": ["2.1_reader" if creator_first else "2.1_creator"]},
+        ],
+    }))
+    creator_id, reader_id = ("1.1_creator", "2.1_reader") if creator_first else ("2.1_creator", "1.1_reader")
+    creator_wave = 1 if creator_first else 2
+    reader_wave = 2 if creator_first else 1
+    (plan_dir / f"wave_{creator_wave}" / f"{creator_id}_task.md").write_text(creator_spec)
+    (plan_dir / f"wave_{reader_wave}" / f"{reader_id}_task.md").write_text(
+        "Use `src/generated.py` as the implementation.\n"
+    )
+    return plan_dir
+
+
+@pytest.mark.parametrize("creator_spec", [
+    "Create `src/generated.py` as a new module.\n",
+    "Add a new module:\n- `src/generated.py`\n",
+])
+def test_verify_plan_accepts_path_created_by_earlier_task(tmp_path, creator_spec):
+    plan_dir = _write_created_path_plan(tmp_path, creator_spec)
+
+    result = verify_plan_dir(plan_dir, workspace_root=tmp_path)
+
+    assert result.passed
+    assert not any("src/generated.py" in error for error in result.errors)
+
+
+def test_verify_plan_reports_path_created_by_later_task(tmp_path):
+    plan_dir = _write_created_path_plan(
+        tmp_path, "Create `src/generated.py` as a new module.\n", creator_first=False
+    )
+
+    result = verify_plan_dir(plan_dir, workspace_root=tmp_path)
+
+    assert not result.passed
+    assert "Referenced path in spec 1.1_reader is created by a later task: src/generated.py" in result.errors
+    assert not any(error.startswith("Missing referenced path") for error in result.errors)
+
+
+def test_verify_plan_still_reports_genuinely_missing_input_path(tmp_path):
+    plan_dir = _write_path_validation_plan(tmp_path, "src/not_created.py")
+
+    result = verify_plan_dir(plan_dir, workspace_root=tmp_path)
+
+    assert not result.passed
+    assert "Missing referenced path in spec 1.1_paths: src/not_created.py" in result.errors
+
+
 def test_verify_plan_warns_when_same_wave_specs_cite_same_file(tmp_path):
     """Same-wave citations name both tasks and the possible shared file."""
     shared_file = tmp_path / "src" / "shared.py"

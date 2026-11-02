@@ -447,11 +447,18 @@ def workspace_roots(project_root: str) -> List[Path]:
 
 
 def planned_spec_paths(spec: str) -> List[str]:
-    """Return cited paths this spec explicitly says it will create."""
+    """Return paths this spec explicitly says it will create.
+
+    Creation language and the path are often split across a heading/bullet and
+    the following line. Treat a path within one neighboring line of creation
+    language as declared.
+    """
+    lines = spec.splitlines()
+    creation = re.compile(r"\b(?:new file|new (?:\w+\s+)*module|create|created|will create|add .*file)\b", re.I)
+    creator_lines = [i for i, line in enumerate(lines) if creation.search(line)]
     paths: List[str] = []
-    for line in spec.splitlines():
-        lowered = line.lower()
-        if not re.search(r"\b(new file|create|created|will create|add .*file)\b", lowered):
+    for index, line in enumerate(lines):
+        if not any(abs(index - creator_index) <= 1 for creator_index in creator_lines):
             continue
         for path in _spec_referenced_paths(line):
             if path not in paths:
