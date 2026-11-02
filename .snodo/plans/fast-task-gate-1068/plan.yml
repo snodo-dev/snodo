@@ -1,0 +1,18 @@
+intent: 'Make the per-task quality check fast (issue 1068): a new gate-task target runs
+  the same lint, import-contract and ratchet steps as the full gate but only the tests
+  that the task''s diff touches, with the full suite still run by CI, the release dry
+  run and make gate. Small increments: the test selector, the documentation, then the
+  gate target that uses it. No new state, status, severity or halt type, and no change
+  to the cloud wire.'
+name: fast-task-gate-1068
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_select_affected_tests
+  - 1.2_docs_describe_task_gate
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_gate_task_target
