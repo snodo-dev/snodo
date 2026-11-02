@@ -1,0 +1,10 @@
+intent: 'Make snodo logs for a recon id honour --watch: follow a running recon until
+  it reaches a terminal status, printing each agent result once as it lands (issue
+  1064). No new state, status, severity or halt type, and no change to the cloud wire.'
+name: recon-logs-watch
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_recon_logs_watch_loop
+  - 1.2_recon_logs_watch_docs
