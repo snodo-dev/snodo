@@ -225,8 +225,9 @@ with `?task_ref=<task_ref>` shows task status and progress when cloud sync is
 configured and a task reference exists. Use `snodo logs <job_id> --watch` for
 the live output stream; `snodo job logs <job_id> --watch` is also available.
 `snodo logs <recon_id> --watch` follows a running recon until it is complete or
-failed, printing each agent's answer once as it arrives. Press Ctrl-C to detach
-without stopping the recon. `watch_job` is an optional MCP Apps enhancement and
+failed. It shows each agent's progress lines (reads and failovers) as they
+happen, then prints each agent's answer once as it arrives. Press Ctrl-C to
+detach without stopping the recon. `watch_job` is an optional MCP Apps enhancement and
 returns a plain-text snapshot to hosts that do not render Apps. Job
 notifications are configured in `~/.snodo/config.yml` and tested with `snodo config --notify-test`.
 The hidden `snodo notify test` command is deprecated in v0.18.0 and prints a

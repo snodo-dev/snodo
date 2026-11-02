@@ -107,8 +107,10 @@ answer already persisted, even while the recon is running; `pending_agents`
 names lanes that have not yet produced a result. Continue polling until its
 status is `complete` or `failed`, then call `get_recon_results` with the same id
 to retrieve the final raw result for each agent. From the CLI, use
-`snodo logs <recon_id> --watch` to follow a running recon and see each agent's
-answer once as it arrives; Ctrl-C detaches without stopping the recon.
+`snodo logs <recon_id> --watch` to follow a running recon: it shows each agent's
+progress while it works, then its answer once as it arrives; Ctrl-C detaches
+without stopping the recon. The progress comes from `events.jsonl` in the recon
+directory, whose format is described in `docs/specs/recon-agents-cli.md`.
 
 ```text
 recon(query, paths, num_agents) -> recon_id

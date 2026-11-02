@@ -102,8 +102,8 @@ configured model list's single-agent failover behavior.
 
 Each recon directory may contain an `events.jsonl` file. While agents run,
 append one JSON object per line with a timestamp, lane position, agent label,
-model, kind, and detail. Kinds are `agent started`, `tool turn`, `failover`,
-`agent finished`, and `agent failed`. Tool-turn argument summaries are short
+model, kind, and detail. Kinds are `start`, `tool_turn`, `failover`,
+`finish`, and `failure`. Tool-turn argument summaries are short
 and must never include file contents. Reading the log is optional, and a log
 write failure must never affect the recon. This event log does not change the
 recon's own status values.
