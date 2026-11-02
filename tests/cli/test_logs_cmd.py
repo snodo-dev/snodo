@@ -1023,3 +1023,74 @@ def test_watch_duration_crosses_units(capsys, monkeypatch):
     assert "in 22:35" in out, out
     assert "in 7.5s" in out, out
     assert "1355.5s" not in out, out
+
+
+def _write_recon(root, status="running", results=None):
+    import json
+    recon = Path(root) / ".snodo" / "recons" / "rec_test"
+    recon.mkdir(parents=True, exist_ok=True)
+    (recon / "state.json").write_text(json.dumps({
+        "query": "test query", "status": status, "agents": ["agent"],
+    }))
+    if results is not None:
+        (recon / "results.json").write_text(json.dumps(results))
+    return recon
+
+
+def test_recon_watch_follows_and_prints_each_position_once(capsys, monkeypatch):
+    import json
+    from snodo.cli.commands import logs_cmd
+
+    with tempfile.TemporaryDirectory() as root:
+        recon = _write_recon(root)
+        calls = {"count": 0}
+
+        def poll(_seconds):
+            calls["count"] += 1
+            result = {"agent": "same", "model": "m", "result": "answer"}
+            (recon / "results.json").write_text(json.dumps([result, result]))
+            (recon / "state.json").write_text(json.dumps({"status": "complete"}))
+
+        monkeypatch.setattr(logs_cmd.time, "sleep", poll)
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=root):
+            assert logs_command(SimpleNamespace(composite_id="rec_test", watch=True)) == 0
+    out = capsys.readouterr().out
+    assert out.count("--- same (m) ---") == 2
+    assert out.count("answer") == 2
+    assert out.count("Recon: rec_test") == 1
+    assert calls["count"] == 1
+
+
+def test_recon_watch_finished_and_failed_print_results_once(capsys):
+    import json
+
+    for status in ("complete", "failed"):
+        with tempfile.TemporaryDirectory() as root:
+            recon = _write_recon(root, status, [{"agent": "a", "model": "m", "result": status}])
+            with patch("snodo.infrastructure.paths.require_project_root", return_value=root):
+                assert logs_command(SimpleNamespace(composite_id="rec_test", watch=True)) == 0
+            assert capsys.readouterr().out.count(status) >= 1
+            assert json.loads((recon / "results.json").read_text())[0]["result"] == status
+
+
+def test_recon_watch_interrupt_is_quiet_and_returns_130(capsys, monkeypatch):
+    from snodo.cli.commands import logs_cmd
+    with tempfile.TemporaryDirectory() as root:
+        _write_recon(root)
+        def interrupt(_seconds):
+            raise KeyboardInterrupt
+        monkeypatch.setattr(logs_cmd.time, "sleep", interrupt)
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=root):
+            assert logs_command(SimpleNamespace(composite_id="rec_test", watch=True)) == 130
+    assert "keeps running" in capsys.readouterr().out
+
+
+def test_recon_non_watch_output_unchanged(capsys):
+    with tempfile.TemporaryDirectory() as root:
+        _write_recon(root, "complete", [{"agent": "a", "model": "m", "result": "answer"}])
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=root):
+            assert logs_command(SimpleNamespace(composite_id="rec_test", watch=False)) == 0
+    assert capsys.readouterr().out == (
+        "Recon: rec_test\nQuery: test query\nStatus: complete\nAgents: agent\n\n"
+        "--- a (m) ---\nanswer\n\n"
+    )

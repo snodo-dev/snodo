@@ -52,7 +52,7 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def logs(
         composite_id: str = typer.Argument(..., help="Job ID (j_xxx) or Recon ID (rec_xxx)"),
-        watch: bool = typer.Option(False, "--watch", "-w", help="Tail job logs in real time until job completes"),
+        watch: bool = typer.Option(False, "--watch", "-w", help="Follow job logs or recon results until they finish"),
     ):
         """Show output for a job or recon by ID."""
         args = SimpleNamespace(composite_id=composite_id, watch=watch)
@@ -72,7 +72,7 @@ def logs_command(args) -> int:
     project_root = require_project_root()
 
     if composite_id.startswith("rec_"):
-        return _show_recon(project_root, composite_id)
+        return _show_recon(project_root, composite_id, args)
     if composite_id.startswith("j_"):
         return _show_job(project_root, composite_id, args)
     if composite_id.startswith("task_"):
@@ -82,7 +82,7 @@ def logs_command(args) -> int:
     if _job_exists(project_root, composite_id):
         return _show_job(project_root, composite_id, args)
     if _recon_exists(project_root, composite_id):
-        return _show_recon(project_root, composite_id)
+        return _show_recon(project_root, composite_id, args)
     if (Path(project_root) / ".snodo" / "tasks" / composite_id).is_dir():
         return _show_task_logs(project_root, composite_id, args)
     if (Path(project_root) / ".snodo" / "plans" / composite_id).is_dir():
@@ -697,8 +697,8 @@ def _stream_job_stdout(project_root: str, job_id: str, args) -> int:
     return 0
 
 
-def _show_recon(project_root: str, recon_id: str) -> int:
-    """Show recon results from results.json."""
+def _show_recon(project_root: str, recon_id: str, args=None) -> int:
+    """Show recon results, optionally following them until completion."""
     from pathlib import Path
     import json
 
@@ -709,6 +709,10 @@ def _show_recon(project_root: str, recon_id: str) -> int:
 
     state_path = recon_dir / "state.json"
     results_path = recon_dir / "results.json"
+
+    watch = bool(getattr(args, "watch", False))
+    if watch:
+        return _watch_recon(state_path, results_path, recon_id)
 
     state = {}
     if state_path.exists():
@@ -769,3 +773,80 @@ def _show_recon(project_root: str, recon_id: str) -> int:
         print("No results yet.")
 
     return 0
+
+
+_RECON_TERMINAL_STATUSES = {"complete", "failed"}
+
+
+def _read_recon_json(path: Path, default):
+    """Read a recon snapshot, tolerating files being absent or mid-write."""
+    import json
+
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError, TypeError):
+        return default
+
+
+def _print_recon_header(recon_id: str, state: dict) -> None:
+    query = state.get("query", "—")
+    status = state.get("status", "—")
+    agents = state.get("agents", [])
+    print(f"Recon: {recon_id}")
+    print(f"Query: {query}")
+    print(f"Status: {status}")
+    if agents:
+        from snodo.recon import normalize_recon_agents
+        lanes = normalize_recon_agents(agents)
+        print(f"Agents: {', '.join(lane[0] for lane in lanes)}")
+        for lane in lanes:
+            if len(lane) > 1:
+                print(f"  Failover order for {lane[0]}: {' → '.join(lane)}")
+    print()
+
+
+def _print_recon_result(r: dict) -> None:
+    agent = r.get("agent", "—")
+    model = r.get("model", "—")
+    result_text = r.get("result", "").strip()
+    error = r.get("error", "")
+    attempts = r.get("attempts", [])
+    print(f"--- {agent} ({model}) ---")
+    for attempt in attempts:
+        attempt_model = attempt.get("model", "—")
+        attempt_error = attempt.get("error", None)
+        if attempt_error:
+            print(f"  tried {attempt_model}: {attempt_error}")
+    if error:
+        print(f"Error: {error}")
+    print(result_text if result_text else "(empty result)")
+    print()
+
+
+def _watch_recon(state_path: Path, results_path: Path, recon_id: str) -> int:
+    """Print the recon header once and each appended result once."""
+    state = _read_recon_json(state_path, {})
+    if not isinstance(state, dict):
+        state = {}
+    _print_recon_header(recon_id, state)
+    seen = 0
+    try:
+        while True:
+            state = _read_recon_json(state_path, {})
+            results = _read_recon_json(results_path, [])
+            if not isinstance(state, dict):
+                state = {}
+            if not isinstance(results, list):
+                results = []
+            while seen < len(results):
+                result = results[seen]
+                if isinstance(result, dict):
+                    _print_recon_result(result)
+                seen += 1
+            if state.get("status") in _RECON_TERMINAL_STATUSES:
+                return 0
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print(f"Stopped watching recon {recon_id}; it keeps running.")
+        return 130
