@@ -609,7 +609,7 @@ class LLMValidator(ValidatorBase):
                     try:
                         args = json.loads(tc.function.arguments)
                     except (json.JSONDecodeError, TypeError):
-                        args = {}
+                        args = None
                     if tool_name == "submit_verdict":
                         # submit_verdict present but not a valid verdict
                         # (invalid severity or unparseable args) — feed back a
@@ -618,6 +618,15 @@ class LLMValidator(ValidatorBase):
                         result = self._submit_verdict_feedback(tc)
                         examination.append(
                             f"turn {turn + 1}: submit_verdict (rejected — invalid arguments)"
+                        )
+                        turn_progressed = True
+                    elif not isinstance(args, dict):
+                        result = (
+                            f"Invalid arguments for {tool_name}: expected a JSON object. "
+                            "Correct the arguments and try again."
+                        )
+                        examination.append(
+                            f"turn {turn + 1}: {tool_name} (rejected — invalid arguments)"
                         )
                         turn_progressed = True
                     elif tool_name not in offered_names:
@@ -973,8 +982,26 @@ class LLMValidator(ValidatorBase):
         try:
             args = json.loads(tc.function.arguments)
         except (json.JSONDecodeError, TypeError):
-            args = {}
-        severity = str(args.get("severity", "")).lower().strip()
+            args = None
+        if not isinstance(args, dict):
+            return (
+                "submit_verdict arguments must be a JSON object. "
+                "Call submit_verdict(task_id, severity, justification) with valid arguments."
+            )
+        allowed = {"task_id", "severity", "justification", "tool_access_missing"}
+        unknown = sorted(set(args) - allowed)
+        if unknown:
+            return (
+                f"submit_verdict has unknown field(s): {', '.join(unknown)}. "
+                "Use only task_id, severity, justification, and tool_access_missing."
+            )
+        if not isinstance(args.get("severity"), str):
+            return "submit_verdict severity must be a string: pass, warn, or blocker."
+        if not isinstance(args.get("justification"), str):
+            return "submit_verdict justification must be a string."
+        if "tool_access_missing" in args and not isinstance(args["tool_access_missing"], dict):
+            return "submit_verdict tool_access_missing must be an object."
+        severity = args["severity"].lower().strip()
         if severity not in self.VALID_SEVERITIES:
             return (
                 f"submit_verdict severity must be one of "
