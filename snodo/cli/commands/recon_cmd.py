@@ -18,9 +18,10 @@ def register(app: typer.Typer) -> None:
         query: str = typer.Argument(..., help="The exploration question to answer"),
         paths: Optional[List[str]] = typer.Argument(None, help="Paths to search (default: current directory)"),
         num_agents: Optional[int] = typer.Option(None, "--agents", "-n", help="Number of agents to fan out (uses config if omitted)"),
+        models: Optional[List[str]] = typer.Option(None, "--model", help="Model for an agent; repeat for more agents, separate failover models with commas"),
     ):
         """Dispatch a read-only exploration query to one or more agents."""
-        args = SimpleNamespace(query=query, paths=paths or ["./"], num_agents=num_agents)
+        args = SimpleNamespace(query=query, paths=paths or ["./"], num_agents=num_agents, models=models)
         return recon_command(args)
 
 
@@ -30,6 +31,11 @@ def recon_command(args) -> int:
     query = getattr(args, "query", "")
     paths = getattr(args, "paths", ["./"])
     num_agents = getattr(args, "num_agents", None)
+    explicit_models = getattr(args, "models", None)
+
+    if explicit_models and num_agents is not None:
+        print("Error: --agents/-n cannot be used with --model; agent count comes from the number of --model values.", file=sys.stderr)
+        return 1
 
     if not query:
         print("Error: query is required", file=sys.stderr)
@@ -56,11 +62,34 @@ def recon_command(args) -> int:
     max_tool_turns = recon_cfg.get("max_tool_turns", RECON_DEFAULT_MAX_TOOL_TURNS)
     max_tokens = recon_cfg.get("max_tokens", RECON_DEFAULT_MAX_TOKENS)
 
-    lanes, agent_count_notice = resolve_recon_agents_with_notice(
-        requested_n=num_agents,
-        recon_models=recon_models,
-        recon_default_n=recon_default_n,
-    )
+    if explicit_models:
+        from snodo.config import ConfigManager
+        from snodo.recon import resolve_agent_model
+
+        config_manager = ConfigManager()
+        lanes = []
+        for value in explicit_models:
+            lane = [resolve_agent_model(part.strip()) for part in value.split(",") if part.strip()]
+            if not lane:
+                print("Error: --model must name at least one model", file=sys.stderr)
+                return 1
+            for model in lane:
+                provider = ConfigManager.provider_for_model(model)
+                providers = config_manager.get_providers()
+                if not provider or provider not in providers:
+                    print(f"Error: unknown model or provider for '{model}'", file=sys.stderr)
+                    return 1
+                if not config_manager.get_key_for_model(model) and not config_manager.provider_uses_oauth(provider):
+                    print(f"Error: provider for model '{model}' is not configured", file=sys.stderr)
+                    return 1
+            lanes.append(lane)
+        agent_count_notice = None
+    else:
+        lanes, agent_count_notice = resolve_recon_agents_with_notice(
+            requested_n=num_agents,
+            recon_models=recon_models,
+            recon_default_n=recon_default_n,
+        )
 
     mgr = ReconManager(project_root)
     recon_id = mgr.submit(
