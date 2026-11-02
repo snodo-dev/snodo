@@ -960,7 +960,7 @@ def _sync_plan_integration(project_root: str, integration_path: Path, integratio
 
 def _execute_waves(waves, planner, args, protocol, model,
                    all_waves, interactive, effective_concurrency: int = 1,
-                   on_wave_complete=None) -> bool:
+                   on_wave_complete=None, on_wave_start=None) -> bool:
     """Execute waves in order, respecting dependencies and concurrency limits.
 
     Returns:
