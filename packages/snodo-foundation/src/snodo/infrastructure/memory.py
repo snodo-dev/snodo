@@ -11,6 +11,7 @@ Manages persistent agent memory:
 import json
 import logging
 import sqlite3
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -22,6 +23,9 @@ from snodo.infrastructure.atomic_json import atomic_write_json
 from snodo.infrastructure.paths import resolve_home
 
 _logger = logging.getLogger(__name__)
+
+# WAL is persistent per database; serialize first-time setup within this process.
+_CHECKPOINT_INIT_LOCK = threading.Lock()
 
 
 class MemoryError(Exception):
@@ -68,6 +72,14 @@ class AgentMemoryManager:
             the underlying connection when done.
         """
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        # Configure waiting before saver.setup() performs its first schema write.
+        conn.execute("PRAGMA busy_timeout=5000")
+        # WAL persists on the database file. Avoid requesting it on every
+        # connection; concurrent setup in this process is serialized.
+        with _CHECKPOINT_INIT_LOCK:
+            mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            if mode.lower() != "wal":
+                conn.execute("PRAGMA journal_mode=WAL")
         serde = _get_snodo_serde()
         saver = SqliteSaver(conn, serde=serde) if serde is not None else SqliteSaver(conn)
         saver.setup()
