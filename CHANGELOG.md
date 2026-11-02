@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Make `snodo logs <recon id> --watch` follow a running recon until it completes or fails, printing each agent's answer once as it arrives, instead of printing once and returning. (Fixes #1064)
+
 ## [0.28.0] — 2026-11-02
 
 - Let `snodo recon` run on the models you name: `--model <name>` (repeatable, one agent each) and `--models a,b,c` (comma-separated list), which override the recon configuration, cannot be combined with `--agents` / `-n`, and are refused before dispatch for an unknown model or unconfigured provider. (Fixes #1062, #1063)
