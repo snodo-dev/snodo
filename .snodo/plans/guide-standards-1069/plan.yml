@@ -1,0 +1,24 @@
+intent: 'Make the MCP guide teach the standards a plan author must respect (issue
+  #1069): serve the task-id and layout rules through a new `standards` guide topic,
+  state the wave-equals-listing rule in the generate_spec/propose_plan schema text,
+  and correct two inaccuracies in docs/authoring-a-plan.md.'
+intent_ref: int_425712
+name: guide-standards-1069
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_guide_standards_topic
+  - 1.2_schema_wave_rule
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_docs_standards_content
+  - 2.2_changelog_entry
+  - 2.3_schema_points_to_standards
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_standards_topic_tests
