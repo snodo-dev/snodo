@@ -188,3 +188,27 @@ def test_unknown_or_missing_base_fails_clearly(tmp_path):
         result = subprocess.run(args, cwd=repo, text=True, capture_output=True)
         assert result.returncode != 0
         assert "base" in result.stderr.lower() or "base" in result.stdout.lower()
+
+
+def test_template_change_selects_indirect_consumers_only(tmp_path):
+    changed = "packages/snodo-foundation/src/snodo/protocols/templates/team.yml"
+    consumers = [
+        "tests/golden/test_template_snapshots.py",
+        "tests/cli/test_main.py",
+        "tests/mcp/test_planner.py",
+        "tests/cli/test_retry_prompt_construction.py",
+    ]
+    files = {changed: "before\n", "tests/test_unrelated.py": "assert True\n"}
+    references = {
+        consumers[0]: "from .conftest import verify_golden\n",
+        consumers[1]: "from snodo.cli.main import DEFAULT_PROTOCOL\n",
+        consumers[2]: "from snodo.cli.main import DEFAULT_PROTOCOL, load_protocol\n",
+        consumers[3]: "snodo.cli.commands.run_cmd.load_protocol(path)\n",
+    }
+    files.update(references)
+    repo, base = _repo(tmp_path, files)
+    _change(repo, changed, "after\n")
+    _commit(repo, "change protocol template")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == sorted(consumers)

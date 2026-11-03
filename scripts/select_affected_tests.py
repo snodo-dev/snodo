@@ -10,23 +10,29 @@ import sys
 from pathlib import Path
 
 RUNTIME_READ_TESTS = {
-    "docs/": (
-        "tests/mcp/test_server.py",
-        "tests/mcp/test_structure_guidance.py",
-        "tests/mcp/test_blocked_plan_guidance.py",
-    ),
-    "snodo/cli/commands/model_benchmark_prompt.txt": (
-        "tests/cli/test_models_benchmark.py",
-    ),
-    "schemas/protocol-v1.json": (
-        "tests/scripts/test_protocol_schema_publication.py",
-    ),
+    "docs/": {
+        "tests": (
+            "tests/mcp/test_server.py",
+            "tests/mcp/test_structure_guidance.py",
+            "tests/mcp/test_blocked_plan_guidance.py",
+        ),
+    },
+    "snodo/cli/commands/model_benchmark_prompt.txt": {
+        "tests": ("tests/cli/test_models_benchmark.py",),
+    },
+    "schemas/protocol-v1.json": {
+        "tests": ("tests/scripts/test_protocol_schema_publication.py",),
+    },
+    "packages/snodo-foundation/src/snodo/protocols/templates/": {
+        "reference": re.compile(
+            r"snodo\.protocols|PROTOCOL_TEMPLATES|list_templates|template_protocol|"
+            r"TEMPLATES_DIR|_TEMPLATES_DIR|_load_protocol|verify_golden|"
+            r"DEFAULT_PROTOCOL|SOLO_PROTOCOL|INTENT_PROTOCOL|load_protocol|"
+            r"protocols?[/\\]templates?"
+        ),
+    },
 }
 GUIDE_MARKER = re.compile(r"<!--\s*snodo-guide\s+.+?-->")
-TEMPLATE_REFERENCE = re.compile(
-    r"snodo\.protocols|PROTOCOL_TEMPLATES|list_templates|template_protocol|"
-    r"TEMPLATES_DIR|_load_protocol|protocols?[/\\]templates?"
-)
 
 SHARED_FILES = {
     "pyproject.toml",
@@ -89,7 +95,7 @@ def select(repo: Path, base: str) -> list[str]:
     selected: set[str] = set()
     modules: set[str] = set()
     for name in changed:
-        for prefix, tests in RUNTIME_READ_TESTS.items():
+        for prefix, rule in RUNTIME_READ_TESTS.items():
             if not name.startswith(prefix):
                 continue
             if prefix == "docs/":
@@ -101,16 +107,20 @@ def select(repo: Path, base: str) -> list[str]:
                         pass
                 if not any(GUIDE_MARKER.search(text) for text in texts):
                     break
-            selected.update(test for test in tests if (repo / test).is_file())
+            if "tests" in rule:
+                selected.update(
+                    test for test in rule["tests"] if (repo / test).is_file()
+                )
+            else:
+                pattern = rule["reference"]
+                for path in sorted((repo / "tests").rglob("*.py")):
+                    try:
+                        source = path.read_text(encoding="utf-8")
+                    except (OSError, UnicodeError):
+                        continue
+                    if pattern.search(source):
+                        selected.add(path.relative_to(repo).as_posix())
             break
-        if name.startswith("packages/snodo-foundation/src/snodo/protocols/templates/"):
-            for path in sorted((repo / "tests").rglob("*.py")):
-                try:
-                    source = path.read_text(encoding="utf-8")
-                except (OSError, UnicodeError):
-                    continue
-                if TEMPLATE_REFERENCE.search(source):
-                    selected.add(path.relative_to(repo).as_posix())
         if name.startswith("tests/") and name.endswith(".py"):
             if (repo / name).is_file():
                 selected.add(name)
