@@ -9,7 +9,7 @@ everything below is authored.
 
 ---
 
-<!-- snodo-guide topic="waves" aliases="plan,sizing" summary="Wave dependencies and sizing" section="## 1. The one modelling rule" -->
+<!-- snodo-guide topic="waves" aliases="plan,sizing" summary="Wave order and sizing" section="## 1. The one modelling rule" -->
 ## 1. The one modelling rule
 
 **Dependencies are between waves, not between tasks.**
@@ -42,7 +42,7 @@ waves only when ordering or overlapping code demands it.
 
 ---
 
-<!-- snodo-guide topic="standards" summary="Plan layout, files, and task-id rules" section="## 2. Layout" -->
+<!-- snodo-guide topic="standards" summary="Plan rules" section="## 2. Layout" -->
 ## 2. Layout
 
 ```
@@ -133,7 +133,7 @@ validate.
 
 ### Standards & Conventions
 
-<!-- snodo-guide topic="standards" summary="Plan layout, files, and task-id rules" section="### Standards & Conventions" -->
+<!-- snodo-guide topic="standards" summary="Plan rules" section="### Standards & Conventions" -->
 
 Keep `waves[].depends_on` as integer wave ids; a non-integer entry is reported as
 `Wave <id> depends on non-integer wave '<value>'`. Wave ids themselves must be
@@ -164,9 +164,9 @@ A referenced path created only by a later task is an error:
 `Referenced path in spec <task_id> is created by a later task: <path>`. Same-wave
 file overlap is only a warning (`Possible same-wave file overlap in wave <id>...`);
 review whether the tasks can conflict, and separate them into waves if they can.
-A new path is recognized when a path is on the same line as, or immediately
-adjacent to a line containing, creation language such as `new file`, `new …
-module`, `create`, `created`, `will create`, or `add … file`.
+A new path is recognized when it appears on the same line as, or one line
+before or after, a line containing `new file`, `new … module`, `create`,
+`created`, `will create`, or `add … file` (case-insensitive).
 
 ---
 
