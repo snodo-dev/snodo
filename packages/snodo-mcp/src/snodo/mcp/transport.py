@@ -33,8 +33,9 @@ from typing import Any, Optional
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
-from snodo.mcp.server import ProtocolMCPServer
+from snodo.mcp.server import MCPError, ProtocolMCPServer
 from snodo.mcp.tools import TOOL_REGISTRY
 from snodo.mcp.guide import guide_menu, guide_text
 from snodo.mcp.watch_job import (
@@ -810,6 +811,15 @@ def _register_resources(mcp: MCPServer, protocol_server: ProtocolMCPServer) -> N
         )
 
 
+def _tool_error(exc: MCPError) -> ToolError:
+    """Return the SDK's anticipated-failure error carrying *exc*'s message.
+
+    MCPServer reports any other exception as a crash and shows the caller only
+    ``Error executing tool <name>``; a ToolError keeps the reason after it.
+    """
+    return ToolError(str(exc))
+
+
 def _make_tool_handler(
     protocol_server: ProtocolMCPServer, tool_info: dict
 ) -> Any:
@@ -869,6 +879,8 @@ def _make_tool_handler(
                 result = await protocol_server.call_tool_async(
                     tool_name, kwargs, progress_sink=emit,
                 )
+            except MCPError as exc:
+                raise _tool_error(exc) from exc
             finally:
                 await drain()
             if isinstance(result, str):
@@ -876,13 +888,19 @@ def _make_tool_handler(
             return json.dumps(result, default=str)
     elif is_slow:
         async def handler(**kwargs) -> str:
-            result = await protocol_server.call_tool_async(tool_name, kwargs)
+            try:
+                result = await protocol_server.call_tool_async(tool_name, kwargs)
+            except MCPError as exc:
+                raise _tool_error(exc) from exc
             if isinstance(result, str):
                 return result
             return json.dumps(result, default=str)
     else:
         def handler(**kwargs) -> str:  # type: ignore[misc]
-            result = protocol_server.call_tool(tool_name, kwargs)
+            try:
+                result = protocol_server.call_tool(tool_name, kwargs)
+            except MCPError as exc:
+                raise _tool_error(exc) from exc
             if isinstance(result, str):
                 return result
             return json.dumps(result, default=str)

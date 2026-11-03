@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Return the reason for a refused MCP tool call to the caller, so a rejected `generate_spec` names what to correct instead of the bare "Error executing tool generate_spec" that the `mcp` 2.x move left. (Fixes #1073)
 - Add an MCP guide `standards` topic covering task IDs, layout and what plan validation refuses; state the wave-equals-listing rule in the `generate_spec`/`propose_plan` schema text; and correct two inaccuracies in the plan authoring guide. (Fixes #1069)
 
 ## [0.28.1] — 2026-11-02

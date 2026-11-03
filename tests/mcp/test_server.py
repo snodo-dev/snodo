@@ -365,6 +365,20 @@ class TestFastMCPBridge:
         assert "path" in rf.input_schema.get("properties", {})
         assert "path" in rf.input_schema.get("required", [])
 
+    def test_refused_tool_call_reaches_the_caller_with_its_reason(self, guide_server):
+        """A tool refusal names its reason; the SDK would otherwise mask it."""
+        import asyncio
+
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        mcp = build_fastmcp_server(guide_server)
+        with pytest.raises(ToolError, match="Plan not found: no-such-plan"):
+            asyncio.run(mcp.call_tool("generate_spec", {
+                "plan_name": "no-such-plan",
+                "task_id": "1.1_probe",
+                "spec": "probe",
+            }))
+
     def test_tool_handler_delegates_read(self, server):
         """Tool handler delegates to protocol_server.call_tool."""
         (Path(server.project_root) / "test.txt").write_text("hello")
