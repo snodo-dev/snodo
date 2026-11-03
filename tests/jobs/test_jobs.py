@@ -1125,6 +1125,13 @@ class TestRunner:
         # Not a positional: the argv element right after "run" is the flag.
         assert cmd[cmd.index("run") + 1] == "--replace-spec"
 
+    def test_build_command_replaced_plan_retry_starts_fresh(self):
+        cmd = build_command("/job", {
+            "description": "replaced plan spec", "retry": "task_abc",
+            "fresh_start": True,
+        })
+        assert "--fresh-start" in cmd
+
     def test_build_command_without_retry_keeps_positional_description(self):
         task_args = {"description": "do the thing", "protocol": "proto.yml"}
         cmd = build_command("/job", task_args)
