@@ -15,28 +15,6 @@ RUNTIME_READ_TESTS = {
         "tests/mcp/test_structure_guidance.py",
         "tests/mcp/test_blocked_plan_guidance.py",
     ),
-    "packages/snodo-foundation/src/snodo/protocols/templates/": (
-        "tests/golden/test_template_wellformedness.py",
-        "tests/golden/test_template_snapshots.py",
-        "tests/cli/test_init_cmd.py",
-        "tests/cli/test_protocol_schema.py",
-        "tests/golden/test_research_template.py",
-        "tests/golden/test_product_template.py",
-        "tests/golden/test_design_template.py",
-        "tests/golden/test_docs_template.py",
-        "tests/golden/test_intent_spec_manners_evidence_vs_prescription.py",
-"tests/mcp/test_plan_mode.py",
-"tests/cli/test_protocol_diff.py",
-"tests/mcp/test_server.py",
-"tests/mcp/test_structure_guidance.py",
-"tests/mcp/test_blocked_plan_guidance.py",
-"tests/test_protocol_diff.py",
-"tests/mcp/test_job_surface_travels_with_work.py",
-"tests/mcp/test_watch_job.py",
-"tests/cli/test_ready_cmd.py",
-"tests/cli/test_main.py",
-"tests/cli/test_validator_set_notice.py",
-    ),
     "snodo/cli/commands/model_benchmark_prompt.txt": (
         "tests/cli/test_models_benchmark.py",
     ),
@@ -45,6 +23,10 @@ RUNTIME_READ_TESTS = {
     ),
 }
 GUIDE_MARKER = re.compile(r"<!--\s*snodo-guide\s+.+?-->")
+TEMPLATE_REFERENCE = re.compile(
+    r"snodo\.protocols|PROTOCOL_TEMPLATES|list_templates|template_protocol|"
+    r"TEMPLATES_DIR|_load_protocol|protocols?[/\\]templates?"
+)
 
 SHARED_FILES = {
     "pyproject.toml",
@@ -121,6 +103,14 @@ def select(repo: Path, base: str) -> list[str]:
                     break
             selected.update(test for test in tests if (repo / test).is_file())
             break
+        if name.startswith("packages/snodo-foundation/src/snodo/protocols/templates/"):
+            for path in sorted((repo / "tests").rglob("*.py")):
+                try:
+                    source = path.read_text(encoding="utf-8")
+                except (OSError, UnicodeError):
+                    continue
+                if TEMPLATE_REFERENCE.search(source):
+                    selected.add(path.relative_to(repo).as_posix())
         if name.startswith("tests/") and name.endswith(".py"):
             if (repo / name).is_file():
                 selected.add(name)

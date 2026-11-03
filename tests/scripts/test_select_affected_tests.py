@@ -145,58 +145,38 @@ def test_docs_file_without_guide_marker_selects_nothing(tmp_path):
 @pytest.mark.parametrize(
     ("changed_path", "consumer_tests"),
     [
-        (
-            "packages/snodo-foundation/src/snodo/protocols/templates/solo.yml",
-            [
-                "tests/golden/test_template_wellformedness.py",
-                "tests/golden/test_template_snapshots.py",
-                "tests/cli/test_init_cmd.py",
-                "tests/cli/test_protocol_schema.py",
-                "tests/golden/test_research_template.py",
-                "tests/golden/test_product_template.py",
-                "tests/golden/test_design_template.py",
-                "tests/golden/test_docs_template.py",
-                "tests/golden/test_intent_spec_manners_evidence_vs_prescription.py",
-"tests/mcp/test_plan_mode.py",
-"tests/cli/test_protocol_diff.py",
-"tests/mcp/test_server.py",
-"tests/mcp/test_structure_guidance.py",
-"tests/mcp/test_blocked_plan_guidance.py",
-"tests/test_protocol_diff.py",
-"tests/mcp/test_job_surface_travels_with_work.py",
-"tests/mcp/test_watch_job.py",
-"tests/cli/test_ready_cmd.py",
-"tests/cli/test_main.py",
-"tests/cli/test_validator_set_notice.py",
-            ],
-        ),
-        (
-            "snodo/cli/commands/model_benchmark_prompt.txt",
-            ["tests/cli/test_models_benchmark.py"],
-        ),
-        (
-            "schemas/protocol-v1.json",
-            ["tests/scripts/test_protocol_schema_publication.py"],
-        ),
+        ("snodo/cli/commands/model_benchmark_prompt.txt", ["tests/cli/test_models_benchmark.py"]),
+        ("schemas/protocol-v1.json", ["tests/scripts/test_protocol_schema_publication.py"]),
     ],
 )
 def test_runtime_input_change_selects_existing_consumers_only(
     tmp_path, changed_path, consumer_tests
 ):
-    existing_consumers = (
-        consumer_tests[:-1] if len(consumer_tests) > 1 else consumer_tests
-    )
     files = {changed_path: "before\n"}
-    files.update({test: "x = 1\n" for test in existing_consumers})
+    files.update({test: "x = 1\n" for test in consumer_tests})
     files["tests/test_unrelated.py"] = "x = 1\n"
     repo, base = _repo(tmp_path, files)
     _change(repo, changed_path, "after\n")
     _commit(repo, "change runtime input")
-
     result = _run(repo, base)
-
     assert result.returncode == 0, result.stderr
-    assert result.stdout.splitlines() == sorted(existing_consumers)
+    assert result.stdout.splitlines() == sorted(consumer_tests)
+
+
+def test_template_change_discovers_consumers_in_test_sources(tmp_path):
+    changed = "packages/snodo-foundation/src/snodo/protocols/templates/solo.yml"
+    consumer = "tests/new/test_future_consumer.py"
+    unrelated = "tests/new/test_unrelated.py"
+    repo, base = _repo(tmp_path, {
+        changed: "before\n",
+        consumer: "from snodo.protocols import PROTOCOL_TEMPLATES\n",
+        unrelated: "assert True\n",
+    })
+    _change(repo, changed, "after\n")
+    _commit(repo, "change protocol template")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [consumer]
 
 
 def test_unknown_or_missing_base_fails_clearly(tmp_path):
