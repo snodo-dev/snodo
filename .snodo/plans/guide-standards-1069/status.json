@@ -19,10 +19,13 @@
       "spec_hash": "f7ce1d1864af9ab5"
     },
     "2.2_changelog_entry": {
-      "status": "blocked",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "18d72190e5a6ed4a"
+      "spec_hash": "18d72190e5a6ed4a",
+      "completed_by": "Claude (snodo-public orchestrator)",
+      "completed_at": "2026-11-03T03:59:43.770486+00:00",
+      "judged": false
     },
     "3.1_standards_topic_tests": {
       "status": "pending",
@@ -31,14 +34,17 @@
       "spec_hash": "528ca17861485e17"
     },
     "2.3_schema_points_to_standards": {
-      "status": "blocked",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "843fc6d34e30ac9b"
+      "spec_hash": "843fc6d34e30ac9b",
+      "completed_by": "Claude (snodo-public orchestrator)",
+      "completed_at": "2026-11-03T03:59:44.147779+00:00",
+      "judged": false
     }
   },
   "integration": {
     "branch": "plan/guide-standards-1069/integration",
-    "base_sha": "0ed266f710df5160be30771210a76b0a3e5924df"
+    "base_sha": "f9ad63678d61f89ca5f43f2fb492325344e4597d"
   }
 }
