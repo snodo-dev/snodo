@@ -199,3 +199,7 @@ def test_sequential_retry_args_enable_fresh_start_only_for_replacement(tmp_path)
     assert not retry_args_with_replaced_spec(Args(), planner, "plan", "1.1_task", failure).fresh_start
     _write_status(tmp_path, "plan", "1.1_task", "replacement")
     assert not retry_args_with_replaced_spec(Args(), planner, "plan", "1.1_task", {},).fresh_start
+    # An explicit operator fresh-start request remains honored on a plain retry.
+    assert retry_args_with_replaced_spec(
+        Args(fresh_start=True), planner, "plan", "1.1_task", failure
+    ).fresh_start

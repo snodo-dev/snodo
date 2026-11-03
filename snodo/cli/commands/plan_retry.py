@@ -101,7 +101,9 @@ def retry_args_with_replaced_spec(args, planner, plan_name: str, task_id: str, f
     """Return retry args with fresh-start enabled only for an authored replacement."""
     from dataclasses import is_dataclass, replace
 
-    fresh_start = replaced_failure_spec(planner, plan_name, task_id, failure)
+    fresh_start = bool(getattr(args, "fresh_start", False)) or replaced_failure_spec(
+        planner, plan_name, task_id, failure
+    )
     if is_dataclass(args):
         return replace(args, fresh_start=fresh_start)
     args.fresh_start = fresh_start

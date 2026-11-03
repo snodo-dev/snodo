@@ -31,6 +31,7 @@ _remote_branch_matches = _remote_branch_matches_impl
 
 _logger = logging.getLogger(__name__)
 
+
 def _fixture_tree_identity(fixture: Path) -> str:
     """Return the identity of the committed tree supplied as a fixture."""
     result = subprocess.run(  # noqa: S603 - fixed git argv; fixture path is one argument
@@ -39,6 +40,7 @@ def _fixture_tree_identity(fixture: Path) -> str:
         check=True,
     )
     return hashlib.sha256(result.stdout).hexdigest()
+
 
 def _run_fixture(args) -> int:
     """Run a plan in a disposable clone of an external benchmark fixture.
