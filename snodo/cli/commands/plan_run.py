@@ -1,8 +1,6 @@
 """Plan execution helpers for the snodo run command.
-
 Extracted from cli/commands/run_cmd.py to isolate plan execution logic.
 """
-
 import hashlib
 import json
 import logging
@@ -13,7 +11,6 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Optional
-
 from snodo.core.interfaces import Task
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
@@ -22,16 +19,11 @@ from snodo.cli.commands.plan_delivery import (
     _remote_branch_matches as _remote_branch_matches_impl,
     deliver_healthy_plan_wave, filter_plan_waves, verify_queue_merge_head,
 )
-
 from snodo.cli.commands.plan_format import _format_duration, _format_timestamp
 from snodo.cli.commands.plan_integration import refresh_plan_integration
-
 _verify_queue_merge_head = verify_queue_merge_head
 _remote_branch_matches = _remote_branch_matches_impl
-
 _logger = logging.getLogger(__name__)
-
-
 def _fixture_tree_identity(fixture: Path) -> str:
     """Return the identity of the committed tree supplied as a fixture."""
     result = subprocess.run(  # noqa: S603 - fixed git argv; fixture path is one argument
@@ -40,7 +32,6 @@ def _fixture_tree_identity(fixture: Path) -> str:
         check=True,
     )
     return hashlib.sha256(result.stdout).hexdigest()
-
 
 def _run_fixture(args) -> int:
     """Run a plan in a disposable clone of an external benchmark fixture.

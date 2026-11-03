@@ -2491,3 +2491,73 @@ def test_completed_wave_rerun_with_nothing_to_deliver_reports_no_change(capsys):
         )
     assert not failed
     assert "already delivered" in capsys.readouterr().out
+
+
+def test_replaced_blocked_task_wave_starts_from_current_base(plan_project_env):
+    """A supported spec replacement dispatches a clean workspace and preserves the old one."""
+    from git import Repo
+    from snodo.cli.commands.plan_retry import spec_hash_of
+    from snodo.cli.commands.retry_workspace import setup_attempt, read_origin
+
+    root = Repo.init(plan_project_env)
+    root.config_writer().set_value("user", "name", "Test").release()
+    root.config_writer().set_value("user", "email", "test@example.com").release()
+    (plan_project_env / "base.txt").write_text("base\n")
+    root.index.add(["base.txt"])
+    root.index.commit("initial base")
+    base_branch = root.active_branch.name
+    root.close()
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "wave_replacement")
+    task_id = "task_1_1"
+    original = "Spec for task 1.1"
+    manager = _setup_session_with_failure(plan_project_env, task_id, spec=original)
+    planner.update_status(plan_name, task_id, "blocked")
+    old_path = setup_attempt(str(plan_project_env), task_id, original, plan_name=plan_name)
+    old_repo = Repo(old_path)
+    (Path(old_path) / "leftover.txt").write_text("stale attempt\n")
+    old_repo.index.add(["leftover.txt"])
+    old_repo.index.commit("stale task work")
+    old_branch = old_repo.active_branch.name
+    old_repo.close()
+    root = Repo(plan_project_env)
+    (plan_project_env / "base.txt").write_text("updated base\n")
+    root.index.add(["base.txt"])
+    current_base = root.index.commit("base advanced").hexsha
+    root.close()
+
+    # Exercise the same supported replacement contract as PlannerMCP.replace:
+    # write the new spec and update the canonical status hash.
+    replacement = "Replacement task spec"
+    spec_path = planner.plans_dir / plan_name / "wave_1" / f"{task_id}_task.md"
+    spec_path.write_text(replacement)
+    status = planner.get_status(plan_name)
+    status["tasks"][task_id]["spec_hash"] = spec_hash_of(replacement)
+    import json
+    (planner.plans_dir / plan_name / "status.json").write_text(json.dumps(status))
+    planner.update_status(plan_name, task_id, "pending")
+
+    args = _make_plan_args(plan_name, session_manager=manager)
+    protocol = SimpleNamespace(initial_mode="producer", execution=SimpleNamespace(max_retries=3))
+    observed = []
+
+    def dispatch(a, _protocol, task, _model):
+        fresh = setup_attempt(str(plan_project_env), task.id, task.spec, fresh_start=a.fresh_start,
+                              plan_name=plan_name, base=base_branch, task=task)
+        observed.append((fresh, a.fresh_start, task.spec))
+        return 0
+
+    from snodo.cli.commands.plan_run import _execute_wave_task
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=dispatch):
+        assert _execute_wave_task(planner, args, protocol, None, "1", task_id)
+
+    fresh_path, fresh_flag, delivered_spec = observed[0]
+    assert fresh_flag is True
+    assert "Continuation of earlier attempt work" not in delivered_spec
+    assert read_origin(str(plan_project_env), task_id)["inherited_work"] is False
+    assert (Path(fresh_path) / "base.txt").read_text() == "updated base\n"
+    assert Repo(fresh_path).head.commit.hexsha == current_base
+    assert not (Path(fresh_path) / "leftover.txt").exists()
+    assert Repo(old_path).active_branch.name == old_branch
+    assert (Path(old_path) / "leftover.txt").read_text() == "stale attempt\n"
