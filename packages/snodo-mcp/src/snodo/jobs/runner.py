@@ -104,6 +104,9 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
     if retry:
         cmd.extend(["--retry", retry])
 
+    if task_args.get("fresh_start"):
+        cmd.append("--fresh-start")
+
     resume = task_args.get("resume")
     if resume:
         cmd.extend(["--resume", resume])

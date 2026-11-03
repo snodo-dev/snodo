@@ -90,3 +90,8 @@ def resolve_retry_lineage(project_root: str, plan_name: str, task_id: str, failu
     if not disk_spec:
         return recorded_spec, False
     return disk_spec, True
+
+
+def replaced_failure_spec(planner, plan_name: str, task_id: str, failure: dict | None) -> bool:
+    """Whether a recorded failure predates the currently authored plan spec."""
+    return isinstance(failure, dict) and spec_was_replaced(planner, plan_name, task_id, failure)

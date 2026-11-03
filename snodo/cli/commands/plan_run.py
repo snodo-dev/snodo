@@ -416,8 +416,8 @@ def _plan_retry_decision(planner, args, protocol, task_id: str) -> str:
 
     plan = getattr(args, "plan", None)
     if plan:
-        from snodo.cli.commands.plan_retry import spec_was_replaced
-        if spec_was_replaced(planner, plan, task_id, failure):
+        from snodo.cli.commands.plan_retry import replaced_failure_spec
+        if replaced_failure_spec(planner, plan, task_id, failure):
             return "retry"
 
     attempt = failure.get("attempt", 0)
@@ -603,6 +603,9 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
             print(f"  [{task_id}] resuming as retry (failure context found)")
             start_mono = time.monotonic()
             start_wall = time.time()
+            from snodo.cli.commands.plan_retry import replaced_failure_spec
+            failure = _resolve_failure_context(_session_for_task(args, planner, protocol, task_id), task_id)
+            retry_args.fresh_start = replaced_failure_spec(planner, args.plan, task_id, failure)
             result = _retry_task(retry_args, task_id, project_root, session_manager)
             end_mono = time.monotonic()
             end_wall = time.time()
@@ -844,6 +847,7 @@ def _execute_wave_tasks_concurrent(
             print(f"  [{task_id}] unmerged branch not found or unverified; running fresh")
 
         is_retry = False
+        replaced_spec = False
         if _task_is_blocked(tasks_status, task_id):
             decision = _plan_retry_decision(planner, args, protocol, task_id)
             if decision == "exhausted":
@@ -852,6 +856,11 @@ def _execute_wave_tasks_concurrent(
                 continue
             if decision == "retry":
                 is_retry = True
+                session = _session_for_task(args, planner, protocol, task_id)
+                from snodo.cli.commands.plan_retry import replaced_failure_spec
+                replaced_spec = replaced_failure_spec(
+                    planner, args.plan, task_id, _resolve_failure_context(session, task_id)
+                )
                 print(f"  [{task_id}] resuming as retry (failure context found)")
             else:
                 print(f"  [{task_id}] no failure context found; running fresh")
@@ -880,6 +889,8 @@ def _execute_wave_tasks_concurrent(
             task_args["parent_job"] = parent_job
         if is_retry:
             task_args["retry"] = task_id
+        if replaced_spec:
+            task_args["fresh_start"] = True
         if getattr(args, "resume", None):
             task_args["resume"] = args.resume
 
