@@ -379,6 +379,37 @@ class TestFastMCPBridge:
                 "spec": "probe",
             }))
 
+    @pytest.mark.parametrize(
+        ("slow", "narrates"),
+        [(False, False), (True, False), (True, True)],
+        ids=["sync", "async", "async-with-progress"],
+    )
+    def test_every_handler_variant_surfaces_the_refusal_reason(self, slow, narrates):
+        """Sync, async and progress-narrating handlers all pass a refusal on."""
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from mcp.server.mcpserver.exceptions import ToolError
+        from snodo.mcp.server import MCPError
+
+        protocol_server = MagicMock()
+        protocol_server.is_slow_tool.return_value = slow
+        protocol_server.accepts_progress.return_value = narrates
+        protocol_server.call_tool.side_effect = MCPError("the reason")
+        protocol_server.call_tool_async = AsyncMock(side_effect=MCPError("the reason"))
+        tool_info = {
+            "name": "some_tool",
+            "description": "d",
+            "inputSchema": {"type": "object", "properties": {}},
+        }
+        handler = _make_tool_handler(protocol_server, tool_info)
+
+        with pytest.raises(ToolError, match="the reason"):
+            if slow:
+                asyncio.run(handler())
+            else:
+                handler()
+
     def test_tool_handler_delegates_read(self, server):
         """Tool handler delegates to protocol_server.call_tool."""
         (Path(server.project_root) / "test.txt").write_text("hello")
