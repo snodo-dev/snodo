@@ -95,3 +95,14 @@ def resolve_retry_lineage(project_root: str, plan_name: str, task_id: str, failu
 def replaced_failure_spec(planner, plan_name: str, task_id: str, failure: dict | None) -> bool:
     """Whether a recorded failure predates the currently authored plan spec."""
     return isinstance(failure, dict) and spec_was_replaced(planner, plan_name, task_id, failure)
+
+
+def retry_args_with_replaced_spec(args, planner, plan_name: str, task_id: str, failure: dict | None):
+    """Return retry args with fresh-start enabled only for an authored replacement."""
+    from dataclasses import is_dataclass, replace
+
+    fresh_start = replaced_failure_spec(planner, plan_name, task_id, failure)
+    if is_dataclass(args):
+        return replace(args, fresh_start=fresh_start)
+    args.fresh_start = fresh_start
+    return args

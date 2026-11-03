@@ -603,9 +603,9 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
             print(f"  [{task_id}] resuming as retry (failure context found)")
             start_mono = time.monotonic()
             start_wall = time.time()
-            from snodo.cli.commands.plan_retry import replaced_failure_spec
+            from snodo.cli.commands.plan_retry import retry_args_with_replaced_spec
             failure = _resolve_failure_context(_session_for_task(args, planner, protocol, task_id), task_id)
-            retry_args.fresh_start = replaced_failure_spec(planner, args.plan, task_id, failure)
+            retry_args = retry_args_with_replaced_spec(retry_args, planner, args.plan, task_id, failure)
             result = _retry_task(retry_args, task_id, project_root, session_manager)
             end_mono = time.monotonic()
             end_wall = time.time()
