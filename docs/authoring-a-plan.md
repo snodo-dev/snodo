@@ -106,7 +106,7 @@ waves:
 
 That is the whole file for a new plan. snodo fills it in as tasks run, giving
 each an entry of `{status, parent_task_ref, depth, spec_hash}` where status is
-one of `pending`, `in_progress`, `completed`, `blocked`, `errored`. A blocked
+one of `pending`, `in_progress`, `completed`, `blocked`, `errored`, `unmerged`. A blocked
 task has a task-level failure and is retried with that failure as context. An
 errored task means the runner hit an operational or internal fault instead of
 receiving a task result; it is not retried, because passing that fault to a
@@ -130,6 +130,43 @@ w1.1_host-split     no — wave must be a bare integer
 The leading number **must** equal the wave the task is listed in. `2.1_landing`
 in wave 1 puts its spec file in the wrong directory and the plan will not
 validate.
+
+### Standards & Conventions
+
+<!-- snodo-guide topic="standards" summary="Plan layout, files, and task-id rules" section="### Standards & Conventions" -->
+
+Keep `waves[].depends_on` as integer wave ids; a non-integer entry is reported as
+`Wave <id> depends on non-integer wave '<value>'`. Wave ids themselves must be
+integers contiguous from 1, as described above.
+
+Malformed input is refused with `Failed to parse plan.yml: <detail>` or
+`Failed to parse status.json: <detail>`; a missing plan directory reports
+`Plan directory does not exist: <path>`. The detail and path are supplied by
+the parser and filesystem respectively.
+
+An `intent_ref` must match `int_<six lowercase hexadecimal characters>` and
+refer to an existing recorded intent. Recorded intent text must be non-empty
+and at most 10,000 characters; exceeding the limit reports
+`Intent text exceeds 10000 characters`.
+
+`generate_spec` refuses an existing task id unless called with `replace=true`,
+reporting `task_exists: <task_id> already exists in plan <plan_name>`. A missing
+parent reports `parent_not_found: <parent_ref> not in plan <plan_name>`; exceeding
+the configured maximum subtask depth (3 by default) reports
+`max_subtask_depth_exceeded: depth <depth> > max <limit>`. A proposed spec identical
+to an ancestor's is refused as `cycle_detected: proposed spec matches ancestor <task_ref>`.
+
+Branch names, commit subjects, and issue references are produced by the engine;
+they are not plan acceptance rules. Do not shape a plan or task spec to satisfy
+them.
+
+A referenced path created only by a later task is an error:
+`Referenced path in spec <task_id> is created by a later task: <path>`. Same-wave
+file overlap is only a warning (`Possible same-wave file overlap in wave <id>...`);
+review whether the tasks can conflict, and separate them into waves if they can.
+A new path is recognized when a path is on the same line as, or immediately
+adjacent to a line containing, creation language such as `new file`, `new …
+module`, `create`, `created`, `will create`, or `add … file`.
 
 ---
 
@@ -377,11 +414,10 @@ structural errors that refuse execution, along with plan-time checks from
 
 - **`Missing referenced path in spec`** is an error. The spec cites a path that
   does not exist in the repository or is not created by this or an earlier
-  task. Correct the path, or put a genuinely new path on the same line as the
-  exact create-intent phrasing `Create \`path/to/file.ext\`.` (replace the
-  example path with the real one). The verifier recognizes create intent only
-  on that same line as a cited path. Otherwise, arrange for an earlier wave to
-  create it.
+  task. The verifier recognizes creation language (`new file`, `new … module`,
+  `create`, `created`, `will create`, or `add … file`) on the same line as the
+  path or an immediately adjacent line. Otherwise, correct the path or arrange
+  for an earlier wave to create it.
 - **`Possible same-wave file overlap`** is a warning, not a refusal. It means
   two same-wave specs cite the same path; citations are only a proxy for files
   either task will actually change. Review whether the tasks could conflict. If
