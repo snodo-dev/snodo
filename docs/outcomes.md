@@ -33,6 +33,10 @@ the remaining plan work. Healthy completed waves are already on `main`, so the
 fix builds on them. Change the specification only when evidence shows the
 specification itself is wrong. A reported stale premise can be false: check the
 premise against the current source before changing either implementation or spec.
+When replacing a blocked plan task's spec and rerunning its wave, the new attempt
+starts fresh from the plan's current base branch; the earlier branch and worktree
+are kept. Editing the spec file by hand, or retrying without replacing it, instead
+continues from the earlier attempt's work.
 
 **Never:** Override a blocker, including with `propose_adjudicate`; a blocker is
 non-overridable (INV3). Do not rewrite a spec merely to silence an unverified
