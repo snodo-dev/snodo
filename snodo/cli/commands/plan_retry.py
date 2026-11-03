@@ -106,3 +106,35 @@ def retry_args_with_replaced_spec(args, planner, plan_name: str, task_id: str, f
         return replace(args, fresh_start=fresh_start)
     args.fresh_start = fresh_start
     return args
+
+
+def fresh_start_for_plan_task(args, planner, protocol, task_id: str) -> bool:
+    """Detect an authored replacement regardless of the task's dispatch status."""
+    manager = getattr(args, "session_manager", None)
+    if manager is None:
+        return False
+    from snodo.infrastructure.state import read_state
+    state = read_state(str(planner.project_root))
+    mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
+    session = manager.get_active_session(mode, str(planner.project_root))
+    if session is None:
+        return False
+    from snodo.cli.commands.run_cmd import _failure_from_halt_record
+    failures = session.checkpoint.decisions.get("task_failure", {})
+    failure = failures.get(task_id) if isinstance(failures, dict) else None
+    if not isinstance(failure, dict):
+        failure = _failure_from_halt_record(session, task_id)
+    return replaced_failure_spec(planner, args.plan, task_id, failure)
+
+
+def fresh_start_args_for_plan_task(args, planner, protocol, task_id: str):
+    """Return execution args with replacement-driven fresh start enabled."""
+    if not fresh_start_for_plan_task(args, planner, protocol, task_id):
+        return args
+    from dataclasses import is_dataclass, replace
+    return replace(args, fresh_start=True) if is_dataclass(args) else _enable_fresh_start(args)
+
+
+def _enable_fresh_start(args):
+    args.fresh_start = True
+    return args

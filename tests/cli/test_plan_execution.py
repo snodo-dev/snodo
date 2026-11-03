@@ -1022,6 +1022,41 @@ def test_blocked_task_with_failure_context_resumes_as_retry(plan_project_env, ca
     assert status["tasks"]["task_2_1"]["status"] == "completed"
 
 
+@pytest.mark.parametrize("replacement,hand_edit,expected", [(True, False, True), (False, True, False), (False, False, False)])
+def test_pending_task_fresh_start_only_after_supported_spec_replacement(
+    plan_project_env, replacement, hand_edit, expected
+):
+    """Pending wave dispatch recognizes only an authored replacement."""
+    from snodo.cli.commands.plan_retry import spec_hash_of
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "pending_replacement")
+    task_id = "task_1_1"
+    original = "Spec for task 1.1"
+    session_mgr = _setup_session_with_failure(plan_project_env, task_id, spec=original)
+    spec_path = planner.plans_dir / plan_name / "wave_1" / f"{task_id}_task.md"
+    changed = "replacement spec"
+    if replacement or hand_edit:
+        spec_path.write_text(changed)
+    if replacement:
+        status_path = planner.plans_dir / plan_name / "status.json"
+        data = planner.get_status(plan_name)
+        data["tasks"][task_id]["spec_hash"] = spec_hash_of(changed)
+        status_path.write_text(__import__("json").dumps(data))
+    planner.update_status(plan_name, task_id, "pending")
+    args = _make_plan_args(plan_name, session_manager=session_mgr)
+    seen = []
+
+    def execute(a, protocol, task, model):
+        if task.id == task_id:
+            seen.append(bool(getattr(a, "fresh_start", False)))
+        return 0
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=execute):
+        assert _run_plan(args) == 0
+    assert seen == [expected]
+
+
 def test_blocked_task_without_context_runs_fresh(plan_project_env, capsys):
     """A blocked task with no failure context runs fresh and says so."""
     planner = PlannerMCP(plan_project_env)
