@@ -20,6 +20,11 @@ RUNTIME_READ_TESTS = {
         "tests/golden/test_template_snapshots.py",
         "tests/cli/test_init_cmd.py",
         "tests/cli/test_protocol_schema.py",
+        "tests/golden/test_research_template.py",
+        "tests/golden/test_product_template.py",
+        "tests/golden/test_design_template.py",
+        "tests/golden/test_docs_template.py",
+        "tests/golden/test_intent_spec_manners_evidence_vs_prescription.py",
     ),
     "snodo/cli/commands/model_benchmark_prompt.txt": (
         "tests/cli/test_models_benchmark.py",

@@ -95,7 +95,7 @@ GUIDE_TESTS = [
 GUIDE_MARKER = '<!-- snodo-guide topic="planning" summary="Plan" section="# Plan" -->\n'
 
 
-def test_non_guide_docs_only_change_selects_nothing(tmp_path):
+def test_docs_only_change_selects_nothing(tmp_path):
     repo, base = _repo(tmp_path, {"docs/guide.md": "before\n"})
     _change(repo, "docs/guide.md", "after\n")
     _commit(repo, "docs")
@@ -152,6 +152,11 @@ def test_docs_file_without_guide_marker_selects_nothing(tmp_path):
                 "tests/golden/test_template_snapshots.py",
                 "tests/cli/test_init_cmd.py",
                 "tests/cli/test_protocol_schema.py",
+                "tests/golden/test_research_template.py",
+                "tests/golden/test_product_template.py",
+                "tests/golden/test_design_template.py",
+                "tests/golden/test_docs_template.py",
+                "tests/golden/test_intent_spec_manners_evidence_vs_prescription.py",
             ],
         ),
         (
