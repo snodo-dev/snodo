@@ -42,6 +42,7 @@ waves only when ordering or overlapping code demands it.
 
 ---
 
+<!-- snodo-guide topic="standards" summary="Plan layout, files, and task-id rules" section="## 2. Layout" -->
 ## 2. Layout
 
 ```
