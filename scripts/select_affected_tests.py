@@ -9,6 +9,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+RUNTIME_READ_TESTS = {
+    "docs/": (
+        "tests/mcp/test_server.py",
+        "tests/mcp/test_structure_guidance.py",
+        "tests/mcp/test_blocked_plan_guidance.py",
+    ),
+}
+GUIDE_MARKER = re.compile(r"<!--\s*snodo-guide\s+.+?-->")
+
 SHARED_FILES = {
     "pyproject.toml",
     "uv.lock",
@@ -70,6 +79,18 @@ def select(repo: Path, base: str) -> list[str]:
     selected: set[str] = set()
     modules: set[str] = set()
     for name in changed:
+        if any(name.startswith(prefix) for prefix in RUNTIME_READ_TESTS):
+            texts = []
+            for ref in ("HEAD", base):
+                try:
+                    texts.append(_run_git("show", f"{ref}:{name}"))
+                except subprocess.CalledProcessError:
+                    pass
+            if any(GUIDE_MARKER.search(text) for text in texts):
+                for prefix, tests in RUNTIME_READ_TESTS.items():
+                    if name.startswith(prefix):
+                        selected.update(tests)
+                        break
         if name.startswith("tests/") and name.endswith(".py"):
             if (repo / name).is_file():
                 selected.add(name)

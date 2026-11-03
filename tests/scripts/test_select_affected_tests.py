@@ -85,10 +85,56 @@ def test_shared_change_selects_entire_suite(tmp_path):
     assert result.stdout == "tests/\n"
 
 
-def test_docs_only_change_selects_nothing(tmp_path):
+GUIDE_TESTS = [
+    "tests/mcp/test_blocked_plan_guidance.py",
+    "tests/mcp/test_server.py",
+    "tests/mcp/test_structure_guidance.py",
+]
+GUIDE_MARKER = '<!-- snodo-guide topic="planning" summary="Plan" section="# Plan" -->\n'
+
+
+def test_non_guide_docs_only_change_selects_nothing(tmp_path):
     repo, base = _repo(tmp_path, {"docs/guide.md": "before\n"})
     _change(repo, "docs/guide.md", "after\n")
     _commit(repo, "docs")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+def test_guide_doc_change_selects_its_consumers_only(tmp_path):
+    repo, base = _repo(tmp_path, {
+        "docs/authoring-a-plan.md": GUIDE_MARKER,
+        "tests/mcp/test_server.py": "x = 1\n",
+        "tests/mcp/test_structure_guidance.py": "x = 1\n",
+        "tests/mcp/test_blocked_plan_guidance.py": "x = 1\n",
+        "tests/test_unrelated.py": "x = 1\n",
+    })
+    _change(repo, "docs/authoring-a-plan.md", GUIDE_MARKER + "updated\n")
+    _commit(repo, "guide docs")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == GUIDE_TESTS
+
+
+def test_deleted_guide_doc_selects_its_consumers(tmp_path):
+    repo, base = _repo(tmp_path, {
+        "docs/authoring-a-plan.md": GUIDE_MARKER,
+        "tests/mcp/test_server.py": "x = 1\n",
+        "tests/mcp/test_structure_guidance.py": "x = 1\n",
+        "tests/mcp/test_blocked_plan_guidance.py": "x = 1\n",
+    })
+    (repo / "docs/authoring-a-plan.md").unlink()
+    _commit(repo, "delete guide docs")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == GUIDE_TESTS
+
+
+def test_docs_file_without_guide_marker_selects_nothing(tmp_path):
+    repo, base = _repo(tmp_path, {"docs/plain.md": "plain docs\n"})
+    _change(repo, "docs/plain.md", "updated plain docs\n")
+    _commit(repo, "plain docs")
     result = _run(repo, base)
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
