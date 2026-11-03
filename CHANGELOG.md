@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.1] — 2026-11-02
+
 - Make `snodo logs <recon id> --watch` follow a running recon until it completes or fails, printing each agent's answer once as it arrives, instead of printing once and returning. (Fixes #1064)
 - Record recon progress as it happens in an append-only event log for each recon, and let `snodo logs <recon id> --watch` stream each agent's start, tool turns, failovers and result live. (Fixes #1065)
 - Give the acceptance validator the gate's verdict, so a task whose gate passed is no longer warned for lack of independent evidence and sent through recovery. (Fixes #1046)
