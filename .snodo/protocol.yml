@@ -179,7 +179,7 @@ execution:
   max_recovery_depth: 3
   # Completed, verified work merges straight into the local main branch on a
   # clean pass; the operator pushes it. Unclean passes are merged by hand.
-  delivery: local_merge
+  delivery: change_request
 
   # Set only when a repository needs a deterministic setup step after worktree
   # creation (protocol-authored shell commands are executed as written):
