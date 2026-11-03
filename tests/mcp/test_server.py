@@ -2100,6 +2100,37 @@ class TestInstructions:
         assert "blocker" in text
         assert "environment_error" in text
 
+    def test_standards_guide_serves_task_id_rules_and_is_listed(self, server):
+        from snodo.mcp.guide import guide_topics
+
+        exposed = set(TOOL_REGISTRY)
+        topics = guide_topics(server.project_root)
+        assert "standards" in topics
+        menu = guide_text(server.project_root, exposed)
+        assert "`standards`" in menu
+
+        text = guide_text(server.project_root, exposed, "standards")
+        assert re.search(r"\d+\.\d+_[A-Za-z0-9_-]+", text)
+        assert "wave number, dot, sequence number" in text
+        assert "leading number" in text and "equal" in text and "wave" in text
+        assert "replace=true" in text
+
+    def test_standards_document_status_vocabulary_matches_code(self, server):
+        from snodo.mcp.status import TASK_STATUSES
+
+        text = guide_text(
+            server.project_root,
+            set(TOOL_REGISTRY),
+            "standards",
+        )
+        for status in TASK_STATUSES:
+            assert f"`{status}`" in text
+
+    def test_generate_spec_schema_explains_wave_listing_rule(self):
+        description = TOOL_REGISTRY["generate_spec"]["inputSchema"]["properties"]["task_id"]["description"]
+        assert "<wave>" in description
+        assert "match the wave listing" in description
+
     def test_following_run_topic_teaches_operator_watch_paths(self, guide_server):
         from snodo.mcp.guide import guide_topics
 

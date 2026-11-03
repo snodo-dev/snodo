@@ -131,9 +131,9 @@ The leading number **must** equal the wave the task is listed in. `2.1_landing`
 in wave 1 puts its spec file in the wrong directory and the plan will not
 validate.
 
-### Standards & Conventions
-
 <!-- snodo-guide topic="standards" summary="Plan rules" section="### Standards & Conventions" -->
+
+### Standards & Conventions
 
 Keep `waves[].depends_on` as integer wave ids; a non-integer entry is reported as
 `Wave <id> depends on non-integer wave '<value>'`. Wave ids themselves must be
