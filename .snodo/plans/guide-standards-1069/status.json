@@ -45,6 +45,6 @@
   },
   "integration": {
     "branch": "plan/guide-standards-1069/integration",
-    "base_sha": "f9ad63678d61f89ca5f43f2fb492325344e4597d"
+    "base_sha": "b31cd042260b4c511f217fd8e9e0c6448c6ce55b"
   }
 }
