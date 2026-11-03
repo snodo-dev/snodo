@@ -275,7 +275,7 @@ TOOL_REGISTRY = {
         "method": "decompose",
     },
     "generate_spec": {
-        "description": "Generate a task specification at `.snodo/plans/<plan>/wave_<N>/<task_id>_task.md`. See the `mistakes` guide for plan authoring rules. Name module when the task is confined to one declared module; it selects that module's test gate and bounds writable paths.",
+        "description": "Generate a task specification at `.snodo/plans/<plan>/wave_<N>/<task_id>_task.md`. See the `mistakes` guide topic for plan refusal and authoring rules. Name module when the task is confined to one declared module; it selects that module's test gate and bounds writable paths.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -317,7 +317,7 @@ TOOL_REGISTRY = {
         "description": (
             "Turn an intent into a proposed plan on disk (.snodo/plans/<name>/); "
             "task specs live at .snodo/plans/<plan>/wave_<N>/<task_id>_task.md. "
-            "See the `mistakes` guide for authoring rules. "
+            "See the `mistakes` guide topic for plan refusal and authoring rules. "
             "Returns the plan structure (name, intent, waves with ids, "
             "dependencies and tasks) and its validation state — nothing "
             "executes. Add tasks with generate_spec, check the shape with "
