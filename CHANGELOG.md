@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add an MCP guide `standards` topic covering task IDs, layout and what plan validation refuses; state the wave-equals-listing rule in the `generate_spec`/`propose_plan` schema text; and correct two inaccuracies in the plan authoring guide. (Fixes #1069)
+
 ## [0.28.1] — 2026-11-02
 
 - Make `snodo logs <recon id> --watch` follow a running recon until it completes or fails, printing each agent's answer once as it arrives, instead of printing once and returning. (Fixes #1064)
