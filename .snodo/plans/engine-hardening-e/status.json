@@ -1,22 +1,31 @@
 {
   "tasks": {
     "1.1_preexecute_warn_reaches_coder": {
-      "status": "blocked",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "3e5fb37a78af5766"
+      "spec_hash": "3e5fb37a78af5766",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:33:31.905307+00:00",
+      "judged": false
     },
     "1.2_integration_tree_follows_main": {
-      "status": "blocked",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "f7f9890bb6cbc7d9"
+      "spec_hash": "f7f9890bb6cbc7d9",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:33:40.444671+00:00",
+      "judged": false
     },
     "2.1_rerun_completed_wave_delivers": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "3b75343c507be9c3"
+      "spec_hash": "3b75343c507be9c3",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:33:45.663445+00:00",
+      "judged": false
     }
   },
   "integration": {

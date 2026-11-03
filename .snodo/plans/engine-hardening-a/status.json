@@ -13,46 +13,67 @@
       "spec_hash": "1bb50691052fc859"
     },
     "1.3_verdict_carry_forward_same_task": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "9804157573ba84f0"
+      "spec_hash": "9804157573ba84f0",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:33:31.244597+00:00",
+      "judged": false
     },
     "2.1_validator_bad_tool_arguments": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "6e709c37ed7e8935"
+      "spec_hash": "6e709c37ed7e8935",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:33:39.817122+00:00",
+      "judged": false
     },
     "2.3_list_jobs_compact": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "720cb99b3779c290"
+      "spec_hash": "720cb99b3779c290",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:33:45.184707+00:00",
+      "judged": false
     },
     "3.1_validate_plan_created_paths": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "45e1043c5b56b464"
+      "spec_hash": "45e1043c5b56b464",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:33:54.304329+00:00",
+      "judged": false
     },
     "3.2_flaky_recon_persist_test": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "a5e017d1c1f555e5"
+      "spec_hash": "a5e017d1c1f555e5",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:33:59.873655+00:00",
+      "judged": false
     },
     "3.3_flaky_plan_run_list_jobs_test": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "a1106b946002b6d4"
+      "spec_hash": "a1106b946002b6d4",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:34:03.767777+00:00",
+      "judged": false
     },
     "3.4_flaky_quality_timeout_test": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "caee4a30182f652f"
+      "spec_hash": "caee4a30182f652f",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-03T15:34:09.788329+00:00",
+      "judged": false
     }
   },
   "integration": {
