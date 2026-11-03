@@ -15,6 +15,18 @@ RUNTIME_READ_TESTS = {
         "tests/mcp/test_structure_guidance.py",
         "tests/mcp/test_blocked_plan_guidance.py",
     ),
+    "packages/snodo-foundation/src/snodo/protocols/templates/": (
+        "tests/golden/test_template_wellformedness.py",
+        "tests/golden/test_template_snapshots.py",
+        "tests/cli/test_init_cmd.py",
+        "tests/cli/test_protocol_schema.py",
+    ),
+    "snodo/cli/commands/model_benchmark_prompt.txt": (
+        "tests/cli/test_models_benchmark.py",
+    ),
+    "schemas/protocol-v1.json": (
+        "tests/scripts/test_protocol_schema_publication.py",
+    ),
 }
 GUIDE_MARKER = re.compile(r"<!--\s*snodo-guide\s+.+?-->")
 
@@ -79,18 +91,20 @@ def select(repo: Path, base: str) -> list[str]:
     selected: set[str] = set()
     modules: set[str] = set()
     for name in changed:
-        if any(name.startswith(prefix) for prefix in RUNTIME_READ_TESTS):
-            texts = []
-            for ref in ("HEAD", base):
-                try:
-                    texts.append(_run_git("show", f"{ref}:{name}"))
-                except subprocess.CalledProcessError:
-                    pass
-            if any(GUIDE_MARKER.search(text) for text in texts):
-                for prefix, tests in RUNTIME_READ_TESTS.items():
-                    if name.startswith(prefix):
-                        selected.update(tests)
-                        break
+        for prefix, tests in RUNTIME_READ_TESTS.items():
+            if not name.startswith(prefix):
+                continue
+            if prefix == "docs/":
+                texts = []
+                for ref in ("HEAD", base):
+                    try:
+                        texts.append(_run_git("show", f"{ref}:{name}"))
+                    except subprocess.CalledProcessError:
+                        pass
+                if not any(GUIDE_MARKER.search(text) for text in texts):
+                    break
+            selected.update(test for test in tests if (repo / test).is_file())
+            break
         if name.startswith("tests/") and name.endswith(".py"):
             if (repo / name).is_file():
                 selected.add(name)

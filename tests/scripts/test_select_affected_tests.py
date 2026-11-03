@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "select_affected_tests.py"
 
 
@@ -138,6 +140,47 @@ def test_docs_file_without_guide_marker_selects_nothing(tmp_path):
     result = _run(repo, base)
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    ("changed_path", "consumer_tests"),
+    [
+        (
+            "packages/snodo-foundation/src/snodo/protocols/templates/solo.yml",
+            [
+                "tests/golden/test_template_wellformedness.py",
+                "tests/golden/test_template_snapshots.py",
+                "tests/cli/test_init_cmd.py",
+                "tests/cli/test_protocol_schema.py",
+            ],
+        ),
+        (
+            "snodo/cli/commands/model_benchmark_prompt.txt",
+            ["tests/cli/test_models_benchmark.py"],
+        ),
+        (
+            "schemas/protocol-v1.json",
+            ["tests/scripts/test_protocol_schema_publication.py"],
+        ),
+    ],
+)
+def test_runtime_input_change_selects_existing_consumers_only(
+    tmp_path, changed_path, consumer_tests
+):
+    existing_consumers = (
+        consumer_tests[:-1] if len(consumer_tests) > 1 else consumer_tests
+    )
+    files = {changed_path: "before\n"}
+    files.update({test: "x = 1\n" for test in existing_consumers})
+    files["tests/test_unrelated.py"] = "x = 1\n"
+    repo, base = _repo(tmp_path, files)
+    _change(repo, changed_path, "after\n")
+    _commit(repo, "change runtime input")
+
+    result = _run(repo, base)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == sorted(existing_consumers)
 
 
 def test_unknown_or_missing_base_fails_clearly(tmp_path):
