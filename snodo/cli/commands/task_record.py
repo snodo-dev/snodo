@@ -42,6 +42,7 @@ def _record_task_start(project_root: str, task_id: str, spec: str) -> None:
             if "created_at" not in state:
                 state["created_at"] = time.time()
             state["started_at"] = time.time()
+            state["usage"] = []
             state["status"] = "running"
             job_id = os.environ.get("SNODO_JOB_ID")
             if job_id:
