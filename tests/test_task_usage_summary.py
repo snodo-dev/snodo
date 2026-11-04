@@ -37,3 +37,11 @@ def test_unknown_coder_tokens_and_no_usage(tmp_path, capsys):
     (tmp_path / ".snodo" / "tasks" / "t" / "state.json").write_text('{"usage": []}')
     print_task_usage_summary(tmp_path, "t", 1)
     assert capsys.readouterr().out == ""
+
+
+def test_malformed_usage_list_is_ignored_without_raising(tmp_path, capsys):
+    _write(tmp_path, [None, "corrupt", {"role": "coder", "input_tokens": 2, "output_tokens": 1}])
+    print_task_usage_summary(tmp_path, "t", 1)
+    output = capsys.readouterr().out
+    assert "coder: 2 | 1" in output
+    assert "total: 2 | 1 | 1.0s" in output
