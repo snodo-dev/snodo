@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from snodo.task_usage_summary import print_task_usage_summary
 
 
@@ -9,13 +11,20 @@ def _write(tmp_path, records):
     (folder / "state.json").write_text(json.dumps({"usage": records}))
 
 
-def test_completed_and_blocked_usage_prints_role_rows_and_total(tmp_path, capsys):
+@pytest.mark.parametrize("outcome", ["completed", "blocked"])
+def test_completed_and_blocked_task_usage_prints_role_rows_and_total(
+    tmp_path, capsys, outcome
+):
+    # The summary is outcome-independent and is printed after the task's existing
+    # terminal line, as it is at the _execute_task call site.
     _write(tmp_path, [
         {"role": "coder", "input_tokens": 10, "output_tokens": 5, "duration_ms": 1000},
         {"role": "validator:test", "input_tokens": 20, "output_tokens": 4, "duration_ms": 1000},
     ])
+    print(f"Task {outcome}.")
     print_task_usage_summary(tmp_path, "t", 3)
     output = capsys.readouterr().out
+    assert output.index(f"Task {outcome}.") < output.index("Usage:")
     assert "coder: 10 | 5" in output
     assert "validator:test: 20 | 4" in output
     assert "total: 30 | 9 | 3.0s" in output
