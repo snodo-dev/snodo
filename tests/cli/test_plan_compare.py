@@ -223,3 +223,28 @@ def test_human_report_shows_unavailable_metrics_without_usage(tmp_path, monkeypa
     assert "candidate coder output tok/s: n/a" in output
     assert "candidate post-validation findings: n/a" in output
     assert "input tokens are not directly comparable" in output
+
+
+def test_candidate_evidence_without_job_id_is_reported(tmp_path, monkeypatch, capsys):
+    baseline_dir = tmp_path / ".snodo" / "baselines" / "p" / "t"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "baseline.json").write_text(json.dumps({
+        "schema": "snodo.task-baseline.v1", "plan": "p", "task": "t",
+    }))
+    (baseline_dir / "solution.diff").write_text("")
+    monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(tmp_path))
+
+    assert compare_models_command(SimpleNamespace(plan="p", task="t", job=None, json=False)) == 1
+    assert "Benchmark candidate job evidence not found" in capsys.readouterr().err
+
+
+def test_candidate_without_model_is_rejected(tmp_path, monkeypatch, capsys):
+    _write_candidate(tmp_path, "completed")
+    task_path = tmp_path / ".snodo" / "jobs" / "job1" / "task.json"
+    task = json.loads(task_path.read_text())
+    task.pop("model")
+    task_path.write_text(json.dumps(task))
+    monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(tmp_path))
+
+    assert compare_models_command(SimpleNamespace(plan="p", task="t", job="job1", json=False)) == 1
+    assert "has no model in task.json" in capsys.readouterr().err
