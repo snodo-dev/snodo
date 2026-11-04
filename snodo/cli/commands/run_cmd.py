@@ -8,6 +8,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -955,6 +956,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     # Liveness is reference-counted because queue plans and MCP-triggered runs
     # can overlap in this process. Each run releases only its own arm.
     cloud_liveness.install()
+    task_started_at = time.monotonic()
     try:
         from snodo.engine.closure import run_to_closure
 
@@ -996,6 +998,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             )
 
         result = _report_closure(closure_tree, final_state, session_id=session_id)
+        from snodo.task_usage_summary import print_task_usage_summary
+        print_task_usage_summary(project_root, task.id, time.monotonic() - task_started_at)
 
         halt_payload = _find_terminal_halt_payload(closure_tree, final_state)
         should_deliver = _should_auto_merge(
