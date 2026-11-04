@@ -17,17 +17,18 @@ def _plain(text: str) -> str:
 @pytest.fixture
 def wired_recon(monkeypatch):
     submitted = []
+    shutdown_timeouts = []
 
     class Manager:
         def __init__(self, root):
             pass
 
         def submit(self, query, paths, lanes, **kwargs):
-            submitted.append(lanes)
+            submitted.append((lanes, kwargs))
             return "recon-id"
 
         def shutdown(self, **kwargs):
-            pass
+            shutdown_timeouts.append(kwargs.get("timeout"))
 
         def get_status(self, recon_id):
             return {"results": [{"agent": "agent", "model": "model", "result": "done"}]}
@@ -36,6 +37,7 @@ def wired_recon(monkeypatch):
     monkeypatch.setattr("snodo.config.ConfigManager.load", lambda self: {"llm": {"recon": {"models": ["configured/model"]}}})
     monkeypatch.setitem(__import__("sys").modules, "snodo.recon", SimpleNamespace(
         RECON_DEFAULT_MAX_TOKENS=100, RECON_DEFAULT_MAX_TOOL_TURNS=3,
+        RECON_DEFAULT_DEADLINE_SECONDS=300,
         ReconManager=Manager,
         resolve_recon_agents_with_notice=lambda **kwargs: ([["configured/model"]], None),
         resolve_agent_model=lambda model: model,
@@ -45,7 +47,7 @@ def wired_recon(monkeypatch):
     monkeypatch.setattr(ConfigManager, "get_providers", lambda self: {"openai": object()})
     monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: "key")
     monkeypatch.setattr(ConfigManager, "provider_uses_oauth", lambda self, provider: False)
-    return submitted
+    return submitted, shutdown_timeouts
 
 
 def args(models=None, model_list=None, num_agents=None):
@@ -54,18 +56,18 @@ def args(models=None, model_list=None, num_agents=None):
 
 def test_repeated_model_values_define_agents(wired_recon, capsys):
     assert recon_cmd.recon_command(args(models=["openai/a", "openai/b"])) == 0
-    assert wired_recon == [[["openai/a"], ["openai/b"]]]
+    assert wired_recon[0][0][0] == [["openai/a"], ["openai/b"]]
     assert "Agents: openai/a, openai/b" in capsys.readouterr().out
 
 
 def test_models_list_expands_in_order(wired_recon):
     assert recon_cmd.recon_command(args(model_list=["openai/a,openai/b"])) == 0
-    assert wired_recon == [[["openai/a"], ["openai/b"]]]
+    assert wired_recon[0][0][0] == [["openai/a"], ["openai/b"]]
 
 
 def test_both_forms_and_duplicate_models_preserve_order(wired_recon):
     assert recon_cmd.recon_command(args(models=["openai/a"], model_list=["openai/b,openai/a"])) == 0
-    assert wired_recon == [[["openai/a"], ["openai/b"], ["openai/a"]]]
+    assert wired_recon[0][0][0] == [["openai/a"], ["openai/b"], ["openai/a"]]
 
 
 @pytest.mark.parametrize("models,model_list", [(["openai/a,openai/b"], None), (None, ["openai/a,,openai/b"])])
@@ -75,28 +77,45 @@ def test_comma_model_option_and_empty_entry_behavior(wired_recon, models, model_
     if models:
         assert result == 1
         assert "--models" in capsys.readouterr().err
-        assert not wired_recon
+        assert not wired_recon[0]
     else:
         assert result == 0
-        assert wired_recon == [[["openai/a"], ["openai/b"]]]
+        assert wired_recon[0][0][0] == [["openai/a"], ["openai/b"]]
 
 
 @pytest.mark.parametrize("models,model_list", [(["openai/a"], None), (None, ["openai/a"])])
 def test_agent_count_refused_with_explicit_model_forms(wired_recon, models, model_list, capsys):
     assert recon_cmd.recon_command(args(models=models, model_list=model_list, num_agents=2)) == 1
-    assert not wired_recon
+    assert not wired_recon[0]
     assert "--model or --models" in capsys.readouterr().err
 
 
 def test_unknown_model_refused_before_dispatch(wired_recon, capsys):
     assert recon_cmd.recon_command(args(model_list=["unknown-model"])) == 1
-    assert not wired_recon
+    assert not wired_recon[0]
     assert "unknown-model" in capsys.readouterr().err
 
 
 def test_no_model_uses_configuration_unchanged(wired_recon):
     assert recon_cmd.recon_command(args()) == 0
-    assert wired_recon == [[["configured/model"]]]
+    assert wired_recon[0][0][0] == [["configured/model"]]
+
+
+def test_cli_passes_configured_deadline_and_waits_for_it(monkeypatch, wired_recon):
+    from snodo.config import ConfigManager
+    monkeypatch.setattr(ConfigManager, "load", lambda self: {"llm": {"recon": {"deadline_seconds": 900}}})
+    submitted, waits = wired_recon
+    assert recon_cmd.recon_command(args()) == 0
+    assert submitted[0][1]["deadline_seconds"] == 900
+    assert waits[-1] >= 900
+
+
+def test_cli_rejects_invalid_deadline(monkeypatch, wired_recon, capsys):
+    from snodo.config import ConfigManager
+    monkeypatch.setattr(ConfigManager, "load", lambda self: {"llm": {"recon": {"deadline_seconds": 0}}})
+    assert recon_cmd.recon_command(args()) == 1
+    assert "deadline_seconds must be a positive integer" in capsys.readouterr().err
+    assert not wired_recon[0]
 
 
 def test_cli_exposes_model_options():
@@ -120,17 +139,17 @@ def test_cli_exposes_repeatable_model_option():
 
 def test_explicit_model_lanes(wired_recon):
     assert recon_cmd.recon_command(args(models=["openai/a"])) == 0
-    assert wired_recon == [[["openai/a"]]]
+    assert wired_recon[0][0][0] == [["openai/a"]]
 
 
 def test_explicit_models_define_separate_lanes(wired_recon):
     assert recon_cmd.recon_command(args(model_list=["openai/a,openai/b"])) == 0
-    assert wired_recon == [[["openai/a"], ["openai/b"]]]
+    assert wired_recon[0][0][0] == [["openai/a"], ["openai/b"]]
 
 
 def test_models_and_agent_count_refused_before_dispatch(wired_recon, capsys):
     assert recon_cmd.recon_command(args(model_list=["openai/a"], num_agents=2)) == 1
-    assert not wired_recon
+    assert not wired_recon[0]
     assert "--model or --models" in capsys.readouterr().err
 
 

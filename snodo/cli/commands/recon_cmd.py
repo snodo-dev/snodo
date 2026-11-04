@@ -89,8 +89,6 @@ def recon_command(args) -> int:
 
     from snodo.infrastructure.paths import require_project_root
     from snodo.recon import (
-        RECON_DEFAULT_MAX_TOKENS,
-        RECON_DEFAULT_MAX_TOOL_TURNS,
         ReconManager,
         resolve_recon_agents_with_notice,
     )
@@ -100,10 +98,17 @@ def recon_command(args) -> int:
     from snodo.config import ConfigManager
     config = ConfigManager().load()
     recon_cfg = config.get("llm", {}).get("recon", {})
+    from snodo.recon_settings import resolve_recon_settings
+    try:
+        settings = resolve_recon_settings(config)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     recon_models = recon_cfg.get("models", [])
     recon_default_n = recon_cfg.get("num_agents", 1)
-    max_tool_turns = recon_cfg.get("max_tool_turns", RECON_DEFAULT_MAX_TOOL_TURNS)
-    max_tokens = recon_cfg.get("max_tokens", RECON_DEFAULT_MAX_TOKENS)
+    max_tool_turns = settings["max_tool_turns"]
+    max_tokens = settings["max_tokens"]
+    deadline_seconds = settings["deadline_seconds"]
 
     if explicit_models:
         from snodo.config import ConfigManager
@@ -141,6 +146,7 @@ def recon_command(args) -> int:
     recon_id = mgr.submit(
         query, paths, lanes,
         max_tool_turns=max_tool_turns, max_tokens=max_tokens,
+        deadline_seconds=deadline_seconds,
     )
 
     print(f"Recon dispatched: {recon_id}")
@@ -153,7 +159,7 @@ def recon_command(args) -> int:
     print(f"  Query:  {query}")
     print()
 
-    mgr.shutdown(timeout=300.0)
+    mgr.shutdown(timeout=deadline_seconds + 10.0)
 
     status_data = mgr.get_status(recon_id)
     results = status_data.get("results", [])
