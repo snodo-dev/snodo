@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- List the `claude-cli` coder wherever the other host-CLI coders are listed in the protocol reference, runbook, architecture overview and docs home, and correct the guide to adding a coder adapter: a built-in adapter also needs an explicit model-prefix route, a conformance driver and a regenerated protocol schema, and the example adapter now sets the `coder_name` the conformance tests require and a model prefix that matches its name. (Fixes #1086)
+
 ## [0.28.2] — 2026-11-03
 
 - Return the reason for a refused MCP tool call to the caller, so a rejected `generate_spec` names what to correct instead of the bare "Error executing tool generate_spec" that the `mcp` 2.x move left. (Fixes #1073)

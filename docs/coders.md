@@ -137,8 +137,9 @@ from typing import List
 from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
 
 class CustomCoderAdapter(SubprocessCoderAdapter):
+    coder_name: str = "custom-coder"
     binary: str = "custom-coder"
-    model_prefix: str = "custom/"
+    model_prefix: str = "custom-coder/"
     install_hint: str = "Install custom-coder: https://example.com/install"
 
     def _build_argv(self, prompt: str, project_root: str, model: str) -> List[str]:
@@ -148,4 +149,11 @@ class CustomCoderAdapter(SubprocessCoderAdapter):
         return argv
 ```
 
-Registering the adapter class in `CODER_REGISTRY` (`snodo/coders/__init__.py`) automatically exposes it to `--coder`, enables model prefix routing, and includes it in the adapter conformance test suite (`tests/coders/test_adapter_conformance.py`).
+Registering the adapter class in `CODER_REGISTRY` (`snodo/coders/__init__.py`) exposes it to `--coder`. A built-in adapter also needs:
+
+1. An explicit model-prefix branch in `resolve_coder_name()`. The generic prefix loop routes only installed plugins and skips built-in names.
+2. A conformance driver in `_DRIVERS` (`tests/coders/test_adapter_conformance.py`). The conformance tests run for every registered coder and fail for one without a driver.
+3. A regenerated `schemas/protocol-v1.json`, which lists the registered coders. [Generated editor schema](protocol.md#generated-editor-schema) gives the command and the drift check.
+4. An entry in the coder lists on this page, in `README.md` (Project status), `docs/protocol.md` (Coder backends), `docs/runbook.md` (Coders), `docs/architecture.md` (shipped adapters), and `docs/index.md`.
+
+An adapter installed through the `snodo.coders` entry-point group is routed by its registered name as a model prefix and needs none of these repository changes. Set its `model_prefix` to `<entry-point name>/` so that `--model <entry-point name>/<model>` both selects the adapter and passes `<model>` to the CLI. See [Extending Snodo](extending.md).
