@@ -153,6 +153,7 @@ def recon_command(args) -> int:
     if agent_count_notice:
         print(f"  Agent count: {len(lanes)} ({agent_count_notice})")
     print(f"  Agents: {', '.join(lane[0] for lane in lanes)}")
+    print(_recon_budget_line(deadline_seconds, max_tool_turns))
     for lane in lanes:
         if len(lane) > 1:
             print(f"    Failover order for {lane[0]}: {' → '.join(lane)}")
@@ -205,3 +206,8 @@ def recon_command(args) -> int:
     for line in render_usage_summary(summarize_usage(usage_records), elapsed):
         print(line)
     return 0
+
+
+def _recon_budget_line(deadline_seconds: int, max_tool_turns: int) -> str:
+    """Describe the effective per-agent time and tool-turn budgets."""
+    return f"  Per-agent budget: {deadline_seconds}s deadline, {max_tool_turns} tool turns"

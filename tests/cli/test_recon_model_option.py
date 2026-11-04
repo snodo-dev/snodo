@@ -57,7 +57,9 @@ def args(models=None, model_list=None, num_agents=None):
 def test_repeated_model_values_define_agents(wired_recon, capsys):
     assert recon_cmd.recon_command(args(models=["openai/a", "openai/b"])) == 0
     assert wired_recon[0][0][0] == [["openai/a"], ["openai/b"]]
-    assert "Agents: openai/a, openai/b" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Agents: openai/a, openai/b" in output
+    assert "Per-agent budget: 300s deadline, 3 tool turns" in output
 
 
 def test_models_list_expands_in_order(wired_recon):
@@ -101,13 +103,14 @@ def test_no_model_uses_configuration_unchanged(wired_recon):
     assert wired_recon[0][0][0] == [["configured/model"]]
 
 
-def test_cli_passes_configured_deadline_and_waits_for_it(monkeypatch, wired_recon):
+def test_cli_passes_configured_deadline_and_waits_for_it(monkeypatch, wired_recon, capsys):
     from snodo.config import ConfigManager
     monkeypatch.setattr(ConfigManager, "load", lambda self: {"llm": {"recon": {"deadline_seconds": 900}}})
     submitted, waits = wired_recon
     assert recon_cmd.recon_command(args()) == 0
     assert submitted[0][1]["deadline_seconds"] == 900
     assert waits[-1] >= 900
+    assert "Per-agent budget: 900s deadline, 3 tool turns" in capsys.readouterr().out
 
 
 def test_cli_rejects_invalid_deadline(monkeypatch, wired_recon, capsys):
