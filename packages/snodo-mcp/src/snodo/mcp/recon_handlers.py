@@ -32,9 +32,6 @@ class ReconToolHandler:
         num_agents = arguments.get("num_agents")
 
         from snodo.recon import (
-            RECON_DEFAULT_MAX_TOKENS,
-            RECON_DEFAULT_MAX_TOOL_TURNS,
-            RECON_DEFAULT_DEADLINE_SECONDS,
             ReconManager,
             ReconError,
             resolve_recon_agents_with_notice,
@@ -45,9 +42,11 @@ class ReconToolHandler:
         recon_cfg = config.get("llm", {}).get("recon", {})
         recon_models = recon_cfg.get("models", [])
         recon_default_n = recon_cfg.get("num_agents", 1)
-        max_tool_turns = recon_cfg.get("max_tool_turns", RECON_DEFAULT_MAX_TOOL_TURNS)
-        max_tokens = recon_cfg.get("max_tokens", RECON_DEFAULT_MAX_TOKENS)
-        deadline_seconds = recon_cfg.get("deadline_seconds", RECON_DEFAULT_DEADLINE_SECONDS)
+        from snodo.recon_settings import resolve_recon_settings
+        settings = resolve_recon_settings(config)
+        max_tool_turns = settings["max_tool_turns"]
+        max_tokens = settings["max_tokens"]
+        deadline_seconds = settings["deadline_seconds"]
 
         agents, agent_count_notice = resolve_recon_agents_with_notice(
             requested_n=num_agents,

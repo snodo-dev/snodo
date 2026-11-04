@@ -192,8 +192,10 @@ a direct `snodo run` task. Candidate benchmark results are compared with a
 stored task baseline through `snodo models --compare` (with `--plan` and
 `--task`).
 
-`snodo recon <query> [paths...]` runs read-only codebase exploration, waits up
-to 300 seconds, and prints each agent's answer. `--agents`/`-n` requests the
+`snodo recon <query> [paths...]` runs read-only codebase exploration, applying
+the configured `llm.recon.deadline_seconds` per agent (default 300 seconds) on
+the CLI as well as through MCP. At startup it prints a `Per-agent budget:` line
+showing the deadline and tool-turn limit, then prints each agent's answer. `--agents`/`-n` requests the
 number of agent lanes; if omitted, the configured count is used. Configured
 models supply the lanes in order, and failed model attempts are reported to
 stderr. To choose models directly, use repeatable `--model <provider/model>`

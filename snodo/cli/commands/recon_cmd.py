@@ -89,8 +89,6 @@ def recon_command(args) -> int:
 
     from snodo.infrastructure.paths import require_project_root
     from snodo.recon import (
-        RECON_DEFAULT_MAX_TOKENS,
-        RECON_DEFAULT_MAX_TOOL_TURNS,
         ReconManager,
         resolve_recon_agents_with_notice,
     )
@@ -100,10 +98,17 @@ def recon_command(args) -> int:
     from snodo.config import ConfigManager
     config = ConfigManager().load()
     recon_cfg = config.get("llm", {}).get("recon", {})
+    from snodo.recon_settings import resolve_recon_settings
+    try:
+        settings = resolve_recon_settings(config)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     recon_models = recon_cfg.get("models", [])
     recon_default_n = recon_cfg.get("num_agents", 1)
-    max_tool_turns = recon_cfg.get("max_tool_turns", RECON_DEFAULT_MAX_TOOL_TURNS)
-    max_tokens = recon_cfg.get("max_tokens", RECON_DEFAULT_MAX_TOKENS)
+    max_tool_turns = settings["max_tool_turns"]
+    max_tokens = settings["max_tokens"]
+    deadline_seconds = settings["deadline_seconds"]
 
     if explicit_models:
         from snodo.config import ConfigManager
@@ -141,19 +146,21 @@ def recon_command(args) -> int:
     recon_id = mgr.submit(
         query, paths, lanes,
         max_tool_turns=max_tool_turns, max_tokens=max_tokens,
+        deadline_seconds=deadline_seconds,
     )
 
     print(f"Recon dispatched: {recon_id}")
     if agent_count_notice:
         print(f"  Agent count: {len(lanes)} ({agent_count_notice})")
     print(f"  Agents: {', '.join(lane[0] for lane in lanes)}")
+    print(_recon_budget_line(deadline_seconds, max_tool_turns))
     for lane in lanes:
         if len(lane) > 1:
             print(f"    Failover order for {lane[0]}: {' → '.join(lane)}")
     print(f"  Query:  {query}")
     print()
 
-    mgr.shutdown(timeout=300.0)
+    mgr.shutdown(timeout=deadline_seconds + 10.0)
 
     status_data = mgr.get_status(recon_id)
     results = status_data.get("results", [])
@@ -199,3 +206,8 @@ def recon_command(args) -> int:
     for line in render_usage_summary(summarize_usage(usage_records), elapsed):
         print(line)
     return 0
+
+
+def _recon_budget_line(deadline_seconds: int, max_tool_turns: int) -> str:
+    """Describe the effective per-agent time and tool-turn budgets."""
+    return f"  Per-agent budget: {deadline_seconds}s deadline, {max_tool_turns} tool turns"
