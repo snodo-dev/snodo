@@ -1409,6 +1409,8 @@ class TestReconDefectFixes:
         out = capsys.readouterr().out
         assert "Recon complete:" in out
         assert "Codebase looks good" in out
+        assert "Usage: role | input tokens | output tokens | model time | output tok/s" in out
+        assert "total:" in out
 
     def test_api_base_reaches_completion_call_when_configured(self, project_with_snodo):
         from unittest.mock import MagicMock

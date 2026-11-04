@@ -1177,3 +1177,28 @@ def test_recon_watch_without_events_file_and_nonwatch_output_unchanged(capsys, m
             assert "No results yet." not in watched
             assert logs_command(SimpleNamespace(composite_id="rec_old", watch=False)) == 0
     assert capsys.readouterr().out == "Recon: rec_old\nQuery: q\nStatus: complete\n\nNo results yet.\n"
+
+
+def test_recon_usage_summary_includes_failed_agent_as_unknown(capsys):
+    from snodo.cli.commands.logs_cmd import _print_recon_usage
+
+    _print_recon_usage([
+        {"agent": "a", "model": "model-a", "usage": [{"input_tokens": 10, "output_tokens": 4, "duration_ms": 1000}]},
+        {"agent": "b", "model": "model-b", "usage": [{"input_tokens": 20, "output_tokens": 6, "duration_ms": 2000}]},
+        {"agent": "c", "model": "model-c", "error": "failed", "usage": []},
+    ], {"created_at": 10, "completed_at": 19})
+    output = capsys.readouterr().out
+    assert "model-a: 10 | 4 | 1.0s | 4.0 C" in output
+    assert "model-b: 20 | 6 | 2.0s | 3.0 C" in output
+    assert "model-c: n/a | n/a | n/a | n/a" in output
+    assert "total: 30 | 10 | 9.0s |" in output
+
+
+def test_recon_usage_summary_with_no_usage_is_not_zero(capsys):
+    from snodo.cli.commands.logs_cmd import _print_recon_usage
+
+    _print_recon_usage([], {"created_at": 2, "completed_at": 7})
+    assert capsys.readouterr().out.splitlines() == [
+        "Usage: role | input tokens | output tokens | model time | output tok/s",
+        "total: n/a | n/a | 5.0s | n/a",
+    ]

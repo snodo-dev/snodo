@@ -20,6 +20,34 @@ For models accessed through a ChatGPT subscription, configure `auth: chatgpt-oau
 
 Benchmark a specific model by name with `snodo models --benchmark <provider>/<model>`, for example `snodo models --benchmark openai/gpt-4o`. The equivalent longer form is `snodo models --provider <provider> --id <model> --benchmark`. The benchmark makes a billed call and reports timing and throughput measurements; use it when you want a like-for-like measurement rather than aggregate job statistics.
 
+## Compare a task benchmark
+
+Use `snodo models --set-baseline --plan <plan> --task <task>` to capture a
+completed task's solution diff and recorded model/coder as its local baseline.
+The baseline also keeps the available usage summary and coder-turn count in
+`.snodo/baselines/<plan>/<task>/baseline.json`.
+
+Run a candidate against the baseline's recorded base commit with
+`snodo models --benchmark-run --plan <plan> --task <task> --model <provider/model>`.
+Before dispatch, Snodo reports the baseline and candidate coder and model, and
+flags when their coder harnesses differ. The candidate is run without merging.
+The result includes its status, halt type, and reason when available; a
+candidate that does not complete is still reported for comparison.
+
+`snodo models --compare --plan <plan> --task <task>` compares a stored baseline
+with a candidate job (the latest matching job by default); add `--job` to select
+a job explicitly. The score covers patch content, validator outcome, and changed
+files. Change-size, coder time, total elapsed time, coder turns, coder and
+validator tokens, output-token rate, cost, and post-validation findings are
+shown for context but are not scored. Missing measurements or findings appear
+as `n/a`. Token counts may not be comparable when the coder harnesses differ;
+the comparison reports this caveat. `--json` emits the comparison data as JSON.
+
+For example, if a benchmark candidate did not complete, its comparison can
+still show `candidate status: failed (halt: blocked)` alongside the reason and
+baseline-to-candidate score and run metrics; a failed candidate does not imply
+that those measurements were scored.
+
 ## Discover configured models
 
 Call `list_models` to inspect the models discovered from Snodo's configured

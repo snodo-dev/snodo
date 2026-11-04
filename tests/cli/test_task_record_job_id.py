@@ -48,3 +48,18 @@ def test_second_start_archives_job_id_of_previous_attempt(tmp_path, monkeypatch)
     archived = json.loads(attempts[0].read_text())
     assert archived["job_id"] == "j_first"
     assert _read_state(tmp_path, "task_alpha")["job_id"] == "j_second"
+
+
+def test_second_start_clears_prior_usage_after_archiving(tmp_path, monkeypatch):
+    _record_task_start(str(tmp_path), "task_alpha", "first run")
+    state_path = tmp_path / ".snodo" / "tasks" / "task_alpha" / "state.json"
+    state = json.loads(state_path.read_text())
+    state["usage"] = [{"role": "coder", "input_tokens": 99, "output_tokens": 10}]
+    state_path.write_text(json.dumps(state))
+
+    _record_task_start(str(tmp_path), "task_alpha", "retry run")
+
+    assert _read_state(tmp_path, "task_alpha")["usage"] == []
+    attempts = list((state_path.parent / "attempts").glob("*.json"))
+    assert len(attempts) == 1
+    assert json.loads(attempts[0].read_text())["usage"][0]["input_tokens"] == 99

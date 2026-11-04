@@ -249,6 +249,7 @@ def test_set_baseline_finds_terminal_plan_task_without_jobs_directory(tmp_path, 
     record = json.loads((baseline_dir / "baseline.json").read_text())
     diff = (baseline_dir / "solution.diff").read_text()
     assert record["model"] == "deepseek/deepseek-v4-pro"
+    assert "usage" not in record
     assert record["change_size"]["files_changed"] == 1
     assert "slug.py" in diff
     assert "slugify" in diff
@@ -278,6 +279,11 @@ def test_set_baseline_uses_task_recorded_range_without_merge_audit_event(tmp_pat
             "change_size": {"base_sha": base_sha, "head_sha": head_sha, "paths": ["solution.txt"]},
             "provenance": {"model": "recorded/model", "coder": "test"},
         },
+        "usage": [
+            {"role": "coder", "input_tokens": 11, "output_tokens": 7, "duration_ms": 1500, "cost": 0.02},
+            {"role": "validator", "input_tokens": 3, "output_tokens": 2, "duration_ms": 500, "cost": 0.01},
+        ],
+        "halt": {"coder_report": {"turns_used": 4}},
     }))
     monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(root))
 
@@ -289,6 +295,11 @@ def test_set_baseline_uses_task_recorded_range_without_merge_audit_event(tmp_pat
     diff = (baseline / "solution.diff").read_text()
     assert record["change_size"]["base_sha"] == base_sha
     assert record["change_size"]["head_sha"] == head_sha
+    assert record["usage"]["coder_turns"] == 4
+    summary = record["usage"]["summary"]
+    assert summary["rows"][0]["input_tokens"] == 11
+    assert summary["rows"][0]["cost"] == 0.02
+    assert summary["total"]["time_seconds"] == 2.0
     assert "recorded task solution" in diff
 
 
@@ -383,6 +394,7 @@ def test_benchmark_run_uses_wave_spec_base_and_explicit_job(tmp_path, monkeypatc
 
         def submit(self, task_args):
             submitted.update(task_args)
+            submitted["notice_before_submit"] = "Candidate: coder" in capsys.readouterr().err
             return "j_benchmark"
 
         def wait_for(self, job_id):
@@ -398,6 +410,7 @@ def test_benchmark_run_uses_wave_spec_base_and_explicit_job(tmp_path, monkeypatc
         SimpleNamespace(plan="demo", task="1.1_task", model="candidate/model", json=False)
     )
     assert result == 0
+    assert submitted["notice_before_submit"] is True
     assert submitted["base"] == "base-sha"
     assert submitted["description"] == "Do the task\n"
     assert submitted["benchmark"] is True

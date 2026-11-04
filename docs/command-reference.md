@@ -55,6 +55,27 @@ For a ChatGPT subscription, configure `auth: chatgpt-oauth` and run `snodo model
 
 Benchmark one model by its fully qualified name with `snodo models --benchmark <provider>/<model>`; for example, `snodo models --benchmark openai/gpt-4o`. This is equivalent to `snodo models --provider <provider> --id <model> --benchmark`. The benchmark reports measurements for the selected model; benchmark results can be compared with stored task baselines using `snodo models --compare` (with `--plan` and `--task`).
 
+`snodo models --set-baseline --plan <plan> --task <task>` captures a completed
+task's solution diff and model/coder as a local baseline. If usage was recorded,
+its summary and coder-turn count are kept in
+`.snodo/baselines/<plan>/<task>/baseline.json`. Run a candidate from the
+baseline's recorded base commit with
+`snodo models --benchmark-run --plan <plan> --task <task> --model <provider/model>`.
+The preflight notice names the baseline and candidate coder and model and flags
+a different coder harness. The candidate runs without merging; even if it does
+not complete, the comparison reports its status, halt type, and available reason.
+
+Use `snodo models --compare --plan <plan> --task <task>` to compare the latest
+matching candidate job with the stored baseline, or specify `--job <job-id>`.
+The scored signals are patch content, validator outcome, and changed files.
+Change size and the run-metrics block are shown only: coder time, total elapsed
+time, coder turns, coder and validator input/output tokens, coder output-token
+rate, cost, and post-validation findings. Missing values are `n/a`. Token counts
+may not be comparable across different coder harnesses; the output notes this.
+For example, a candidate with `status: failed` still appears in the comparison
+with its halt type/reason and metrics, but those metrics do not affect the score.
+Use `--json` for machine-readable comparison output.
+
 `snodo config set/get` take dotted configuration keys (for example
 `llm.coder.max_tokens`). Only the top-level `model`, `engine.*`, and `llm.*`
 keys are supported by the setter; edit other settings, including cloud and
