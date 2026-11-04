@@ -56,10 +56,15 @@ can therefore have token and duration data without a monetary cost. Check
 
 ### End-of-run usage summary
 
-At the end of a task run and a recon, Snodo prints a compact summary with a row
-for each role (the coder and each validator) or recon agent, followed by a
-`total` row. The columns are input tokens, output tokens, model-call time, and
-output tokens per second. For example, a task summary can look like:
+At the end of a task run, Snodo prints a compact summary with a row for each
+role (the coder and each validator) followed by a `total` row, but only when the
+task recorded at least one usage record. If its task state has no usage list, an
+empty list, or no dictionary records, no task summary is printed. A recon prints
+a summary with a row for each recon agent followed by a `total` row whenever it
+has at least one result, even if an agent has no usage data; if the recon has no
+results, it exits before printing a usage summary. The columns are input tokens,
+output tokens, model-call time, and output tokens per second. For example, a task
+summary can look like:
 
 ```text
 Usage: role | input tokens | output tokens | model time | output tok/s
