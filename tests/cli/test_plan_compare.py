@@ -198,3 +198,28 @@ def test_token_shaped_reason_redacted_in_json(tmp_path, monkeypatch, capsys):
     code, payload, _ = _run_candidate(tmp_path, monkeypatch, capsys, "failed", {"reason": "failed with sk-abcdefgh12345678"})
     assert code == 0
     assert "sk-abcdefgh" not in payload["reason"]
+
+
+def test_missing_candidate_job_is_reported(tmp_path, monkeypatch, capsys):
+    baseline_dir = tmp_path / ".snodo" / "baselines" / "p" / "t"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "baseline.json").write_text(json.dumps({
+        "schema": "snodo.task-baseline.v1", "plan": "p", "task": "t",
+    }))
+    (baseline_dir / "solution.diff").write_text("")
+    monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(tmp_path))
+
+    assert compare_models_command(SimpleNamespace(plan="p", task="t", job="missing", json=False)) == 1
+    assert "not a completed benchmark candidate" in capsys.readouterr().err
+
+
+def test_human_report_shows_unavailable_metrics_without_usage(tmp_path, monkeypatch, capsys):
+    code, output, _ = _run_candidate(tmp_path, monkeypatch, capsys, "completed", json_out=False)
+
+    assert code == 0
+    assert "Run metrics (baseline -> candidate; not scored):" in output
+    assert "coder time: n/a -> n/a" in output
+    assert "coder turns: n/a -> n/a" in output
+    assert "candidate coder output tok/s: n/a" in output
+    assert "candidate post-validation findings: n/a" in output
+    assert "input tokens are not directly comparable" in output
