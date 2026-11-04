@@ -100,3 +100,33 @@ def test_elapsed_ms_takes_precedence_over_wall_time(tmp_path):
     )
 
     assert metrics["baseline"]["elapsed_seconds"] == 1.25
+
+
+def test_non_object_baseline_task_state_and_job_state_are_unknown(tmp_path):
+    task_dir = tmp_path / ".snodo" / "tasks" / "task-1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text('{"job_id":"job-1"}', encoding="utf-8")
+    job_dir = tmp_path / ".snodo" / "jobs" / "job-1"
+    job_dir.mkdir(parents=True)
+    (job_dir / "state.json").write_text("[]", encoding="utf-8")
+
+    metrics = comparison_metrics(tmp_path, {"task": "task-1"}, {}, "candidate")
+
+    assert metrics["baseline"]["elapsed_seconds"] is None
+    assert metrics["baseline"]["cost"] is None
+    assert metrics["baseline"]["post_validation_findings"] is None
+
+
+def test_cost_falls_back_to_recorded_total_then_per_call_cost(tmp_path):
+    from_total = comparison_metrics(
+        tmp_path, {"metrics": {"cost": {"total": 1.75}}}, {}, "candidate"
+    )
+    from_calls = comparison_metrics(
+        tmp_path,
+        {"metrics": {"usage": [{"role": "coder", "cost": 0.4}, {"cost": 0.6}]}},
+        {},
+        "candidate",
+    )
+
+    assert from_total["baseline"]["cost"] == 1.75
+    assert from_calls["baseline"]["cost"] == 1.0
