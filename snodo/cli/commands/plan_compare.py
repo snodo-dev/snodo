@@ -252,6 +252,8 @@ def compare_models_command(args) -> int:
             baseline, baseline_path.with_name("solution.diff").read_text(encoding="utf-8"),
             candidate, candidate_diff,
         )
+        from snodo.compare_metrics import comparison_metrics
+        result["run_metrics"] = comparison_metrics(Path(root), baseline, candidate, candidate_path.parent.name)
         result.update({"plan": plan, "task": task, "job": candidate_path.parent.name,
                        "baseline": str(baseline_path.parent),
                        "candidate_patch_sha256": hashlib.sha256(candidate_diff.encode()).hexdigest()})
@@ -300,6 +302,7 @@ def compare_models_command(args) -> int:
     print(f"  changed surface:   {surface['overlap_files']}/{surface['baseline_files']} files covered; {surface['extra_files']} extra ({surface['direction']})")
     size = result["signals"]["change_size"]
     print(f"  change size:       {size['baseline_lines']:g} -> {size['candidate_lines']:g} lines ({size['difference_lines']:+g}; not scored)")
+    _print_run_metrics(result["run_metrics"])
     return 0
 
 
@@ -325,3 +328,27 @@ def _safe_reason(reason: str, limit: int = 300) -> str:
     safe = re.sub(r"(?i)(sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{8,})", "[redacted]", safe)
     safe = "".join(ch if ch.isprintable() and ch != "\x1b" else " " for ch in safe)
     return re.sub(r"\s+", " ", safe).strip()[:limit]
+
+
+def _print_run_metrics(metrics: dict) -> None:
+    """Render display-only run measurements side by side."""
+    base, candidate = metrics["baseline"], metrics["candidate"]
+    def show(value, suffix=""):
+        return "n/a" if value is None else f"{value:g}{suffix}"
+    print("  Run metrics (baseline -> candidate; not scored):")
+    for label, key, suffix in (
+        ("coder time", "coder_time_seconds", "s"), ("total elapsed", "elapsed_seconds", "s"),
+        ("coder turns", "coder_turns", ""), ("coder input tokens", "coder_input_tokens", ""),
+        ("coder output tokens", "coder_output_tokens", ""), ("validator input tokens", "validator_input_tokens", ""),
+        ("validator output tokens", "validator_output_tokens", ""), ("cost", "cost", ""),
+    ):
+        extra = " (model calls)" if key == "coder_turns" and (base.get("coder_turns_source") == "model_calls" or candidate.get("coder_turns_source") == "model_calls") else ""
+        print(f"    {label}: {show(base.get(key), suffix)} -> {show(candidate.get(key), suffix)}{extra}")
+    for side in ("baseline", "candidate"):
+        info = metrics[side]
+        rate = info.get("coder_output_tokens_per_second")
+        mark = "R" if info.get("coder_rate_source") == "reported" else "C"
+        print(f"    {side} coder output tok/s: {show(rate)}{(' ' + mark) if rate is not None else ''}")
+        findings = info.get("post_validation_findings", {})
+        print(f"    {side} post-validation findings: " + ", ".join(f"{severity} {findings.get(severity, 0)}" for severity in ("blocker", "warn", "escalate", "pass", "validator_error", "internal_error")))
+    print(f"    {metrics['token_comparability_note']}")
