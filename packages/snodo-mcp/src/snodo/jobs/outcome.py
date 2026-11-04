@@ -26,6 +26,7 @@ def classify_outcome(state: Any, audit_events: Any) -> TaskOutcome:
     halt = halt if isinstance(halt, dict) else {}
     reason = halt.get("reason")
     halt_type = halt.get("type", halt.get("halt_type"))
+    halt_type = halt_type if isinstance(halt_type, str) else None
     events = audit_events if isinstance(audit_events, (list, tuple)) else ()
 
     recovery_id = None
@@ -35,6 +36,7 @@ def classify_outcome(state: Any, audit_events: Any) -> TaskOutcome:
         if not isinstance(event, dict):
             continue
         kind = event.get("event_type", event.get("op"))
+        kind = kind if isinstance(kind, str) else None
         if kind == "subtask_spawned":
             candidate = event.get("task_ref", event.get("recovery_task_id"))
             if isinstance(candidate, str) and candidate:
@@ -44,19 +46,22 @@ def classify_outcome(state: Any, audit_events: Any) -> TaskOutcome:
         elif kind in {"recovery_exhausted", "recovery_stalled"}:
             exhausted_or_stalled = True
 
+    status = state.get("status")
+    status = status if isinstance(status, str) else None
+
     if halt_type in {"validator_error", "internal_error", "environment_error"}:
         situation = "engine_fault"
     elif pending_escalation and halt.get("adjudicable") is True:
         situation = "human_decision"
     elif exhausted_or_stalled:
         situation = "blocked"
-    elif recovery_id and state.get("status") in {"completed", "finished"}:
+    elif recovery_id and status in {"completed", "finished"}:
         situation = "warn_recovered"
     elif halt:
         situation = "blocked"
-    elif state.get("status") in {"completed", "finished"} and state.get("exit_code") == 0:
+    elif status in {"completed", "finished"} and state.get("exit_code") == 0:
         situation = "success"
-    elif state.get("exit_code") == 0 and state.get("status") not in {"failed", "halted"}:
+    elif state.get("exit_code") == 0 and status not in {"failed", "halted"}:
         situation = "success"
     else:
         situation = "blocked"

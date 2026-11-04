@@ -49,3 +49,11 @@ def test_malformed_inputs_never_raise_and_fail_closed():
         assert result.situation == "blocked"
         assert result.recovery_task_id is None
         assert result.halt_reason is None
+
+
+def test_unhashable_malformed_fields_never_raise():
+    result = classify_outcome(
+        {"status": ["completed"], "exit_code": 1, "halt": {"type": ["validator_error"]}},
+        [{"event_type": ["recovery_exhausted"]}],
+    )
+    assert result.situation == "blocked"
