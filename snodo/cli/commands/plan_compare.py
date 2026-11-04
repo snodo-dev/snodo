@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -39,7 +41,7 @@ def _baseline(project_root: Path, plan: str, task: str) -> tuple[dict, Path]:
 
 
 def _benchmark_candidate(project_root: Path, plan: str, task: str, job_dir: Path) -> Optional[dict]:
-    """Resolve a completed benchmark job using its own task metadata and branch."""
+    """Resolve an ended benchmark job using its own task metadata and branch."""
     task_data = _read_json(job_dir / "task.json", "Job task record")
     state = _read_json(job_dir / "state.json", "Job state")
     branch = task_data.get("branch")
@@ -48,7 +50,7 @@ def _benchmark_candidate(project_root: Path, plan: str, task: str, job_dir: Path
     task_plan = task_data.get("task_plan")
     if (task_id != task or not isinstance(task_plan, str) or not task_plan.startswith("benchmark-")
             or not isinstance(branch, str) or branch != f"benchmark/{plan}/{task}/{branch.rsplit('/', 1)[-1]}"
-            or not base or str(state.get("status", "")).lower() != "completed"):
+            or not base or str(state.get("status", "")).lower() in {"running", "queued", "pending", "created"}):
         return None
     model = task_data.get("model")
     if not isinstance(model, str) or not model.strip():
@@ -91,6 +93,8 @@ def _benchmark_candidate(project_root: Path, plan: str, task: str, job_dir: Path
 
 def _job_record(project_root: Path, plan: str, task: str, job_id: Optional[str]) -> tuple[dict, Path]:
     jobs_dir = project_root / ".snodo" / "jobs"
+    if job_id and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", job_id):
+        raise ValueError("Invalid benchmark job id")
     job_dirs = [jobs_dir / job_id] if job_id else (list(jobs_dir.iterdir()) if jobs_dir.is_dir() else [])
     candidates = []
     for job_dir in job_dirs:
@@ -238,7 +242,8 @@ def compare_models_command(args) -> int:
         if baseline.get("plan") not in (None, plan) or baseline.get("task") not in (None, task):
             raise ValueError("Baseline plan/task does not match the requested --plan/--task")
         candidate, candidate_path = _job_record(Path(root), plan, task, getattr(args, "job", None))
-        candidate_diff = _candidate_patch(Path(root), _change_size(candidate))
+        candidate_diff = (_candidate_patch(Path(root), _change_size(candidate))
+                          if _change_size(candidate).get("base_sha") and _change_size(candidate).get("head_sha") else "")
         expected_sha = baseline.get("diff_sha256")
         actual_sha = hashlib.sha256(baseline_path.with_name("solution.diff").read_bytes()).hexdigest()
         if expected_sha and expected_sha != actual_sha:
@@ -251,11 +256,21 @@ def compare_models_command(args) -> int:
                        "baseline": str(baseline_path.parent),
                        "candidate_patch_sha256": hashlib.sha256(candidate_diff.encode()).hexdigest()})
         benchmark_branch = candidate.get("branch") or getattr(args, "benchmark_branch", None)
+        halt = candidate.get("halt") if isinstance(candidate.get("halt"), dict) else {}
+        status = str(candidate.get("status") or "unknown")
+        halt_type = halt.get("halt_type") or halt.get("final_decision")
+        reason = halt.get("reason") or halt.get("blocker_reason") or candidate.get("blocker_reason")
+        result["status"] = status
+        result["halt_type"] = halt_type
+        if reason:
+            result["reason"] = _safe_reason(str(reason))
         if benchmark_branch:
             result["benchmark"] = {
                 "branch": benchmark_branch,
                 "base": _change_size(candidate).get("base_sha"),
-                "status": getattr(args, "benchmark_status", None) or candidate.get("status"),
+                "status": status,
+                "halt_type": halt_type,
+                **({"reason": _safe_reason(str(reason))} if reason else {}),
             }
     except (OSError, ValueError) as exc:
         if json_out:
@@ -267,6 +282,9 @@ def compare_models_command(args) -> int:
         from snodo.cli.json_output import emit_json, schema_name
         return emit_json({"schema": schema_name("models-compare"), "ok": True, **result})
     print(f"Candidate comparison: {result['delta_score']:+.0f} vs baseline ({result['direction']})")
+    print(f"  candidate status:  {result.get('status', 'unknown')} (halt: {result.get('halt_type') or 'none'})")
+    if result.get("reason"):
+        print(f"  blocker reason:    {result['reason']}")
     if "benchmark" in result:
         benchmark = result["benchmark"]
         print(f"  benchmark job:     {result['job']}")
@@ -283,3 +301,27 @@ def compare_models_command(args) -> int:
     size = result["signals"]["change_size"]
     print(f"  change size:       {size['baseline_lines']:g} -> {size['candidate_lines']:g} lines ({size['difference_lines']:+g}; not scored)")
     return 0
+
+
+def _safe_reason(reason: str, limit: int = 300) -> str:
+    """Redact known credentials and prevent terminal/control-sequence spoofing."""
+    secrets = [value for key, value in os.environ.items()
+               if value and re.search(r"(?i)(key|token|secret|credential|password)", key)]
+    try:
+        from snodo.config import ConfigManager
+        for provider in ConfigManager().get_providers().values():
+            for value in (provider.api_key, os.environ.get(provider.api_key_env, ""),
+                          os.environ.get(provider.account_id_env, "")):
+                if value:
+                    secrets.append(value)
+    except (ImportError, OSError, ValueError, TypeError):
+        # Reporting must remain available if optional user config is malformed.
+        pass
+    safe = reason
+    for secret in sorted(set(secrets), key=len, reverse=True):
+        safe = safe.replace(secret, "[redacted]")
+    safe = re.sub(r"(?i)https?://[^\s]+", "[redacted-url]", safe)
+    safe = re.sub(r"(?i)(bearer\s+)[^\s,;]+", r"\1[redacted]", safe)
+    safe = re.sub(r"(?i)(sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{8,})", "[redacted]", safe)
+    safe = "".join(ch if ch.isprintable() and ch != "\x1b" else " " for ch in safe)
+    return re.sub(r"\s+", " ", safe).strip()[:limit]
