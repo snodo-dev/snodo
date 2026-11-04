@@ -47,7 +47,7 @@ def test_malformed_usage_list_is_ignored_without_raising(tmp_path, capsys):
     assert "total: 2 | 1 | 1.0s" in output
 
 
-@pytest.mark.parametrize("state_text", ["not json", '{"usage": null}'])
+@pytest.mark.parametrize("state_text", ["not json", '{"usage": null}', "[]"])
 def test_unreadable_or_non_list_usage_prints_nothing(tmp_path, capsys, state_text):
     folder = tmp_path / ".snodo" / "tasks" / "t"
     folder.mkdir(parents=True)
