@@ -54,6 +54,40 @@ was no reported cost and no available estimate; subscription-based coder usage
 can therefore have token and duration data without a monetary cost. Check
 `cost_source` to distinguish provider-reported cost from an estimate.
 
+### End-of-run usage summary
+
+At the end of a task run and a recon, Snodo prints a compact summary with a row
+for each role (the coder and each validator) or recon agent, followed by a
+`total` row. The columns are input tokens, output tokens, model-call time, and
+output tokens per second. For example, a task summary can look like:
+
+```text
+Usage: role | input tokens | output tokens | model time | output tok/s
+coder: 10 | 5 | 1.0s | 5.0 C
+validator:test: 20 | 4 | 1.0s | 4.0 C
+total: 30 | 9 | 3.0s | 4.5 C
+```
+
+A recon summary uses the recon agents' model names as roles; an agent without
+token or timing data can still appear:
+
+```text
+Usage: role | input tokens | output tokens | model time | output tok/s
+model-a: 10 | 4 | 1.0s | 4.0 C
+model-b: 20 | 6 | 2.0s | 3.0 C
+model-c: n/a | n/a | n/a | n/a
+total: 30 | 10 | 9.0s | 3.3 C
+```
+
+`C` means Snodo calculated the rate from output tokens divided by time spent
+in model calls; `R` means the provider reported the rate. No provider reports a
+rate today, so current rates are calculated. The total time shown for a task is
+its elapsed run time; recon total time is recon wall time, while rates are based
+on model-call time. `n/a` means the relevant value was not reported or could
+not be measured (including token counts or cost when a coder did not report
+them), not zero. Input-token counts from the in-place `opencode-cli` coder and
+the LiteLLM coder are counted differently and are not directly comparable.
+
 ## Interpret the result
 
 Job status is separate from plan task status. A job moves through `queued` and
