@@ -6,7 +6,7 @@ The ``llm.coder`` section is presented as one set of settings for "the
 coder", but the coders are not alike: an in-process LiteLLM coder runs its
 own tool loop, so ``max_tool_turns`` and ``max_tokens`` govern it, while a
 subprocess coder spawns a program that runs its own loop, where only the
-model and ``timeout_seconds`` arrive. Nothing in the wiring says which is
+model and the two timeouts arrive. Nothing in the wiring says which is
 which, so a setting an operator relies on can be doing nothing, and the only
 way to find out is to watch it have no effect.
 

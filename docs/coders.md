@@ -99,7 +99,7 @@ settings honoured by each backend are:
 |---|---|
 | `litellm`, `openai`, `anthropic`, `gemini` | `model`, `temperature`, `max_tokens`, `max_tool_turns` |
 | `opencode` | `model`, `workspace`, `container`, `sandboxed` |
-| `opencode-cli`, `codex-cli`, `claude-cli`, `agy` | `model`, `timeout_seconds`, `workspace` |
+| `opencode-cli`, `codex-cli`, `claude-cli`, `agy` | `model`, `timeout_seconds`, `silence_timeout_seconds`, `workspace` |
 | `mock` | `mock_files` |
 
 The provider-specific adapters inherit the LiteLLM settings. The in-place host

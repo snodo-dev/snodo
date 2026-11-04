@@ -323,6 +323,48 @@ class TestSubprocessTimeout:
                 passed_coder = mock_gb.call_args.kwargs["coder"]
                 assert passed_coder.timeout_seconds == 250
 
+    @pytest.mark.parametrize(
+        "mode_coder_config, expected_seconds",
+        [({}, 120), ({"silence_timeout_seconds": 90}, 90)],
+    )
+    def test_operator_set_silence_timeout_reaches_the_first_coder(
+        self, temp_workspace: Path, mode_coder_config: dict, expected_seconds: int,
+    ):
+        """The configured silence limit bounds the coder built for the run, not only a respawned one."""
+        protocol = Protocol(
+            protocol_id="test-proto",
+            name="test-proto",
+            initial_mode="producer",
+            modes=[
+                Mode(
+                    mode_id="producer",
+                    name="producer",
+                    coder="agy",
+                    coder_config=mode_coder_config,
+                ),
+            ],
+            validators=[
+                Validator(
+                    validator_id="v1",
+                    validator_type="test",
+                    description="test validator",
+                    prompt="test",
+                )
+            ],
+        )
+
+        custom_cfg = LlmConfig(coder=CoderConfig(silence_timeout_seconds=120))
+        with mock.patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+            with mock.patch("snodo.engine.loop.GraphBuilder") as mock_gb:
+                build_protocol_graph(
+                    protocol=protocol,
+                    workspace_mcp=WorkspaceMCP(str(temp_workspace)),
+                    git_mcp=GitMCP(str(temp_workspace)),
+                    project_root=str(temp_workspace),
+                )
+                passed_coder = mock_gb.call_args.kwargs["coder"]
+                assert passed_coder.silence_timeout_seconds == expected_seconds
+
     def test_subprocess_timeout_kills_process_group_when_spawned(self, temp_workspace: Path):
         """_run_subprocess uses start_new_session and kills the process group on timeout."""
         adapter = AGYAdapter(workspace=temp_workspace, timeout_seconds=1)

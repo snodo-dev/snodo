@@ -79,6 +79,8 @@ INERT_PAIRS = [
     ("agy", "max_tokens"),
     ("opencode", "max_tool_turns"),
     ("opencode", "timeout_seconds"),
+    ("litellm", "silence_timeout_seconds"),
+    ("opencode", "silence_timeout_seconds"),
 ]
 
 HONOURED_PAIRS = [
@@ -86,6 +88,8 @@ HONOURED_PAIRS = [
     ("litellm", "max_tokens"),
     ("opencode-cli", "timeout_seconds"),
     ("agy", "timeout_seconds"),
+    ("opencode-cli", "silence_timeout_seconds"),
+    ("agy", "silence_timeout_seconds"),
     ("opencode", "model"),
     ("opencode", "sandboxed"),
 ]

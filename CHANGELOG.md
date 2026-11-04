@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Apply `llm.coder.silence_timeout_seconds` to the coder a run starts with. Only a coder respawned after a model change received it, so host-CLI coders halted after the default 600 seconds without output, whatever was configured. Selecting one also reported the configured value as having no effect. (Fixes #1088)
+
 ## [0.28.2] — 2026-11-03
 
 - Return the reason for a refused MCP tool call to the caller, so a rejected `generate_spec` names what to correct instead of the bare "Error executing tool generate_spec" that the `mcp` 2.x move left. (Fixes #1073)
