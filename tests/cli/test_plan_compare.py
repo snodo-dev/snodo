@@ -198,3 +198,78 @@ def test_token_shaped_reason_redacted_in_json(tmp_path, monkeypatch, capsys):
     code, payload, _ = _run_candidate(tmp_path, monkeypatch, capsys, "failed", {"reason": "failed with sk-abcdefgh12345678"})
     assert code == 0
     assert "sk-abcdefgh" not in payload["reason"]
+
+
+def test_missing_candidate_job_is_reported(tmp_path, monkeypatch, capsys):
+    baseline_dir = tmp_path / ".snodo" / "baselines" / "p" / "t"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "baseline.json").write_text(json.dumps({
+        "schema": "snodo.task-baseline.v1", "plan": "p", "task": "t",
+    }))
+    (baseline_dir / "solution.diff").write_text("")
+    monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(tmp_path))
+
+    assert compare_models_command(SimpleNamespace(plan="p", task="t", job="missing", json=False)) == 1
+    assert "not a completed benchmark candidate" in capsys.readouterr().err
+
+
+def test_human_report_shows_unavailable_metrics_without_usage(tmp_path, monkeypatch, capsys):
+    code, output, _ = _run_candidate(tmp_path, monkeypatch, capsys, "completed", json_out=False)
+
+    assert code == 0
+    assert "Run metrics (baseline -> candidate; not scored):" in output
+    assert "coder time: n/a -> n/a" in output
+    assert "coder turns: n/a -> n/a" in output
+    assert "candidate coder output tok/s: n/a" in output
+    assert "candidate post-validation findings: n/a" in output
+    assert "input tokens are not directly comparable" in output
+
+
+def test_candidate_evidence_without_job_id_is_reported(tmp_path, monkeypatch, capsys):
+    baseline_dir = tmp_path / ".snodo" / "baselines" / "p" / "t"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "baseline.json").write_text(json.dumps({
+        "schema": "snodo.task-baseline.v1", "plan": "p", "task": "t",
+    }))
+    (baseline_dir / "solution.diff").write_text("")
+    monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(tmp_path))
+
+    assert compare_models_command(SimpleNamespace(plan="p", task="t", job=None, json=False)) == 1
+    assert "Benchmark candidate job evidence not found" in capsys.readouterr().err
+
+
+def test_candidate_without_model_is_rejected(tmp_path, monkeypatch, capsys):
+    _write_candidate(tmp_path, "completed")
+    task_path = tmp_path / ".snodo" / "jobs" / "job1" / "task.json"
+    task = json.loads(task_path.read_text())
+    task.pop("model")
+    task_path.write_text(json.dumps(task))
+    monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(tmp_path))
+
+    assert compare_models_command(SimpleNamespace(plan="p", task="t", job="job1", json=False)) == 1
+    assert "has no model in task.json" in capsys.readouterr().err
+
+
+def test_human_metrics_report_renders_recorded_sources_and_findings(capsys):
+    from snodo.cli.commands.plan_compare import _print_run_metrics
+
+    _print_run_metrics({
+        "baseline": {
+            "coder_turns": 2, "coder_turns_source": "model_calls",
+            "coder_output_tokens_per_second": 12.5, "coder_rate_source": "reported",
+            "post_validation_findings": {"blocker": 1, "warn": 2, "escalate": 0, "pass": 0, "validator_error": 0, "internal_error": 0},
+        },
+        "candidate": {
+            "coder_turns": 3, "coder_turns_source": "recorded",
+            "coder_output_tokens_per_second": 8, "coder_rate_source": "calculated",
+            "post_validation_findings": {"blocker": 0, "warn": 0, "escalate": 0, "pass": 1, "validator_error": 0, "internal_error": 0},
+        },
+        "token_comparability_note": "Input tokens are not directly comparable.",
+    })
+
+    output = capsys.readouterr().out
+    assert "coder turns: 2 -> 3 (model calls)" in output
+    assert "baseline coder output tok/s: 12.5 R" in output
+    assert "candidate coder output tok/s: 8 C" in output
+    assert "baseline post-validation findings: blocker 1, warn 2" in output
+    assert "candidate post-validation findings: blocker 0, warn 0, escalate 0, pass 1, validator_error 0, internal_error 0" in output

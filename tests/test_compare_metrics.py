@@ -40,3 +40,121 @@ def test_epoch_timestamps_report_elapsed_seconds(tmp_path):
     metrics = comparison_metrics(tmp_path, {"metrics": state}, state, "candidate")
     assert metrics["baseline"]["elapsed_seconds"] == 1318.0
     assert metrics["candidate"]["elapsed_seconds"] == 1318.0
+
+
+def test_baseline_job_state_is_loaded_from_task_record(tmp_path):
+    task_dir = tmp_path / ".snodo" / "tasks" / "task-1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text('{"job_id":"job_1"}', encoding="utf-8")
+    job_dir = tmp_path / ".snodo" / "jobs" / "job_1"
+    job_dir.mkdir(parents=True)
+    (job_dir / "state.json").write_text('{"wall_time_ms":2500}', encoding="utf-8")
+
+    metrics = comparison_metrics(tmp_path, {"task": "task-1"}, {}, "candidate")
+
+    assert metrics["baseline"]["elapsed_seconds"] == 2.5
+    assert metrics["baseline"]["coder_turns"] is None
+    assert metrics["candidate"]["elapsed_seconds"] is None
+
+
+def test_malformed_and_non_object_baseline_state_is_unknown(tmp_path):
+    task_dir = tmp_path / ".snodo" / "tasks" / "task-1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text("[]", encoding="utf-8")
+
+    malformed = comparison_metrics(
+        tmp_path,
+        {"metrics": {"started_at": "not-a-date", "completed_at": "also-not-a-date"}},
+        {"elapsed_ms": "missing", "wall_time_ms": 0, "validator_results": [None, {"severity": "unknown"}]},
+        "candidate",
+    )
+
+    assert malformed["baseline"]["elapsed_seconds"] is None
+    assert malformed["candidate"]["elapsed_seconds"] == 0
+    assert malformed["candidate"]["post_validation_findings"] == {
+        "blocker": 0,
+        "warn": 0,
+        "escalate": 0,
+        "pass": 0,
+        "validator_error": 0,
+        "internal_error": 0,
+    }
+
+
+def test_missing_candidate_metrics_report_unknown_values(tmp_path):
+    metrics = comparison_metrics(tmp_path, {"metrics": {}}, {"usage": "not-recorded"}, "candidate")
+
+    assert metrics["candidate"]["coder_time_seconds"] is None
+    assert metrics["candidate"]["coder_turns"] is None
+    assert metrics["candidate"]["cost"] is None
+    assert metrics["candidate"]["post_validation_findings"] is None
+    assert metrics["token_comparability_note"]
+
+
+def test_elapsed_ms_takes_precedence_over_wall_time(tmp_path):
+    metrics = comparison_metrics(
+        tmp_path,
+        {"metrics": {"elapsed_ms": 1250, "wall_time_ms": 9000}},
+        {},
+        "candidate",
+    )
+
+    assert metrics["baseline"]["elapsed_seconds"] == 1.25
+
+
+def test_non_object_baseline_task_state_and_job_state_are_unknown(tmp_path):
+    task_dir = tmp_path / ".snodo" / "tasks" / "task-1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text('{"job_id":"job-1"}', encoding="utf-8")
+    job_dir = tmp_path / ".snodo" / "jobs" / "job-1"
+    job_dir.mkdir(parents=True)
+    (job_dir / "state.json").write_text("[]", encoding="utf-8")
+
+    metrics = comparison_metrics(tmp_path, {"task": "task-1"}, {}, "candidate")
+
+    assert metrics["baseline"]["elapsed_seconds"] is None
+    assert metrics["baseline"]["cost"] is None
+    assert metrics["baseline"]["post_validation_findings"] is None
+
+
+def test_cost_falls_back_to_recorded_total_then_per_call_cost(tmp_path):
+    from_total = comparison_metrics(
+        tmp_path, {"metrics": {"cost": {"total": 1.75}}}, {}, "candidate"
+    )
+    from_calls = comparison_metrics(
+        tmp_path,
+        {"metrics": {"usage": [{"role": "coder", "cost": 0.4}, {"cost": 0.6}]}},
+        {},
+        "candidate",
+    )
+
+    assert from_total["baseline"]["cost"] == 1.75
+    assert from_calls["baseline"]["cost"] == 1.0
+
+
+def test_iso_timestamps_and_usage_duration_report_coder_time(tmp_path):
+    metrics = comparison_metrics(
+        tmp_path,
+        {"metrics": {
+            "started_at": "2024-01-01T00:00:00",
+            "completed_at": "2024-01-01T00:00:03.5",
+        }},
+        {"usage": [{"role": "coder", "duration_ms": 2400}]},
+        "candidate",
+    )
+
+    assert metrics["baseline"]["elapsed_seconds"] == 3.5
+    assert metrics["candidate"]["coder_time_seconds"] == 2.4
+
+
+def test_invalid_baseline_job_id_is_not_loaded(tmp_path):
+    task_dir = tmp_path / ".snodo" / "tasks" / "task-1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text('{"job_id":"../job-1"}', encoding="utf-8")
+    job_dir = tmp_path / ".snodo" / "jobs" / "job-1"
+    job_dir.mkdir(parents=True)
+    (job_dir / "state.json").write_text('{"wall_time_ms":2500}', encoding="utf-8")
+
+    metrics = comparison_metrics(tmp_path, {"task": "task-1"}, {}, "candidate")
+
+    assert metrics["baseline"]["elapsed_seconds"] is None

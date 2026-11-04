@@ -1202,3 +1202,20 @@ def test_recon_usage_summary_with_no_usage_is_not_zero(capsys):
         "Usage: role | input tokens | output tokens | model time | output tok/s",
         "total: n/a | n/a | 5.0s | n/a",
     ]
+
+
+def test_recon_usage_summary_skips_malformed_records_and_shows_unknown_values(capsys):
+    from snodo.cli.commands.logs_cmd import _print_recon_usage
+
+    _print_recon_usage([
+        None,
+        {"model": "model-a", "usage": [None, "corrupt", {
+            "input_tokens": 8, "output_tokens": 3, "duration_ms": 1000,
+        }]},
+        {"usage": []},
+    ], {})
+
+    output = capsys.readouterr().out
+    assert "model-a: 8 | 3 | 1.0s | 3.0 C" in output
+    assert "unknown: n/a | n/a | n/a | n/a" in output
+    assert "total: 8 | 3 | 1.0s |" in output
