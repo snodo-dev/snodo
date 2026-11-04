@@ -67,6 +67,9 @@ def summarize_usage(
         "_time_known": any(row["_time_known"] for row in rows),
         "_reported_rates": [rate for row in rows for rate in row["_reported_rates"]],
     }
+    if total_elapsed_seconds is not None:
+        total["time_seconds"] = max(0.0, total_elapsed_seconds)
+        total["_time_known"] = total_elapsed_seconds > 0
     for row in [*rows, total]:
         reported = row["_reported_rates"]
         if reported:

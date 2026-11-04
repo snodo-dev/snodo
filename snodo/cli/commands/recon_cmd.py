@@ -181,4 +181,21 @@ def recon_command(args) -> int:
             print(content)
         print()
 
+    from snodo.usage_summary import render_usage_summary, summarize_usage
+
+    usage_records = []
+    for result in results:
+        get = result.get if isinstance(result, dict) else lambda key, default=None: getattr(result, key, default)
+        model = get("model", "unknown") or "unknown"
+        usage = get("usage", []) or []
+        if usage:
+            usage_records.extend({**item, "role": model} for item in usage if isinstance(item, dict))
+        else:
+            usage_records.append({"role": model})
+    state = status_data
+    elapsed = None
+    if isinstance(state, dict) and state.get("created_at") is not None and state.get("completed_at") is not None:
+        elapsed = max(0.0, state["completed_at"] - state["created_at"])
+    for line in render_usage_summary(summarize_usage(usage_records, elapsed)):
+        print(line)
     return 0

@@ -860,7 +860,28 @@ def _watch_recon(state_path: Path, results_path: Path, recon_id: str) -> int:
                 seen += 1
             if state.get("status") in _RECON_TERMINAL_STATUSES:
                 emit_events()
+                _print_recon_usage(results, state)
                 return 0
             time.sleep(0.5)
     except KeyboardInterrupt:
         return 130
+
+
+def _print_recon_usage(results: list[dict], state: dict) -> None:
+    """Render persisted per-model usage through the shared usage helper."""
+    from snodo.usage_summary import render_usage_summary, summarize_usage
+
+    records = []
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        model = result.get("model") or "unknown"
+        usage = result.get("usage") or []
+        if usage:
+            records.extend({**item, "role": model} for item in usage if isinstance(item, dict))
+        else:
+            records.append({"role": model})
+    created, completed = state.get("created_at"), state.get("completed_at")
+    elapsed = max(0.0, completed - created) if created is not None and completed is not None else None
+    for line in render_usage_summary(summarize_usage(records, elapsed)):
+        print(line)
