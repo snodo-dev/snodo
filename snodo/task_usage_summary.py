@@ -13,8 +13,11 @@ def print_task_usage_summary(project_root, task_id: str, elapsed_seconds: float)
     except (OSError, ValueError):
         return
     records = state.get("usage") if isinstance(state, dict) else None
-    if not isinstance(records, list) or not records:
+    if not isinstance(records, list):
         return
-    summary = summarize_usage(records, elapsed_seconds)
+    valid_records = [record for record in records if isinstance(record, dict)]
+    if not valid_records:
+        return
+    summary = summarize_usage(valid_records, elapsed_seconds)
     for line in render_usage_summary(summary, elapsed_seconds):
         print(line)
