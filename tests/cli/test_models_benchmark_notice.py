@@ -33,3 +33,27 @@ def test_notice_missing_baseline_coder_is_unknown(tmp_path, capsys, monkeypatch)
 def test_notice_candidate_model_provider_prefix_forms(tmp_path, capsys, monkeypatch):
     prefixed = _notice(tmp_path, {}, "provider/model", monkeypatch, capsys)
     assert "model provider/model" in prefixed
+
+
+def test_notice_candidate_without_configured_coder_uses_model_default(tmp_path, capsys):
+    config = tmp_path / ".snodo"
+    config.mkdir()
+    (config / "protocol.yml").write_text("modes: []\n", encoding="utf-8")
+
+    print_benchmark_notice(tmp_path, {"coder": "litellm", "model": "old"}, "openai/new")
+
+    output = capsys.readouterr().err
+    assert "Candidate: coder litellm; model openai/new" in output
+    assert "Harness differs" not in output
+
+
+def test_notice_ignores_malformed_modes_and_reports_harness_difference(tmp_path, capsys):
+    config = tmp_path / ".snodo"
+    config.mkdir()
+    (config / "protocol.yml").write_text("modes: [null, build]\n", encoding="utf-8")
+
+    print_benchmark_notice(tmp_path, {"coder": "opencode-cli", "model": "old"}, "openai/new")
+
+    output = capsys.readouterr().err
+    assert "Candidate: coder litellm; model openai/new" in output
+    assert "Harness differs: baseline ran in opencode-cli; candidate runs in litellm." in output

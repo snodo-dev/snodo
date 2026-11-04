@@ -1024,3 +1024,39 @@ def test_judge_opencode_cli_run_bounds_error_reason():
     assert healthy is False
     assert len(reason) == 200
     assert reason.endswith("...")
+
+
+def test_set_baseline_missing_model_and_coder_provenance_is_visible(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "project"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "README.md").write_text("base\n")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-qm", "base")
+    base_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    (root / "solution.txt").write_text("solution\n")
+    _git(root, "add", "solution.txt")
+    _git(root, "commit", "-qm", "solution")
+    head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    (root / ".snodo" / "plans" / "missing-provenance").mkdir(parents=True)
+    job_dir = root / ".snodo" / "jobs" / "j_missing_provenance"
+    job_dir.mkdir(parents=True)
+    (job_dir / "task.json").write_text(json.dumps({"task_id": "1.1", "task_plan": "missing-provenance"}))
+    (job_dir / "state.json").write_text(json.dumps({
+        "status": "completed",
+        "cost": {"change_size": {"base_sha": base_sha, "head_sha": head_sha, "paths": ["solution.txt"]}},
+    }))
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(root))
+
+    result = models_set_baseline_command(SimpleNamespace(plan="missing-provenance", task="1.1", json=False))
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "model: unknown" in output
+    assert "usage summary: unavailable" in output
+    record = json.loads((root / ".snodo/baselines/missing-provenance/1.1/baseline.json").read_text())
+    assert record["model"] is None
+    assert record["coder"] is None
+    assert "usage" not in record
