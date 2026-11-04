@@ -10,6 +10,7 @@ from typing import Optional
 
 from snodo.cli.json_output import emit_error, emit_json, schema_name
 from snodo.infrastructure.paths import resolve_project_root
+from snodo.usage_summary import summarize_usage
 
 _logger = logging.getLogger(__name__)
 
@@ -243,6 +244,25 @@ def models_set_baseline_command(args) -> int:
     baseline_dir.mkdir(parents=True, exist_ok=True)
     diff_path = baseline_dir / "solution.diff"
     diff_path.write_text(diff, encoding="utf-8")
+    usage_records = state.get("usage")
+    usage_block = None
+    if isinstance(usage_records, list):
+        valid_usage = [item for item in usage_records if isinstance(item, dict)]
+        if valid_usage:
+            summary = summarize_usage(valid_usage)
+            costs = {}
+            for item in valid_usage:
+                role = str(item.get("role", item.get("agent", "unknown")))
+                value = item.get("cost")
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    costs[role] = costs.get(role, 0) + value
+            for row in summary["rows"]:
+                row["cost"] = costs.get(row["role"])
+            summary["total"]["cost"] = sum(costs.values()) if costs else None
+            halt = state.get("halt") if isinstance(state.get("halt"), dict) else {}
+            coder_report = halt.get("coder_report") if isinstance(halt.get("coder_report"), dict) else {}
+            usage_block = {"summary": summary, "coder_turns": coder_report.get("turns_used")}
+
     record = {
         "schema": "snodo.task-baseline.v1",
         "plan": plan,
@@ -256,6 +276,8 @@ def models_set_baseline_command(args) -> int:
         "diff_file": str(diff_path.relative_to(root)),
         "diff_sha256": hashlib.sha256(diff.encode("utf-8")).hexdigest(),
     }
+    if usage_block is not None:
+        record["usage"] = usage_block
     record_path = baseline_dir / "baseline.json"
     record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     if json_out:
@@ -263,4 +285,5 @@ def models_set_baseline_command(args) -> int:
     print(f"Captured baseline for {plan}/{task}.")
     print(f"  model: {record['model'] or 'unknown'}")
     print(f"  diff:  {record['diff_file']}")
+    print("  usage summary: stored" if usage_block is not None else "  usage summary: unavailable")
     return 0
