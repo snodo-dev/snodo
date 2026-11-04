@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Allow PR reviews to install current Snodo releases by removing the stale `litellm<1.106` constraint, and test both installation paths with a fake installer to catch unintended dependency overrides. (Fixes #1077)
+
 ## [0.28.2] — 2026-11-03
 
 - Return the reason for a refused MCP tool call to the caller, so a rejected `generate_spec` names what to correct instead of the bare "Error executing tool generate_spec" that the `mcp` 2.x move left. (Fixes #1073)
