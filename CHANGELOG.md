@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Select the full test directory for workspace package manifest and standalone Python script changes in the per-task gate, including additions and deletions, instead of silently skipping pytest. (Fixes #1081)
+
 ## [0.28.2] — 2026-11-03
 
 - Return the reason for a refused MCP tool call to the caller, so a rejected `generate_spec` names what to correct instead of the bare "Error executing tool generate_spec" that the `mcp` 2.x move left. (Fixes #1073)

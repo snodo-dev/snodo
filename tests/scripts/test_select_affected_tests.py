@@ -87,6 +87,51 @@ def test_shared_change_selects_entire_suite(tmp_path):
     assert result.stdout == "tests/\n"
 
 
+@pytest.mark.parametrize("change", ["add", "modify", "delete"])
+@pytest.mark.parametrize("changed_path", [
+    "packages/snodo-engine/pyproject.toml",
+    "packages/snodo-mcp/pyproject.toml",
+    "scripts/check_release_version.py",
+    "scripts/new_check.py",
+])
+def test_infrastructure_change_selects_entire_suite(tmp_path, changed_path, change):
+    files = {
+        "tests/scripts/test_check_release_version.py": "x = 1\n",
+        "tests/test_unrelated.py": "x = 1\n",
+    }
+    if change != "add":
+        files[changed_path] = "# before\n"
+    repo, base = _repo(tmp_path, files)
+    if change == "delete":
+        (repo / changed_path).unlink()
+    else:
+        _change(repo, changed_path, "# after\n")
+    _commit(repo, f"{change} infrastructure")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "tests/\n"
+
+
+@pytest.mark.parametrize("changed_path", ["scripts/README.md", "docs/pyproject.toml"])
+def test_non_infrastructure_paths_still_select_nothing(tmp_path, changed_path):
+    repo, base = _repo(tmp_path, {changed_path: "# before\n"})
+    _change(repo, changed_path, "# after\n")
+    _commit(repo, "change unrelated documentation")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+def test_deleted_test_file_is_not_selected(tmp_path):
+    path = "tests/test_deleted.py"
+    repo, base = _repo(tmp_path, {path: "x = 1\n"})
+    (repo / path).unlink()
+    _commit(repo, "delete test")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
 GUIDE_TESTS = [
     "tests/mcp/test_blocked_plan_guidance.py",
     "tests/mcp/test_server.py",

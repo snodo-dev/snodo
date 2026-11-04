@@ -89,7 +89,13 @@ def select(repo: Path, base: str) -> list[str]:
     _run_git("rev-parse", "--verify", f"{base}^{{commit}}")
     names = _run_git("diff", "--name-only", "--no-renames", base, "HEAD")
     changed = [name for name in names.splitlines() if name]
-    if any(name in SHARED_FILES for name in changed):
+    # Dependency metadata and standalone test/build tools can affect any test.
+    if any(
+        name in SHARED_FILES
+        or (name.startswith("packages/") and name.endswith("/pyproject.toml"))
+        or (name.startswith("scripts/") and name.endswith(".py"))
+        for name in changed
+    ):
         return ["tests/"]
 
     selected: set[str] = set()

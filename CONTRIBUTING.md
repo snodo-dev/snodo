@@ -74,9 +74,11 @@ change passes.
 
 This check runs the same ruff, import-contract and ratchet steps as `make gate`,
 but selects tests touched by the diff against the merge base using
-`scripts/select_affected_tests.py`. Changes to shared files such as
-`pyproject.toml` or the protocol select the whole suite, since their impact
-cannot be confined safely. Documentation-only changes run no tests.
+`scripts/select_affected_tests.py`. Changes to shared files such as the root
+or workspace-package `pyproject.toml`, Python files under `scripts/`, or the
+protocol select the whole suite, since their impact cannot be confined safely.
+Documentation-only changes run no tests unless the documentation is a runtime
+input with mapped consumers, such as the MCP guide.
 
 ### Full fast suite — `make gate`
 
