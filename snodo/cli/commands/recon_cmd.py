@@ -196,6 +196,6 @@ def recon_command(args) -> int:
     elapsed = None
     if isinstance(state, dict) and state.get("created_at") is not None and state.get("completed_at") is not None:
         elapsed = max(0.0, state["completed_at"] - state["created_at"])
-    for line in render_usage_summary(summarize_usage(usage_records, elapsed)):
+    for line in render_usage_summary(summarize_usage(usage_records), elapsed):
         print(line)
     return 0

@@ -47,5 +47,7 @@ def test_roles_and_recon_agents_get_separate_rows_and_render():
     lines = render_usage_summary(summary)
     assert lines[0].startswith("Usage:")
     assert "recon:api: 8 | 2 | 0.5s | 4.0 C" in lines
-    assert lines[-1].startswith("total: 38 | 11 | 9.0s |")
+    assert summary["total"]["time_seconds"] == 3.5
+    assert lines[-1].startswith("total: 38 | 11 | 3.5s |")
+    assert render_usage_summary(summary, 9)[-1].startswith("total: 38 | 11 | 9.0s |")
     assert len(lines) == 5

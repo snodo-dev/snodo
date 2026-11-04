@@ -883,5 +883,5 @@ def _print_recon_usage(results: list[dict], state: dict) -> None:
             records.append({"role": model})
     created, completed = state.get("created_at"), state.get("completed_at")
     elapsed = max(0.0, completed - created) if created is not None and completed is not None else None
-    for line in render_usage_summary(summarize_usage(records, elapsed)):
+    for line in render_usage_summary(summarize_usage(records), elapsed):
         print(line)

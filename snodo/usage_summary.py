@@ -67,9 +67,6 @@ def summarize_usage(
         "_time_known": any(row["_time_known"] for row in rows),
         "_reported_rates": [rate for row in rows for rate in row["_reported_rates"]],
     }
-    if total_elapsed_seconds is not None:
-        total["time_seconds"] = max(0.0, total_elapsed_seconds)
-        total["_time_known"] = total_elapsed_seconds > 0
     for row in [*rows, total]:
         reported = row["_reported_rates"]
         if reported:
@@ -92,14 +89,18 @@ def summarize_usage(
     return {"rows": rows, "total": total, "total_elapsed_seconds": total_elapsed_seconds}
 
 
-def render_usage_summary(summary: Mapping[str, Any]) -> list[str]:
-    """Render a summary as a header, role rows, and a total line."""
+def render_usage_summary(
+    summary: Mapping[str, Any], total_elapsed_seconds: float | None = None
+) -> list[str]:
+    """Render a summary, optionally showing recon wall time in its total row."""
     lines = ["Usage: role | input tokens | output tokens | model time | output tok/s"]
     rows = [*summary.get("rows", []), summary.get("total", {})]
     for row in rows:
         input_tokens = row.get("input_tokens")
         output_tokens = row.get("output_tokens")
         seconds = row.get("time_seconds")
+        if row.get("role") == "total" and total_elapsed_seconds is not None:
+            seconds = max(0.0, total_elapsed_seconds)
         rate = row.get("output_tokens_per_second")
         source = row.get("rate_source")
         rate_text = "n/a" if rate is None else f"{rate:.1f} {('R' if source == 'reported' else 'C')}"
