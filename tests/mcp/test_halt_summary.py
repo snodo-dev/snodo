@@ -3,7 +3,7 @@ from snodo.jobs.halt_summary import format_halt_summary
 
 def test_orders_validators_and_shows_truncated_count():
     payload = {"reason": "halted", "validator_results": [
-        {"id": f"v{i}", "severity": severity, "justification": "why"}
+        {"validator_id": f"v{i}", "severity": severity, "justification": "why"}
         for i, severity in enumerate(("warn", "blocker", "pass", "warn"))
     ]}
     result = format_halt_summary(payload)
@@ -14,7 +14,7 @@ def test_orders_validators_and_shows_truncated_count():
 
 def test_sanitizes_controls_markup_and_bounds_text():
     result = format_halt_summary({"reason": "", "validator_results": [{
-        "id": "v", "severity": "warn", "justification": "hello\n**@here** <x>"
+        "validator_id": "v", "severity": "warn", "justification": "hello\n**@here** <x>"
     }]})
     assert "\n" not in result
     assert "@here" not in result

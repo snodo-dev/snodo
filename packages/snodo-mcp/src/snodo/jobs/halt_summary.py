@@ -38,7 +38,7 @@ def format_halt_summary(payload: Any) -> str:
             for item in results:
                 if not isinstance(item, dict):
                     continue
-                validator_id = _plain(item.get("id"), 80)
+                validator_id = _plain(item.get("validator_id", item.get("id")), 80)
                 severity = _plain(item.get("severity"), 24)
                 justification = _plain(item.get("justification"), _JUSTIFICATION_LIMIT)
                 if validator_id and severity and justification:
