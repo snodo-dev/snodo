@@ -130,3 +130,31 @@ def test_cost_falls_back_to_recorded_total_then_per_call_cost(tmp_path):
 
     assert from_total["baseline"]["cost"] == 1.75
     assert from_calls["baseline"]["cost"] == 1.0
+
+
+def test_iso_timestamps_and_usage_duration_report_coder_time(tmp_path):
+    metrics = comparison_metrics(
+        tmp_path,
+        {"metrics": {
+            "started_at": "2024-01-01T00:00:00",
+            "completed_at": "2024-01-01T00:00:03.5",
+        }},
+        {"usage": [{"role": "coder", "duration_ms": 2400}]},
+        "candidate",
+    )
+
+    assert metrics["baseline"]["elapsed_seconds"] == 3.5
+    assert metrics["candidate"]["coder_time_seconds"] == 2.4
+
+
+def test_invalid_baseline_job_id_is_not_loaded(tmp_path):
+    task_dir = tmp_path / ".snodo" / "tasks" / "task-1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text('{"job_id":"../job-1"}', encoding="utf-8")
+    job_dir = tmp_path / ".snodo" / "jobs" / "job-1"
+    job_dir.mkdir(parents=True)
+    (job_dir / "state.json").write_text('{"wall_time_ms":2500}', encoding="utf-8")
+
+    metrics = comparison_metrics(tmp_path, {"task": "task-1"}, {}, "candidate")
+
+    assert metrics["baseline"]["elapsed_seconds"] is None
