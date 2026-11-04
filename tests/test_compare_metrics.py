@@ -33,3 +33,10 @@ def test_failed_candidate_keeps_partial_usage_but_unknown_findings(tmp_path):
     metrics = comparison_metrics(tmp_path, {"task": "gone"}, candidate, "job")
     assert metrics["candidate"]["coder_input_tokens"] == 7
     assert metrics["candidate"]["post_validation_findings"] is None
+
+
+def test_epoch_timestamps_report_elapsed_seconds(tmp_path):
+    state = {"started_at": 1_700_000_000.0, "completed_at": 1_700_001_318.0}
+    metrics = comparison_metrics(tmp_path, {"metrics": state}, state, "candidate")
+    assert metrics["baseline"]["elapsed_seconds"] == 1318.0
+    assert metrics["candidate"]["elapsed_seconds"] == 1318.0

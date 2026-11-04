@@ -32,6 +32,9 @@ def _elapsed_seconds(state: dict[str, Any]) -> float | None:
     if direct is not None:
         return direct / 1000
     start, end = state.get("started_at"), state.get("completed_at")
+    numeric_start, numeric_end = _number(start), _number(end)
+    if numeric_start is not None and numeric_end is not None:
+        return max(0.0, numeric_end - numeric_start)
     if isinstance(start, str) and isinstance(end, str):
         try:
             return max(0.0, (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds())
