@@ -176,3 +176,30 @@ def test_retry_path_resets_and_rebuilds_spec(tmp_path, monkeypatch):
         # _execute_task called with task whose spec contains replaced content
         called_task = mock_exec.call_args[0][2]
         assert "replaced spec content" in called_task.spec
+
+
+def test_sequential_retry_args_enable_fresh_start_only_for_replacement(tmp_path):
+    from dataclasses import dataclass
+    from snodo.cli.commands.plan_retry import retry_args_with_replaced_spec
+
+    @dataclass(frozen=True)
+    class Args:
+        fresh_start: bool = False
+
+    planner = SimpleNamespace(project_root=tmp_path)
+    _write_spec(tmp_path, "plan", "1.1_task", "replacement")
+    _write_status(tmp_path, "plan", "1.1_task", "replacement")
+    failure = {"original_spec": "failed spec"}
+
+    assert retry_args_with_replaced_spec(Args(), planner, "plan", "1.1_task", failure).fresh_start
+
+    # A hand-edit doesn't update status.json, and a failure without its recorded
+    # spec cannot establish replacement: both retain ordinary retry behavior.
+    _write_status(tmp_path, "plan", "1.1_task", "failed spec")
+    assert not retry_args_with_replaced_spec(Args(), planner, "plan", "1.1_task", failure).fresh_start
+    _write_status(tmp_path, "plan", "1.1_task", "replacement")
+    assert not retry_args_with_replaced_spec(Args(), planner, "plan", "1.1_task", {},).fresh_start
+    # An explicit operator fresh-start request remains honored on a plain retry.
+    assert retry_args_with_replaced_spec(
+        Args(fresh_start=True), planner, "plan", "1.1_task", failure
+    ).fresh_start

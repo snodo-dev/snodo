@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "select_affected_tests.py"
 
 
@@ -85,6 +87,14 @@ def test_shared_change_selects_entire_suite(tmp_path):
     assert result.stdout == "tests/\n"
 
 
+GUIDE_TESTS = [
+    "tests/mcp/test_blocked_plan_guidance.py",
+    "tests/mcp/test_server.py",
+    "tests/mcp/test_structure_guidance.py",
+]
+GUIDE_MARKER = '<!-- snodo-guide topic="planning" summary="Plan" section="# Plan" -->\n'
+
+
 def test_docs_only_change_selects_nothing(tmp_path):
     repo, base = _repo(tmp_path, {"docs/guide.md": "before\n"})
     _change(repo, "docs/guide.md", "after\n")
@@ -92,6 +102,81 @@ def test_docs_only_change_selects_nothing(tmp_path):
     result = _run(repo, base)
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+def test_guide_doc_change_selects_its_consumers_only(tmp_path):
+    repo, base = _repo(tmp_path, {
+        "docs/authoring-a-plan.md": GUIDE_MARKER,
+        "tests/mcp/test_server.py": "x = 1\n",
+        "tests/mcp/test_structure_guidance.py": "x = 1\n",
+        "tests/mcp/test_blocked_plan_guidance.py": "x = 1\n",
+        "tests/test_unrelated.py": "x = 1\n",
+    })
+    _change(repo, "docs/authoring-a-plan.md", GUIDE_MARKER + "updated\n")
+    _commit(repo, "guide docs")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == GUIDE_TESTS
+
+
+def test_deleted_guide_doc_selects_its_consumers(tmp_path):
+    repo, base = _repo(tmp_path, {
+        "docs/authoring-a-plan.md": GUIDE_MARKER,
+        "tests/mcp/test_server.py": "x = 1\n",
+        "tests/mcp/test_structure_guidance.py": "x = 1\n",
+        "tests/mcp/test_blocked_plan_guidance.py": "x = 1\n",
+    })
+    (repo / "docs/authoring-a-plan.md").unlink()
+    _commit(repo, "delete guide docs")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == GUIDE_TESTS
+
+
+def test_docs_file_without_guide_marker_selects_nothing(tmp_path):
+    repo, base = _repo(tmp_path, {"docs/plain.md": "plain docs\n"})
+    _change(repo, "docs/plain.md", "updated plain docs\n")
+    _commit(repo, "plain docs")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    ("changed_path", "consumer_tests"),
+    [
+        ("snodo/cli/commands/model_benchmark_prompt.txt", ["tests/cli/test_models_benchmark.py"]),
+        ("schemas/protocol-v1.json", ["tests/scripts/test_protocol_schema_publication.py"]),
+    ],
+)
+def test_runtime_input_change_selects_existing_consumers_only(
+    tmp_path, changed_path, consumer_tests
+):
+    files = {changed_path: "before\n"}
+    files.update({test: "x = 1\n" for test in consumer_tests})
+    files["tests/test_unrelated.py"] = "x = 1\n"
+    repo, base = _repo(tmp_path, files)
+    _change(repo, changed_path, "after\n")
+    _commit(repo, "change runtime input")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == sorted(consumer_tests)
+
+
+def test_template_change_discovers_consumers_in_test_sources(tmp_path):
+    changed = "packages/snodo-foundation/src/snodo/protocols/templates/solo.yml"
+    consumer = "tests/new/test_future_consumer.py"
+    unrelated = "tests/new/test_unrelated.py"
+    repo, base = _repo(tmp_path, {
+        changed: "before\n",
+        consumer: "from snodo.protocols import PROTOCOL_TEMPLATES\n",
+        unrelated: "assert True\n",
+    })
+    _change(repo, changed, "after\n")
+    _commit(repo, "change protocol template")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [consumer]
 
 
 def test_unknown_or_missing_base_fails_clearly(tmp_path):
@@ -103,3 +188,27 @@ def test_unknown_or_missing_base_fails_clearly(tmp_path):
         result = subprocess.run(args, cwd=repo, text=True, capture_output=True)
         assert result.returncode != 0
         assert "base" in result.stderr.lower() or "base" in result.stdout.lower()
+
+
+def test_template_change_selects_indirect_consumers_only(tmp_path):
+    changed = "packages/snodo-foundation/src/snodo/protocols/templates/team.yml"
+    consumers = [
+        "tests/golden/test_template_snapshots.py",
+        "tests/cli/test_main.py",
+        "tests/mcp/test_planner.py",
+        "tests/cli/test_retry_prompt_construction.py",
+    ]
+    files = {changed: "before\n", "tests/test_unrelated.py": "assert True\n"}
+    references = {
+        consumers[0]: "from .conftest import verify_golden\n",
+        consumers[1]: "from snodo.cli.main import DEFAULT_PROTOCOL\n",
+        consumers[2]: "from snodo.cli.main import DEFAULT_PROTOCOL, load_protocol\n",
+        consumers[3]: "snodo.cli.commands.run_cmd.load_protocol(path)\n",
+    }
+    files.update(references)
+    repo, base = _repo(tmp_path, files)
+    _change(repo, changed, "after\n")
+    _commit(repo, "change protocol template")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == sorted(consumers)

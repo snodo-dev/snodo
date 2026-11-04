@@ -9,6 +9,31 @@ import subprocess
 import sys
 from pathlib import Path
 
+RUNTIME_READ_TESTS = {
+    "docs/": {
+        "tests": (
+            "tests/mcp/test_server.py",
+            "tests/mcp/test_structure_guidance.py",
+            "tests/mcp/test_blocked_plan_guidance.py",
+        ),
+    },
+    "snodo/cli/commands/model_benchmark_prompt.txt": {
+        "tests": ("tests/cli/test_models_benchmark.py",),
+    },
+    "schemas/protocol-v1.json": {
+        "tests": ("tests/scripts/test_protocol_schema_publication.py",),
+    },
+    "packages/snodo-foundation/src/snodo/protocols/templates/": {
+        "reference": re.compile(
+            r"snodo\.protocols|PROTOCOL_TEMPLATES|list_templates|template_protocol|"
+            r"TEMPLATES_DIR|_TEMPLATES_DIR|_load_protocol|verify_golden|"
+            r"DEFAULT_PROTOCOL|SOLO_PROTOCOL|INTENT_PROTOCOL|load_protocol|"
+            r"protocols?[/\\]templates?"
+        ),
+    },
+}
+GUIDE_MARKER = re.compile(r"<!--\s*snodo-guide\s+.+?-->")
+
 SHARED_FILES = {
     "pyproject.toml",
     "uv.lock",
@@ -70,6 +95,32 @@ def select(repo: Path, base: str) -> list[str]:
     selected: set[str] = set()
     modules: set[str] = set()
     for name in changed:
+        for prefix, rule in RUNTIME_READ_TESTS.items():
+            if not name.startswith(prefix):
+                continue
+            if prefix == "docs/":
+                texts = []
+                for ref in ("HEAD", base):
+                    try:
+                        texts.append(_run_git("show", f"{ref}:{name}"))
+                    except subprocess.CalledProcessError:
+                        pass
+                if not any(GUIDE_MARKER.search(text) for text in texts):
+                    break
+            if "tests" in rule:
+                selected.update(
+                    test for test in rule["tests"] if (repo / test).is_file()
+                )
+            else:
+                pattern = rule["reference"]
+                for path in sorted((repo / "tests").rglob("*.py")):
+                    try:
+                        source = path.read_text(encoding="utf-8")
+                    except (OSError, UnicodeError):
+                        continue
+                    if pattern.search(source):
+                        selected.add(path.relative_to(repo).as_posix())
+            break
         if name.startswith("tests/") and name.endswith(".py"):
             if (repo / name).is_file():
                 selected.add(name)
