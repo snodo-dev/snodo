@@ -383,6 +383,7 @@ def test_benchmark_run_uses_wave_spec_base_and_explicit_job(tmp_path, monkeypatc
 
         def submit(self, task_args):
             submitted.update(task_args)
+            submitted["notice_before_submit"] = "Candidate: coder" in capsys.readouterr().err
             return "j_benchmark"
 
         def wait_for(self, job_id):
@@ -398,6 +399,7 @@ def test_benchmark_run_uses_wave_spec_base_and_explicit_job(tmp_path, monkeypatc
         SimpleNamespace(plan="demo", task="1.1_task", model="candidate/model", json=False)
     )
     assert result == 0
+    assert submitted["notice_before_submit"] is True
     assert submitted["base"] == "base-sha"
     assert submitted["description"] == "Do the task\n"
     assert submitted["benchmark"] is True
