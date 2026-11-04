@@ -83,6 +83,8 @@ def models_benchmark_run_command(args) -> int:
         if not base:
             raise ValueError("Baseline has no change_size.base_sha")
         description = _task_spec(root, plan, task)
+        from snodo.cli.commands.models_benchmark_notice import print_benchmark_notice
+        print_benchmark_notice(root, baseline, model)
         nonce = secrets.token_hex(6)
         branch = f"benchmark/{plan}/{task}/{nonce}"
         task_args = {
