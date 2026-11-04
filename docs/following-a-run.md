@@ -83,9 +83,8 @@ total: 30 | 10 | 9.0s | 3.3 C
 in model calls; `R` means the provider reported the rate. No provider reports a
 rate today, so current rates are calculated. The total time shown for a task is
 its elapsed run time; recon total time is recon wall time, while rates are based
-on model-call time. `n/a` means the relevant value was not reported or could
-not be measured (including token counts or cost when a coder did not report
-them), not zero. Input-token counts from the in-place `opencode-cli` coder and
+on model-call time. `n/a` means the relevant summary value was not reported or could not be
+measured, not zero. Input-token counts from the in-place `opencode-cli` coder and
 the LiteLLM coder are counted differently and are not directly comparable.
 
 ## Interpret the result
