@@ -248,3 +248,28 @@ def test_candidate_without_model_is_rejected(tmp_path, monkeypatch, capsys):
 
     assert compare_models_command(SimpleNamespace(plan="p", task="t", job="job1", json=False)) == 1
     assert "has no model in task.json" in capsys.readouterr().err
+
+
+def test_human_metrics_report_renders_recorded_sources_and_findings(capsys):
+    from snodo.cli.commands.plan_compare import _print_run_metrics
+
+    _print_run_metrics({
+        "baseline": {
+            "coder_turns": 2, "coder_turns_source": "model_calls",
+            "coder_output_tokens_per_second": 12.5, "coder_rate_source": "reported",
+            "post_validation_findings": {"blocker": 1, "warn": 2, "escalate": 0, "pass": 0, "validator_error": 0, "internal_error": 0},
+        },
+        "candidate": {
+            "coder_turns": 3, "coder_turns_source": "recorded",
+            "coder_output_tokens_per_second": 8, "coder_rate_source": "calculated",
+            "post_validation_findings": {"blocker": 0, "warn": 0, "escalate": 0, "pass": 1, "validator_error": 0, "internal_error": 0},
+        },
+        "token_comparability_note": "Input tokens are not directly comparable.",
+    })
+
+    output = capsys.readouterr().out
+    assert "coder turns: 2 -> 3 (model calls)" in output
+    assert "baseline coder output tok/s: 12.5 R" in output
+    assert "candidate coder output tok/s: 8 C" in output
+    assert "baseline post-validation findings: blocker 1, warn 2" in output
+    assert "candidate post-validation findings: blocker 0, warn 0, escalate 0, pass 1, validator_error 0, internal_error 0" in output
