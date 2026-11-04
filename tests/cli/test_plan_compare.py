@@ -94,6 +94,9 @@ def test_json_output_contains_all_signals(tmp_path, monkeypatch, capsys):
     assert payload["models"] == {"baseline": "baseline/model", "candidate": "candidate/model"}
     assert payload["benchmark"]["branch"] == "benchmark/p/t/a1b2c3"
     assert payload["signals"]["change_size"]["candidate_lines"] == 1
+    assert "baseline" in payload["run_metrics"]
+    assert "candidate" in payload["run_metrics"]
+    assert payload["run_metrics"]["candidate"]["post_validation_findings"] is None
 
 
 def test_compare_resolves_real_job_identity_and_rejects_wrong_explicit_job(tmp_path, monkeypatch, capsys):

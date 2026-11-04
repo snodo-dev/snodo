@@ -25,4 +25,11 @@ def test_absent_or_failed_evidence_is_unknown_not_zero(tmp_path):
         assert metrics[side]["coder_time_seconds"] is None
         assert metrics[side]["coder_input_tokens"] is None
         assert metrics[side]["cost"] is None
-        assert metrics[side]["post_validation_findings"]["blocker"] == 0
+        assert metrics[side]["post_validation_findings"] is None
+
+
+def test_failed_candidate_keeps_partial_usage_but_unknown_findings(tmp_path):
+    candidate = {"status": "failed", "usage": [{"role": "coder", "input_tokens": 7, "output_tokens": 2}]}
+    metrics = comparison_metrics(tmp_path, {"task": "gone"}, candidate, "job")
+    assert metrics["candidate"]["coder_input_tokens"] == 7
+    assert metrics["candidate"]["post_validation_findings"] is None

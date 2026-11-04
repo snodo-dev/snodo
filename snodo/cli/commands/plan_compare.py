@@ -349,6 +349,8 @@ def _print_run_metrics(metrics: dict) -> None:
         rate = info.get("coder_output_tokens_per_second")
         mark = "R" if info.get("coder_rate_source") == "reported" else "C"
         print(f"    {side} coder output tok/s: {show(rate)}{(' ' + mark) if rate is not None else ''}")
-        findings = info.get("post_validation_findings", {})
-        print(f"    {side} post-validation findings: " + ", ".join(f"{severity} {findings.get(severity, 0)}" for severity in ("blocker", "warn", "escalate", "pass", "validator_error", "internal_error")))
+        findings = info.get("post_validation_findings")
+        rendered = (", ".join(f"{severity} {findings[severity]}" for severity in ("blocker", "warn", "escalate", "pass", "validator_error", "internal_error"))
+                    if findings is not None else "n/a")
+        print(f"    {side} post-validation findings: {rendered}")
     print(f"    {metrics['token_comparability_note']}")

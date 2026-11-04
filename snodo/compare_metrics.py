@@ -51,8 +51,10 @@ def _metrics(state: dict[str, Any], root: Path, job_id: str | None = None) -> di
     validator_summary = summarize_usage(validators)["total"]
     calls = coder_usage.get("calls")
     turns = _number(coder.get("turns_used"))
-    results = halt.get("validator_results") or state.get("validator_results") or []
-    counts = {severity: 0 for severity in _SEVERITIES}
+    results = halt.get("validator_results")
+    if not isinstance(results, list):
+        results = state.get("validator_results")
+    counts = {severity: 0 for severity in _SEVERITIES} if isinstance(results, list) else None
     if isinstance(results, list):
         for result in results:
             if isinstance(result, dict):
