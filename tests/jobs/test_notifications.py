@@ -153,7 +153,7 @@ def test_notification_targets_prominently_format_project_and_host():
         httpd.shutdown()
 
 
-def test_job_finished_situation_icons_are_distinct_and_shared_across_sinks():
+def test_job_finished_status_icons_are_distinct_and_shared_across_sinks():
     httpd = server()
     try:
         base = f"http://127.0.0.1:{httpd.server_port}"
