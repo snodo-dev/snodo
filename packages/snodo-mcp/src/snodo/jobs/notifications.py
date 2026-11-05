@@ -200,7 +200,7 @@ def _event_icon(event_type: str, event: dict | None = None) -> str:
     """Return the presentation icon for one emitted event type."""
     if event_type not in EVENT_ICONS:
         raise ValueError(f"No icon configured for notification event {event_type!r}")
-    if event_type == "job_finished" and event is not None:
+    if event_type in {"job_finished", "task_halted"} and event is not None:
         icons = {"success": "✅", "warn_recovered": "⚠️", "human_decision": "✋",
                  "blocked": "⛔", "engine_fault": "❌"}
         if event.get("situation") in icons:
@@ -326,8 +326,21 @@ def monitor(root_text: str, job_id: str) -> None:
                             continue
                         event_type = item.get("event_type")
                         if event_type == "halt":
-                            halt_type = data.get("raw_halt_type") or data.get("halt_type") or "halted"
-                            message, details = _job_message(root, job_id, task, f"task halted ({halt_type})")
+                            from snodo.jobs.halt_summary import format_halt_summary
+                            from snodo.jobs.outcome import classify_outcome
+
+                            outcome = classify_outcome(state, outcome_events)
+                            labels = {
+                                "warn_recovered": f"Warn — recovered by {outcome.recovery_task_id or 'recovery task'}",
+                                "human_decision": "Waiting for a human",
+                                "blocked": "Blocked",
+                                "engine_fault": "Engine fault",
+                                "success": "Success",
+                            }
+                            reason = format_halt_summary({"reason": outcome.halt_reason or data.get("reason")})
+                            happened = labels[outcome.situation] + (f" — {reason}" if reason else "")
+                            message, details = _job_message(root, job_id, task, happened)
+                            details.update(situation=outcome.situation, reason=reason)
                             _notify(root, f"halt:{item.get('event_hash', audit_offset)}", "task_halted", message, details)
                         elif event_type == "disagreement_escalated":
                             message, details = _job_message(root, job_id, task, "needs human decision; next: snodo authorize")
