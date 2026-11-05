@@ -17,6 +17,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Apply `llm.coder.silence_timeout_seconds` to the coder a run starts with. Only a coder respawned after a model change received it, so host-CLI coders halted after the default 600 seconds without output, whatever was configured. Selecting one also reported the configured value as having no effect. (Fixes #1088)
 - List the `claude-cli` coder wherever the other host-CLI coders are listed in the protocol reference, runbook, architecture overview and docs home, and correct the guide to adding a coder adapter: a built-in adapter also needs an explicit model-prefix route, a conformance driver and a regenerated protocol schema, and the example adapter now sets the `coder_name` the conformance tests require and a model prefix that matches its name. (Fixes #1086)
 - Select the full test directory for workspace package manifest and standalone Python script changes in the per-task gate, including additions and deletions, instead of silently skipping pytest. (Fixes #1081)
+- Say in Slack and webhook notifications which of five situations applies: success, a warning that a recovery task repaired, a task waiting for a human decision, a blocked task, or an engine fault. Warnings and blocks carry the validator's reason, a halt names the recovery task it spawned, and a task waiting for a human includes the exact `snodo authorize <task id>` line to copy. (Fixes #1076)
+- Cover the model benchmark notice and the baseline and candidate comparison metric edge cases with tests. (Fixes #1091)
+- Cover every MCP tool handler variant that surfaces a refusal reason with tests. (Fixes #1073)
 
 ## [0.28.2] — 2026-11-03
 
