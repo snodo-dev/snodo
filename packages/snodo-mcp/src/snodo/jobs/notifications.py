@@ -200,7 +200,7 @@ def _event_icon(event_type: str, event: dict | None = None) -> str:
     """Return the presentation icon for one emitted event type."""
     if event_type not in EVENT_ICONS:
         raise ValueError(f"No icon configured for notification event {event_type!r}")
-    if event_type in {"job_finished", "task_halted"} and event is not None:
+    if event_type in {"job_finished", "task_halted", "authorization_needed"} and event is not None:
         icons = {"success": "✅", "warn_recovered": "⚠️", "human_decision": "✋",
                  "blocked": "⛔", "engine_fault": "❌"}
         if event.get("situation") in icons:
@@ -343,8 +343,14 @@ def monitor(root_text: str, job_id: str) -> None:
                             details.update(situation=outcome.situation, reason=reason)
                             _notify(root, f"halt:{item.get('event_hash', audit_offset)}", "task_halted", message, details)
                         elif event_type == "disagreement_escalated":
-                            message, details = _job_message(root, job_id, task, "needs human decision; next: snodo authorize")
-                            details["command"] = "snodo authorize"
+                            from snodo.jobs.halt_summary import format_halt_summary
+
+                            reason = format_halt_summary({"reason": data.get("reason")})
+                            happened = "Waiting for a human" + (f" — {reason}" if reason else "")
+                            message, details = _job_message(root, job_id, task, happened)
+                            details.update(situation="human_decision", reason=reason)
+                            details["command"] = f"snodo authorize {task_id}"
+                            message += f" — Authorize: {details['command']}"
                             _notify(root, f"authorize:{item.get('event_hash', audit_offset)}", "authorization_needed", message, details)
                     except (TypeError, ValueError):
                         continue

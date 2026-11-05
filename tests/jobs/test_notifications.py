@@ -519,3 +519,46 @@ def test_monitor_task_halted_situations_reach_slack_and_webhook(tmp_path, monkey
                 assert "task-recovery" in slack
     finally:
         httpd.shutdown()
+
+
+def test_authorization_needed_message_has_reason_and_task_command_on_slack_and_webhook(tmp_path, monkeypatch):
+    httpd = server()
+    try:
+        root = tmp_path
+        job_id = "j_authorize"
+        task_id = "task-1076"
+        job = root / ".snodo" / "jobs" / job_id
+        job.mkdir(parents=True)
+        (job / "task.json").write_text(json.dumps({"task_id": task_id}))
+        (job / "state.json").write_text(json.dumps({"status": "completed", "exit_code": 0, "started_at": 1}))
+        audit = root / ".snodo" / "audit.log"
+        audit.write_text(json.dumps({
+            "timestamp": "2026-01-01T00:00:00", "task_ref": task_id,
+            "event_type": "disagreement_escalated", "reason": "Choose *A* <B> @owner",
+        }) + "\n")
+        base = f"http://127.0.0.1:{httpd.server_port}"
+        monkeypatch.setattr(notifications, "_settings", lambda: {
+            "events": ["authorization_needed"],
+            "targets": [
+                {"type": "slack", "url": f"{base}/slack"},
+                {"type": "webhook", "url": f"{base}/webhook"},
+            ],
+        })
+        notifications.monitor(str(root), job_id)
+
+        webhook = json.loads(next(body for path, _headers, body in StubHandler.requests if path == "/webhook"))
+        slack = json.loads(next(body for path, _headers, body in StubHandler.requests if path == "/slack"))["text"]
+        command = f"snodo authorize {task_id}"
+        reason = r"Choose \*A\* \<B\> ＠owner"
+        assert webhook["event"] == "authorization_needed"
+        assert webhook["situation"] == "human_decision"
+        assert webhook["reason"] == reason
+        assert webhook["command"] == command
+        assert "✋ **" in webhook["message"]
+        assert f"Waiting for a human — {reason}" in webhook["message"]
+        assert command in webhook["message"]
+        assert slack.startswith("✋ ")
+        assert f"Waiting for a human — {reason}" in slack
+        assert command in slack
+    finally:
+        httpd.shutdown()
