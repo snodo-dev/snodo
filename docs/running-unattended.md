@@ -58,13 +58,25 @@ Targets may be `webhook`, `ntfy`, `slack`, `discord` or `teams`; an optional
 configured to accept anonymous calls, leave `token` unset. `events` can select
 any subset of the four shown event names. With no targets configured no
 notification work is done. Messages name the project, job, plan/task when
-known, outcome, and `snodo logs <job_id>` (or
-`snodo authorize` for a pending human decision). Delivery is detached from the
-runner, bounded, and best-effort. Each event starts with its own icon: ✅
-completed, ❌ failed, 🛑 task halted,
-🙋 authorization needed, and ⏳ no log activity. Icons are presentation only;
-the notification details and delivery behavior are unchanged. Verify all
-configured targets with `snodo config --notify-test`. Notifications reach the operator;
+known, outcome, and `snodo logs <job_id>`. A pending human decision includes a
+command to copy and run, such as `snodo authorize` or a task-specific
+`snodo authorize <task_id>`. Slack messages are informational; they have no
+approve or reject buttons. Delivery is detached from the runner, bounded, and
+best-effort.
+
+Completion icons summarize the situation and suggest the next step:
+
+| Situation | Icon | Operator action |
+|---|---|---|
+| Success | ✅ | Nothing; the job completed. |
+| Warning with recovery | ⚠️ | Nothing yet; a recovery task was spawned. |
+| Waiting for a human | ✋ | Run the command in the message to review the decision. |
+| Blocked | ⛔ | Address the blocking issue and start a new dispatch. |
+| Engine fault | ❌ | Check the engine and environment. |
+
+Reasons come from validator output and are shortened for the message. These
+icons summarize existing outcomes; no events or notification settings were
+added. Verify all configured targets with `snodo config --notify-test`. Notifications reach the operator;
 they do not wake or resume the orchestrating agent. An unattended agent must keep its own process,
 watch, and next action alive rather than relying on a notification to restart it.
 
