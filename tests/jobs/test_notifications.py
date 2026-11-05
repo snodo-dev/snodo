@@ -162,7 +162,9 @@ def test_job_finished_status_icons_are_distinct_and_shared_across_sinks():
                       ("blocked", "⛔"), ("engine_fault", "❌"))
         targets = ("slack", "discord", "teams", "webhook", "ntfy")
         for situation, _icon in situations:
-            event = {"event": "job_finished", "situation": situation, "message": message, "reason": "reason"}
+            event = {"event": "job_finished", "situation": situation, "message": message, "reason": "reason",
+                     "project": "Snodo Cloud", "host": "gpu2", "job_id": "j_123", "status": "completed",
+                     "exit_code": 0, "command": "snodo logs j_123"}
             for kind in targets:
                 notifications.send({"type": kind, "url": f"{base}/{kind}"}, event)
 
@@ -172,7 +174,11 @@ def test_job_finished_status_icons_are_distinct_and_shared_across_sinks():
             bodies = {path.removeprefix("/"): body for path, _headers, body in group}
             assert json.loads(bodies["webhook"])["situation"] == situation
             assert json.loads(bodies["webhook"])["reason"] == "reason"
-            assert json.loads(bodies["webhook"])["message"] == f"{icon} {message}"
+            webhook = json.loads(bodies["webhook"])
+            assert webhook["message"] == f"{icon} {message}"
+            assert {key: webhook[key] for key in ("project", "host", "job_id", "status", "exit_code", "command")} == {
+                key: event[key] for key in ("project", "host", "job_id", "status", "exit_code", "command")
+            }
             assert bodies["ntfy"] == f"{icon} {message}".encode()
             assert json.loads(bodies["discord"])["content"] == f"{icon} {message}"
             assert json.loads(bodies["slack"])["text"].startswith(f"{icon} ")
