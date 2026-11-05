@@ -263,7 +263,7 @@ modes:
 | `validators` | list[string] | no | Validator IDs active in this mode |
 | `transitions` | dict[string, string] | no | Declarative event→target-mode mappings (documented, not engine-executed) |
 | `constraints` | list[Constraint] | no | Mode-specific constraints |
-| `coder` | string | no | Registered coder backend: `"litellm"`, `"mock"`, `"openai"`, `"anthropic"`, `"gemini"`, `"opencode"`, `"opencode-cli"`, `"agy"`, or `"codex-cli"`; `"opencode"` and `"opencode-cli"` are **experimental** — see [Coder backends](#coder-backends) and [docs/coders.md](coders.md) |
+| `coder` | string | no | Registered coder backend: `"litellm"`, `"mock"`, `"openai"`, `"anthropic"`, `"gemini"`, `"opencode"`, `"opencode-cli"`, `"agy"`, `"codex-cli"`, or `"claude-cli"`; `"opencode"` and `"opencode-cli"` are **experimental** — see [Coder backends](#coder-backends) and [docs/coders.md](coders.md) |
 | `coder_config` | dict | no | Coder backend configuration |
 | `delivery` | `local_merge`, `push_branch`, `change_request` | no | Override protocol-level `execution.delivery` for this mode (default `null`). `change_request` pushes the branch and opens a request through the configured code-host plugin; it requires that plugin and its credentials. Failures leave the task unmerged (and retain a pushed branch). |
 | `auto_merge` | bool | no | Deprecated compatibility override: `true` maps to `local_merge`, `false` to leave-unmerged. Do not set alongside `delivery`. |
@@ -281,6 +281,7 @@ snodo supports interchangeable code generation backends declared via `--coder` o
 - **`litellm`** *(default, supported)*: Routes completions via LiteLLM (~100+ providers). The engine writes artifacts via `WorkspaceMCP` and manages commits and per-turn telemetry.
 - **`agy`** *(host CLI)*: Shells out to Antigravity CLI (`agy -p`) on the host. Edits files in place and commits to git upon completion.
 - **`codex-cli`** *(host CLI)*: Runs `codex exec --json` in `workspace-write` mode using the operator's Codex subscription. Edits files in place and commits to git upon completion.
+- **`claude-cli`** *(host CLI)*: Runs Claude Code's `claude -p` with `stream-json` output using the CLI's own login. Edits files in place and commits to git upon completion.
 - **`opencode-cli`** *(host CLI, experimental)*: Shells out to host `opencode run`. Edits files in place and commits to git upon completion.
 - **`opencode`** *(container, experimental)*: OpenCode server running in Docker over HTTP (`POST /session`, `POST /session/{id}/message`). Edits files in place in the volume-mounted workspace and commits to git upon completion.
 - **`mock`** *(supported)*: Deterministic stub for dry runs and testing.
@@ -290,18 +291,18 @@ snodo supports interchangeable code generation backends declared via `--coder` o
 1. `--mock` / `use_mock_coder=True` option (always returns `'mock'`).
 2. `--coder <name>` CLI option on `snodo run` / `snodo plan run`.
 3. `coder: <name>` field in the active protocol mode definition.
-4. Model prefix mapping (`codex-cli/`, `opencode-cli/`, `opencode/`, `agy/`, `gpt`/`o1`/`o3`, `claude`, `gemini`).
+4. Model prefix mapping (`claude-cli/`, `codex-cli/`, `opencode-cli/`, `opencode/`, `agy/`, `gpt`/`o1`/`o3`, `claude`, `gemini`).
 5. Default (`litellm`).
 
 #### Model Role Separation (Judging vs Execution)
 
 - **`-m` / `--model` sets the JUDGING model**: Passing `-m` specifies the model used by LiteLLM for **validators** (pre/post-execute gates) and the **classifier**.
-- **External CLI Coders use their own model catalogs**: External CLI tools (`agy`, `codex-cli`, `opencode-cli`) use their own CLI configuration and internal catalogs. Non-prefixed model names passed to `-m` are stripped by `SubprocessCoderAdapter._bare_model()` so the CLI uses its own default model.
+- **External CLI Coders use their own model catalogs**: External CLI tools (`agy`, `codex-cli`, `claude-cli`, `opencode-cli`) use their own CLI configuration and internal catalogs. Non-prefixed model names passed to `-m` are stripped by `SubprocessCoderAdapter._bare_model()` so the CLI uses its own default model.
 - **Explicit Coder Model**: To set an external coder's model explicitly while keeping `-m` for validators, use the adapter namespace prefix (e.g. `--model codex-cli/gpt-5-codex`, `--model agy/gemini-2.5-pro`, or `--model opencode-cli/claude-3-7-sonnet`).
 
 #### In-Place Coders & Governance
 
-External in-place coders (`opencode`, `opencode-cli`, `agy`) inherit `InPlaceCoderAdapter` (`skip_engine_commit = True`, `skip_workspace_write = True`). They write directly to the working tree, snapshot and enforce `.snodo/` mutation boundaries (ADR 027), and commit the result so post-execute validators reviewing `git diff HEAD~1..HEAD` see the exact change (ADR 030).
+External in-place coders (`opencode`, `opencode-cli`, `agy`, `codex-cli`, `claude-cli`) inherit `InPlaceCoderAdapter` (`skip_engine_commit = True`, `skip_workspace_write = True`). They write directly to the working tree, snapshot and enforce `.snodo/` mutation boundaries (ADR 027), and commit the result so post-execute validators reviewing `git diff HEAD~1..HEAD` see the exact change (ADR 030).
 
 Per **ADR 034**, the absence of per-turn usage or token metrics for external coders is a stated decision (non-goal), not an attestation gap: token and cost metrics reside in per-job `state.json` telemetry (`snodo meta`), while snodo's audit log attests to governance decisions and verification evidence.
 
