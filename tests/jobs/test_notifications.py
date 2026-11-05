@@ -153,42 +153,31 @@ def test_notification_targets_prominently_format_project_and_host():
         httpd.shutdown()
 
 
-def test_job_finished_status_icons_are_distinct_and_shared_across_sinks():
+def test_job_finished_situation_icons_are_distinct_and_shared_across_sinks():
     httpd = server()
     try:
         base = f"http://127.0.0.1:{httpd.server_port}"
-        message = "**Snodo Cloud** · gpu2\njob j_123 — job finished — Inspect: snodo logs j_123"
-        events = (
-            {"event": "job_finished", "status": "completed", "exit_code": 0, "message": message},
-            {"event": "job_finished", "status": "failed", "exit_code": 1, "message": message},
-            {"event": "job_finished", "status": "completed", "exit_code": 1, "message": message},
-            {"event": "task_halted", "message": message},
-        )
+        message = "**Snodo Cloud** · gpu2\njob j_123 — outcome — Inspect: snodo logs j_123"
+        situations = (("success", "✅"), ("warn_recovered", "⚠️"), ("human_decision", "✋"),
+                      ("blocked", "⛔"), ("engine_fault", "❌"))
         targets = ("slack", "discord", "teams", "webhook", "ntfy")
-        for event in events:
+        for situation, _icon in situations:
+            event = {"event": "job_finished", "situation": situation, "message": message, "reason": "reason"}
             for kind in targets:
                 notifications.send({"type": kind, "url": f"{base}/{kind}"}, event)
 
-        slack_bodies = [json.loads(body)["text"] for path, _headers, body in StubHandler.requests if path == "/slack"]
-        assert slack_bodies[0].startswith("✅ *Snodo Cloud*")
-        assert slack_bodies[1].startswith("❌ *Snodo Cloud*")
-        assert slack_bodies[2].startswith("❌ *Snodo Cloud*")
-        assert slack_bodies[3].startswith("🛑 *Snodo Cloud*")
-
-        for index, event in enumerate(events):
+        for index, (situation, icon) in enumerate(situations):
             offset = index * len(targets)
             group = StubHandler.requests[offset:offset + len(targets)]
             bodies = {path.removeprefix("/"): body for path, _headers, body in group}
-            icon = (
-                "🛑" if event["event"] == "task_halted"
-                else "✅" if event.get("exit_code", 0) == 0 and event.get("status") != "failed"
-                else "❌"
-            )
+            assert json.loads(bodies["webhook"])["situation"] == situation
+            assert json.loads(bodies["webhook"])["reason"] == "reason"
             assert json.loads(bodies["webhook"])["message"] == f"{icon} {message}"
-            assert bodies["ntfy"] == f"{icon} {message}".encode("utf-8")
+            assert bodies["ntfy"] == f"{icon} {message}".encode()
             assert json.loads(bodies["discord"])["content"] == f"{icon} {message}"
-            teams = json.loads(bodies["teams"])["attachments"][0]["content"]
-            assert teams["body"][0]["text"] == f"{icon} {message}"
+            assert json.loads(bodies["slack"])["text"].startswith(f"{icon} ")
+            card = json.loads(bodies["teams"])["attachments"][0]["content"]
+            assert card["body"][0]["text"].startswith(f"{icon} ")
     finally:
         httpd.shutdown()
 
