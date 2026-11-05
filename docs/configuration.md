@@ -354,6 +354,21 @@ checkout folder, and include the runner hostname.
 | `notifications.events` | `job_finished`, `task_halted`, `authorization_needed`, `job_silent` | Event names to deliver; set a subset to filter. |
 | `notifications.silence_threshold_seconds` | `900` | Log-silence interval before a `job_silent` notification; invalid values use 900 and values are clamped to at least 1 second. |
 
+Each completion message uses an icon to summarize the situation. The reason is
+formed from validator output, shortened for the message, and may include the
+validator name and finding.
+
+| Situation | Icon | Operator action |
+|---|---|---|
+| Success | ✅ | Nothing; the job completed. |
+| Warning with recovery | ⚠️ | Nothing yet; a recovery task was spawned. |
+| Waiting for a human | ✋ | Run the command included in the message to review the decision. |
+| Blocked | ⛔ | Start a new dispatch after addressing the blocking issue. |
+| Engine fault | ❌ | Check the engine and environment. |
+
+These icons describe existing outcomes; no event names or notification settings
+were added.
+
 Each target needs a supported `type` and an HTTP(S) `url`; `name` is an optional
 display label. `token` is optional and sent as a bearer token. `headers` is an
 optional extra-header map for generic `webhook` targets. `ntfy` sends plain text
