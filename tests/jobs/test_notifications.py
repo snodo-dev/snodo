@@ -457,3 +457,65 @@ def test_monitor_job_finished_situations_and_messages(tmp_path, monkeypatch):
         else:
             assert reason in message
         assert notifications._event_icon("job_finished", details) == icon
+
+
+def test_monitor_task_halted_situations_reach_slack_and_webhook(tmp_path, monkeypatch):
+    cases = [
+        ("warn_recovered", {"status": "completed", "exit_code": 0, "halt": {"reason": "Recovered <now>"}},
+         [{"event_type": "subtask_spawned", "task_ref": "task-recovery"}], "⚠️", "Warn — recovered by task-recovery", "Recovered \\<now\\>"),
+        ("human_decision", {"status": "failed", "exit_code": 1,
+         "halt": {"type": "disagreement", "adjudicable": True, "reason": "Choose *a* direction"}},
+         [{"event_type": "disagreement_escalated"}], "✋", "Waiting for a human", "Choose \\*a\\* direction"),
+        ("blocked", {"status": "failed", "exit_code": 1, "halt": {"reason": "Validator rejected result"}},
+         [{"event_type": "recovery_exhausted"}], "⛔", "Blocked", "Validator rejected result"),
+        ("engine_fault", {"status": "failed", "exit_code": 1,
+         "halt": {"type": "internal_error", "reason": "Worker crashed"}},
+         [], "❌", "Engine fault", "Worker crashed"),
+    ]
+    httpd = server()
+    try:
+        base = f"http://127.0.0.1:{httpd.server_port}"
+        for index, (situation, state, ancillary, icon, headline, expected_reason) in enumerate(cases):
+            root = tmp_path / str(index)
+            job_id = f"j_halt_{index}"
+            task_id = f"task-{index}"
+            job = root / ".snodo" / "jobs" / job_id
+            job.mkdir(parents=True)
+            (job / "task.json").write_text(json.dumps({"task_id": task_id}))
+            (job / "state.json").write_text(json.dumps({**state, "started_at": 1}))
+            audit = root / ".snodo" / "audit.log"
+            audit.parent.mkdir(parents=True, exist_ok=True)
+            records = [
+                {"timestamp": "2026-01-01T00:00:00", "task_ref": task_id, **item}
+                for item in ancillary
+            ]
+            halt_fields = {"timestamp": "2026-01-01T00:00:00", "task_ref": task_id,
+                           "halt_type": state.get("halt", {}).get("type", "blocked"),
+                           "reason": state.get("halt", {}).get("reason", "")}
+            records.append({**halt_fields, "event_type": "halt"})
+            audit.write_text("".join(json.dumps(record) + "\n" for record in records))
+            monkeypatch.setattr(notifications, "_settings", lambda: {
+                "events": ["task_halted"],
+                "targets": [
+                    {"type": "slack", "url": f"{base}/slack-{index}"},
+                    {"type": "webhook", "url": f"{base}/webhook-{index}"},
+                ],
+            })
+
+            notifications.monitor(str(root), job_id)
+
+            group = [request for request in StubHandler.requests
+                     if request[0] in {f"/slack-{index}", f"/webhook-{index}"}]
+            webhooks = [json.loads(body) for path, _headers, body in group if path == f"/webhook-{index}"]
+            assert len([event for event in webhooks if event["event"] == "task_halted"]) == 1
+            payload = next(event for event in webhooks if event["event"] == "task_halted")
+            assert payload["situation"] == situation
+            assert payload["reason"] == expected_reason
+            assert f"{headline} — {expected_reason}" in payload["message"]
+            slack = next(json.loads(body)["text"] for path, _headers, body in group if path == f"/slack-{index}")
+            assert slack.startswith(f"{icon} ")
+            assert f"{headline} — {expected_reason}" in slack
+            if situation == "warn_recovered":
+                assert "task-recovery" in slack
+    finally:
+        httpd.shutdown()
