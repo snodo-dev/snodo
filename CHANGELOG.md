@@ -13,6 +13,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Make the per-task gate select the consuming tests when a runtime-read file changes: guide docs, the protocol templates (consumers are found by searching the test sources), the model benchmark prompt and `schemas/protocol-v1.json`. (Fixes #1075)
 - Print a usage summary (input tokens, output tokens, elapsed time and output tokens per second, marked calculated or reported) at the end of every task and recon; report time, turns, tokens, cost and findings by severity for the baseline and the candidate in `snodo models --compare` and `--benchmark-run`, including a candidate that did not complete; note a different coder or model before a benchmark run; and keep a usage summary in `baseline.json`. (Fixes #1079)
 - Make `snodo recon` use `llm.recon.deadline_seconds` for the recon agents and for how long the CLI waits, instead of a fixed 300 seconds, and show the deadline in effect. (Fixes #1084)
+- Allow PR reviews to install current Snodo releases by removing the stale `litellm<1.106` constraint, and test both installation paths with a fake installer to catch unintended dependency overrides. (Fixes #1077)
 
 ## [0.28.2] — 2026-11-03
 
