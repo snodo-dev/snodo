@@ -145,14 +145,14 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
     last_report: Optional[CoderReport] = None
 
     #: What a subprocess coder can actually honour: the model reaches the argv
-    #: (prefix-gated, see :meth:`_bare_model`) and ``timeout_seconds`` bounds
-    #: the wait on the child. It does NOT honour ``max_tokens`` or
+    #: (prefix-gated, see :meth:`_bare_model`), and ``timeout_seconds`` and
+    #: ``silence_timeout_seconds`` bound the wait on the child. It does NOT honour ``max_tokens`` or
     #: ``max_tool_turns`` — the spawned program runs its own loop and the
     #: values never reach it — and ``temperature``, though the constructor
     #: stores it, is never read again, so it is declared absent: stored-and-
     #: never-read is inert exactly like never-arrived (Fixes #311).
     honoured_settings: frozenset[str] = frozenset(
-        {"model", "timeout_seconds", "workspace"}
+        {"model", "timeout_seconds", "silence_timeout_seconds", "workspace"}
     )
 
     def __init__(
