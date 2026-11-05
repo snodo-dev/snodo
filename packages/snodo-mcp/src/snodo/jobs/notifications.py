@@ -337,7 +337,9 @@ def monitor(root_text: str, job_id: str) -> None:
                                 "engine_fault": "Engine fault",
                                 "success": "Success",
                             }
-                            reason = format_halt_summary({"reason": outcome.halt_reason or data.get("reason")})
+                            halt_payload = {**state.get("halt", {}), **data} if isinstance(state.get("halt"), dict) else data
+                            halt_payload["reason"] = outcome.halt_reason or data.get("reason")
+                            reason = format_halt_summary(halt_payload)
                             happened = labels[outcome.situation] + (f" — {reason}" if reason else "")
                             message, details = _job_message(root, job_id, task, happened)
                             details.update(situation=outcome.situation, reason=reason)
@@ -365,7 +367,12 @@ def monitor(root_text: str, job_id: str) -> None:
             labels = {"success": "Success", "warn_recovered": f"Warn — recovered by {outcome.recovery_task_id or 'recovery task'}",
                       "human_decision": "Waiting for a human", "blocked": "Blocked", "engine_fault": "Engine fault"}
             situation = outcome.situation
-            reason = format_halt_summary({"reason": outcome.halt_reason})
+            halt_payload = state.get("halt") if isinstance(state.get("halt"), dict) else {}
+            if not halt_payload.get("validator_results"):
+                halt_event = next((event for event in reversed(outcome_events) if event.get("event_type") == "halt"), {})
+                halt_payload = {**halt_payload, **halt_event}
+            halt_payload["reason"] = outcome.halt_reason
+            reason = format_halt_summary(halt_payload)
             happened = labels[situation] + (f" — {reason}" if situation != "success" and reason else "")
             message, details = _job_message(root, job_id, task, happened)
             details.update(status=state["status"], exit_code=state.get("exit_code"), situation=situation, reason=reason)
