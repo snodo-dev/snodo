@@ -205,8 +205,6 @@ def _event_icon(event_type: str, event: dict | None = None) -> str:
                  "blocked": "⛔", "engine_fault": "❌"}
         if event.get("situation") in icons:
             return icons[event["situation"]]
-        if event.get("status") == "failed" or event.get("exit_code", 0) != 0:
-            return "❌"
     return EVENT_ICONS[event_type]
 
 

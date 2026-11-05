@@ -153,7 +153,7 @@ def test_notification_targets_prominently_format_project_and_host():
         httpd.shutdown()
 
 
-def test_job_finished_situation_icons_are_distinct_and_shared_across_sinks():
+def test_job_finished_status_icons_are_distinct_and_shared_across_sinks():
     httpd = server()
     try:
         base = f"http://127.0.0.1:{httpd.server_port}"
@@ -406,3 +406,48 @@ def test_notification_failure_does_not_change_terminal_job(tmp_path, monkeypatch
     })
     notifications.monitor(str(root), job.name)
     assert json.loads((job / "state.json").read_text()) == state
+
+
+def test_monitor_job_finished_situations_and_messages(tmp_path, monkeypatch):
+    cases = [
+        ("success", {"status": "completed", "exit_code": 0}, [], "✅", "Success", None),
+        ("warn_recovered", {"status": "completed", "exit_code": 0, "halt": {"reason": "Recovered"}},
+         [{"event_type": "subtask_spawned", "task_ref": "task-recovery"}], "⚠️", "Warn — recovered by task-recovery", "Recovered"),
+        ("human_decision", {"status": "failed", "exit_code": 1,
+         "halt": {"type": "disagreement", "adjudicable": True, "reason": "Choose a direction"}},
+         [{"event_type": "disagreement_escalated"}], "✋", "Waiting for a human", "Choose a direction"),
+        ("blocked", {"status": "failed", "exit_code": 1, "halt": {"reason": "Validator rejected result"}},
+         [{"event_type": "recovery_exhausted"}], "⛔", "Blocked", "Validator rejected result"),
+        ("engine_fault", {"status": "failed", "exit_code": 1,
+         "halt": {"type": "internal_error", "reason": "Worker crashed"}},
+         [], "❌", "Engine fault", "Worker crashed"),
+    ]
+    for index, (situation, state, events, icon, headline, reason) in enumerate(cases):
+        root = tmp_path / str(index)
+        job_id = f"j_{index}"
+        job = root / ".snodo" / "jobs" / job_id
+        job.mkdir(parents=True)
+        (job / "task.json").write_text(json.dumps({"task_id": f"task-{index}"}))
+        (job / "state.json").write_text(json.dumps({**state, "started_at": 1}))
+        (root / ".snodo" / "audit.log").write_text("".join(json.dumps({
+            "timestamp": "2026-01-01T00:00:00", "task_ref": f"task-{index}", **event,
+        }) + "\n" for event in events))
+        sent = []
+        monkeypatch.setattr(notifications, "_settings", lambda: {"events": ["job_finished"]})
+        monkeypatch.setattr(notifications, "_notify", lambda *args: sent.append(args))
+
+        notifications.monitor(str(root), job_id)
+
+        finished = [entry for entry in sent if entry[2] == "job_finished"]
+        assert len(finished) == 1
+        payload = finished[0]
+        message, details = payload[3], payload[4]
+        assert details["situation"] == situation
+        assert details["reason"] == (reason or "")
+        assert f"{headline}" in message
+        assert f"Inspect: snodo logs {job_id}" in message
+        if situation == "success":
+            assert " — Success — Inspect:" in message
+        else:
+            assert reason in message
+        assert notifications._event_icon("job_finished", details) == icon
