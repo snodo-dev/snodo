@@ -7,6 +7,8 @@ Patch extracted via ``git add -A && git diff --cached``.
 
 from __future__ import annotations
 
+import json
+import re
 import subprocess
 import time
 from typing import Any, Dict, Optional
@@ -47,11 +49,14 @@ def run(
     try:
         proc = subprocess.run(
             [
-                "opencode", "run",
-                "--dir", str(workspace.path),       # root opencode at the workspace
-                "--dangerously-skip-permissions",   # auto-approve edits (non-interactive)
-                prompt,            # message is a POSITIONAL for `opencode run`
-                "-m", model,
+                "opencode",
+                "run",
+                "--dir",
+                str(workspace.path),  # root opencode at the workspace
+                "--dangerously-skip-permissions",  # auto-approve edits (non-interactive)
+                prompt,  # message is a POSITIONAL for `opencode run`
+                "-m",
+                model,
             ],
             cwd=str(workspace.path),
             capture_output=True,
@@ -60,20 +65,27 @@ def run(
         )
         wall_s = time.monotonic() - start
 
+        cost_usd, token_counts = _parse_usage(proc.stdout or "", proc.stderr or "")
         if proc.returncode != 0:
             return _result(
-                extract_patch(workspace), wall_s, None,
+                extract_patch(workspace),
+                wall_s,
+                cost_usd,
                 proc.stderr.strip() or "opencode failed",
+                token_counts,
             )
 
         patch = extract_patch(workspace)
         if not patch:
             combined = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
             return _result(
-                patch, wall_s, None,
+                patch,
+                wall_s,
+                cost_usd,
                 f"empty patch (rc={proc.returncode}); opencode output tail: {combined[-1000:]}",
+                token_counts,
             )
-        return _result(patch, wall_s, None, None)
+        return _result(patch, wall_s, cost_usd, None, token_counts)
     except FileNotFoundError:
         wall_s = time.monotonic() - start
         return _result("", wall_s, None, "opencode not found")
@@ -85,18 +97,76 @@ def run(
         return _result("", wall_s, None, str(exc))
 
 
+def _parse_usage(
+    stdout: str, stderr: str = ""
+) -> tuple[Optional[float], Optional[dict]]:
+    """Extract cost and token counts from opencode JSON or text usage output."""
+    text = f"{stdout}\n{stderr}"
+    cost = None
+    tokens = None
+    for line in text.splitlines():
+        try:
+            item = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            item = None
+        if isinstance(item, dict):
+            usage = item.get("usage", item)
+            if isinstance(usage, dict):
+                cost_value = usage.get("cost_usd", usage.get("cost"))
+                token_usage = usage.get("tokens", usage)
+                if not isinstance(token_usage, dict):
+                    token_usage = usage
+                if isinstance(cost_value, (int, float)) and not isinstance(
+                    cost_value, bool
+                ):
+                    cost = float(cost_value)
+                input_tokens = token_usage.get(
+                    "input_tokens",
+                    token_usage.get("inputTokens", token_usage.get("input")),
+                )
+                output_tokens = token_usage.get(
+                    "output_tokens",
+                    token_usage.get("outputTokens", token_usage.get("output")),
+                )
+                if isinstance(input_tokens, int) or isinstance(output_tokens, int):
+                    tokens = {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                    }
+        match = re.search(
+            r"(?:cost(?:_usd)?|total cost)\s*[:=]\s*\$?([0-9]+(?:\.[0-9]+)?)",
+            line,
+            re.I,
+        )
+        if match:
+            cost = float(match.group(1))
+        input_match = re.search(r"input(?:_tokens)?\s*[:=]\s*(\d+)", line, re.I)
+        output_match = re.search(r"output(?:_tokens)?\s*[:=]\s*(\d+)", line, re.I)
+        if input_match or output_match:
+            tokens = {
+                "input_tokens": int(input_match.group(1)) if input_match else None,
+                "output_tokens": int(output_match.group(1)) if output_match else None,
+            }
+    return cost, tokens
+
+
 def _result(
     patch: str,
     wall_s: float,
     cost_usd: Optional[float],
     error: Optional[str],
+    token_counts: Optional[dict] = None,
 ) -> Dict[str, Any]:
-    return {
+    result = {
         "patch": patch,
         "wall_s": wall_s,
         "cost_usd": cost_usd,
+        "cost_source": "opencode" if cost_usd is not None else "unavailable",
         "error": error,
     }
+    if token_counts is not None:
+        result.update(token_counts)
+    return result
 
 
 class MockArmA:

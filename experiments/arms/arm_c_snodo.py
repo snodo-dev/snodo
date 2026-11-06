@@ -28,7 +28,9 @@ from snodo.infrastructure.audit import AuditLog
 from experiments.workspace import Workspace, extract_patch
 
 
-def _snodo_config_with_model(experiment_model: str, validator_model: Optional[str] = None) -> Path:
+def _snodo_config_with_model(
+    experiment_model: str, validator_model: Optional[str] = None
+) -> Path:
     """Create a temporary snodo config dir that pins the experiment model.
 
     Returns the config dir path.  The caller must set SNODO_HOME to this
@@ -45,6 +47,7 @@ def _snodo_config_with_model(experiment_model: str, validator_model: Optional[st
     # carry the provider API keys and cloud settings into the temp config —
     # otherwise snodo has the model but no key (DeepSeek "Authentication Fails").
     from snodo.config import ConfigManager
+
     real = ConfigManager().load()
 
     validator_model = validator_model or experiment_model
@@ -52,13 +55,16 @@ def _snodo_config_with_model(experiment_model: str, validator_model: Optional[st
     config_dir = Path(tempfile.mkdtemp(prefix="snodo-exp-config-"))
     config_path = config_dir / "config.yml"
     config = {
-        "model": validator_model,   # litellm default for classifier/validator calls
-        "providers": real.get("providers", {}),   # carry API keys
-        "cloud": real.get("cloud", {              # carry cloud sync (prod logs)
-            "api_key": "",
-            "api_url": "",
-            "sync_enabled": False,
-        }),
+        "model": validator_model,  # litellm default for classifier/validator calls
+        "providers": real.get("providers", {}),  # carry API keys
+        "cloud": real.get(
+            "cloud",
+            {  # carry cloud sync (prod logs)
+                "api_key": "",
+                "api_url": "",
+                "sync_enabled": False,
+            },
+        ),
         "engine": {
             "max_subtask_depth": 3,
             "max_session_age_days": 30,
@@ -138,7 +144,11 @@ def run(
             # OpenCodeAdapter — the SAME coder as arms a/b.  Classifier and
             # validator models remain the bare experiment_model (set via the
             # snodo config dir above).
-            coder_model = f"opencode-cli/{experiment_model}" if not experiment_model.startswith(("opencode/", "opencode-cli/")) else experiment_model
+            coder_model = (
+                f"opencode-cli/{experiment_model}"
+                if not experiment_model.startswith(("opencode/", "opencode-cli/"))
+                else experiment_model
+            )
             graph = build_protocol_graph(
                 protocol,
                 project_root=project_root,
@@ -163,8 +173,12 @@ def run(
                 task_dict,
                 mode="producer",
                 audit_log=audit_log,
-                max_total_fix_attempts=config.get("bounds", {}).get("max_total_fix_attempts", 10),
-                max_recovery_depth=config.get("bounds", {}).get("max_recovery_depth", 3),
+                max_total_fix_attempts=config.get("bounds", {}).get(
+                    "max_total_fix_attempts", 10
+                ),
+                max_recovery_depth=config.get("bounds", {}).get(
+                    "max_recovery_depth", 3
+                ),
             )
             wall_s = time.monotonic() - start
         except Exception as exc:
@@ -181,7 +195,19 @@ def run(
         # config's cloud.sync + cloud.target to decide whether/how to sync.
         _do_cloud_sync(config, run_id, task, trial_id, project_root, audit_log)
 
-        return _result(patch, wall_s, None, None, closure_json)
+        from snodo.infrastructure.cloud_usage import task_usage_records
+        from snodo.infrastructure.usage_summary import summarize_usage
+
+        usage_records = task_usage_records(project_root, root_task_id)
+        summarize_usage(usage_records)
+        known_costs = [record.get("cost_usd") for record in usage_records]
+        cost_usd = (
+            sum(known_costs)
+            if known_costs
+            and all(isinstance(value, (int, float)) for value in known_costs)
+            else None
+        )
+        return _result(patch, wall_s, cost_usd, None, closure_json)
     finally:
         # Restore SNODO_HOME
         if saved_snodo_home is not None:
@@ -191,10 +217,13 @@ def run(
         # Clean up temp config dir
         if exp_config_dir.exists():
             import shutil
+
             shutil.rmtree(exp_config_dir, ignore_errors=True)
 
 
-def cleanup_branches(instance_id: str, run_id: str, project_root: Optional[str] = None) -> None:
+def cleanup_branches(
+    instance_id: str, run_id: str, project_root: Optional[str] = None
+) -> None:
     """Delete task/* branches matching this run's root task id pattern.
 
     Only touches branches whose name starts with the exp1 root task id
@@ -247,6 +276,7 @@ def _do_cloud_sync(
 
         # Load credentials from the snodo temp config (set up in run())
         from snodo.config import ConfigManager as _CM
+
         snodo_cfg = _CM().load()
         snodo_cloud = snodo_cfg.get("cloud", {})
         api_key = snodo_cloud.get("api_key", "")
@@ -260,6 +290,7 @@ def _do_cloud_sync(
         session_id = f"exp1-arm-c-{task.get('instance_id', '?')}-{run_id}-t{trial_id}"
 
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+
         result = CloudSyncDispatcher().sync(
             session_id=session_id,
             project_root=project_root,
@@ -270,7 +301,9 @@ def _do_cloud_sync(
         _logger = logging.getLogger(__name__)
         _logger.debug(
             "Cloud sync for %s: synced=%d, failed=%s",
-            session_id, result.get("synced", 0), result.get("failed", False),
+            session_id,
+            result.get("synced", 0),
+            result.get("failed", False),
         )
     except Exception as exc:
         _logger = logging.getLogger(__name__)
@@ -300,6 +333,7 @@ def _result(
         "patch": patch,
         "wall_s": wall_s,
         "cost_usd": cost_usd,
+        "cost_source": "snodo_usage" if cost_usd is not None else "unavailable",
         "error": error,
         "closure_json": closure_json,
     }

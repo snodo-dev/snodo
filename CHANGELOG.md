@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Fix SWE-bench 5.x image compatibility and record experiment arm costs when usage is available. (Fixes #1112)
+
 - Add a reproducible scikit-learn-26194 demo fixture with the original issue statement and test metadata. (Fixes #1108)
 
 ## [0.28.3] — 2026-11-04
