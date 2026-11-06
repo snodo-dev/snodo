@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Pin the notification message shape for all five operator situations with table-driven monitor-path tests.
+- Include `snodo authorize <task id>` in every human-decision notification. (Fixes #1100)
+- Document validator findings and the authorize command in blocked and human-decision notifications. (Fixes #1098)
+- Include bounded validator justifications in blocked and human-decision notifications. (Fixes #1096)
+
 ## [0.28.3] — 2026-11-04
 
 - Make a plan task whose spec was replaced start fresh from the current base, and keep an explicit `--fresh-start` on a plain retry, instead of resuming the stale task branch. (Fixes #1074)
