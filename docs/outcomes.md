@@ -149,6 +149,8 @@ below rather than treating the printed halt payload as the only copy.
 | You need historical/audit evidence | `.snodo/audit.log` records append-only events such as `spec_replaced` and `task_unmerged`; `snodo meta <job_id>` shows the job's metadata | Correlate the task/job IDs and event history with the current job and task records. |
 | Task is resolved but not on the base branch | `snodo job status <job_id>`, `snodo job logs <job_id>`, `snodo task show <task_id>`, and the `task_unmerged` audit event; the run reports the reason and branch/worktree | Preserve the work and merge the printed branch by hand when there is a branch (`git merge <branch>`); for degraded isolation, inspect and commit the changes in the working tree instead. Do not rerun the task just to merge it. |
 
+A finished job with exit code 0 is a success, even if an earlier attempt of a task halted; when a retry resolves that halt and the job completes, the earlier halt does not change the result. A job that fails or ends unmerged keeps its halt as the reason.
+
 The terminal CLI run exit codes are **0** for completed, **1** for failed (including
 preflight or isolation failure), and **2** for completed but not merged. A job
 wrapper reports code 2 as `unmerged`; use both the status and exit code when

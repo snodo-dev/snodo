@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Clarify that a finished exit-0 job is a success when a retry resolves an earlier halt, while failed and unmerged jobs retain the halt as the reason. (Fixes #1102)
+- Classify completed jobs with exit code 0 as Success (or Warn — recovered) despite a stale halt from an earlier attempt. (Fixes #1101)
+
 ## [0.28.3] — 2026-11-04
 
 - Make a plan task whose spec was replaced start fresh from the current base, and keep an explicit `--fresh-start` on a plain retry, instead of resuming the stale task branch. (Fixes #1074)
