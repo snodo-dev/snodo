@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Pin the notification message shape for all five operator situations with table-driven monitor-path tests.
 - Include `snodo authorize <task id>` in every human-decision notification. (Fixes #1100)
 - Document validator findings and the authorize command in blocked and human-decision notifications. (Fixes #1098)
 - Include bounded validator justifications in blocked and human-decision notifications. (Fixes #1096)
