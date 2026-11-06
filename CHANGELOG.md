@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a reproducible scikit-learn-26194 demo fixture with the original issue statement and test metadata. (Fixes #1108)
+
 ## [0.28.3] — 2026-11-04
 
 - Make a plan task whose spec was replaced start fresh from the current base, and keep an explicit `--fresh-start` on a plain retry, instead of resuming the stale task branch. (Fixes #1074)
