@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document validator findings and the authorize command in blocked and human-decision notifications. (Fixes #1098)
 - Include bounded validator justifications in blocked and human-decision notifications. (Fixes #1096)
 
 ## [0.28.3] — 2026-11-04
