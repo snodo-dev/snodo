@@ -208,6 +208,15 @@ def _event_icon(event_type: str, event: dict | None = None) -> str:
     return EVENT_ICONS[event_type]
 
 
+def _authorize_human_decision(message: str, details: dict, task_id: str | None) -> tuple[str, dict]:
+    """Add the authorize action consistently to human-decision notifications."""
+    if details.get("situation") == "human_decision" and task_id:
+        command = f"snodo authorize {task_id}"
+        details["command"] = command
+        message += f" — Authorize: {command}"
+    return message, details
+
+
 def _claim(sent_dir: Path, event_id: str) -> bool:
     sent_dir.mkdir(parents=True, exist_ok=True)
     marker = sent_dir / hashlib.sha256(event_id.encode()).hexdigest()
@@ -343,6 +352,7 @@ def monitor(root_text: str, job_id: str) -> None:
                             happened = labels[outcome.situation] + (f" — {reason}" if reason else "")
                             message, details = _job_message(root, job_id, task, happened)
                             details.update(situation=outcome.situation, reason=reason)
+                            message, details = _authorize_human_decision(message, details, task_id)
                             _notify(root, f"halt:{item.get('event_hash', audit_offset)}", "task_halted", message, details)
                         elif event_type == "disagreement_escalated":
                             from snodo.jobs.halt_summary import format_halt_summary
@@ -351,8 +361,7 @@ def monitor(root_text: str, job_id: str) -> None:
                             happened = "Waiting for a human" + (f" — {reason}" if reason else "")
                             message, details = _job_message(root, job_id, task, happened)
                             details.update(situation="human_decision", reason=reason)
-                            details["command"] = f"snodo authorize {task_id}"
-                            message += f" — Authorize: {details['command']}"
+                            message, details = _authorize_human_decision(message, details, task_id)
                             _notify(root, f"authorize:{item.get('event_hash', audit_offset)}", "authorization_needed", message, details)
                     except (TypeError, ValueError):
                         continue
@@ -376,6 +385,7 @@ def monitor(root_text: str, job_id: str) -> None:
             happened = labels[situation] + (f" — {reason}" if situation != "success" and reason else "")
             message, details = _job_message(root, job_id, task, happened)
             details.update(status=state["status"], exit_code=state.get("exit_code"), situation=situation, reason=reason)
+            message, details = _authorize_human_decision(message, details, task_id)
             _notify(root, f"{job_id}:finished:{state['status']}", "job_finished", message, details)
             return
         if state.get("status") in {"cancelled", "unmerged"}:

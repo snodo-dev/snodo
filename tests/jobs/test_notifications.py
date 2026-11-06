@@ -457,6 +457,13 @@ def test_monitor_job_finished_situations_and_messages(tmp_path, monkeypatch):
         else:
             assert reason in message
         assert notifications._event_icon("job_finished", details) == icon
+        command = f"snodo authorize task-{index}"
+        if situation == "human_decision":
+            assert details["command"] == command
+            assert f"Authorize: {command}" in message
+        else:
+            assert details["command"] == f"snodo logs {job_id}"
+            assert "Authorize:" not in message
 
 
 def test_monitor_task_halted_situations_reach_slack_and_webhook(tmp_path, monkeypatch):
@@ -519,6 +526,14 @@ def test_monitor_task_halted_situations_reach_slack_and_webhook(tmp_path, monkey
             slack = next(json.loads(body)["text"] for path, _headers, body in group if path == f"/slack-{index}")
             assert slack.startswith(f"{icon} ")
             assert f"{headline} — {expected_reason}" in slack
+            command = f"snodo authorize {task_id}"
+            if situation == "human_decision":
+                assert payload["command"] == command
+                assert f"Authorize: {command}" in payload["message"]
+                assert f"Authorize: {command}" in slack
+            else:
+                assert payload["command"] == f"snodo logs {job_id}"
+                assert "Authorize:" not in payload["message"]
             if situation == "warn_recovered":
                 assert "task-recovery" in slack
     finally:
