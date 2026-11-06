@@ -32,6 +32,7 @@ def _swebench_python() -> str:
     """
     return os.environ.get("SNODO_SWEBENCH_PYTHON") or sys.executable
 
+
 _HARNESS_FLAGS: Optional[str] = None
 
 
@@ -42,11 +43,14 @@ def _harness_flags() -> str:
         try:
             _HARNESS_FLAGS = subprocess.run(
                 [_swebench_python(), "-m", "swebench.harness.run_evaluation", "--help"],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True,
+                text=True,
+                timeout=120,
             ).stdout
         except (OSError, subprocess.TimeoutExpired):
             _HARNESS_FLAGS = "--cache_level --namespace"
     return _HARNESS_FLAGS
+
 
 _INSTANCE_CACHE: Dict[str, dict] = {}
 
@@ -87,13 +91,17 @@ def _cleanup_eval_containers(run_id: str) -> None:
     try:
         ids = subprocess.run(
             ["docker", "ps", "-aq", "--filter", f"name={run_id}"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         ).stdout.split()
         if ids:
-            subprocess.run(["docker", "rm", "-f", *ids],
-                           capture_output=True, timeout=90)
+            subprocess.run(
+                ["docker", "rm", "-f", *ids], capture_output=True, timeout=90
+            )
     except Exception:
         pass
+
 
 # Frozen local copy of the SWE-bench records for our selection. swebench's
 # HF loader re-fetches the dataset on every call and its `datasets` cache can
@@ -111,6 +119,7 @@ def _resolve_dataset(dataset_name: str) -> str:
     back to the repo-default local file, then the HF name.
     """
     import os
+
     if dataset_name.startswith("princeton-nlp/"):
         env = os.environ.get("SNODO_EXP_DATASET")
         if env and Path(env).exists():
@@ -118,6 +127,27 @@ def _resolve_dataset(dataset_name: str) -> str:
         if _LOCAL_DATASET.exists():
             return str(_LOCAL_DATASET)
     return dataset_name
+
+
+def _add_swebench_image(instance: dict, version: str | None = None) -> dict:
+    """Add the image field required by swebench 5.x test specs."""
+    if version is None:
+        try:
+            from importlib.metadata import version as package_version
+
+            version = package_version("swebench")
+        except Exception:
+            return instance
+    try:
+        major = int(version.split(".", 1)[0])
+    except (AttributeError, ValueError):
+        return instance
+    if major < 5 or "image" in instance:
+        return instance
+    row = dict(instance)
+    # Matches swebench's generated eval-image naming convention.
+    row["image"] = f"swebench/sweb.eval.{row['instance_id'].lower()}:latest"
+    return row
 
 
 def _parse_report(report: Path, iid: str) -> dict:
@@ -211,17 +241,34 @@ def score_predictions_batch(
         # dir and map results back to the caller's model_name by instance_id.
         batch_model = "batch"
         lines = []
+        try:
+            from importlib.metadata import version as package_version
+
+            swebench_version = package_version("swebench")
+        except Exception as exc:
+            return {
+                (inst["instance_id"], mn): {
+                    **_FAIL,
+                    "error": f"swebench not runnable: {exc}",
+                }
+                for inst, _, mn in instances
+            }
         for instance, model_patch, model_name in instances:
+            instance = _add_swebench_image(instance, swebench_version)
             if not model_patch:
                 continue
             iid = instance["instance_id"]
             instance_ids.add(iid)
             safe_map[(iid, model_name)] = batch_model
-            lines.append(json.dumps({
-                "instance_id": iid,
-                "model_name_or_path": batch_model,
-                "model_patch": model_patch,
-            }))
+            lines.append(
+                json.dumps(
+                    {
+                        "instance_id": iid,
+                        "model_name_or_path": batch_model,
+                        "model_patch": model_patch,
+                    }
+                )
+            )
 
         if not lines:
             return {}
@@ -241,12 +288,19 @@ def score_predictions_batch(
         # SNODO_SWEBENCH_NAMESPACE (set it to "none"/"" for FEA).
         ns = os.environ.get("SNODO_SWEBENCH_NAMESPACE", namespace)
         cmd = [
-            _swebench_python(), "-m", "swebench.harness.run_evaluation",
-            "--dataset_name", _resolve_dataset(dataset_name),
-            "--predictions_path", str(preds_path),
-            "--instance_ids", *sorted(instance_ids),
-            "--max_workers", str(max_workers),
-            "--run_id", run_id,
+            _swebench_python(),
+            "-m",
+            "swebench.harness.run_evaluation",
+            "--dataset_name",
+            _resolve_dataset(dataset_name),
+            "--predictions_path",
+            str(preds_path),
+            "--instance_ids",
+            *sorted(instance_ids),
+            "--max_workers",
+            str(max_workers),
+            "--run_id",
+            run_id,
         ]
         # swebench 5.x dropped --cache_level and --namespace (the image name
         # comes from the dataset's test spec). Pass them only where supported.
@@ -259,17 +313,26 @@ def score_predictions_batch(
         try:
             try:
                 proc = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=timeout_s,
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_s,
                     cwd=td,
                 )
             except subprocess.TimeoutExpired:
                 return {
-                    (inst["instance_id"], mn): {**_FAIL, "error": f"harness timeout >{timeout_s}s"}
+                    (inst["instance_id"], mn): {
+                        **_FAIL,
+                        "error": f"harness timeout >{timeout_s}s",
+                    }
                     for inst, _, mn in instances
                 }
             except FileNotFoundError as exc:
                 return {
-                    (inst["instance_id"], mn): {**_FAIL, "error": f"swebench not runnable: {exc}"}
+                    (inst["instance_id"], mn): {
+                        **_FAIL,
+                        "error": f"swebench not runnable: {exc}",
+                    }
                     for inst, _, mn in instances
                 }
 
@@ -296,7 +359,9 @@ def score_predictions_batch(
                 for report in log_root.rglob("report.json"):
                     parts = report.relative_to(log_root).parts
                     if len(parts) >= 2:
-                        safe_results[(parts[1], parts[0])] = _parse_report(report, parts[1])
+                        safe_results[(parts[1], parts[0])] = _parse_report(
+                            report, parts[1]
+                        )
 
             results: Dict[Tuple[str, str], dict] = {}
             for instance, model_patch, model_name in instances:
@@ -304,19 +369,26 @@ def score_predictions_batch(
                 safe = safe_map.get((iid, model_name), model_name.replace("/", "__"))
                 key = (iid, model_name)
                 safe_key = (iid, safe)
-                if safe_key in safe_results:            # full detail from report.json
+                if safe_key in safe_results:  # full detail from report.json
                     results[key] = safe_results[safe_key]
-                elif iid in resolved_ids:               # summary says resolved
-                    results[key] = {"resolved": True, "n_fail_to_pass_passed": 0, "regressions": 0}
+                elif iid in resolved_ids:  # summary says resolved
+                    results[key] = {
+                        "resolved": True,
+                        "n_fail_to_pass_passed": 0,
+                        "regressions": 0,
+                    }
                 elif iid in empty_ids or not model_patch:
                     results[key] = {**_FAIL, "error": "empty_patch"}
                 elif iid in error_ids:
                     results[key] = {**_FAIL, "error": "harness error (per summary)"}
-                elif summary:                           # ran, not resolved -> genuine fail
+                elif summary:  # ran, not resolved -> genuine fail
                     results[key] = {**_FAIL}
-                else:                                   # no summary at all -> real infra failure
+                else:  # no summary at all -> real infra failure
                     tail = (proc.stderr or proc.stdout or "")[-400:]
-                    results[key] = {**_FAIL, "error": f"no report.json (rc={proc.returncode}). {tail}"}
+                    results[key] = {
+                        **_FAIL,
+                        "error": f"no report.json (rc={proc.returncode}). {tail}",
+                    }
 
             return results
         finally:
@@ -332,12 +404,16 @@ def _gold_cache_key(instance: dict, dataset_name: str) -> str:
     return f"{instance['instance_id']}@{dataset_name}"
 
 
-def _cached_gold_result(instance: dict, dataset_name: str = "princeton-nlp/SWE-bench_Verified") -> Optional[dict]:
+def _cached_gold_result(
+    instance: dict, dataset_name: str = "princeton-nlp/SWE-bench_Verified"
+) -> Optional[dict]:
     """Return a cached gold result, or None if not yet scored."""
     return _GOLD_CACHE.get(_gold_cache_key(instance, dataset_name))
 
 
-def _set_cached_gold_result(instance: dict, result: dict, dataset_name: str = "princeton-nlp/SWE-bench_Verified") -> None:
+def _set_cached_gold_result(
+    instance: dict, result: dict, dataset_name: str = "princeton-nlp/SWE-bench_Verified"
+) -> None:
     """Store a gold result in the cache."""
     _GOLD_CACHE[_gold_cache_key(instance, dataset_name)] = result
 
@@ -418,7 +494,12 @@ class RealScorer:
     Supports batch scoring (``score_batch``) and caches gold-patch results.
     """
 
-    def __init__(self, max_workers: int = 1, namespace: str = "swebench", cache_level: str = "instance"):
+    def __init__(
+        self,
+        max_workers: int = 1,
+        namespace: str = "swebench",
+        cache_level: str = "instance",
+    ):
         self._max_workers = max_workers
         self._namespace = namespace
         self._cache_level = cache_level
@@ -479,7 +560,9 @@ class RealScorer:
             _set_cached_gold_result(instance, result, dataset_name)
             return result
 
-        result = score_prediction(instance, gold_patch, "gold-baseline", dataset_name=dataset_name)
+        result = score_prediction(
+            instance, gold_patch, "gold-baseline", dataset_name=dataset_name
+        )
         _set_cached_gold_result(instance, result, dataset_name)
         return result
 
@@ -487,7 +570,13 @@ class RealScorer:
         return self.score(instance, model_patch, **kwargs)
 
 
-def make_scorer(mock: bool = False, max_workers: int = 1, namespace: str = "swebench", cache_level: str = "instance", **kwargs) -> MockScorer | RealScorer:
+def make_scorer(
+    mock: bool = False,
+    max_workers: int = 1,
+    namespace: str = "swebench",
+    cache_level: str = "instance",
+    **kwargs,
+) -> MockScorer | RealScorer:
     """Factory: return a MockScorer or a RealScorer (both expose .score).
 
     Args:
@@ -498,4 +587,6 @@ def make_scorer(mock: bool = False, max_workers: int = 1, namespace: str = "sweb
     """
     if mock:
         return MockScorer(**kwargs)
-    return RealScorer(max_workers=max_workers, namespace=namespace, cache_level=cache_level)
+    return RealScorer(
+        max_workers=max_workers, namespace=namespace, cache_level=cache_level
+    )

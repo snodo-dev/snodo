@@ -9,6 +9,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add versioned demo run records from task artifacts, including outcomes, usage and validator findings. (Fixes #1115)
+- Add demo helpers to build and validate governed and bare bugfix-surgeon protocols. (Fixes #1114)
+- Fix SWE-bench 5.x image compatibility and record experiment arm costs when usage is available. (Fixes #1112)
+
+- Add a reproducible scikit-learn-26194 demo fixture with the original issue statement and test metadata. (Fixes #1108)
+
 ## [0.28.3] — 2026-11-04
 
 - Make a plan task whose spec was replaced start fresh from the current base, and keep an explicit `--fresh-start` on a plain retry, instead of resuming the stale task branch. (Fixes #1074)
