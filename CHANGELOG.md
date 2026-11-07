@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 - Add a pure lookup for authorized prior validator warns on unchanged specs. (Fixes #1123)
+- Reuse passing spec-only pre-execute verdicts across retries without keying on retry evidence; retry evidence remains in judge input, while tree-reading subjects retain their tree digest. This reconciles the spec-only cache scope with ADR 021’s validation concern and supersedes CHANGELOG 0.27.0’s evidence-sensitive reuse behavior. (Fixes #1124)
+
 - Add versioned demo run records from task artifacts, including outcomes, usage and validator findings. (Fixes #1115)
 - Add demo helpers to build and validate governed and bare bugfix-surgeon protocols. (Fixes #1114)
 - Fix SWE-bench 5.x image compatibility and record experiment arm costs when usage is available. (Fixes #1112)
