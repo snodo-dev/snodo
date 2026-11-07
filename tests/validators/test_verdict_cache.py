@@ -88,9 +88,7 @@ class _Completion:
         role = (kwargs.get("metadata") or {}).get("role", "")
         self.calls.append(role)
         return _response(
-            json.dumps(
-                {"severity": self.severity, "justification": self.justification}
-            )
+            json.dumps({"severity": self.severity, "justification": self.justification})
         )
 
     def count(self, role=None):
@@ -117,7 +115,8 @@ class _ToolCompletion:
         self.calls += 1
         marker = "The task identifier under judgement is "
         prompt = next(
-            message["content"] for message in kwargs["messages"]
+            message["content"]
+            for message in kwargs["messages"]
             if isinstance(message.get("content"), str) and marker in message["content"]
         )
         task_id, _ = json.JSONDecoder().raw_decode(prompt.rsplit(marker, 1)[1])
@@ -127,7 +126,11 @@ class _ToolCompletion:
         tool_call = MagicMock()
         tool_call.function.name = "submit_verdict"
         tool_call.function.arguments = json.dumps(
-            {"task_id": task_id, "severity": self.severity, "justification": self.justification}
+            {
+                "task_id": task_id,
+                "severity": self.severity,
+                "justification": self.justification,
+            }
         )
         msg.tool_calls = [tool_call]
         resp.choices = [MagicMock()]
@@ -178,18 +181,26 @@ def _run(
 
 
 def _cache(tmp_path):
-    return VerdictCache(
-        tmp_path / "verdict_cache.json", project_root=str(tmp_path)
-    )
+    return VerdictCache(tmp_path / "verdict_cache.json", project_root=str(tmp_path))
 
 
 def _stored_question(validator_id="v", subject="fixture"):
     """A complete safe question for tests exercising storage, not dispatch."""
     return compute_verdict_question(
-        validator_id=validator_id, validator_type="security", criteria=["safe"],
-        tools=[], model="test-model", protocol_id="p_cache", protocol_version="1",
-        mode_id="producer", phase="pre_execute", subject=subject,
-        subject_kind="spec", subject_id="t1", max_tokens=1500, max_tool_turns=6,
+        validator_id=validator_id,
+        validator_type="security",
+        criteria=["safe"],
+        tools=[],
+        model="test-model",
+        protocol_id="p_cache",
+        protocol_version="1",
+        mode_id="producer",
+        phase="pre_execute",
+        subject=subject,
+        subject_kind="spec",
+        subject_id="t1",
+        max_tokens=1500,
+        max_tool_turns=6,
     )
 
 
@@ -218,32 +229,98 @@ def test_unchanged_spec_and_criteria_reuse_verdict_and_mark_it(tmp_path):
     assert "reused" not in result_record(first[0])
 
 
-
-def test_retry_evidence_narrows_spec_cache_without_disabling_reuse(tmp_path):
+def test_retry_with_changed_evidence_reuses_prior_pass(tmp_path):
     validator = _validator()
     protocol = _protocol([validator])
     cache = _cache(tmp_path)
     completion = _Completion()
-    base = Task(id="t1", spec="Implement feature X")
-    retry = Task(
-        id="t1", spec="Composed input A", root_spec=base.spec,
+    original = Task(id="t1", spec="Implement feature X")
+    retry_a = Task(
+        id="t1",
+        spec="Evidence A",
+        root_spec=original.spec,
         composed_input_source="operator_retry",
     )
-    other_retry = Task(
-        id="t1", spec="Composed input B", root_spec=base.spec,
+    retry_b = Task(
+        id="t1",
+        spec="Evidence B",
+        root_spec=original.spec,
         composed_input_source="operator_retry",
     )
 
-    first, _ = _run(protocol, [validator], cache, completion, task=base)
-    with_evidence, _ = _run(protocol, [validator], cache, completion, task=retry)
-    same_evidence, _ = _run(protocol, [validator], cache, completion, task=retry)
-    changed_evidence, _ = _run(protocol, [validator], cache, completion, task=other_retry)
+    first, _ = _run(protocol, [validator], cache, completion, task=original)
+    second, _ = _run(protocol, [validator], cache, completion, task=retry_a)
+    third, _ = _run(protocol, [validator], cache, completion, task=retry_b)
 
     assert not first[0].reused
-    assert not with_evidence[0].reused
-    assert same_evidence[0].reused
-    assert not changed_evidence[0].reused
-    assert completion.count() == 3
+    assert second[0].reused and third[0].reused
+    assert completion.count() == 1
+
+
+def test_retry_does_not_reuse_prior_warn(tmp_path):
+    validator = _validator()
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _Completion(severity="warn")
+    original = Task(id="t1", spec="Implement feature X")
+    retry = Task(
+        id="t1",
+        spec="Evidence",
+        root_spec=original.spec,
+        composed_input_source="operator_retry",
+    )
+
+    first, _ = _run(protocol, [validator], cache, completion, task=original)
+    second, _ = _run(protocol, [validator], cache, completion, task=retry)
+
+    assert first[0].severity == second[0].severity == "warn"
+    assert not first[0].reused and not second[0].reused
+    assert completion.count() == 2
+
+
+def test_judge_still_receives_retry_evidence_on_reuse_miss(tmp_path):
+    validator = _validator()
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    prompts = []
+
+    def completion(**kwargs):
+        prompts.extend(m.get("content", "") for m in kwargs.get("messages", []))
+        return _response(
+            json.dumps({"severity": "warn", "justification": "retry checked"})
+        )
+
+    original = Task(id="t1", spec="Implement feature X")
+    retry = Task(
+        id="t1",
+        spec="Prior failure evidence",
+        root_spec=original.spec,
+        composed_input_source="operator_retry",
+    )
+    _run(protocol, [validator], cache, completion, task=original)
+    result, _ = _run(protocol, [validator], cache, completion, task=retry)
+
+    assert not result[0].reused
+    assert any("Prior failure evidence" in prompt for prompt in prompts)
+
+
+def test_identical_evidence_still_reuses_prior_pass(tmp_path):
+    validator = _validator()
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _Completion()
+    retry = Task(
+        id="t1",
+        spec="Same evidence",
+        root_spec="Implement feature X",
+        composed_input_source="operator_retry",
+    )
+
+    first, _ = _run(protocol, [validator], cache, completion, task=retry)
+    second, _ = _run(protocol, [validator], cache, completion, task=retry)
+
+    assert not first[0].reused and second[0].reused
+    assert completion.count() == 1
 
 
 def test_wave_scoped_judge_uses_one_stable_subject_for_siblings(tmp_path):
@@ -295,9 +372,7 @@ def test_editing_one_criterion_invalidates_only_that_validator(tmp_path):
     assert completion.count() == 2
 
     a_edited = _validator(vid="sec_a", criteria=("criterion a edited",))
-    results, _ = _run(
-        _protocol([a_edited, b]), [a_edited, b], cache, completion
-    )
+    results, _ = _run(_protocol([a_edited, b]), [a_edited, b], cache, completion)
     by_id = {r.validator_id: r for r in results}
 
     assert completion.count() == 3, "only the edited criterion's judge re-ran"
@@ -312,9 +387,7 @@ def test_changing_the_model_invalidates(tmp_path):
     completion = _Completion()
 
     _run(protocol, [validator], cache, completion, default_model="model-a")
-    second, _ = _run(
-        protocol, [validator], cache, completion, default_model="model-b"
-    )
+    second, _ = _run(protocol, [validator], cache, completion, default_model="model-b")
 
     assert completion.count() == 2
     assert second[0].reused is False
@@ -527,7 +600,9 @@ def test_post_execute_tool_judge_keying_is_unchanged_by_spec(tmp_path):
     Post-execute stays tree-keyed only: an unrelated edit to the task spec
     must not re-buy a verdict about unchanged work.
     """
-    validator = _tool_validator("post_execute", vid="acceptance", validator_type="acceptance")
+    validator = _tool_validator(
+        "post_execute", vid="acceptance", validator_type="acceptance"
+    )
     protocol = _protocol([validator])
     cache = _cache(tmp_path)
     completion = _ToolCompletion()
@@ -670,21 +745,15 @@ def test_non_verdicts_are_never_stored(tmp_path, sentinel_registry, result):
     "result, cacheable",
     [
         (
-            ValidatorResult(
-                validator_id="v", severity="pass", justification="ok"
-            ),
+            ValidatorResult(validator_id="v", severity="pass", justification="ok"),
             True,
         ),
         (
-            ValidatorResult(
-                validator_id="v", severity="warn", justification="hmm"
-            ),
+            ValidatorResult(validator_id="v", severity="warn", justification="hmm"),
             True,
         ),
         (
-            ValidatorResult(
-                validator_id="v", severity="blocker", justification="no"
-            ),
+            ValidatorResult(validator_id="v", severity="blocker", justification="no"),
             True,
         ),
         (
@@ -758,7 +827,12 @@ def test_cache_does_not_cross_projects(tmp_path):
     protocol = _protocol([validator])
     completion = _Completion()
 
-    _run(protocol, [validator], VerdictCache(shared, project_root=str(project_a)), completion)
+    _run(
+        protocol,
+        [validator],
+        VerdictCache(shared, project_root=str(project_a)),
+        completion,
+    )
     second, _ = _run(
         protocol,
         [validator],
@@ -784,9 +858,7 @@ def test_emptied_cache_produces_same_verdicts_and_outcome(tmp_path):
         role = (kwargs.get("metadata") or {}).get("role", "")
         severity = "warn" if "meta" in role else "blocker"
         return _response(
-            json.dumps(
-                {"severity": severity, "justification": f"{role}:{severity}"}
-            )
+            json.dumps({"severity": severity, "justification": f"{role}:{severity}"})
         )
 
     # Cold: no cache at all.
@@ -796,9 +868,7 @@ def test_emptied_cache_produces_same_verdicts_and_outcome(tmp_path):
     cache = _cache(tmp_path)
     warm_results, warm_caps = _run(protocol, [warn, blocker], cache, completion)
     cache.clear()
-    emptied_results, emptied_caps = _run(
-        protocol, [warn, blocker], cache, completion
-    )
+    emptied_results, emptied_caps = _run(protocol, [warn, blocker], cache, completion)
 
     def shape(results):
         return [(r.validator_id, r.severity) for r in results]
@@ -863,18 +933,14 @@ def test_clear_deletes_the_file_and_is_idempotent(tmp_path):
 
 
 def test_cache_evicts_least_recently_used(tmp_path):
-    cache = VerdictCache(
-        tmp_path / "c.json", project_root=str(tmp_path), max_entries=2
-    )
+    cache = VerdictCache(tmp_path / "c.json", project_root=str(tmp_path), max_entries=2)
     keys = {}
     for label in ("a", "b", "c"):
         question = _stored_question(validator_id=label)
         keys[label] = question_key(question)
         cache.put(
             keys[label],
-            ValidatorResult(
-                validator_id=label, severity="pass", justification="ok"
-            ),
+            ValidatorResult(validator_id=label, severity="pass", justification="ok"),
             question=question,
         )
 
@@ -921,7 +987,8 @@ def test_cache_drops_malformed_entries(tmp_path):
     key = question_key(question)
     cache = VerdictCache(path, project_root=str(tmp_path))
     cache.put(
-        key, ValidatorResult(validator_id="v", severity="pass", justification="ok"),
+        key,
+        ValidatorResult(validator_id="v", severity="pass", justification="ok"),
         question=question,
     )
     payload = json.loads(path.read_text(encoding="utf-8"))
