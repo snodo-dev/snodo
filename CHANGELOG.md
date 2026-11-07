@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add end-to-end retry coverage proving passing security and meta-spec verdicts are reused while warnings are re-judged. (Fixes #1127)
+
 - Add a pure lookup for authorized prior validator warns on unchanged specs. (Fixes #1123)
 - Reuse passing spec-only pre-execute verdicts across retries without keying on retry evidence; retry evidence remains in judge input, while tree-reading subjects retain their tree digest. This reconciles the spec-only cache scope with ADR 021’s validation concern and supersedes CHANGELOG 0.27.0’s evidence-sensitive reuse behavior. (Fixes #1124)
 
