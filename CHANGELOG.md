@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Retry a missing verdict once on the forced verdict-only turn and include the provider finish reason, completion-token count and text presence when the judge still fails closed. (Fixes #1129)
 - Add versioned demo run records from task artifacts, including outcomes, usage and validator findings. (Fixes #1115)
 - Add demo helpers to build and validate governed and bare bugfix-surgeon protocols. (Fixes #1114)
 - Fix SWE-bench 5.x image compatibility and record experiment arm costs when usage is available. (Fixes #1112)

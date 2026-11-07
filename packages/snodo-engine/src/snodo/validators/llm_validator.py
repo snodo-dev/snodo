@@ -460,7 +460,8 @@ class LLMValidator(ValidatorBase):
         # repeated reads without charging productive inspection twice.
         turns_used = 0
         stall_streak = 0
-        max_raw_turns = tool_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 2
+        final_turn_misses = 0
+        max_raw_turns = tool_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 3
         for turn in range(max_raw_turns):
             is_final_turn = (
                 turns_used >= tool_turns - 1 or stall_streak >= _MAX_STALL_TURNS
@@ -565,11 +566,58 @@ class LLMValidator(ValidatorBase):
 
             # The judge was offered submit_verdict alone (the final turn, or
             # the turn after the prose nudge). Anything else is a judge that
-            # did not decide — an error that fails closed. It is not given
-            # another turn, and a read call cannot be honoured: the tools were
+            # did not decide — it gets one bounded verdict-only retry, then
+            # fails closed. A read call cannot be honoured: the tools were
             # withdrawn precisely so it would state what it found on what it
             # has.
             if is_final_turn or retried_free_text:
+                finish_reason = getattr(response.choices[0], "finish_reason", None)
+                completion_count = _usage_tokens(response, "completion")
+                limit = kwargs["max_tokens"]
+                has_text = bool(msg.content)
+                examination.append(
+                    f"turn {turn + 1}: verdict-only response had no valid verdict "
+                    f"(finish_reason={finish_reason!r}, completion_tokens="
+                    f"{completion_count}/{limit}, text={has_text})"
+                )
+                if final_turn_misses == 0:
+                    final_turn_misses += 1
+                    if str(finish_reason).lower() in {
+                        "length",
+                        "max_tokens",
+                        "token_limit",
+                    }:
+                        completion_tokens *= 2
+                    if tool_calls:
+                        messages.append(
+                            {
+                                "role": "assistant",
+                                "content": msg.content,
+                                "tool_calls": [
+                                    {
+                                        "id": tc.id,
+                                        "type": "function",
+                                        "function": {
+                                            "name": tc.function.name,
+                                            "arguments": tc.function.arguments,
+                                        },
+                                    }
+                                    for tc in tool_calls
+                                ],
+                            }
+                        )
+                        for tc in tool_calls:
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc.id,
+                                    "content": (
+                                        "No valid verdict was received. Call submit_verdict "
+                                        "using the required task_id, severity and justification."
+                                    ),
+                                }
+                            )
+                    continue
                 if tool_calls:
                     attempted = ", ".join(tc.function.name for tc in tool_calls)
                     examination.append(
