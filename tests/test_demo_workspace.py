@@ -1,4 +1,4 @@
-"""Tests for preparing the demo workspace."""
+"""Tests for the demo workspace helpers."""
 
 import importlib.util
 import json
@@ -16,23 +16,19 @@ SPEC.loader.exec_module(demo_workspace)
 
 
 def test_load_instance_reads_required_keys(tmp_path):
-    path = tmp_path / "instance.json"
-    expected = {
-        "instance_id": "scikit-learn-26194",
+    instance = {
+        "instance_id": "demo-1",
         "repo_url": "https://example.invalid/repo.git",
         "base_commit": "abc123",
-        "fail_to_pass": [],
-        "pass_to_pass": [],
     }
-    path.write_text(json.dumps(expected), encoding="utf-8")
-
-    assert demo_workspace.load_instance(path) == expected
+    path = tmp_path / "instance.json"
+    path.write_text(json.dumps(instance), encoding="utf-8")
+    assert demo_workspace.load_instance(path) == instance
 
 
 def test_load_instance_names_the_missing_key(tmp_path):
     path = tmp_path / "instance.json"
-    path.write_text(json.dumps({"instance_id": "demo"}), encoding="utf-8")
-
+    path.write_text(json.dumps({"instance_id": "demo-1"}), encoding="utf-8")
     with pytest.raises(ValueError, match="repo_url"):
         demo_workspace.load_instance(path)
 
@@ -48,11 +44,11 @@ def test_clone_checks_out_base_commit(tmp_path):
     subprocess.run(
         ["git", "-C", str(source), "config", "user.name", "Test"], check=True
     )
-    tracked = source / "value.txt"
+    tracked = source / "file.txt"
     tracked.write_text("first\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(source), "add", "value.txt"], check=True)
+    subprocess.run(["git", "-C", str(source), "add", "file.txt"], check=True)
     subprocess.run(["git", "-C", str(source), "commit", "-m", "first"], check=True)
-    base_commit = subprocess.run(
+    first_commit = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
         check=True,
         capture_output=True,
@@ -61,48 +57,48 @@ def test_clone_checks_out_base_commit(tmp_path):
     tracked.write_text("second\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(source), "commit", "-am", "second"], check=True)
 
-    target = tmp_path / "checkout"
-    result = demo_workspace.clone_instance(
-        {"repo_url": str(source), "base_commit": base_commit}, target
-    )
-
-    assert result == target
-    assert (target / "value.txt").read_text(encoding="utf-8") == "first\n"
+    target = tmp_path / "clone"
+    instance = {"repo_url": str(source), "base_commit": first_commit}
+    demo_workspace.clone_instance(instance, target)
+    assert (target / "file.txt").read_text(encoding="utf-8") == "first\n"
     head = subprocess.run(
         ["git", "-C", str(target), "rev-parse", "HEAD"],
         check=True,
         capture_output=True,
         text=True,
     ).stdout.strip()
-    assert head == base_commit
-    status = subprocess.run(
-        ["git", "-C", str(target), "status", "--porcelain", "--branch"],
+    assert head == first_commit
+    branch = subprocess.run(
+        ["git", "-C", str(target), "branch", "--show-current"],
         check=True,
         capture_output=True,
         text=True,
-    ).stdout
-    assert "## HEAD (no branch)" in status
+    ).stdout.strip()
+    assert branch == ""
 
 
 def test_non_empty_target_is_refused(tmp_path):
-    target = tmp_path / "existing"
+    target = tmp_path / "occupied"
     target.mkdir()
     (target / "keep.txt").write_text("keep", encoding="utf-8")
-
     with pytest.raises(FileExistsError, match="not empty"):
         demo_workspace.clone_instance(
-            {"repo_url": "unused", "base_commit": "unused"}, target
+            {"repo_url": "unused", "base_commit": "unused"},
+            target,
+            runner=lambda *args, **kwargs: pytest.fail("runner should not be called"),
         )
 
 
 def test_init_command_uses_bugfix_surgeon_template(tmp_path):
     calls = []
 
-    def recording_runner(command, *, cwd=None):
-        calls.append((command, cwd))
+    def recording_runner(command, **kwargs):
+        calls.append((command, kwargs))
 
-    demo_workspace.initialize_workspace(tmp_path, ["snodo"], runner=recording_runner)
-
+    demo_workspace.init_workspace(tmp_path, ["snodo"], runner=recording_runner)
     assert calls == [
-        (["snodo", "init", "--template", "bugfix-surgeon", "--yes"], tmp_path)
+        (
+            ["snodo", "init", "--template", "bugfix-surgeon", "--yes"],
+            {"cwd": tmp_path, "check": True},
+        )
     ]
