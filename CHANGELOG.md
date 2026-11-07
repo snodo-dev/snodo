@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a pure lookup for authorized prior validator warns on unchanged specs. (Fixes #1123)
 - Add versioned demo run records from task artifacts, including outcomes, usage and validator findings. (Fixes #1115)
 - Add demo helpers to build and validate governed and bare bugfix-surgeon protocols. (Fixes #1114)
 - Fix SWE-bench 5.x image compatibility and record experiment arm costs when usage is available. (Fixes #1112)
