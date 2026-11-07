@@ -99,6 +99,6 @@ def test_init_command_uses_bugfix_surgeon_template(tmp_path):
     assert calls == [
         (
             ["snodo", "init", "--template", "bugfix-surgeon", "--yes"],
-            {"cwd": tmp_path, "check": True},
+            {"cwd": tmp_path, "check": True, "capture_output": True, "text": True},
         )
     ]

@@ -19,7 +19,7 @@ def _run_command(
     cwd: str | Path | None = None,
 ) -> Any:
     """Run an external command through the caller-provided runner."""
-    return runner(list(command), cwd=cwd, check=True)
+    return runner(list(command), cwd=cwd, check=True, capture_output=True, text=True)
 
 
 def load_instance(path: str | Path) -> dict[str, Any]:
@@ -44,6 +44,7 @@ def clone_instance(
     destination = Path(target)
     if destination.exists() and any(destination.iterdir()):
         raise FileExistsError(f"target folder is not empty: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
     _run_command(runner, ["git", "clone", str(instance["repo_url"]), str(destination)])
     _run_command(
         runner,
