@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a plain-text demo run report with usage, validator findings, verification and patch output. (Fixes #1120)
+
 - Add optional SWE-bench fail-to-pass verification for demo patches. (Fixes #1118)
 
 - Add a demo command builder for `snodo run` with optional version pinning and exact task text loading. (Fixes #1117)
