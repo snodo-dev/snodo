@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Amend ADR 021 to clarify retry reuse of prior passing pre-execute verdicts and the reversal of #968’s evidence-sensitive cache key choice. (Fixes #1128)
 - Add end-to-end retry coverage proving passing security and meta-spec verdicts are reused while warnings are re-judged. (Fixes #1127)
 
 - Add a pure lookup for authorized prior validator warns on unchanged specs. (Fixes #1123)

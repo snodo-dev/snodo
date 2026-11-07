@@ -100,3 +100,16 @@ a fresh start from main.
   `spawned_subtasks` is not visible to a nested invocation; deriving from
   `depth` (which is already threaded) gives a stable linear number without new
   cross-node state.
+
+
+## Amendment — Retry verdict reuse (2026-11-07)
+
+Pre-execute validation still runs on every cycle, but a validator whose prior
+verdict was a pass on an unchanged spec and tree subject is satisfied from the
+verdict cache on retry or recovery. Since #931 the judge reads the root spec,
+while the retry evidence block is explanatory text, not a criterion; retry
+evidence is therefore deliberately no longer part of the cache key. This
+reverses the evidence-sensitive choice recorded for #968; the first-wave
+implementation is recorded in #1124. A prior warn or blocker from a spec-only
+validator is judged again, while an authorized warn on an unchanged spec need
+not be dispatched again—the signed decision still decides. (Issue #1128.)
