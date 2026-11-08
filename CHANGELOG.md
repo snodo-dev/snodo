@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document how to run and interpret the scikit-learn-26194 demo, including model choices, the two arms, records, and verification caveats. (Fixes #1133)
+
 - Add a one-command runner for governed and bare demo arms with per-arm records and reports. (Fixes #1132)
 - Add a plain-text demo run report with usage, validator findings, verification and patch output. (Fixes #1120)
 
