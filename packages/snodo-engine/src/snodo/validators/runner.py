@@ -50,11 +50,14 @@ def resolve_validators(
     if not mode:
         return None, []
     validators: List[Validator] = [
-        v
-        for v in (protocol.get_validator(vid) for vid in mode.validators)
+        v for v in (
+            protocol.get_validator(vid) for vid in mode.validators
+        )
         if v is not None and v.evaluation_phase == phase
     ]
     return mode, validators
+
+
 
 
 def extract_cited_indices(justification: str, total_criteria: int) -> List[int]:
@@ -67,23 +70,16 @@ def extract_cited_indices(justification: str, total_criteria: int) -> List[int]:
         return []
 
     cited = set()
-    pattern = r"\b(?:criterion|criteria|rule|item)s?\s*(?:#?\s*\d+\s*(?:,?\s*(?:and|or)?\s*#?\s*\d+)*)"
+    pattern = r'\b(?:criterion|criteria|rule|item)s?\s*(?:#?\s*\d+\s*(?:,?\s*(?:and|or)?\s*#?\s*\d+)*)'
     matches = re.findall(pattern, justification, re.IGNORECASE)
     for m in matches:
-        nums = [int(n) for n in re.findall(r"\d+", m)]
+        nums = [int(n) for n in re.findall(r'\d+', m)]
         for n in nums:
             if 1 <= n <= total_criteria:
                 cited.add(n)
 
     if not cited:
-        nums = [
-            int(n)
-            for n in re.findall(
-                r"\b(?:criterion|criteria|rule|item)?\s*#?\s*(\d+)\b",
-                justification,
-                re.IGNORECASE,
-            )
-        ]
+        nums = [int(n) for n in re.findall(r'\b(?:criterion|criteria|rule|item)?\s*#?\s*(\d+)\b', justification, re.IGNORECASE)]
         for n in nums:
             if 1 <= n <= total_criteria:
                 cited.add(n)
@@ -115,14 +111,10 @@ def enrich_result_with_criteria(
         criterion_text = criteria[idx - 1].strip()
         cited_list.append(f"[Criterion {idx}] {criterion_text}")
 
-        excerpt = (
-            criterion_text[:100] + "..."
-            if len(criterion_text) > 100
-            else criterion_text
-        )
+        excerpt = criterion_text[:100] + "..." if len(criterion_text) > 100 else criterion_text
         if excerpt[:30] not in justification:
             # Match 'criterion 3', 'criteria 3', or standalone '3' in list
-            pattern = rf"(\b(?:criterion|criteria|rule|item)\s*#?\s*{idx}\b|\b{idx}\b)"
+            pattern = rf'(\b(?:criterion|criteria|rule|item)\s*#?\s*{idx}\b|\b{idx}\b)'
             justification = re.sub(
                 pattern,
                 rf"\1 ('{excerpt}')",
@@ -148,7 +140,6 @@ def enrich_result_with_criteria(
 # ---------------------------------------------------------------------------
 # Verdict cache (#246)
 # ---------------------------------------------------------------------------
-
 
 #: Sentinel types that must never be stored as a verdict: an error and a pass
 #: whose gate was skipped are not judgements.  Persisting one would turn the
@@ -274,18 +265,11 @@ def _verdict_subject_kind(
         return "spec+tree"
 
     always_register = {"quality", "protocol"}
-    cls = (
-        reg.lookup(v.validator_type)
-        if (v.criteria or v.validator_type in always_register)
-        else None
-    )
+    cls = reg.lookup(v.validator_type) if (
+        v.criteria or v.validator_type in always_register
+    ) else None
     kind = getattr(cls, "cache_subject", None) if cls is not None else None
-    if (
-        kind is None
-        and cls is None
-        and context.completion_fn is not None
-        and v.criteria
-    ):
+    if kind is None and cls is None and context.completion_fn is not None and v.criteria:
         # The fallback single-completion LLM path.
         kind = "spec"
 
@@ -348,9 +332,7 @@ def dispatch_validator(
             subject, cacheable = _verdict_subject(v, context, reg)
             if cacheable and subject:
                 mode = getattr(context, "current_mode", None)
-                mode_id = getattr(mode, "mode_id", None) or getattr(
-                    context, "mode_name", ""
-                )
+                mode_id = getattr(mode, "mode_id", None) or getattr(context, "mode_name", "")
                 protocol = getattr(context, "protocol", None)
                 task = context.task
                 wave = (getattr(v, "tooling", None) or {}).get("scope") == "wave"
@@ -373,22 +355,9 @@ def dispatch_validator(
                 )
                 key = question_key(question)
                 cached = cache.get(key)
-                spec_only_pre_execute = (
-                    _verdict_subject_kind(v, context, reg) == "spec"
-                    and getattr(context, "phase", "") == "pre_execute"
-                )
-                result = (
-                    reused_result(cached, key, question)
-                    if not spec_only_pre_execute
-                    or (cached is not None and cached.get("severity") == "pass")
-                    else None
-                )
+                result = reused_result(cached, key, question)
                 if result is not None:
-                    logger.debug(
-                        "Verdict cache hit for validator %s (%s)",
-                        v.validator_id,
-                        context.phase,
-                    )
+                    logger.debug("Verdict cache hit for validator %s (%s)", v.validator_id, context.phase)
                     return result
         except Exception as e:  # noqa: BLE001 — cache must never halt a run
             logger.debug("Verdict cache lookup failed (judging fresh): %s", e)
@@ -409,11 +378,9 @@ def _evaluate_validator(
 ) -> ValidatorResult:
     """Evaluate *v* with no cache in the way (the judge itself)."""
     always_register = {"quality", "protocol"}
-    cls = (
-        reg.lookup(v.validator_type)
-        if (v.criteria or v.validator_type in always_register)
-        else None
-    )
+    cls = reg.lookup(v.validator_type) if (
+        v.criteria or v.validator_type in always_register
+    ) else None
     if cls is not None:
         try:
             instance = cls(validator_spec=v)
@@ -426,10 +393,7 @@ def _evaluate_validator(
             # it goes into the log and into the surfaced justification.
             logger.warning(
                 "Validator %s (%s) raised: %s: %s",
-                v.validator_id,
-                v.validator_type,
-                type(e).__name__,
-                e,
+                v.validator_id, v.validator_type, type(e).__name__, e,
             )
             result = ValidatorResult(
                 validator_id=v.validator_id,
@@ -448,9 +412,7 @@ def _evaluate_validator(
         except Exception as e:  # noqa: BLE001
             logger.warning(
                 "LLM validation for %s failed: %s: %s",
-                v.validator_id,
-                type(e).__name__,
-                e,
+                v.validator_id, type(e).__name__, e,
             )
             result = ValidatorResult(
                 validator_id=v.validator_id,
@@ -498,13 +460,9 @@ def _completion_for_validator(
 
 def _completion_binding_error(validator: Validator, model: str) -> ValidatorResult:
     return ValidatorResult(
-        validator_id=validator.validator_id,
-        severity="blocker",
-        justification=(
-            f"Validator {validator.validator_id} could not bind model {model}: "
-            "shared completion function cannot be rebound"
-        ),
-        error=True,
+        validator_id=validator.validator_id, severity="blocker",
+        justification=(f"Validator {validator.validator_id} could not bind model {model}: "
+                       "shared completion function cannot be rebound"), error=True,
     )
 
 
@@ -590,9 +548,7 @@ def run_validators(
     # construction — no validator can omit them.
     task_aware_completion_fn = completion_fn
     if completion_fn is not None and task.id:
-        task_aware_completion_fn = wrap_completion_fn_with_headers(
-            completion_fn, task.id
-        )
+        task_aware_completion_fn = wrap_completion_fn_with_headers(completion_fn, task.id)
 
     context = ValidatorContext(
         task=task,
@@ -606,8 +562,7 @@ def run_validators(
         mode_validator_refs=list(mode_obj.validators) if mode_obj else [],
         completion_fn=task_aware_completion_fn,
         model=default_model,
-        working_directory=str(Path.cwd())
-        if not workspace_mcp
+        working_directory=str(Path.cwd()) if not workspace_mcp
         else str(getattr(workspace_mcp, "project_root", Path.cwd())),
         workspace_mcp=workspace_mcp,
         git_mcp=git_mcp,
@@ -638,10 +593,8 @@ def run_validators(
     # concurrently under the pool.
     if verdict_cache is not None:
         try:
-            if any(
-                _verdict_subject_kind(v, context, reg) in _TREE_READING_KINDS
-                for v in validators
-            ):
+            if any(_verdict_subject_kind(v, context, reg) in _TREE_READING_KINDS
+                   for v in validators):
                 context.verdict_tree_subject = _tree_subject(context)
                 context.verdict_tree_subject_ready = True
         except Exception as e:  # noqa: BLE001 — subject faults only disable reuse
@@ -691,43 +644,27 @@ def run_validators(
     # Acceptance must be able to cite independent execution evidence. Run it
     # after the other post-execute validators have produced their results.
     deferred_acceptance = [
-        v
-        for v in validators
-        if phase == "post_execute"
-        and v.validator_type == "acceptance"
+        v for v in validators
+        if phase == "post_execute" and v.validator_type == "acceptance"
         and v.validator_id not in results_by_id
         and any(candidate.validator_type == "quality" for candidate in validators)
     ]
     active_validators = [v for v in validators if v not in deferred_acceptance]
 
-    with ThreadPoolExecutor(
-        max_workers=max(1, min(len(active_validators), 4))
-    ) as executor:
+    with ThreadPoolExecutor(max_workers=max(1, min(len(active_validators), 4))) as executor:
         futures = {}
         for v in active_validators:
             if v.validator_id in results_by_id:
                 continue
             override_model = overrides.get(v.validator_id)
-            effective_model = (
-                override_model or v.model or default_model or DEFAULT_MODEL
-            )
+            effective_model = override_model or v.model or default_model or DEFAULT_MODEL
             ctx = copy.copy(context)
             ctx.model = effective_model
             ctx.completion_fn = _completion_for_validator(
-                ctx.completion_fn,
-                completion_fn,
-                effective_model,
-                default_model,
-                task.id,
+                ctx.completion_fn, completion_fn, effective_model, default_model, task.id
             )
-            if (
-                completion_fn is not None
-                and effective_model != default_model
-                and ctx.completion_fn is None
-            ):
-                futures[
-                    executor.submit(_completion_binding_error, v, effective_model)
-                ] = v.validator_id
+            if completion_fn is not None and effective_model != default_model and ctx.completion_fn is None:
+                futures[executor.submit(_completion_binding_error, v, effective_model)] = v.validator_id
                 continue
             ctx.max_tool_turns = v.max_tool_turns or _vcfg.max_tool_turns
             future = executor.submit(_dispatch_with_progress, v, ctx)
@@ -737,8 +674,7 @@ def run_validators(
         last_progress: Dict[str, float] = {}
         while pending:
             completed, pending = wait(
-                pending,
-                timeout=max(0.01, progress_interval),
+                pending, timeout=max(0.01, progress_interval),
                 return_when=FIRST_COMPLETED,
             )
             now = time.monotonic()
@@ -748,14 +684,13 @@ def run_validators(
                 for future in pending:
                     vid = futures[future]
                     started = starts.get(vid)
-                    if (
-                        started is not None
-                        and not future.done()
-                        and now - started >= progress_interval
-                        and now - last_progress.get(vid, started) >= progress_interval
-                    ):
+                    if (started is not None and not future.done()
+                            and now - started >= progress_interval
+                            and now - last_progress.get(vid, started) >= progress_interval):
                         elapsed_minutes = max(1, int((now - started) // 60))
-                        progress_sink(f"    {vid}: still running ({elapsed_minutes}m)")
+                        progress_sink(
+                            f"    {vid}: still running ({elapsed_minutes}m)"
+                        )
                         last_progress[vid] = now
             for future in completed:
                 vid = futures[future]
@@ -764,9 +699,7 @@ def run_validators(
                 except Exception as e:  # noqa: BLE001
                     logger.warning(
                         "Validator %s failed outside the dispatch boundary: %s: %s",
-                        vid,
-                        type(e).__name__,
-                        e,
+                        vid, type(e).__name__, e,
                     )
                     result = ValidatorResult(
                         validator_id=vid,
@@ -808,9 +741,7 @@ def run_validators(
                         and getattr(v_obj, "check_tool_access", False)
                         and result.severity == "blocker"
                     )
-                    is_recovery = getattr(task, "depth", 0) > 0 or bool(
-                        getattr(task, "prior_failures", None)
-                    )
+                    is_recovery = (getattr(task, "depth", 0) > 0 or bool(getattr(task, "prior_failures", None)))
                     if (
                         not tool_access_refusal
                         and phase == "pre_execute"
@@ -857,9 +788,7 @@ def run_validators(
                                 cited_criteria=result.cited_criteria,
                                 severity_original=original_severity,
                                 reused=getattr(result, "reused", False),
-                                cache_provenance=getattr(
-                                    result, "cache_provenance", None
-                                ),
+                                cache_provenance=getattr(result, "cache_provenance", None),
                             )
                             cap_originals[result.validator_id] = original_severity
                             if audit_log is not None:
@@ -870,9 +799,7 @@ def run_validators(
                                 }
                                 if session_id:
                                     _cap_data["session_id"] = session_id
-                                audit_log.append_event(
-                                    "severity_cap_applied", _cap_data
-                                )
+                                audit_log.append_event("severity_cap_applied", _cap_data)
                     # Report the *final* (post-cap) severity so the operator's view
                     # matches the audit record; carry the pre-cap value alongside it.
                     # The sink already swallows and reports its own failure once.
@@ -883,14 +810,11 @@ def run_validators(
     for v in deferred_acceptance:
         ctx = copy.copy(context)
         ctx.execution_evidence = [
-            result
-            for result in results_by_id.values()
+            result for result in results_by_id.values()
             if result.validator_id != v.validator_id
-            and any(
-                candidate.validator_id == result.validator_id
-                and candidate.validator_type == "quality"
-                for candidate in validators
-            )
+            and any(candidate.validator_id == result.validator_id
+                    and candidate.validator_type == "quality"
+                    for candidate in validators)
         ]
         override_model = overrides.get(v.validator_id)
         effective_model = override_model or v.model or default_model or DEFAULT_MODEL
@@ -898,11 +822,7 @@ def run_validators(
         ctx.completion_fn = _completion_for_validator(
             ctx.completion_fn, completion_fn, effective_model, default_model, task.id
         )
-        if (
-            completion_fn is not None
-            and effective_model != default_model
-            and ctx.completion_fn is None
-        ):
+        if completion_fn is not None and effective_model != default_model and ctx.completion_fn is None:
             result = _completion_binding_error(v, effective_model)
             if verdict_sink is not None:
                 verdict_sink(v.validator_id, result)
@@ -912,18 +832,8 @@ def run_validators(
         try:
             result = dispatch_fn(v, ctx, reg)
         except Exception as e:  # noqa: BLE001
-            logger.warning(
-                "Validator %s failed outside the dispatch boundary: %s: %s",
-                v.validator_id,
-                type(e).__name__,
-                e,
-            )
-            result = ValidatorResult(
-                validator_id=v.validator_id,
-                severity="blocker",
-                justification=f"Validator error ({type(e).__name__}): {e}",
-                error=True,
-            )
+            logger.warning("Validator %s failed outside the dispatch boundary: %s: %s", v.validator_id, type(e).__name__, e)
+            result = ValidatorResult(validator_id=v.validator_id, severity="blocker", justification=f"Validator error ({type(e).__name__}): {e}", error=True)
         if result is not None:
             if (
                 v.severity_cap is not None

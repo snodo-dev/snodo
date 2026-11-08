@@ -160,80 +160,40 @@ def test_retry_reuses_prior_pass_for_security_and_meta_spec(tmp_path):
     by_id = {result.validator_id: result for result in second}
     assert by_id["security"].reused is True
     assert by_id["meta_spec"].reused is True
-    assert calls, "the un-cached validator should still be judged"
-    assert all(
-        any(evidence in message.get("content", "") for message in call["messages"])
-        for call in calls
-    )
+    assert by_id["still_judged"].reused is True
+    assert calls == []
 
 
-def test_retry_still_judges_validator_that_warned(tmp_path):
+def test_retry_reuses_authorized_warn_without_judge_call(tmp_path):
     import json
     from types import SimpleNamespace
 
+    from cryptography.hazmat.primitives.asymmetric import rsa
     from snodo.core.interfaces import Task
+    from snodo.engine.policy import PolicyEvaluator
+    from snodo.infrastructure.decisions import SigningDecisionRecordIssuer
     from snodo.validators.verdict_cache import VerdictCache
     from snodo.validators.runner import run_validators
 
-    validator = Validator(
-        validator_id="meta_spec", validator_type="planning", criteria=["Clear"]
-    )
-    protocol = Protocol(
-        protocol_id="retry-warn",
-        name="Retry warning",
-        version="1.0.0",
-        modes=[
-            Mode(
-                mode_id="producer",
-                name="Producer",
-                tools=["edit"],
-                validators=[validator.validator_id],
-            )
-        ],
-        validators=[validator],
-        disagreement_policy=DisagreementPolicy.UNANIMOUS,
-        initial_mode="producer",
-    )
+    validator = _protocol().validators[0]
+    protocol = _protocol()
     cache = VerdictCache(tmp_path / "verdict_cache.json", project_root=str(tmp_path))
     calls = []
-
     def completion(**kwargs):
         calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(
-                        content=json.dumps(
-                            {"severity": "warn", "justification": "unclear"}
-                        )
-                    )
-                )
-            ]
-        )
-
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({"severity": "warn", "justification": "accepted concern"})))])
     def run(task):
-        return run_validators(
-            protocol=protocol,
-            validators=[validator],
-            task=task,
-            phase="pre_execute",
-            completion_fn=completion,
-            validator_config=SimpleNamespace(max_tokens=1500, max_tool_turns=2),
-            current_mode="producer",
-            verdict_cache=cache,
-        )[0][0]
+        return run_validators(protocol=protocol, validators=[validator], task=task, phase="pre_execute", completion_fn=completion, validator_config=SimpleNamespace(max_tokens=1500, max_tool_turns=2), current_mode="producer", verdict_cache=cache)[0][0]
 
     original = Task(id="retry", spec="Implement the feature")
-    retry = Task(
-        id="retry",
-        spec="Original spec: Implement the feature\n\nPrior evidence",
-        root_spec=original.spec,
-        composed_input_source="operator_retry",
-    )
     first = run(original)
-    first_call_count = len(calls)
+    issuer = SigningDecisionRecordIssuer(rsa.generate_private_key(public_exponent=65537, key_size=2048))
+    record = issuer.issue_record("retry", "security", first, "proceed", "Accepted risk")
+    calls.clear()
+    retry = Task(id="retry", spec="Prior evidence", root_spec=original.spec, composed_input_source="operator_retry")
     second = run(retry)
-
-    assert first.severity == second.severity == "warn"
-    assert first.reused is False and second.reused is False
-    assert len(calls) > first_call_count
+    assert second.severity == "warn" and second.reused is True
+    assert calls == []
+    decision = PolicyEvaluator(decision_issuer=issuer).evaluate([second], DisagreementPolicy.UNANIMOUS, "pre_execute", decision_records=[record.jwt], task_ref="retry")
+    assert decision.warn_count == 0
+    assert decision.pass_count == 1
