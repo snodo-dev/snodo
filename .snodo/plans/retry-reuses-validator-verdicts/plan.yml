@@ -1,0 +1,29 @@
+intent: When a task is retried or recovered, any validator verdict already given on
+  an unchanged spec (and unchanged tree for validators that read the tree) is answered
+  from the verdict cache instead of being judged again, so an authorized warn is not
+  re-judged either. Today every `snodo run --retry` and every in-run recovery attempt
+  re-judges security, architecture and meta-spec from scratch (15 to 50 minutes each).
+  Wave 1 took the retry evidence out of the cache key; wave 2 reuses any cached severity
+  on an identical subject and aligns the guard tests (task 2.1, whose original authorized-skip
+  idea was dropped because the cache alone covers it; 2.2 and 2.3 add the end-to-end
+  guard and an ADR note); wave 3 aligns the ADR with the settled design and removes
+  the unused lookup helper from wave 1. Each task opens its own GitHub issue first.
+name: retry-reuses-validator-verdicts
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_verdict_key_ignores_retry_evidence
+  - 1.2_authorized_prior_result_lookup
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_skip_authorized_validators_on_retry
+  - 2.2_retry_reuses_passes_end_to_end
+  - 2.3_adr_021_retry_reuse_note
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.2_remove_unused_authorized_prior_results

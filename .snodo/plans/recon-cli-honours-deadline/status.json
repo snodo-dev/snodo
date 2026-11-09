@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_cli_recon_uses_configured_deadline": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3e5810234f0220d1"
+    },
+    "2.1_recon_prints_effective_deadline": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ed56b6191ac5744c"
+    },
+    "2.2_docs_recon_deadline": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8f6604ca4041e7f0"
+    }
+  },
+  "integration": {
+    "branch": "plan/recon-cli-honours-deadline/integration",
+    "base_sha": "d2f4d3591b9f69c232ad6f73d49c7ca0b131ea67"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "tasks": {
+    "1.1_demo_workspace": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "32b3e38ab855496c"
+    },
+    "1.2_demo_commands": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c6f0771fb379a966"
+    },
+    "1.3_demo_verify": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b4b8d42034ebad0b"
+    },
+    "1.4_demo_report": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "341a73dbdcea4cfb"
+    },
+    "2.1_demo_runner": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "cd974e6b872248a3"
+    },
+    "2.2_demo_docs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "428cd63030f0574d"
+    }
+  },
+  "integration": {
+    "branch": "plan/demo-26194-run/integration",
+    "base_sha": "dca12bc3bf7fff6c5aae64c712cd9c2c92747f21"
+  }
+}

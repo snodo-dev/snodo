@@ -1,0 +1,10 @@
+intent: A job that finished completed with exit code 0 is reported as Success in notifications
+  even when an earlier attempt of one of its tasks halted and was later resolved.
+intent_ref: int_3aae38
+name: notification-stale-halt
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_stale_halt_classification
+  - 1.2_stale_halt_docs_note

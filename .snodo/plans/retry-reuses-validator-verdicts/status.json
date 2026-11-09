@@ -1,0 +1,47 @@
+{
+  "tasks": {
+    "1.1_verdict_key_ignores_retry_evidence": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d754bcbbabf59e9d"
+    },
+    "1.2_authorized_prior_result_lookup": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8c7f30150174a6a5"
+    },
+    "2.1_skip_authorized_validators_on_retry": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "443a3c3aacafb477",
+      "completed_by": "orchestrator",
+      "completed_at": "2026-11-08T19:20:28.300824+00:00",
+      "judged": false
+    },
+    "2.2_retry_reuses_passes_end_to_end": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6282f10b2942e55a"
+    },
+    "2.3_adr_021_retry_reuse_note": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1d45a8e112ed39d2"
+    },
+    "3.2_remove_unused_authorized_prior_results": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "150dc44ff38de5cd"
+    }
+  },
+  "integration": {
+    "branch": "plan/retry-reuses-validator-verdicts/integration",
+    "base_sha": "dcf857d383b9c5ae9f06147f1c04a3f8a25e253b"
+  }
+}

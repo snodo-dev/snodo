@@ -1,0 +1,62 @@
+{
+  "tasks": {
+    "1.1_usage_summary_helper": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "06176c244117ad22"
+    },
+    "1.2_benchmark_preflight_notice": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4078f23dbfaae628"
+    },
+    "1.3_failed_candidate_is_reported": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5aa572f6e55f02ed"
+    },
+    "2.1_recon_ends_with_usage_summary": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "33e038879c1c7287"
+    },
+    "2.2_task_ends_with_usage_summary": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "829e4a736ef36c16"
+    },
+    "2.3_compare_reports_time_tokens_cost": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c415a7921efcea43"
+    },
+    "2.4_baseline_records_usage_summary": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2043b9bd5198f321"
+    },
+    "3.1_docs_usage_summary": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f8a3cab476857587"
+    },
+    "3.2_docs_compare_and_benchmark_run": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f30b0ada31a128e5"
+    }
+  },
+  "integration": {
+    "branch": "plan/usage-summary-and-compare-metrics/integration",
+    "base_sha": "0068adeb59017accaf8d14160703682ef586be6a"
+  }
+}

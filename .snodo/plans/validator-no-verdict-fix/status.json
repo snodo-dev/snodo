@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_final_verdict_turn_reliable_and_explained": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2827f2b7e2446e19"
+    },
+    "2.1_adr_050_final_verdict_turn_note": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "cda765206d29e952"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-no-verdict-fix/integration",
+    "base_sha": "4bc9ac567217dd4fa792f83e1d62e9656c06afa6"
+  }
+}

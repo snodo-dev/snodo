@@ -1,0 +1,20 @@
+intent: 'A user can run the scikit-learn-26194 demo with one command and any model:
+  the helper modules (workspace, commands, verification, report) exist in wave 1,
+  and wave 2 adds the runner that drives both the governed and bare arms plus the
+  guide page that explains how to run it. Issue number to be opened by the first task
+  of each wave.'
+name: demo-26194-run
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_demo_workspace
+  - 1.2_demo_commands
+  - 1.3_demo_verify
+  - 1.4_demo_report
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_demo_runner
+  - 2.2_demo_docs

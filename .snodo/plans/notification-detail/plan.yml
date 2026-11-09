@@ -1,0 +1,17 @@
+intent: Blocked and waiting-for-a-human notifications carry the validator justification,
+  and every waiting-for-a-human notification carries the suggested snodo authorize
+  command.
+intent_ref: int_87a5ed
+name: notification-detail
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_blocked_justification
+  - 1.2_notification_docs
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_authorize_command
+  - 2.2_message_shape_contract

@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_demo_fixture": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "87026eaa673fe992"
+    },
+    "1.2_harness_image_cost": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e07851a715cb1cf1"
+    },
+    "2.1_demo_protocols": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "298da5fc3cdfbb03"
+    },
+    "2.2_demo_record": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ebdaef012c819479"
+    }
+  },
+  "integration": {
+    "branch": "plan/demo-26194/integration",
+    "base_sha": "e5645096a5b5dd7bac234e54e603747a817b5922"
+  }
+}

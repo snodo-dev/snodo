@@ -1,0 +1,50 @@
+{
+  "tasks": {
+    "1.1_notification_outcome": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fcea1922b88b2ef5"
+    },
+    "1.2_validator_reason_text": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7640318a7e07d227"
+    },
+    "2.1_job_finished_outcomes": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "21508920828423c3"
+    },
+    "3.1_halt_and_escalation_messages": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e3425c77a96afc09"
+    },
+    "3.2_notification_docs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d66150f90f42593f"
+    },
+    "1.3_restore_outcome_module": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1d8a8f6563e713b1"
+    },
+    "4.1_authorization_needed_message": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c8df76c91b2776d4"
+    }
+  },
+  "integration": {
+    "branch": "plan/notification-situations/integration",
+    "base_sha": "87edda4c0e8d5cbed2c438cd5d7943fd3af39883"
+  }
+}
