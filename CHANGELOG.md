@@ -11,6 +11,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Document the task comparison JSON schema and its scored and display-only fields in the machine interface guide. (Fixes #1140)
 - Clarify task model benchmark prerequisites, run counts, coder-model selection, and baseline and candidate storage in the command reference. (Fixes #1139)
+- Let `snodo models --set-baseline` and `--benchmark-run` find completed plans in `.snodo/plans-archive/` when they are absent from `.snodo/plans/`. (Fixes #1138)
 - Make the real-PTY wave spinner test tolerate scheduler delays by synchronizing on terminal output with generous phase bounds. (Fixes #802)
 - Add versioned demo run records from task artifacts, including outcomes, usage and validator findings. (Fixes #1115)
 - Add demo helpers to build and validate governed and bare bugfix-surgeon protocols. (Fixes #1114)
