@@ -323,6 +323,55 @@ and `overall_tok_per_sec`. `--json` without `--benchmark` therefore has the
 separate listing or stats schema above; it never mixes those payloads with a
 benchmark result.
 
+### `snodo models --compare --json` and `snodo models --benchmark-run --json`
+
+Schema: `snodo.models-compare.v1` for both commands. `--benchmark-run` dispatches
+and waits for a candidate, then returns the same comparison payload as
+`--compare`; it does not add a second JSON shape. The comparison is against the
+stored task baseline.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.models-compare.v1` |
+| `ok` | bool | `true` on success |
+| `direction` | string | overall score direction: `better`, `worse`, or `same` |
+| `delta_score` | number | combined comparison score; positive is better, negative is worse |
+| `signals` | object | scored `content`, `validator_outcome`, and `changed_surface` signals, plus unscored `change_size`; details below |
+| `models` | object | `{baseline, candidate}` model names; either value may be `null` if unavailable |
+| `paths` | object | `{baseline, candidate, overlap}` sorted path arrays |
+| `run_metrics` | object | display-only measurements for the baseline and candidate; never included in `delta_score` |
+| `plan` | string | compared plan name |
+| `task` | string | compared task id |
+| `job` | string | candidate job id |
+| `baseline` | string | baseline record directory path |
+| `candidate_patch_sha256` | string | SHA-256 of the candidate diff text |
+| `status` | string | candidate job status |
+| `halt_type` | string \| null | candidate halt type/final decision, or `null` when unavailable |
+| `reason` | string (optional) | sanitized candidate halt/blocker reason; omitted when unavailable |
+| `benchmark` | object (optional) | present when a benchmark branch is available; contains `branch`, `base` (string or `null`), `status`, `halt_type` (string or `null`), and optional sanitized `reason` |
+
+`signals.content` contains `baseline_lines`, `candidate_lines`, `matched_lines`,
+`precision`, `recall`, `f1`, `delta`, and `direction`. `signals.validator_outcome`
+contains baseline and candidate outcome strings, `delta`, and `direction`.
+`signals.changed_surface` contains `baseline_files`, `candidate_files`,
+`overlap_files`, `coverage_pct`, `extra_files`, sorted `extra_paths`, `delta`,
+and `direction`. These three signals are scored. `signals.change_size` contains
+`baseline_lines`, `candidate_lines`, `difference_lines`, `baseline_files`,
+`candidate_files`, and `scored: false`; size is reported only, not scored.
+
+`run_metrics.baseline` and `run_metrics.candidate` each contain
+`coder_time_seconds`, `elapsed_seconds`, `coder_turns`, `coder_turns_source`,
+`coder_input_tokens`, `coder_output_tokens`, `coder_output_tokens_per_second`,
+`coder_rate_source`, `validator_input_tokens`, `validator_output_tokens`,
+`cost`, and `post_validation_findings`. The findings value is a severity-count
+object (`blocker`, `warn`, `escalate`, `pass`, `validator_error`,
+`internal_error`) or `null`. The `run_metrics` object also has
+`token_comparability_note`. All run metrics are shown only, not scored. A
+measurement that is unavailable is represented as JSON `null` in these metrics
+(and in nullable model/halt/base fields); optional `reason` and `benchmark`
+fields are omitted when unavailable. Numeric zero is a measured value, not a
+missing-value marker.
+
 ## Exit codes
 
 `snodo validate` (and any command that returns a validation outcome) uses exit
