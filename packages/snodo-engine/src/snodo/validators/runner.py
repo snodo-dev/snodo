@@ -398,6 +398,7 @@ def _evaluate_validator(
             logger.warning(
                 "Validator %s (%s) raised: %s: %s",
                 v.validator_id, v.validator_type, type(e).__name__, e,
+                exc_info=True,
             )
             result = ValidatorResult(
                 validator_id=v.validator_id,
@@ -704,6 +705,7 @@ def run_validators(
                     logger.warning(
                         "Validator %s failed outside the dispatch boundary: %s: %s",
                         vid, type(e).__name__, e,
+                        exc_info=True,
                     )
                     result = ValidatorResult(
                         validator_id=vid,
@@ -836,7 +838,7 @@ def run_validators(
         try:
             result = dispatch_fn(v, ctx, reg)
         except Exception as e:  # noqa: BLE001
-            logger.warning("Validator %s failed outside the dispatch boundary: %s: %s", v.validator_id, type(e).__name__, e)
+            logger.warning("Validator %s failed outside the dispatch boundary: %s: %s", v.validator_id, type(e).__name__, e, exc_info=True)
             result = ValidatorResult(validator_id=v.validator_id, severity="blocker", justification=f"Validator error ({type(e).__name__}): {e}", error=True)
         if result is not None:
             if (

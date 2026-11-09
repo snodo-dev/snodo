@@ -128,6 +128,7 @@ class ProtocolAdherenceValidator(ValidatorBase):
                 "Protocol-adherence validator %s (model=%s) hit an operational "
                 "fault: %s: %s",
                 self.validator_spec.validator_id, self.model, type(e).__name__, e,
+                exc_info=True,
             )
             return ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
