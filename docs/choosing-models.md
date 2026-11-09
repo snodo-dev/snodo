@@ -48,6 +48,38 @@ still show `candidate status: failed (halt: blocked)` alongside the reason and
 baseline-to-candidate score and run metrics; a failed candidate does not imply
 that those measurements were scored.
 
+## Benchmark one validator
+
+1. Choose a task with a recorded baseline. For this walkthrough, use plan
+   `coder-tool-surface-guardrails-956` and task `1.1_bounded_tool_results`.
+   Open `.snodo/baselines/coder-tool-surface-guardrails-956/1.1_bounded_tool_results/baseline.json`
+   and find the `validator_id` values in its `validator_results` array. Copy the
+   ID you want to replay; the baseline is the source of the recorded IDs.
+2. Replay that validator with an explicit candidate model. For example, replace
+   `<recorded-validator-id>` with one of the IDs from the baseline:
+
+   ```sh
+   snodo models --benchmark-run \
+     --plan coder-tool-surface-guardrails-956 \
+     --task 1.1_bounded_tool_results \
+     --validator <recorded-validator-id> \
+     --model opencode-cli/<provider>/<model>
+   ```
+
+   A bare `<provider>/<model>` string makes direct paid API calls; use the
+   `opencode-cli/` prefix for the OpenCode CLI model form. The replay notice is
+   printed to stderr and identifies the validator, phase, judged commit, and
+   candidate model; it also says, `This validator call is billed or uses your subscription.`
+3. Read the comparison: `Validator verdict: <recorded severity> -> <new
+   severity> (<direction>)`, followed by whether the justification differs.
+   Elapsed time, input and output tokens, and cost are shown for recorded and
+   replayed results; each metric says `not scored`. Direction is based on
+   severity, and justification, time, tokens, and cost do not affect it. See the
+   [models command reference](command-reference.md) for the command details.
+
+The replay judges the recorded commit in a temporary worktree, leaving your
+checkout untouched. It uses no verdict cache and never merges.
+
 ## Discover configured models
 
 Call `list_models` to inspect the models discovered from Snodo's configured
