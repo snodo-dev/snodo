@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Let `snodo validate` select one validator and override its model for a fresh judgement. (Fixes #1145)
+
 - Print the validator, phase, judged commit and model details before a validator replay call. (Fixes #1144)
 - Resolve the recorded spec, phase, commits and verdict for replaying one validator from a task baseline. (Fixes #1143)
 - Make the real-PTY wave spinner test tolerate scheduler delays by synchronizing on terminal output with generous phase bounds. (Fixes #802)

@@ -171,7 +171,7 @@ default; `--yes`, `--no-input`, and non-interactive init keep that default.
 | `snodo queue run` | `[queues]`, `--all`, `--non-blocking`, `--parallel-run`, `--protocol`, `--mock` |
 | `snodo queue validate` | `[queue]`, `--json` |
 | `snodo queue` (group option) | `--json` |
-| `snodo validate` | `<task_spec>`, `--phase`, `--protocol`, `--mode`, `--json` |
+| `snodo validate` | `<task_spec>`, `--phase`, `--protocol`, `--mode`, `--validator`, `--model`, `--json` |
 | `snodo ready` | `--mode`/`-m`, `--protocol`, `--json` |
 | `snodo readiness` | `--mode`/`-m`, `--protocol`, `--json` (deprecated alias for `ready`) |
 | `snodo recon` | `<query> [paths...]`, `--agents`/`-n` |

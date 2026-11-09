@@ -40,6 +40,8 @@ def register(app: typer.Typer) -> None:
         mode: Optional[str] = typer.Option(
             None, "--mode", help="Mode to validate in (default: active mode)",
         ),
+        validator: Optional[str] = typer.Option(None, "--validator", help="Run only this validator id"),
+        model: Optional[str] = typer.Option(None, "--model", help="Override validator model (provider/model)"),
         json: bool = typer.Option(True, "--json/--no-json", help="Emit machine-readable JSON"),
         base: Optional[str] = typer.Option(None, "--base", help="Base git ref for change validation"),
         head: Optional[str] = typer.Option(None, "--head", help="Head git ref for change validation"),
@@ -54,6 +56,7 @@ def register(app: typer.Typer) -> None:
             )
         args = SimpleNamespace(
             task_spec=task_spec, phase=phase, protocol=protocol, mode=mode, json=json,
+            validator=validator, model=model,
         )
         return validate_command(args)
 
@@ -115,6 +118,18 @@ def validate_command(args) -> int:
         print(f"Error: Unknown mode: {mode_id}", file=sys.stderr)
         return EXIT_INTERNAL_ERROR
 
+    validator_id = getattr(args, "validator", None)
+    if validator_id:
+        available = [v.validator_id for v in validators]
+        selected = [v for v in validators if v.validator_id == validator_id]
+        if not selected:
+            message = f"Unknown validator '{validator_id}' for mode '{mode_id}' and phase '{phase}'. Available: {', '.join(available)}"
+            if json_out:
+                return emit_error("validate", message, EXIT_INTERNAL_ERROR)
+            print(f"Error: {message}", file=sys.stderr)
+            return EXIT_INTERNAL_ERROR
+        validators = selected
+
     if not validators:
         if json_out:
             return emit_error(
@@ -128,6 +143,15 @@ def validate_command(args) -> int:
     # Resolve the validator LLM. Failure → validator_error (not a pass).
     try:
         completion_fn, validator_model, validator_config = resolve_validator_completion()
+        model_override = getattr(args, "model", None)
+        if model_override:
+            from snodo.validators.runner import build_completion_fn
+            from litellm import completion as litellm_completion
+
+            completion_fn = build_completion_fn(model_override, litellm_completion)
+            validator_model = model_override
+            # CLI override is authoritative over protocol pins and configured defaults.
+            validators = [v.model_copy(update={"model": model_override}) for v in validators]
     except Exception as e:  # noqa: BLE001
         if json_out:
             return emit_json({
@@ -169,6 +193,7 @@ def validate_command(args) -> int:
         current_mode=mode_id,
         session_id="",
         audit_log=None,
+        # A validate invocation is a fresh judgement; never read or write verdict cache.
     )
 
     from snodo.engine.policy import PolicyEvaluator
