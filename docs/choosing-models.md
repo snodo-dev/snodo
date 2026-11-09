@@ -48,6 +48,46 @@ still show `candidate status: failed (halt: blocked)` alongside the reason and
 baseline-to-candidate score and run metrics; a failed candidate does not imply
 that those measurements were scored.
 
+### End-to-end walkthrough
+
+1. Choose a task with a completed recorded run. For example, use plan
+   `coder-tool-surface-guardrails-956` and task `1.1_bounded_tool_results`.
+   The plan may be archived; see the [command reference](command-reference.md)
+   for the prerequisites and details.
+2. Capture that run as the baseline:
+
+   ```sh
+   snodo models --set-baseline --plan coder-tool-surface-guardrails-956 --task 1.1_bounded_tool_results
+   ```
+
+3. Run a candidate coder model against the baseline's recorded base commit. Use
+   the `opencode-cli/<provider>/<model>` form, for example
+   `opencode-cli/anthropic/claude-sonnet-4-5`; a bare provider string makes
+   direct paid API calls. The `--model` option selects the coder model.
+
+   ```sh
+   snodo models --benchmark-run --plan coder-tool-surface-guardrails-956 --task 1.1_bounded_tool_results --model opencode-cli/anthropic/claude-sonnet-4-5
+   ```
+
+   The command prints the baseline and candidate coder/model, and prints
+   `Harness differs: baseline ran in <coder>; candidate runs in <coder>.` when
+   the coder harness changes. It then prints the comparison.
+4. Read the comparison score and its direction (`better`, `worse`, or `same`).
+   Its three scored signals are content, validator outcome, and changed surface.
+   Change size, coder time, elapsed time, turns, token counts, output-token rate,
+   cost, and post-validation findings are display-only; missing values appear
+   as `n/a`. For field definitions, see the [comparison JSON reference](machine-interface.md).
+5. To compare another model, repeat the benchmark command with its model string.
+   The run compares automatically; to select a particular candidate job, add
+   `--job` followed by that job’s recorded ID to this command:
+
+   ```sh
+   snodo models --compare --plan coder-tool-surface-guardrails-956 --task 1.1_bounded_tool_results
+   ```
+
+A different coder harness makes token counts not comparable. A candidate that
+does not complete is still shown in the comparison.
+
 ## Discover configured models
 
 Call `list_models` to inspect the models discovered from Snodo's configured

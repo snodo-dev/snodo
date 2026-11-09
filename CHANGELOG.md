@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add an end-to-end task benchmark walkthrough to the model selection guide. (Fixes #1142)
 - Document the task comparison JSON schema and its scored and display-only fields in the machine interface guide. (Fixes #1140)
 - Clarify task model benchmark prerequisites, run counts, coder-model selection, and baseline and candidate storage in the command reference. (Fixes #1139)
 - Let `snodo models --set-baseline` and `--benchmark-run` find completed plans in `.snodo/plans-archive/` when they are absent from `.snodo/plans/`. (Fixes #1138)
