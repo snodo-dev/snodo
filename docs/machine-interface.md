@@ -288,6 +288,30 @@ and call counts remain available so a consumer can choose its own aggregation.
 | `models` | object | model id to usage record, including calls, token totals, durations, costs and roles |
 | `coders` | object | coder id to job totals and durations |
 
+### `snodo models --benchmark-run --validator <id> --model <m> --json`
+
+Schema: `snodo.models-validator-compare.v1`
+
+Replays one recorded validator with the selected model. `baseline` is the
+recorded verdict and `candidate` is the new verdict; the comparison fields make
+the result and usage measurements convenient to consume. Direction is scored
+from severity only (`better`, `worse`, or `same`); justification and metrics do
+not affect it. None of the metric pairs are scored. A missing metric is
+represented by `null`, including `difference` when either side is missing.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.models-validator-compare.v1` |
+| `validator_id` | string | selected validator ID |
+| `baseline` | object | recorded validator result |
+| `candidate` | object | newly replayed validator result |
+| `baseline_severity` | string | normalized recorded severity |
+| `candidate_severity` | string | normalized replay severity |
+| `direction` | string | `better`, `worse`, or `same`, based only on severity ranking |
+| `justification_differs` | bool | whether the recorded and replay justifications differ |
+| `justifications` | object | `{baseline, candidate}` justification values |
+| `metrics` | object | metric pairs for `elapsed_seconds`, `input_tokens`, `output_tokens`, and `cost`; each has `baseline`, `candidate`, and `difference`, all `number \| null` |
+
 ### `snodo runs --json`
 
 Schema: `snodo.runs.v1`

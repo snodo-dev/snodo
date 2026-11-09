@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Document the validator replay JSON record emitted by `snodo models --benchmark-run --validator`, including its comparison fields and metrics. (Fixes #1153)
 - Document `snodo models --benchmark-run --validator`, including the single-validator replay and its comparison. (Fixes #1152)
 - Add a guide walkthrough for benchmarking one recorded validator with an explicit model. (Fixes #1151)
 - Benchmark one recorded validator with `snodo models --benchmark-run --validator`, comparing the replay with its baseline. (Fixes #1151)
