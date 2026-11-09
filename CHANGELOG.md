@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Replay one selected validator against a recorded commit with an explicit model, reporting elapsed time and token usage without caching the verdict. (Fixes #1147)
+
 - Compare a replayed validator verdict with its recorded result, including severity direction, justification and usage metrics. (Fixes #1146)
 
 - Let `snodo validate` select one validator and override its model for a fresh judgement. (Fixes #1145)
