@@ -1,0 +1,18 @@
+intent: A user can trigger the scikit-learn-26194 demo with one command and any model,
+  and get a per-run record comparable across models; the research harness's scoring
+  failure and empty cost column are corrected. Issue number to be opened by the first
+  task of each wave.
+intent_ref: int_1558b4
+name: demo-26194
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_demo_fixture
+  - 1.2_harness_image_cost
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_demo_protocols
+  - 2.2_demo_record

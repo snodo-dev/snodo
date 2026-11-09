@@ -1,0 +1,28 @@
+intent: Background-job notifications tell the operator which of five situations applies,
+  with the validator reason and the authorize command for an escalation, without any
+  new engine state or notification event. Issue 1076.
+intent_ref: int_f9c694
+name: notification-situations
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_notification_outcome
+  - 1.2_validator_reason_text
+  - 1.3_restore_outcome_module
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_job_finished_outcomes
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_halt_and_escalation_messages
+  - 3.2_notification_docs
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_authorization_needed_message

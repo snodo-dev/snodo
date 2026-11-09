@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_blocked_justification": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5531196c15bc3d40"
+    },
+    "1.2_notification_docs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "943d8d1c58c91c1a"
+    },
+    "2.1_authorize_command": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6f4cd8261439b1ff"
+    },
+    "2.2_message_shape_contract": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "20a7cdbfae5e3324"
+    }
+  },
+  "integration": {
+    "branch": "plan/notification-detail/integration",
+    "base_sha": "6f159db3203630a4f327f401572e5055b5d84aa8"
+  }
+}

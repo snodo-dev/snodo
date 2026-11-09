@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_cover_compare_metrics": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4f1e674ee28b53b2"
+    },
+    "1.2_cover_plan_compare": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c0115d89c04be6d9"
+    },
+    "1.3_cover_task_summary_and_logs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "43bb41ed988ef530"
+    },
+    "1.4_cover_benchmark_notice_and_baseline": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b4eb215f579c1424"
+    }
+  },
+  "integration": {
+    "branch": "plan/cover-usage-summary-gaps/integration",
+    "base_sha": "59e2202c7d9fd4fb39a87f0fb14cc66455ce435b"
+  }
+}

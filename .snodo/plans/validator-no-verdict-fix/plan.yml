@@ -1,0 +1,17 @@
+intent: A tool-reading validator judge (the ADR judge) sometimes spends its whole
+  reading budget and then returns nothing on the forced verdict-only turn, so the
+  task halts with validator_error and has to be rerun from scratch, losing 7 to 15
+  minutes each time. The plan makes that turn reliably end with a verdict where the
+  provider can give one, and makes the failure say why when it cannot. Each task opens
+  its own GitHub issue first.
+name: validator-no-verdict-fix
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_final_verdict_turn_reliable_and_explained
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_adr_050_final_verdict_turn_note

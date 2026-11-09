@@ -1,0 +1,12 @@
+intent: The uncovered lines in the usage summary and compare metrics code are exercised
+  by tests, with no behaviour change. Issue 1091.
+intent_ref: int_aa1f0e
+name: cover-usage-summary-gaps
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_cover_compare_metrics
+  - 1.2_cover_plan_compare
+  - 1.3_cover_task_summary_and_logs
+  - 1.4_cover_benchmark_notice_and_baseline

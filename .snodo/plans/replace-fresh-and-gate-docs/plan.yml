@@ -1,0 +1,17 @@
+intent: 'Make a replaced plan spec start from the current base (issue #1074) and make
+  the per-task gate select tests for runtime-read files such as the guide docs (issue
+  #1075).'
+intent_ref: int_7b40ce
+name: replace-fresh-and-gate-docs
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_replaced_spec_fresh_start
+  - 1.2_selector_guide_docs
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_docs_replace_starts_fresh
+  - 2.2_selector_runtime_inputs

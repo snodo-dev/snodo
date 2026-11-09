@@ -1,0 +1,16 @@
+intent: 'snodo recon (CLI) honours llm.recon.deadline_seconds: the configured deadline
+  reaches the recon agents and the CLI wait follows it, instead of a hard-coded 300
+  seconds. Issue 1084.'
+intent_ref: int_4e056e
+name: recon-cli-honours-deadline
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_cli_recon_uses_configured_deadline
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_recon_prints_effective_deadline
+  - 2.2_docs_recon_deadline

@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_replaced_spec_fresh_start": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fac76bc6bf06a623"
+    },
+    "1.2_selector_guide_docs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6aa7a1b9ce6a1ffb"
+    },
+    "2.1_docs_replace_starts_fresh": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e6e18ad78fe638ae"
+    },
+    "2.2_selector_runtime_inputs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "654f18dc78dd11fd"
+    }
+  },
+  "integration": {
+    "branch": "plan/replace-fresh-and-gate-docs/integration",
+    "base_sha": "90b8c6ca0fbbb5231d5471e10beba774132106b0"
+  }
+}
