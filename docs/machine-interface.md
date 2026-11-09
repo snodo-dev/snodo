@@ -129,6 +129,17 @@ engine's halt payload. The engine's canonical vocabulary is five (ADR 015);
 `environment_error` is an execution halt, and because this command never
 invokes a coder, it is not one of the outcomes returned here.
 
+`--validator <id>` runs only the validator with that ID from the resolved mode
+and phase. If the ID is unknown, the command returns an error naming the
+requested validator, mode and phase, and lists the available validator IDs for
+that mode and phase. `--model <provider/model>` overrides the model used by the
+validator(s), taking precedence over protocol-pinned and configured defaults.
+
+Each invocation is judged afresh: `snodo validate` never reads or writes the
+verdict cache. These options do not change the `snodo.validate.v1` payload or
+its schema: no field is added, and with `--validator` the `results` list simply
+contains that one validator's result.
+
 | Field | Type | Meaning |
 |-------|------|---------|
 | `schema` | string | `snodo.validate.v1` |
