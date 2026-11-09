@@ -15,6 +15,9 @@ _OUTCOME_RANK = {
     "internal_error": -1, "environment_error": -1,
 }
 
+# Public ordering shared by focused comparisons.
+OUTCOME_RANK = _OUTCOME_RANK
+
 
 def _read_json(path: Path, label: str) -> dict:
     if not path.is_file():
