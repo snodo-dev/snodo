@@ -55,15 +55,23 @@ For a ChatGPT subscription, configure `auth: chatgpt-oauth` and run `snodo model
 
 Benchmark one model by its fully qualified name with `snodo models --benchmark <provider>/<model>`; for example, `snodo models --benchmark openai/gpt-4o`. This is equivalent to `snodo models --provider <provider> --id <model> --benchmark`. The benchmark reports measurements for the selected model; benchmark results can be compared with stored task baselines using `snodo models --compare` (with `--plan` and `--task`).
 
-`snodo models --set-baseline --plan <plan> --task <task>` captures a completed
-task's solution diff and model/coder as a local baseline. If usage was recorded,
-its summary and coder-turn count are kept in
-`.snodo/baselines/<plan>/<task>/baseline.json`. Run a candidate from the
-baseline's recorded base commit with
+Before `snodo models --set-baseline --plan <plan> --task <task>`, the live
+plan must be in `.snodo/plans/<plan>/` and have a completed recorded task run
+with a recorded change range. The baseline captures that run's model provenance
+when available, along with its solution diff, under
+`.snodo/baselines/<plan>/<task>/baseline.json` (and `solution.diff`). If usage
+was recorded, its summary and coder-turn count are kept in the baseline JSON.
+
+`--benchmark-runs` applies to the fixed-prompt `--benchmark` call: it makes that
+many sequential calls, from 1 to 10, and reports the distribution of successful
+runs. For a task candidate, run
 `snodo models --benchmark-run --plan <plan> --task <task> --model <provider/model>`.
-The preflight notice names the baseline and candidate coder and model and flags
-a different coder harness. The candidate runs without merging; even if it does
-not complete, the comparison reports its status, halt type, and available reason.
+Here `--model` selects the task's coder model; validators use the models
+configured in the selected protocol. Each candidate runs from the baseline's
+recorded base commit on a disposable `benchmark/<plan>/<task>/<id>` branch and
+is never merged. The preflight notice names the baseline and candidate coder
+and model and flags a different coder harness. Even if the candidate does not
+complete, the comparison reports its status, halt type, and available reason.
 
 Use `snodo models --compare --plan <plan> --task <task>` to compare the latest
 matching candidate job with the stored baseline, or specify `--job <job-id>`.
