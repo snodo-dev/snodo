@@ -33,3 +33,22 @@ def print_benchmark_notice(root: Path, baseline: dict, model: str, protocol: str
     print(f"Candidate: coder {candidate_coder}; model {candidate_model}.", file=__import__("sys").stderr)
     if baseline_coder != "unknown" and baseline_coder != candidate_coder:
         print(f"Harness differs: baseline ran in {baseline_coder}; candidate runs in {candidate_coder}.", file=__import__("sys").stderr)
+
+
+def print_validator_replay_notice(
+    baseline: dict, validator_id: str, phase: str, commit: str, candidate_model: str
+) -> None:
+    """Print a best-effort validator replay notice to stderr (including in JSON mode)."""
+    import sys
+
+    recorded_model = "unknown"
+    halt = baseline.get("halt") if isinstance(baseline.get("halt"), dict) else {}
+    results = baseline.get("validator_results") or halt.get("validator_results") or []
+    if isinstance(results, list):
+        for result in results:
+            if isinstance(result, dict) and result.get("validator_id") == validator_id:
+                recorded_model = str(result.get("model") or "unknown")
+                break
+    print(f"Validator replay: validator {validator_id}; phase {phase}; commit {commit}.", file=sys.stderr)
+    print(f"Recorded model: {recorded_model}; candidate model: {candidate_model}.", file=sys.stderr)
+    print("This validator call is billed or uses your subscription.", file=sys.stderr)
