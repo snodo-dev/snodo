@@ -29,6 +29,8 @@ def _safe(value: object, label: str) -> str:
 
 def _task_spec(root: Path, plan: str, task: str) -> str:
     plan_dir = root / ".snodo" / "plans" / plan
+    if not plan_dir.is_dir():
+        plan_dir = root / ".snodo" / "plans-archive" / plan
     try:
         plan_data = yaml.safe_load((plan_dir / "plan.yml").read_text(encoding="utf-8")) or {}
     except ValueError:
