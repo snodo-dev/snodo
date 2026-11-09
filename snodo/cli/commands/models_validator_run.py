@@ -42,6 +42,7 @@ def replay_validator(
     }
     elapsed = 0.0
     worktree: Path | None = None
+    repo = None
     try:
         if mode_obj is None:
             raise ValueError(f"Unknown mode: {mode}")
@@ -54,9 +55,9 @@ def replay_validator(
             completion_fn = build_completion_fn(model, completion)
         selected = [v.model_copy(update={"model": model}) for v in selected]
 
-        from git import Repo
+        from snodo.tools.git import open_repo
         worktree = Path(tempfile.mkdtemp(prefix="snodo-validator-replay-")) / "tree"
-        repo = Repo(str(root))
+        repo = open_repo(str(root))
         repo.git.worktree("add", "--detach", str(worktree), commit)
 
         def tracked_completion(*args, **kwargs):
@@ -105,14 +106,18 @@ def replay_validator(
     finally:
         if worktree is not None:
             try:
-                from git import Repo
-                Repo(str(root)).git.worktree("remove", "--force", str(worktree))
+                if repo is None:
+                    from snodo.tools.git import open_repo
+                    repo = open_repo(str(root))
+                repo.git.worktree("remove", "--force", str(worktree))
             except Exception as exc:
                 logger.warning("Could not remove validator replay worktree %s: %s", worktree, exc)
             try:
                 worktree.parent.rmdir()
             except OSError:
                 pass
+        if repo is not None:
+            repo.close()
 
 
 def _sum(current: int | float | None, value: int | float | None):

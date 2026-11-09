@@ -69,6 +69,7 @@ def models_benchmark_run_command(args) -> int:
         plan = _safe(getattr(args, "plan", None), "plan")
         task = _safe(getattr(args, "task", None), "task")
         model = str(getattr(args, "model", None) or "").strip()
+        validator_id = str(getattr(args, "validator", None) or "").strip()
         if not model:
             raise ValueError("--benchmark-run requires --model")
         root_value = resolve_project_root()
@@ -79,6 +80,32 @@ def models_benchmark_run_command(args) -> int:
         baseline = _read_json(baseline_dir / "baseline.json")
         if baseline.get("schema") != "snodo.task-baseline.v1":
             raise ValueError(f"Unsupported baseline schema in {baseline_dir / 'baseline.json'}")
+        if validator_id:
+            from snodo.cli.commands.models_validator_replay import resolve_validator_replay_input
+            from snodo.cli.commands.models_benchmark_notice import print_validator_replay_notice
+            from snodo.cli.commands.models_validator_run import replay_validator
+            from snodo.cli.commands.models_validator_compare import compare_validator_verdicts, json_record, render_human
+            from snodo.cli.commands import load_protocol
+            from snodo.validators.runner import resolve_validator_completion
+
+            replay_input = resolve_validator_replay_input(root, plan, task, validator_id)
+            protocol_path = root / (getattr(args, "protocol", None) or ".snodo/protocol.yml")
+            protocol = load_protocol(str(protocol_path))
+            print_validator_replay_notice(baseline, validator_id, replay_input.phase, replay_input.head_commit, model)
+            _, _, validator_config = resolve_validator_completion()
+            from snodo.infrastructure.state import read_state
+            current_mode = read_state(str(root)).current_mode or protocol.initial_mode
+            candidate = replay_validator(
+                root, protocol, current_mode, validator_id, replay_input.phase,
+                replay_input.spec, replay_input.head_commit, replay_input.base_commit,
+                model, validator_config=validator_config,
+            )
+            comparison = compare_validator_verdicts(replay_input.result, candidate)
+            if json_out:
+                from snodo.cli.json_output import emit_json
+                return emit_json({**json_record(comparison), "validator_id": validator_id, "baseline": replay_input.result, "candidate": candidate})
+            print(render_human(comparison))
+            return 1 if candidate.get("error") else 0
         base = (baseline.get("change_size") or {}).get("base_sha")
         if not base:
             raise ValueError("Baseline has no change_size.base_sha")
