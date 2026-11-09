@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Log tracebacks for single-shot and tool-loop LLM validator operational faults without changing the surfaced validation error. (Fixes #1154)
+
 - Make the real-PTY wave spinner test tolerate scheduler delays by synchronizing on terminal output with generous phase bounds. (Fixes #802)
 - Add versioned demo run records from task artifacts, including outcomes, usage and validator findings. (Fixes #1115)
 - Add demo helpers to build and validate governed and bare bugfix-surgeon protocols. (Fixes #1114)

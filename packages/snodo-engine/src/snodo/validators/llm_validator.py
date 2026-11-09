@@ -358,6 +358,7 @@ class LLMValidator(ValidatorBase):
             _logger.warning(
                 "Validator %s (model=%s) hit an operational fault: %s: %s",
                 self.validator_spec.validator_id, self.model, type(e).__name__, e,
+                exc_info=True,
             )
             res = ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
@@ -529,6 +530,7 @@ class LLMValidator(ValidatorBase):
                     "(model=%s): %s: %s",
                     self.validator_spec.validator_id, turn + 1, self.model,
                     type(e).__name__, e,
+                    exc_info=True,
                 )
                 return ValidatorResult(
                     validator_id=self.validator_spec.validator_id,
