@@ -418,6 +418,7 @@ def _evaluate_validator(
             logger.warning(
                 "LLM validation for %s failed: %s: %s",
                 v.validator_id, type(e).__name__, e,
+                exc_info=True,
             )
             result = ValidatorResult(
                 validator_id=v.validator_id,
