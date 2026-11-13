@@ -77,3 +77,28 @@ def test_isolation_boundary_justification_is_unchanged(caplog, monkeypatch):
     assert "Traceback" not in result.justification
     assert result.severity == "blocker"
     assert result.error is True
+
+
+def test_llm_fallback_branch_logs_the_traceback(caplog, monkeypatch):
+    from snodo.validators.llm_validator import LLMValidator
+    from snodo.validators.registry import _default_registry
+
+    monkeypatch.setattr(_default_registry, "lookup", lambda validator_type: None)
+    monkeypatch.setattr(LLMValidator, "evaluate", lambda self, context: _known_failing_helper())
+    validator = _validator()
+    protocol = MagicMock()
+    protocol.get_mode.return_value = MagicMock(
+        name="test", tools=[], transitions={}, validators=[validator.validator_id]
+    )
+    results, _ = run_validators(
+        protocol=protocol,
+        validators=[validator],
+        task=Task(id="task-1", spec="test"),
+        current_mode="test",
+        completion_fn=MagicMock(),
+        validator_config=MagicMock(max_tokens=1500, max_tool_turns=6),
+    )
+
+    _assert_logged_traceback(caplog)
+    assert results[0].error is True
+    assert "Traceback" not in results[0].justification
