@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a read-only dashboard Now view summarizing running work and items waiting across projects. (Fixes #1173)
+
 - Persist web dashboard project scan roots in an atomic `web.yml` file separate from `config.yml`. (Fixes #1168)
 
 - Show read-only Git delivery status for each plan integration branch in the dashboard. (Fixes #1167)
