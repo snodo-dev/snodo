@@ -13,7 +13,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Add the static dashboard Now view for active work and items waiting on the person. (Fixes #1179)
 - Add the static local dashboard shell with theme and view navigation. (Fixes #1178)
 - Assemble a read-only loopback web dashboard with Host validation and safe port selection. (Fixes #1177)
-- Add a read-only dashboard Plans view with task progress and Git delivery status. (Fixes #1176)
+- Add the static dashboard Plans view with project filtering, task progress, and Git delivery status. (Fixes #1182)
 
 
 - Add a read-only dashboard Gates view aggregating send-backs and retry outcomes across projects. (Fixes #1175)
