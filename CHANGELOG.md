@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add read-only dashboard flow metrics for landed tasks, cycle time, first-try rate, and active load. (Fixes #1166)
+
 - Discover local Snodo projects for the web dashboard with bounded, read-only directory scanning. (Fixes #1162)
 
 - Add read-only dashboard records and summaries for validator gate send-backs and task outcomes. (Fixes #1160)
