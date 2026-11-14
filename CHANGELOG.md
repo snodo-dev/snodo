@@ -42,6 +42,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Remove the unused authorized-prior-results helper and its tests; identical-subject verdict-cache reuse already handles retries. (Fixes #1137)
 - Reuse cached verdicts of any severity on identical subjects across retries; retry evidence remains in judge input but is not part of the key. Tree-reading subjects retain their tree digest. This supersedes CHANGELOG 0.27.0’s evidence-sensitive reuse behavior. (Fixes #1124)
 
+- Document how to run and interpret the scikit-learn-26194 demo, including model choices, the two arms, records, and verification caveats. (Fixes #1133)
+
+- Add a one-command runner for governed and bare demo arms with per-arm records and reports. (Fixes #1132)
+- Add a plain-text demo run report with usage, validator findings, verification and patch output. (Fixes #1120)
+
+- Add optional SWE-bench fail-to-pass verification for demo patches. (Fixes #1118)
+
+- Add a demo command builder for `snodo run` with optional version pinning and exact task text loading. (Fixes #1117)
+- Add a demo workspace helper that clones the recorded repository commit and initializes Snodo with the bugfix-surgeon template. (Fixes #1116; #1121)
 - Add versioned demo run records from task artifacts, including outcomes, usage and validator findings. (Fixes #1115)
 - Add demo helpers to build and validate governed and bare bugfix-surgeon protocols. (Fixes #1114)
 - Fix SWE-bench 5.x image compatibility and record experiment arm costs when usage is available. (Fixes #1112)

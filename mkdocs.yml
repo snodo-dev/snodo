@@ -38,6 +38,7 @@ nav:
       - User configuration: configuration.md
       - Command reference: command-reference.md
       - Coder backends: coders.md
+      - scikit-learn demo: demo.md
       - Model providers:
           - Overview: providers/index.md
           - Cloudflare Workers AI: providers/cloudflare.md
