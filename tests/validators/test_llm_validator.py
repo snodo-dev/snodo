@@ -916,10 +916,107 @@ class TestPostExecuteToolLoop:
         assert result.severity == "pass"
         assert len(calls) == 3
 
+    def test_final_turn_no_tool_call_is_retried_once_then_succeeds(
+        self, security_validator
+    ):
+        requests = []
+
+        def respond(**kwargs):
+            requests.append(kwargs)
+            response = MagicMock()
+            response.choices = [MagicMock()]
+            response.choices[0].finish_reason = "stop"
+            response.choices[0].message.content = None
+            response.choices[0].message.tool_calls = []
+            if len(requests) == 2:
+                tc = MagicMock()
+                tc.id = "verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps(
+                    {
+                        "task_id": "t1",
+                        "severity": "pass",
+                        "justification": "Reviewed",
+                    }
+                )
+                response.choices[0].message.tool_calls = [tc]
+            return response
+
+        completion = MagicMock(side_effect=respond)
+        validator = LLMValidator(
+            self._make_post_validator(security_validator), completion
+        )
+        context = self._make_post_context(completion, MagicMock(), MagicMock())
+        context.max_tool_turns = 1
+        result = validator.evaluate(context)
+
+        assert result.error is False
+        assert result.severity == "pass"
+        assert len(requests) == 2
+
+    def test_final_turn_two_misses_fail_closed_and_say_why(
+        self, security_validator
+    ):
+        requests = []
+
+        def respond(**kwargs):
+            requests.append(kwargs)
+            response = MagicMock()
+            response.choices = [MagicMock()]
+            response.choices[0].finish_reason = "length"
+            response.choices[0].message.content = None
+            response.choices[0].message.tool_calls = []
+            response.usage.completion_tokens = 12 + len(requests)
+            return response
+
+        completion = MagicMock(side_effect=respond)
+        validator = LLMValidator(
+            self._make_post_validator(security_validator), completion
+        )
+        context = self._make_post_context(completion, MagicMock(), MagicMock())
+        context.max_tool_turns = 1
+        result = validator.evaluate(context)
+
+        assert result.error is True
+        assert result.severity == "blocker"
+        diagnostics = " ".join([result.justification, *(result.examined or [])])
+        assert "finish_reason='length'" in diagnostics
+        assert "completion_tokens=13/1500" in diagnostics
+        assert "completion_tokens=14/3000" in diagnostics
+        assert len(requests) == 2
+
+    def test_final_turn_retry_keeps_read_tools_withdrawn(self, security_validator):
+        requests = []
+
+        def respond(**kwargs):
+            requests.append(kwargs)
+            response = MagicMock()
+            response.choices = [MagicMock()]
+            response.choices[0].message.content = None
+            response.choices[0].message.tool_calls = []
+            return response
+
+        completion = MagicMock(side_effect=respond)
+        validator = LLMValidator(
+            self._make_post_validator(security_validator), completion
+        )
+        context = self._make_post_context(completion, MagicMock(), MagicMock())
+        context.max_tool_turns = 1
+        validator.evaluate(context)
+
+        for request in requests[-2:]:
+            assert [tool["function"]["name"] for tool in request["tools"]] == [
+                "submit_verdict"
+            ]
+            assert request["tool_choice"] == {
+                "type": "function",
+                "function": {"name": "submit_verdict"},
+            }
+
     def test_repeated_malformed_tool_arguments_fail_closed(self, security_validator):
         completion = MagicMock()
         responses = []
-        for index in range(20):
+        for index in range(21):
             resp = MagicMock()
             resp.choices = [MagicMock()]
             tc = MagicMock()
@@ -934,7 +1031,7 @@ class TestPostExecuteToolLoop:
         result = validator.evaluate(self._make_post_context(completion, MagicMock(), MagicMock()))
         assert result.error is True
         assert "did not return a verdict" in result.justification
-        assert completion.call_count == 20
+        assert completion.call_count == 21
 
     def test_unexpected_value_error_from_tool_implementation_fails_closed(self, security_validator):
         completion_fn = MagicMock()
@@ -1517,10 +1614,9 @@ class TestPostExecuteToolLoop:
         assert any("preloaded diff" in e for e in result.examined)
         assert any("read_file x.py" in e for e in result.examined)
         # One fresh read, _MAX_STALL_TURNS consecutive repeat-read stalls,
-        # then the forced verdict-only turn it also fails to comply with —
-        # nowhere near the full turn cap, because repeating bought it no
-        # extra turns.
-        assert completion_fn.call_count == 1 + _MAX_STALL_TURNS + 1
+        # then the forced verdict-only turn and its one retry — nowhere near
+        # the full turn cap, because repeating bought it no extra turns.
+        assert completion_fn.call_count == 1 + _MAX_STALL_TURNS + 2
         assert completion_fn.call_count < _DEFAULT_MAX_TOOL_TURNS
 
     def test_repeat_reads_do_not_consume_the_turn_budget(self, security_validator):

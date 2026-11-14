@@ -67,3 +67,15 @@ deliberately replaced and re-introduces the transcript growth and cache
 pressure that decision exists to avoid. Adding a new halt type or severity
 for "the judge stalled" was rejected: `blocker`/`error=True` from
 "no verdict" already covers it, and the engine's halt vocabulary is closed.
+
+## 2026-11-07 — One bounded retry on the verdict-only turn
+
+If the forced verdict-only turn returns no valid `submit_verdict`, the judge
+gets one extra verdict-only attempt. Two misses still fail closed as an error
+blocker (`validator_error`); a judge that did not decide is never converted
+into a finding. The failure records the provider finish reason and completion
+token count (against the limit), along with whether the response had text, so
+recurring no-verdict cases can be diagnosed. There is no larger retry budget:
+each attempt is a provider round trip of up to a minute, after the judge has
+already spent its reading budget. If it ignores the forced tool choice twice,
+that is a provider or model problem to surface, not to loop on.

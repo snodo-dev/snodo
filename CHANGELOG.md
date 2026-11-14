@@ -28,6 +28,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Print the validator, phase, judged commit and model details before a validator replay call. (Fixes #1144)
 - Resolve the recorded spec, phase, commits and verdict for replaying one validator from a task baseline. (Fixes #1143)
 - Make the real-PTY wave spinner test tolerate scheduler delays by synchronizing on terminal output with generous phase bounds. (Fixes #802)
+- Document the verdict-only turn retry: one bounded extra attempt, then fail closed with provider diagnostics if the judge still returns no verdict. (Fixes #1131)
+- Retry a missing verdict once on the forced verdict-only turn and include the provider finish reason, completion-token count and text presence when the judge still fails closed. (Fixes #1129)
 - Add versioned demo run records from task artifacts, including outcomes, usage and validator findings. (Fixes #1115)
 - Add demo helpers to build and validate governed and bare bugfix-surgeon protocols. (Fixes #1114)
 - Fix SWE-bench 5.x image compatibility and record experiment arm costs when usage is available. (Fixes #1112)
