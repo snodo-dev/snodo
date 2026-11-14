@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Add the static dashboard Gates view with validator findings, project retry outcomes, and gate records. (Fixes #1181)
 - Add the static dashboard Delivery view with landed-work trends and project flow metrics. (Fixes #1180)
 - Add the static dashboard Now view for active work and items waiting on the person. (Fixes #1179)
 - Add the static local dashboard shell with theme and view navigation. (Fixes #1178)
