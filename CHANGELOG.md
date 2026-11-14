@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Clarify that post-execute spec-reading judges reuse verdicts only when both the spec and tree are unchanged. (Fixes #1161)
+
 - Key post-execute spec-reading judges on both the task spec and repository tree so corrected criteria trigger a fresh verdict. (Fixes #1158)
 
 - Log tracebacks when validator isolation converts an exception to an error result, without changing the surfaced justification. (Fixes #1155)
