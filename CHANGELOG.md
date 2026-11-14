@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add a read-only dashboard Gates view aggregating send-backs and retry outcomes across projects. (Fixes #1175)
+
 - Add a read-only dashboard Delivery view aggregating landed work across projects. (Fixes #1174)
 
 - Add a read-only dashboard Now view summarizing running work and items waiting across projects. (Fixes #1173)
