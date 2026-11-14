@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add regression tests proving acceptance verdicts are re-judged when the spec changes on an unchanged tree and reused when both stay unchanged. (Fixes #1164)
+
 - Clarify that post-execute spec-reading judges reuse verdicts only when both the spec and tree are unchanged. (Fixes #1161)
 
 - Key post-execute spec-reading judges on both the task spec and repository tree so corrected criteria trigger a fresh verdict. (Fixes #1158)
