@@ -213,7 +213,9 @@ def models_set_baseline_command(args) -> int:
     if root_value is None:
         return fail("Not inside a snodo project.")
     root = Path(root_value)
-    if not (root / ".snodo" / "plans" / plan).is_dir():
+    plan_dir = root / ".snodo" / "plans" / plan
+    archive_dir = root / ".snodo" / "plans-archive" / plan
+    if not plan_dir.is_dir() and not archive_dir.is_dir():
         return fail(f"Plan '{plan}' not found.")
 
     try:

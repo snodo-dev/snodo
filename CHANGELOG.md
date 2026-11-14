@@ -27,6 +27,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Print the validator, phase, judged commit and model details before a validator replay call. (Fixes #1144)
 - Resolve the recorded spec, phase, commits and verdict for replaying one validator from a task baseline. (Fixes #1143)
+- Add an end-to-end task benchmark walkthrough to the model selection guide. (Fixes #1142)
+- Document the task comparison JSON schema and its scored and display-only fields in the machine interface guide. (Fixes #1140)
+- Clarify task model benchmark prerequisites, run counts, coder-model selection, and baseline and candidate storage in the command reference. (Fixes #1139)
+- Let `snodo models --set-baseline` and `--benchmark-run` find completed plans in `.snodo/plans-archive/` when they are absent from `.snodo/plans/`. (Fixes #1138)
 - Make the real-PTY wave spinner test tolerate scheduler delays by synchronizing on terminal output with generous phase bounds. (Fixes #802)
 - Document the verdict-only turn retry: one bounded extra attempt, then fail closed with provider diagnostics if the judge still returns no verdict. (Fixes #1131)
 - Retry a missing verdict once on the forced verdict-only turn and include the provider finish reason, completion-token count and text presence when the judge still fails closed. (Fixes #1129)
