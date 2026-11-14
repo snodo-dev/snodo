@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Show read-only Git delivery status for each plan integration branch in the dashboard. (Fixes #1167)
+
 - Add read-only dashboard flow metrics for landed tasks, cycle time, first-try rate, and active load. (Fixes #1166)
 
 - Discover local Snodo projects for the web dashboard with bounded, read-only directory scanning. (Fixes #1162)
