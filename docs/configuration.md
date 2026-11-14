@@ -354,9 +354,12 @@ checkout folder, and include the runner hostname.
 | `notifications.events` | `job_finished`, `task_halted`, `authorization_needed`, `job_silent` | Event names to deliver; set a subset to filter. |
 | `notifications.silence_threshold_seconds` | `900` | Log-silence interval before a `job_silent` notification; invalid values use 900 and values are clamped to at least 1 second. |
 
-Each completion message uses an icon to summarize the situation. The reason is
-formed from validator output, shortened for the message, and may include the
-validator name and finding.
+Each completion message uses an icon to summarize the situation. When validator
+findings are present, a Blocked message lists the most severe findings, each
+with its validator id, severity and justification shortened to a fixed length.
+A Waiting for a human message shows the same findings and the command to
+authorize the task, `snodo authorize <task id>`. With no validator findings, the
+message keeps its plain form.
 
 | Situation | Icon | Operator action |
 |---|---|---|

@@ -457,6 +457,13 @@ def test_monitor_job_finished_situations_and_messages(tmp_path, monkeypatch):
         else:
             assert reason in message
         assert notifications._event_icon("job_finished", details) == icon
+        command = f"snodo authorize task-{index}"
+        if situation == "human_decision":
+            assert details["command"] == command
+            assert f"Authorize: {command}" in message
+        else:
+            assert details["command"] == f"snodo logs {job_id}"
+            assert "Authorize:" not in message
 
 
 def test_monitor_task_halted_situations_reach_slack_and_webhook(tmp_path, monkeypatch):
@@ -466,7 +473,9 @@ def test_monitor_task_halted_situations_reach_slack_and_webhook(tmp_path, monkey
         ("human_decision", {"status": "failed", "exit_code": 1,
          "halt": {"type": "disagreement", "adjudicable": True, "reason": "Choose *a* direction"}},
          [{"event_type": "disagreement_escalated"}], "✋", "Waiting for a human", "Choose \\*a\\* direction"),
-        ("blocked", {"status": "failed", "exit_code": 1, "halt": {"reason": "Validator rejected result"}},
+        ("blocked", {"status": "failed", "exit_code": 1, "halt": {"reason": "Validator rejected result",
+          "validator_results": [{"validator_id": "security-review", "severity": "blocker",
+                                 "justification": "Unsafe input is accepted"}]}},
          [{"event_type": "recovery_exhausted"}], "⛔", "Blocked", "Validator rejected result"),
         ("engine_fault", {"status": "failed", "exit_code": 1,
          "halt": {"type": "internal_error", "reason": "Worker crashed"}},
@@ -510,11 +519,21 @@ def test_monitor_task_halted_situations_reach_slack_and_webhook(tmp_path, monkey
             assert len([event for event in webhooks if event["event"] == "task_halted"]) == 1
             payload = next(event for event in webhooks if event["event"] == "task_halted")
             assert payload["situation"] == situation
+            if situation == "blocked":
+                expected_reason = expected_reason + "\nsecurity-review (blocker): Unsafe input is accepted"
             assert payload["reason"] == expected_reason
             assert f"{headline} — {expected_reason}" in payload["message"]
             slack = next(json.loads(body)["text"] for path, _headers, body in group if path == f"/slack-{index}")
             assert slack.startswith(f"{icon} ")
             assert f"{headline} — {expected_reason}" in slack
+            command = f"snodo authorize {task_id}"
+            if situation == "human_decision":
+                assert payload["command"] == command
+                assert f"Authorize: {command}" in payload["message"]
+                assert f"Authorize: {command}" in slack
+            else:
+                assert payload["command"] == f"snodo logs {job_id}"
+                assert "Authorize:" not in payload["message"]
             if situation == "warn_recovered":
                 assert "task-recovery" in slack
     finally:
@@ -562,3 +581,14 @@ def test_authorization_needed_message_has_reason_and_task_command_on_slack_and_w
         assert command in slack
     finally:
         httpd.shutdown()
+
+
+def test_halt_summary_bounds_long_validator_justification():
+    from snodo.jobs.halt_summary import format_halt_summary
+
+    summary = format_halt_summary({"validator_results": [{
+        "validator_id": "security-review", "severity": "blocker", "justification": "x" * 1000,
+    }]})
+    assert len(summary) <= 600
+    assert summary.startswith("security-review (blocker): ")
+    assert summary.endswith("…")
