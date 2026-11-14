@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Discover local Snodo projects for the web dashboard with bounded, read-only directory scanning. (Fixes #1162)
+
 - Add read-only dashboard records and summaries for validator gate send-backs and task outcomes. (Fixes #1160)
 
 - Log tracebacks when validator isolation converts an exception to an error result, without changing the surfaced justification. (Fixes #1155)
