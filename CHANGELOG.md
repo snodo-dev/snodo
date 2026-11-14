@@ -13,6 +13,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Log tracebacks for single-shot and tool-loop LLM validator operational faults without changing the surfaced validation error. (Fixes #1154)
 
+- Document the validator replay JSON record emitted by `snodo models --benchmark-run --validator`, including its comparison fields and metrics. (Fixes #1153)
+- Document `snodo models --benchmark-run --validator`, including the single-validator replay and its comparison. (Fixes #1152)
+- Add a guide walkthrough for benchmarking one recorded validator with an explicit model. (Fixes #1151)
+- Benchmark one recorded validator with `snodo models --benchmark-run --validator`, comparing the replay with its baseline. (Fixes #1151)
+
+- Document `snodo validate --validator` and `--model`, including fresh-judgement behavior and the unchanged JSON payload. (Fixes #1150)
+- Replay one selected validator against a recorded commit with an explicit model, reporting elapsed time and token usage without caching the verdict. (Fixes #1147)
+
+- Compare a replayed validator verdict with its recorded result, including severity direction, justification and usage metrics. (Fixes #1146)
+
+- Let `snodo validate` select one validator and override its model for a fresh judgement. (Fixes #1145)
+
+- Print the validator, phase, judged commit and model details before a validator replay call. (Fixes #1144)
+- Resolve the recorded spec, phase, commits and verdict for replaying one validator from a task baseline. (Fixes #1143)
 - Make the real-PTY wave spinner test tolerate scheduler delays by synchronizing on terminal output with generous phase bounds. (Fixes #802)
 - Add versioned demo run records from task artifacts, including outcomes, usage and validator findings. (Fixes #1115)
 - Add demo helpers to build and validate governed and bare bugfix-surgeon protocols. (Fixes #1114)

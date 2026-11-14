@@ -129,6 +129,17 @@ engine's halt payload. The engine's canonical vocabulary is five (ADR 015);
 `environment_error` is an execution halt, and because this command never
 invokes a coder, it is not one of the outcomes returned here.
 
+`--validator <id>` runs only the validator with that ID from the resolved mode
+and phase. If the ID is unknown, the command returns an error naming the
+requested validator, mode and phase, and lists the available validator IDs for
+that mode and phase. `--model <provider/model>` overrides the model used by the
+validator(s), taking precedence over protocol-pinned and configured defaults.
+
+Each invocation is judged afresh: `snodo validate` never reads or writes the
+verdict cache. These options do not change the `snodo.validate.v1` payload or
+its schema: no field is added, and with `--validator` the `results` list simply
+contains that one validator's result.
+
 | Field | Type | Meaning |
 |-------|------|---------|
 | `schema` | string | `snodo.validate.v1` |
@@ -276,6 +287,30 @@ and call counts remain available so a consumer can choose its own aggregation.
 | `total_jobs` | int | jobs found in the project |
 | `models` | object | model id to usage record, including calls, token totals, durations, costs and roles |
 | `coders` | object | coder id to job totals and durations |
+
+### `snodo models --benchmark-run --validator <id> --model <m> --json`
+
+Schema: `snodo.models-validator-compare.v1`
+
+Replays one recorded validator with the selected model. `baseline` is the
+recorded verdict and `candidate` is the new verdict; the comparison fields make
+the result and usage measurements convenient to consume. Direction is scored
+from severity only (`better`, `worse`, or `same`); justification and metrics do
+not affect it. None of the metric pairs are scored. A missing metric is
+represented by `null`, including `difference` when either side is missing.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.models-validator-compare.v1` |
+| `validator_id` | string | selected validator ID |
+| `baseline` | object | recorded validator result |
+| `candidate` | object | newly replayed validator result |
+| `baseline_severity` | string | normalized recorded severity |
+| `candidate_severity` | string | normalized replay severity |
+| `direction` | string | `better`, `worse`, or `same`, based only on severity ranking |
+| `justification_differs` | bool | whether the recorded and replay justifications differ |
+| `justifications` | object | `{baseline, candidate}` justification values |
+| `metrics` | object | metric pairs for `elapsed_seconds`, `input_tokens`, `output_tokens`, and `cost`; each has `baseline`, `candidate`, and `difference`, all `number \| null` |
 
 ### `snodo runs --json`
 

@@ -37,7 +37,7 @@ stderr. Set `SNODO_NO_UPDATE_CHECK=1` to disable the update check.
 | `snodo session switch` | `<session_id>` |
 | `snodo session delete` | `<session_id>` |
 | `snodo session prune` | `--days` |
-| `snodo models` | `--provider`/`-p`, `--authenticate`, `--flush`, `--stats`, `--provenance`, `--provenance-limit`, `--check`, `--benchmark[=<provider>/<model>]`, `--benchmark-runs`, `--set-baseline`, `--compare`, `--benchmark-run`, `--model`, `--plan`, `--task`/`--task-id`, `--job`, `--json`, `--id`, `--id-contains`, `--max-output-cost`, `--min-output-cost`, `--max-input-cost`, `--min-context` |
+| `snodo models` | `--provider`/`-p`, `--authenticate`, `--flush`, `--stats`, `--provenance`, `--provenance-limit`, `--check`, `--benchmark[=<provider>/<model>]`, `--benchmark-runs`, `--set-baseline`, `--compare`, `--benchmark-run`, `--validator`, `--model`, `--plan`, `--task`/`--task-id`, `--job`, `--json`, `--id`, `--id-contains`, `--max-output-cost`, `--min-output-cost`, `--max-input-cost`, `--min-context` |
 | `snodo cloud connect` | `<api_key>` |
 | `snodo cloud login` | `--no-browser` |
 | `snodo cloud logout` | — |
@@ -64,6 +64,16 @@ baseline's recorded base commit with
 The preflight notice names the baseline and candidate coder and model and flags
 a different coder harness. The candidate runs without merging; even if it does
 not complete, the comparison reports its status, halt type, and available reason.
+
+Add `--validator <id>` to replay just that validator instead of rerunning the
+whole task. It uses the baseline's recorded spec and the commit recorded for
+that validator's phase, in a temporary worktree, with `--model` as the
+validator's model override. The replay does not use a verdict cache and does not
+merge anything. It compares severity using the existing severity ordering,
+justification, elapsed time, tokens, and cost; only severity contributes to the
+score. `--benchmark-run --validator` requires `--model` (otherwise it errors
+with `--benchmark-run requires --model`), and the validator ID must be recorded
+in the baseline and defined in the protocol.
 
 Use `snodo models --compare --plan <plan> --task <task>` to compare the latest
 matching candidate job with the stored baseline, or specify `--job <job-id>`.
@@ -171,7 +181,7 @@ default; `--yes`, `--no-input`, and non-interactive init keep that default.
 | `snodo queue run` | `[queues]`, `--all`, `--non-blocking`, `--parallel-run`, `--protocol`, `--mock` |
 | `snodo queue validate` | `[queue]`, `--json` |
 | `snodo queue` (group option) | `--json` |
-| `snodo validate` | `<task_spec>`, `--phase`, `--protocol`, `--mode`, `--json` |
+| `snodo validate` | `<task_spec>`, `--phase`, `--protocol`, `--mode`, `--validator`, `--model`, `--json` |
 | `snodo ready` | `--mode`/`-m`, `--protocol`, `--json` |
 | `snodo readiness` | `--mode`/`-m`, `--protocol`, `--json` (deprecated alias for `ready`) |
 | `snodo recon` | `<query> [paths...]`, `--agents`/`-n` |

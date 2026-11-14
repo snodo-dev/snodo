@@ -45,6 +45,7 @@ def register(app: typer.Typer) -> None:
         compare: bool = typer.Option(False, "--compare", help="Compare a candidate job with a stored task baseline"),
         benchmark_run: bool = typer.Option(False, "--benchmark-run", help="Run a baselined task with a selected model, without merging"),
         model: Optional[str] = typer.Option(None, "--model", help="Model for --benchmark-run"),
+        validator: Optional[str] = typer.Option(None, "--validator", help="Replay only this validator for --benchmark-run"),
         plan: Optional[str] = typer.Option(None, "--plan", help="Plan owning the baseline task (--set-baseline / --compare)"),
         task: Optional[str] = typer.Option(None, "--task", "--task-id", help="Plan task id (--set-baseline / --compare)"),
         job: Optional[str] = typer.Option(None, "--job", help="Candidate job id for --compare (latest matching job by default)"),
@@ -75,6 +76,7 @@ def register(app: typer.Typer) -> None:
             compare=compare,
             benchmark_run=benchmark_run,
             model=model,
+            validator=validator,
             plan=plan,
             task=task,
             job=job,
@@ -129,6 +131,10 @@ def _write_cache(provider: str, models: list) -> None:
 
 def models_command(args) -> int:
     """List configured providers, their models, or project usage stats."""
+    if getattr(args, "validator", None) and not getattr(args, "benchmark_run", False):
+        print("Error: --validator requires --benchmark-run", file=sys.stderr)
+        return 1
+
     if getattr(args, "authenticate", False):
         from snodo.cli.commands.models_authenticate import models_authenticate_command
         return models_authenticate_command(args)
