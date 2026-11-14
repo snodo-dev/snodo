@@ -1,7 +1,4 @@
-"""Dashboard command - Launch TUI dashboard.
-
-FILE: snodo/cli/commands/dashboard_cmd.py (Task 5.3)
-"""
+"""Dashboard command - Launch the terminal or local web dashboard."""
 
 import sys
 from pathlib import Path
@@ -13,14 +10,37 @@ from snodo.infrastructure.paths import resolve_project_root
 
 
 def register(app: typer.Typer) -> None:
-    """Register top-level CLI commands onto app (called by discovery loop)."""
+    """Register top-level commands onto the CLI app."""
 
     @app.command()
-    def dashboard():
-        """Launch the TUI dashboard."""
-        args = SimpleNamespace()
-        return dashboard_command(args)
+    def dashboard(
+        web: bool = typer.Option(False, "--web/--cli", help="Launch the local web dashboard"),
+        port: int | None = typer.Option(None, "--port", help="Web dashboard port"),
+        root: list[Path] | None = typer.Option(None, "--root", help="Project scan root (repeatable)"),
+    ) -> None:
+        """Launch the terminal dashboard, or the local web dashboard with --web."""
+        if web:
+            from snodo.web.projects import resolve_projects
+            from snodo.web.roots import load_roots, save_roots
+            from snodo.web.app import serve
 
+            roots = root if root else load_roots()
+            if root:
+                save_roots(root)
+            projects = resolve_projects(roots, Path.cwd())
+            if not projects:
+                typer.echo(
+                    "Error: No Snodo projects found; pass --root or run this command inside a snodo project.",
+                    err=True,
+                )
+                raise typer.Exit(1)
+            serve(projects, port)
+            return
+
+        if port is not None or root:
+            typer.echo("Error: --port and --root are only valid with --web.", err=True)
+            raise typer.Exit(1)
+        return dashboard_command(SimpleNamespace())
 
 
 def snop_entry():
