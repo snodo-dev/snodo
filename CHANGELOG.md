@@ -8,6 +8,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Add a read-only dashboard Plans view with task progress and Git delivery status. (Fixes #1176)
+
 
 - Add a read-only dashboard Gates view aggregating send-backs and retry outcomes across projects. (Fixes #1175)
 
