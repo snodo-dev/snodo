@@ -592,12 +592,8 @@ def test_pre_execute_spec_tree_rejudged_when_tree_changed(tmp_path):
     second, _ = _run(protocol, [validator], cache, completion, phase="pre_execute", workspace_mcp=workspace, git_mcp=git, task=retry)
     assert not first[0].reused and not second[0].reused and completion.calls == 2
 
-def test_post_execute_tool_judge_keying_is_unchanged_by_spec(tmp_path):
-    """A judgement about produced work is a judgement about the work.
-
-    Post-execute stays tree-keyed only: an unrelated edit to the task spec
-    must not re-buy a verdict about unchanged work.
-    """
+def test_post_execute_tool_judge_rejudges_when_spec_changes(tmp_path):
+    """Both the produced tree and its acceptance criteria define the verdict."""
     validator = _tool_validator("post_execute", vid="acceptance", validator_type="acceptance")
     protocol = _protocol([validator])
     cache = _cache(tmp_path)
@@ -617,17 +613,19 @@ def test_post_execute_tool_judge_keying_is_unchanged_by_spec(tmp_path):
         )
 
     first, _ = run("Implement feature X")
-    spec_changed, _ = run("Implement feature Y, entirely different")
+    same, _ = run("Implement feature X")
+    changed, _ = run("Implement feature Y, entirely different")
     assert first[0].reused is False
-    assert spec_changed[0].reused is True, "post-execute keys on the tree, not the spec"
-    assert completion.calls == 1
+    assert same[0].reused is True, "same spec and same tree must reuse"
+    assert changed[0].reused is False, "changed spec on the same tree must re-judge"
+    assert completion.calls == 2
 
 
 @pytest.mark.parametrize("validator_type", ["security", "acceptance"])
 def test_post_execute_judge_without_tools_rejudges_on_tree_change(
     tmp_path, validator_type
 ):
-    """A post-execute judge is keyed on the work, never the unchanged spec.
+    """A post-execute judge is keyed on both the spec and the work.
 
     This is the inheritance trap: ``AcceptanceValidator`` inherits
     ``cache_subject = "spec"`` from ``LLMValidator``, and a post-execute judge
