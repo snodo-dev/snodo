@@ -100,3 +100,21 @@ a fresh start from main.
   `spawned_subtasks` is not visible to a nested invocation; deriving from
   `depth` (which is already threaded) gives a stable linear number without new
   cross-node state.
+
+
+## Amendment — Retry verdict reuse (2026-11-07)
+
+This amendment amends the 2026-11-07 amendment on retry verdict reuse.
+Pre-execute validation still runs on every cycle, but any prior verdict (pass,
+warn, or blocker) on an identical spec and tree subject is answered from the
+verdict cache on retry or recovery. Retry evidence is deliberately not part of
+the cache key, reversing the evidence-sensitive choice recorded for #968; the
+judge still receives retry evidence whenever it is called. The authorization
+of a warn is applied afterwards by the signed decision in
+`packages/snodo-engine/src/snodo/engine/policy.py`.
+
+Changing the spec or tree gives a different key and the validator is judged
+again. Errors and skipped results are never cached. A DecisionRecord-based skip
+of dispatch was considered and rejected because `find_adjudicated` in
+`packages/snodo-foundation/src/snodo/infrastructure/decisions.py` binds no spec
+or tree subject. The first-wave implementation is recorded in #1124.

@@ -219,31 +219,75 @@ def test_unchanged_spec_and_criteria_reuse_verdict_and_mark_it(tmp_path):
 
 
 
-def test_retry_evidence_narrows_spec_cache_without_disabling_reuse(tmp_path):
+def test_retry_with_changed_evidence_reuses_prior_pass(tmp_path):
     validator = _validator()
     protocol = _protocol([validator])
     cache = _cache(tmp_path)
     completion = _Completion()
-    base = Task(id="t1", spec="Implement feature X")
-    retry = Task(
-        id="t1", spec="Composed input A", root_spec=base.spec,
-        composed_input_source="operator_retry",
-    )
-    other_retry = Task(
-        id="t1", spec="Composed input B", root_spec=base.spec,
-        composed_input_source="operator_retry",
-    )
+    original = Task(id="t1", spec="Implement feature X")
+    retries = [Task(id="t1", spec=e, root_spec=original.spec, composed_input_source="operator_retry") for e in ("Evidence A", "Evidence B")]
+    first, _ = _run(protocol, [validator], cache, completion, task=original)
+    results = [_run(protocol, [validator], cache, completion, task=retry)[0][0] for retry in retries]
+    assert not first[0].reused and all(result.reused for result in results)
+    assert completion.count() == 1
 
-    first, _ = _run(protocol, [validator], cache, completion, task=base)
-    with_evidence, _ = _run(protocol, [validator], cache, completion, task=retry)
-    same_evidence, _ = _run(protocol, [validator], cache, completion, task=retry)
-    changed_evidence, _ = _run(protocol, [validator], cache, completion, task=other_retry)
 
-    assert not first[0].reused
-    assert not with_evidence[0].reused
-    assert same_evidence[0].reused
-    assert not changed_evidence[0].reused
-    assert completion.count() == 3
+def test_judge_still_receives_retry_evidence_on_reuse_miss(tmp_path):
+    validator = _validator()
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    prompts = []
+    def completion(**kwargs):
+        prompts.extend(m.get("content", "") for m in kwargs.get("messages", []))
+        return _response(json.dumps({"severity": "warn", "justification": "retry checked"}))
+    original = Task(id="t1", spec="Implement feature X")
+    retry = Task(id="t1", spec="Prior failure evidence", root_spec=original.spec, composed_input_source="operator_retry")
+    _run(protocol, [validator], cache, completion, task=original)
+    changed = _validator(criteria=("Changed criterion",))
+    result, _ = _run(_protocol([changed]), [changed], cache, completion, task=retry)
+    assert not result[0].reused and any("Prior failure evidence" in prompt for prompt in prompts)
+
+
+def test_identical_evidence_still_reuses_prior_pass(tmp_path):
+    validator = _validator()
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _Completion()
+    retry = Task(id="t1", spec="Same evidence", root_spec="Implement feature X", composed_input_source="operator_retry")
+    first, _ = _run(protocol, [validator], cache, completion, task=retry)
+    second, _ = _run(protocol, [validator], cache, completion, task=retry)
+    assert not first[0].reused and second[0].reused and completion.count() == 1
+
+
+def test_retry_reuses_prior_warn_on_identical_spec(tmp_path):
+    _assert_retry_severity_reused(tmp_path, "warn")
+
+
+def test_retry_reuses_prior_blocker_on_identical_spec(tmp_path):
+    _assert_retry_severity_reused(tmp_path, "blocker")
+
+
+def _assert_retry_severity_reused(tmp_path, severity):
+    validator = _validator()
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _Completion(severity=severity)
+    original = Task(id="t1", spec="Implement feature X")
+    retry = Task(id="t1", spec="Different retry evidence", root_spec=original.spec, composed_input_source="operator_retry")
+    first, _ = _run(protocol, [validator], cache, completion, task=original)
+    second, _ = _run(protocol, [validator], cache, completion, task=retry)
+    assert first[0].severity == second[0].severity == severity
+    assert not first[0].reused and second[0].reused and completion.count() == 1
+
+
+def test_retry_rejudges_when_spec_changed(tmp_path):
+    validator = _validator()
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _Completion()
+    first, _ = _run(protocol, [validator], cache, completion, task=Task(id="t1", spec="Original"))
+    second, _ = _run(protocol, [validator], cache, completion, task=Task(id="t1", spec="Changed", root_spec="Changed", composed_input_source="operator_retry"))
+    assert not first[0].reused and not second[0].reused and completion.count() == 2
 
 
 def test_wave_scoped_judge_uses_one_stable_subject_for_siblings(tmp_path):
@@ -520,6 +564,33 @@ def test_pre_execute_tool_judge_rejudges_when_only_the_tree_changes(tmp_path):
     assert moved[0].reused is False, "the tree the judge can read changed"
     assert completion.calls == 2
 
+
+
+def test_pre_execute_spec_tree_warn_reused_when_tree_unchanged(tmp_path):
+    validator = _tool_validator("pre_execute")
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _ToolCompletion(severity="warn")
+    workspace, git = _git_double(["sha1", "sha1"])
+    task = Task(id="t1", spec="Implement feature X")
+    first, _ = _run(protocol, [validator], cache, completion, phase="pre_execute", workspace_mcp=workspace, git_mcp=git, task=task)
+    retry = Task(id="t1", spec="Prior evidence", root_spec=task.spec, composed_input_source="operator_retry")
+    second, _ = _run(protocol, [validator], cache, completion, phase="pre_execute", workspace_mcp=workspace, git_mcp=git, task=retry)
+    assert first[0].severity == second[0].severity == "warn"
+    assert not first[0].reused and second[0].reused and completion.calls == 1
+
+
+def test_pre_execute_spec_tree_rejudged_when_tree_changed(tmp_path):
+    validator = _tool_validator("pre_execute")
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _ToolCompletion(severity="warn")
+    workspace, git = _git_double(["sha1", "sha2"])
+    task = Task(id="t1", spec="Implement feature X")
+    first, _ = _run(protocol, [validator], cache, completion, phase="pre_execute", workspace_mcp=workspace, git_mcp=git, task=task)
+    retry = Task(id="t1", spec="Prior evidence", root_spec=task.spec, composed_input_source="operator_retry")
+    second, _ = _run(protocol, [validator], cache, completion, phase="pre_execute", workspace_mcp=workspace, git_mcp=git, task=retry)
+    assert not first[0].reused and not second[0].reused and completion.calls == 2
 
 def test_post_execute_tool_judge_keying_is_unchanged_by_spec(tmp_path):
     """A judgement about produced work is a judgement about the work.
