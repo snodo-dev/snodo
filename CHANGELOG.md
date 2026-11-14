@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Persist web dashboard project scan roots in an atomic `web.yml` file separate from `config.yml`. (Fixes #1168)
+
 - Show read-only Git delivery status for each plan integration branch in the dashboard. (Fixes #1167)
 
 - Add read-only dashboard flow metrics for landed tasks, cycle time, first-try rate, and active load. (Fixes #1166)
