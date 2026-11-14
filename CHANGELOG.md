@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Add read-only dashboard records and summaries for validator gate send-backs and task outcomes. (Fixes #1160)
+
 - Log tracebacks when validator isolation converts an exception to an error result, without changing the surfaced justification. (Fixes #1155)
 
 - Log tracebacks for single-shot and tool-loop LLM validator operational faults without changing the surfaced validation error. (Fixes #1154)
