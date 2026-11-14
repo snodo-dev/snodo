@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Document how to start and read the local web dashboard. (Fixes #1187)
 - Add `snodo dashboard --web` selection with persisted project roots while keeping the terminal dashboard as default. (Fixes #1183)
 - Add the static dashboard Gates view with validator findings, project retry outcomes, and gate records. (Fixes #1181)
 - Add the static dashboard Delivery view with landed-work trends and project flow metrics. (Fixes #1180)

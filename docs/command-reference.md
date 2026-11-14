@@ -259,7 +259,7 @@ are used as described above. See [CLI recon](decompose-and-recon.md#cli-recon).
 | `snodo agent memory` | `<agent_id>` |
 | `snodo agent reset` | `<agent_id>` |
 | `snodo agent rotate` | `<agent_id>` |
-| `snodo dashboard` | — |
+| `snodo dashboard` | `--web`, `--cli`, `--port`, `--root` |
 
 For a live job, the cloud live view at the configured cloud liveness/app URL
 with `?task_ref=<task_ref>` shows task status and progress when cloud sync is

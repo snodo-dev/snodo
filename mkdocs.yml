@@ -37,6 +37,7 @@ nav:
       - Quickstart: runbook.md
       - User configuration: configuration.md
       - Command reference: command-reference.md
+      - Web dashboard: web-dashboard.md
       - Coder backends: coders.md
       - scikit-learn demo: demo.md
       - Model providers:
