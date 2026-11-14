@@ -73,10 +73,10 @@ def classify_outcome(state: Any, audit_events: Any) -> TaskOutcome:
         situation = "blocked"
     elif recovery_id and status in ("completed", "finished"):
         situation = "warn_recovered"
-    elif isinstance(halt_value, Mapping):
-        situation = "blocked"
     elif status in ("completed", "finished") and exit_code == 0:
         situation = "success"
+    elif isinstance(halt_value, Mapping):
+        situation = "blocked"
     elif exit_code == 0 and status not in ("failed", "halted"):
         situation = "success"
     else:

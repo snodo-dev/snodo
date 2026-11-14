@@ -51,6 +51,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Include `snodo authorize <task id>` in every human-decision notification. (Fixes #1100)
 - Document validator findings and the authorize command in blocked and human-decision notifications. (Fixes #1098)
 - Include bounded validator justifications in blocked and human-decision notifications. (Fixes #1096)
+- Clarify that a finished exit-0 job is a success when a retry resolves an earlier halt, while failed and unmerged jobs retain the halt as the reason. (Fixes #1102)
+- Classify completed jobs with exit code 0 as Success (or Warn — recovered) despite a stale halt from an earlier attempt. (Fixes #1101)
 
 ## [0.28.3] — 2026-11-04
 

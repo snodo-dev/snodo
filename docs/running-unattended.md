@@ -145,8 +145,8 @@ for a true one-off with no related work.
 
 Plan and job vocabularies are different. Job status is `queued`, `running`,
 `completed`, `failed`, `cancelled`, or `unmerged`. Per-task plan status is `pending`,
-`in_progress`, `completed`, `blocked`, `errored`, or `unmerged`. A finished job
-is not necessarily a successful plan: inspect its `exit_code`, logs, and task
+`in_progress`, `completed`, `blocked`, `errored`, or `unmerged`. A finished job with exit code 0 is a success, even if an earlier task attempt halted; a retry that resolves the halt does not change that result. A job that fails or ends unmerged keeps its halt as the reason.
+A finished job is not necessarily a successful plan: inspect its `exit_code`, logs, and task
 statuses. `get_plan` can be read while a run is in progress as well as after.
 
 ## Keep the orchestration alive
