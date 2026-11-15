@@ -71,3 +71,20 @@ def test_unreadable_project_does_not_raise(tmp_path: Path, monkeypatch) -> None:
     result = project_now_tree(root, NOW)
     assert result["liveness"] == "no_recent_signal"
     assert result["plans"] == []
+
+
+def test_existing_project_with_only_old_activity_has_no_recent_signal(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    _plan(root, "old", {"a": "completed"}, [["a"]], NOW - 2 * 86400)
+    result = project_now_tree(root, NOW)
+    assert result["liveness"] == "no_recent_signal"
+    assert result["plans"] == []
+    assert result["last_activity"] is None
+
+
+def test_plans_are_ordered_by_most_recent_activity(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    _plan(root, "older", {"a": "completed"}, [["a"]], NOW - 7200)
+    _plan(root, "newer", {"b": "completed"}, [["b"]], NOW - 300)
+    result = project_now_tree(root, NOW)
+    assert [plan["name"] for plan in result["plans"]] == ["newer", "older"]
