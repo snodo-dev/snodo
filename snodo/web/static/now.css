@@ -150,6 +150,7 @@
 .now-task-panel-spec > :first-child { margin-top: 0; }
 .now-task-panel-spec p { margin: 0.75rem 0; line-height: 1.65; }
 .now-task-panel-spec strong { color: var(--accent); font-weight: 650; }
+.now-task-panel-spec .markdown-label { color: var(--accent); font-weight: 650; }
 .now-task-panel-spec ul, .now-task-panel-spec ol { margin: 0.75rem 0; padding-left: 1.5rem; }
 .now-task-panel-spec li { padding-left: 0.15rem; margin: 0.35rem 0; line-height: 1.55; }
 .now-task-panel-spec li::marker { color: var(--muted); }

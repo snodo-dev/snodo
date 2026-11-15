@@ -120,6 +120,7 @@ def test_now_spec_markdown_elements_are_typeset_with_theme_tokens() -> None:
         ".now-task-panel-spec h1",
         ".now-task-panel-spec p",
         ".now-task-panel-spec strong",
+        ".now-task-panel-spec .markdown-label",
         ".now-task-panel-spec ul",
         ".now-task-panel-spec ol",
         ".now-task-panel-spec code",
