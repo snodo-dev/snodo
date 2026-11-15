@@ -96,29 +96,32 @@ def create_app(projects: Iterable[Project]) -> Starlette:
     return app
 
 
-def _select_port(is_port_free: Callable[[int], bool], port: int | None = None) -> int:
-    """Return an available requested port, or the first of 20 default ports."""
-    if port is not None:
-        if not is_port_free(port):
-            raise RuntimeError(f"Port {port} is already in use")
-        return port
-    for candidate in range(55441, 55461):
-        if is_port_free(candidate):
-            return candidate
-    raise RuntimeError("No free dashboard port found in range 55441-55460")
+_RESERVED_PORT_RANGE = range(55441, 55461)
 
-
-def _port_is_free(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+def _bind_socket(port: int | None = None) -> socket.socket:
+    """Bind loopback at a requested port or an OS-assigned non-reserved port."""
+    attempts = 5 if port is None else 1
+    for _ in range(attempts):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            sock.bind(("127.0.0.1", port))
-        except OSError:
-            return False
-    return True
-
+            sock.bind(("127.0.0.1", port or 0))
+        except OSError as exc:
+            sock.close()
+            if port is not None:
+                raise RuntimeError(f"Port {port} is in use") from exc
+            raise
+        selected_port = sock.getsockname()[1]
+        if port is not None or selected_port not in _RESERVED_PORT_RANGE:
+            sock.listen(socket.SOMAXCONN)
+            return sock
+        sock.close()
+    raise RuntimeError("Could not obtain a dashboard port outside reserved range 55441-55460")
 
 def serve(projects: Iterable[Project], port: int | None = None) -> None:
-    """Run the dashboard on loopback, choosing a free default port if needed."""
-    selected_port = _select_port(_port_is_free, port)
+    """Run the dashboard on loopback using an OS-assigned port by default."""
+    sock = _bind_socket(port)
+    selected_port = sock.getsockname()[1]
     print(f"Serving Snodo dashboard at http://127.0.0.1:{selected_port}")
-    uvicorn.run(create_app(projects), host="127.0.0.1", port=selected_port)
+    config = uvicorn.Config(create_app(projects), host="127.0.0.1", port=selected_port)
+    server = uvicorn.Server(config)
+    server.run(sockets=[sock])

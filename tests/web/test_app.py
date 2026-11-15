@@ -54,15 +54,23 @@ def test_accepts_loopback_host(client, host):
     assert client.get("/api/projects", headers={"host": host}).status_code == 200
 
 
-def test_default_port_picks_first_free():
-    assert dashboard_app._select_port(lambda port: port >= 55444) == 55444
-
-
-def test_default_port_fails_when_all_taken():
-    with pytest.raises(RuntimeError, match="55441-55460"):
-        dashboard_app._select_port(lambda _port: False)
-
+def test_default_port_is_os_assigned_loopback_port():
+    sock = dashboard_app._bind_socket()
+    try:
+        port = sock.getsockname()[1]
+        assert port != 0
+        assert port not in range(55441, 55461)
+        assert sock.getsockname()[0] == "127.0.0.1"
+    finally:
+        sock.close()
 
 def test_explicit_taken_port_fails():
-    with pytest.raises(RuntimeError, match="55441.*in use"):
-        dashboard_app._select_port(lambda _port: False, 55441)
+    import socket
+
+    held = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    held.bind(("127.0.0.1", 0))
+    try:
+        with pytest.raises(RuntimeError, match="in use"):
+            dashboard_app._bind_socket(held.getsockname()[1])
+    finally:
+        held.close()
