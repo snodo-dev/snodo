@@ -19,7 +19,21 @@ root folders for a `.snodo/` directory. The selected roots are remembered in
 
 The dashboard has four views:
 
-- **Now** shows work running across projects and items waiting for you.
+- **Now** covers activity in the last 24 hours. Its header shows how old the
+  data is and provides a **Refetch** control. Six counters summarize **Active
+  projects**, **Plans / Queues**, **Waves**, **Tasks** (with a per-status
+  breakdown), **Recons**, and **Commits** over that window.
+
+  The **In flight** tree orders projects, then plans, waves, and tasks by last
+  activity. Completed waves are summarised as counts, and tasks outside a plan
+  appear in their own group. A project is described as **working**, **reporting
+  but not progressing**, or **no recent signal**; these are liveness summaries,
+  not task or plan states. Where the local files cannot support a figure, it is
+  shown as unavailable.
+
+  The local page deliberately differs from the cloud Now page: it sees only
+  this machine, has no project groups, and keeps a **Waiting on you** list for
+  plans not yet merged into `main` and uncommitted files.
 - **Delivery** shows landed tasks, typical time, first-try rate, and flow load.
 - **Gates** shows what validators sent back and whether the work landed.
 - **Plans** shows each plan, its progress, and whether it reached `main`.
