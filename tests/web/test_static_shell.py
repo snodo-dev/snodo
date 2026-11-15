@@ -89,7 +89,7 @@ def test_static_shell_has_first_render_loading_skeleton() -> None:
 
     assert "const rendered = new Set()" in html
     assert "const firstRender = !rendered.has(name)" in html
-    assert "if (firstRender) showSkeleton(container)" in html
+    assert "const skeleton = firstRender ? showSkeleton(container) : null" in html
     assert "rendered.add(name)" in html
     assert 'container.setAttribute("aria-busy", "true")' in html
     assert 'status.textContent = "Loading"' in html
@@ -123,3 +123,13 @@ def test_static_shell_failure_replaces_skeleton_with_existing_message() -> None:
     assert 'showMessage(container, "This view is unavailable.")' in html
     assert "container.replaceChildren(line)" in html
     assert 'container.removeAttribute("aria-busy")' in html
+
+
+def test_static_shell_removes_skeleton_when_view_appends_fetch_error() -> None:
+    html = SHELL.read_text(encoding="utf-8")
+    render_success = html.split("await render(container)", maxsplit=1)[1].split(
+        "markUpdated()", maxsplit=1
+    )[0]
+
+    assert "if (skeleton && skeleton.parentNode === container) skeleton.remove()" in render_success
+    assert "container.removeAttribute(\"aria-busy\")" in render_success

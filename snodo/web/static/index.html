@@ -183,13 +183,14 @@
         list.className = "skeleton-block skeleton-list";
         skeleton.append(status, heading, cards, list);
         container.replaceChildren(skeleton);
+        return skeleton;
       }
 
       async function refresh(name) {
         if (name !== active || document.hidden) return;
         const container = document.getElementById(`view-${name}`);
         const firstRender = !rendered.has(name);
-        if (firstRender) showSkeleton(container);
+        const skeleton = firstRender ? showSkeleton(container) : null;
         await markdownReady;
         await loadView(name);
         if (name !== active || document.hidden || failed.has(name)) return;
@@ -202,6 +203,7 @@
         }
         try {
           await render(container);
+          if (skeleton && skeleton.parentNode === container) skeleton.remove();
           rendered.add(name);
           container.removeAttribute("aria-busy");
           markUpdated();
