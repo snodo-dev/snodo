@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Read task ticket specs from live and archived project plans for the local Now view. (Fixes #1211)
 - Match the local Now In flight tree to the cloud view, including persistent expansion state. (Fixes #1210)
 - Tie the Now route response contract to the fields consumed by the static view, including every waiting-item variant. (Fixes #1208)
 - Align the local Now view with the cloud page’s 24-hour header, freshness control, and six activity counters while preserving the activity tree. (Fixes #1205)
