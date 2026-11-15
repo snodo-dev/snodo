@@ -112,3 +112,28 @@ def test_now_spec_progress_styles_use_theme_tokens_and_reduced_motion() -> None:
     assert ".now-task-panel-progress-fill" in css
     assert "var(--accent)" in css
     assert "@media (prefers-reduced-motion: reduce) { .now-task-panel-progress-fill { transition: none; } }" in css
+
+
+def test_now_spec_markdown_elements_are_typeset_with_theme_tokens() -> None:
+    css = STYLESHEET.read_text(encoding="utf-8")
+    for selector in (
+        ".now-task-panel-spec h1",
+        ".now-task-panel-spec p",
+        ".now-task-panel-spec strong",
+        ".now-task-panel-spec ul",
+        ".now-task-panel-spec ol",
+        ".now-task-panel-spec code",
+        ".now-task-panel-spec pre",
+        ".now-task-panel-spec blockquote",
+        ".now-task-panel-spec hr",
+        ".now-task-panel-spec a",
+    ):
+        assert selector in css
+    assert ".now-task-panel-spec > :first-child { margin-top: 0; }" in css
+    assert "overflow-wrap: anywhere" in css
+    assert ".now-task-panel-spec pre { max-width: 100%; overflow-x: auto;" in css
+    assert "var(--muted)" in css
+    assert "var(--accent)" in css
+    assert "var(--border)" in css
+    assert "var(--surface)" in css
+    assert "color-mix(in srgb" in css

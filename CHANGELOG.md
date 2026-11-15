@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Style rendered task specification Markdown in the Now panel for readable headings, prose, lists, code, quotes, rules, and links. (Fixes #1239)
 - Show an accessible, reduced-motion-aware task-spec progress bar that learns expected load time from recent loads. (Fixes #1238)
 - Run blocking dashboard data collection and task-spec reads in worker threads so slow views do not stall other requests. (Fixes #1236)
 - Keep the Now task tree full width until a task is selected, then restore its width when the panel closes. (Fixes #1235)

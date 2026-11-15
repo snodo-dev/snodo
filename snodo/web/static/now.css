@@ -146,9 +146,21 @@
 }
 
 .now-task-panel-spec { max-height: min(68vh, 52rem); overflow: auto; overscroll-behavior: contain; color: var(--text); }
-.now-task-panel-spec h1, .now-task-panel-spec h2, .now-task-panel-spec h3, .now-task-panel-spec h4 { color: var(--muted); }
-.now-task-panel-spec pre, .now-task-panel-plain { overflow: auto; padding: 0.75rem; border-radius: 0.45rem; background: color-mix(in srgb, var(--accent) 5%, var(--surface)); font-family: var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-.now-task-panel-spec code { font-family: var(--mono); }
+.now-task-panel-spec h1, .now-task-panel-spec h2, .now-task-panel-spec h3, .now-task-panel-spec h4 { margin: 1.5rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); color: var(--muted); font-family: var(--mono); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.now-task-panel-spec > :first-child { margin-top: 0; }
+.now-task-panel-spec p { margin: 0.75rem 0; line-height: 1.65; }
+.now-task-panel-spec strong { color: var(--accent); font-weight: 650; }
+.now-task-panel-spec ul, .now-task-panel-spec ol { margin: 0.75rem 0; padding-left: 1.5rem; }
+.now-task-panel-spec li { padding-left: 0.15rem; margin: 0.35rem 0; line-height: 1.55; }
+.now-task-panel-spec li::marker { color: var(--muted); }
+.now-task-panel-spec code { padding: 0.12em 0.32em; border-radius: 0.25rem; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); font-family: var(--mono); font-size: 0.9em; overflow-wrap: anywhere; }
+.now-task-panel-spec pre { max-width: 100%; overflow-x: auto; margin: 0.9rem 0; padding: 0.8rem; border-radius: 0.45rem; background: color-mix(in srgb, var(--accent) 5%, var(--surface)); font-family: var(--mono); font-size: 0.82rem; line-height: 1.55; }
+.now-task-panel-spec pre code { display: block; padding: 0; background: none; font-size: inherit; overflow-wrap: normal; }
+.now-task-panel-plain { overflow: auto; padding: 0.75rem; border-radius: 0.45rem; background: color-mix(in srgb, var(--accent) 5%, var(--surface)); font-family: var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.now-task-panel-spec blockquote { margin: 0.9rem 0; padding: 0.1rem 0 0.1rem 0.85rem; border-left: 2px solid var(--border); color: var(--muted); }
+.now-task-panel-spec blockquote > :first-child { margin-top: 0; }
+.now-task-panel-spec blockquote > :last-child { margin-bottom: 0; }
+.now-task-panel-spec hr { margin: 1.25rem 0; border: 0; border-top: 1px solid var(--border); }
 .now-task-panel-spec a { color: var(--accent); }
 .now-task-panel-message, .now-task-panel-loading, .now-task-panel-error { overflow-wrap: anywhere; }
 .now-task-panel-retry { padding: 0.35rem 0.6rem; border: 1px solid var(--border); border-radius: 0.45rem; background: var(--surface); color: var(--text); cursor: pointer; }
