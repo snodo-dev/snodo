@@ -8,6 +8,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Style the Gates view with responsive panels, visible percentage bar tracks, and distinct outcome pills for landed and pending records. (Fixes #1197)
+- Style the Delivery dashboard figures, responsive chart and project table for light and dark themes, with scaled bars in fixed-height tracks. (Fixes #1198)
+- Style the Plans dashboard filter, responsive table, progress bar, and delivery status pills for light and dark themes. (Fixes #1195)
+- Style the Now dashboard with responsive count tiles, project and task cards, status chips, and distinct waiting-item cards. (Fixes #1196)
+- Style the Gates dashboard with responsive panels, visible bar tracks, and distinct outcome pills. (Fixes #1193)
+- Style the shared dashboard shell and load optional per-view stylesheets. (Fixes #1194)
+- Style the Delivery dashboard figures, responsive chart and project table for light and dark themes. (Fixes #1191)
+
+- Bind the web dashboard to an OS-chosen loopback port outside the `snodo serve` reserved range. (Fixes #1192)
 - Package web dashboard assets and declare Starlette and Uvicorn dependencies. (Fixes #1188)
 - Document how to start and read the local web dashboard. (Fixes #1187)
 - Add `snodo dashboard --web` selection with persisted project roots while keeping the terminal dashboard as default. (Fixes #1183)

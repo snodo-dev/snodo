@@ -1,0 +1,127 @@
+/* Plans-specific presentation; colours come from the page shell. */
+.plans-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.plans-filter-select {
+  max-width: min(20rem, 75vw);
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+}
+
+.plans-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.plans-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.plans-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.plans-name {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.plans-project,
+.plans-updated {
+  color: var(--muted);
+}
+
+.plans-tasks,
+.plans-updated {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.plans-table progress {
+  display: block;
+  width: min(8rem, 100%);
+  height: 0.55rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: color-mix(in srgb, var(--muted) 18%, var(--surface));
+  color: var(--accent);
+}
+
+.plans-table progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 18%, var(--surface));
+}
+
+.plans-table progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.plans-table progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.plans-tag {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.plans-tag-running {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.plans-tag-main {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 16%, var(--surface));
+}
+
+.plans-tag-not-main {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 16%, var(--surface));
+}
+
+.plans-tag-no-branch {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 14%, var(--surface));
+}
+
+.plans-empty,
+.view-message {
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .plans-table {
+    min-width: 42rem;
+  }
+
+  .plans-table th,
+  .plans-table td {
+    padding: 0.55rem 0.5rem;
+    font-size: 0.85rem;
+  }
+}

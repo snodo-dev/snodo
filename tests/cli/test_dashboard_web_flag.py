@@ -71,3 +71,9 @@ def test_help_shows_mode_options():
     assert result.exit_code == 0
     assert "--web" in result.output
     assert "--cli" in result.output
+
+
+def test_help_describes_os_chosen_port_default():
+    result = runner.invoke(make_app(), ["--help"])
+    assert result.exit_code == 0
+    assert "OS-chosen free port" in result.output

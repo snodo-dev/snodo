@@ -15,7 +15,7 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def dashboard(
         web: bool = typer.Option(False, "--web/--cli", help="Launch the local web dashboard"),
-        port: int | None = typer.Option(None, "--port", help="Web dashboard port"),
+        port: int | None = typer.Option(None, "--port", help="Web dashboard port (default: OS-chosen free port)"),
         root: list[Path] | None = typer.Option(None, "--root", help="Project scan root (repeatable)"),
     ) -> None:
         """Launch the terminal dashboard, or the local web dashboard with --web."""

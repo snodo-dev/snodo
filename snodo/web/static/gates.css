@@ -1,0 +1,134 @@
+/* Gates-specific layout; colours come from the page shell. */
+.gates-summary {
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+
+.gates-windows {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.gates-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+
+.gates-panel {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.gates-panel h2 {
+  margin-bottom: 0.85rem;
+}
+
+.gates-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(3rem, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2rem;
+}
+
+.gates-bar-row > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gates-track {
+  display: block;
+  width: 100%;
+  height: 0.55rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.gates-bar {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.gates-bar-row strong,
+.gates-counts > strong {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.gates-counts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: center;
+  align-items: baseline;
+  column-gap: 0.75rem;
+  row-gap: 0.25rem;
+}
+
+.gates-counts > strong {
+  color: var(--accent);
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  line-height: 1.1;
+}
+
+.gates-counts > span {
+  color: var(--muted);
+}
+
+.gates-empty {
+  color: var(--muted);
+}
+
+.gates-records {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gates-records td {
+  overflow-wrap: anywhere;
+}
+
+.gates-records tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.gates-outcome-landed,
+.gates-outcome-pending {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.gates-outcome-landed {
+  border-color: color-mix(in srgb, var(--green) 35%, var(--surface));
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 12%, var(--surface));
+}
+
+.gates-outcome-pending {
+  border-color: color-mix(in srgb, var(--amber) 35%, var(--surface));
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 12%, var(--surface));
+}
+
+@media (max-width: 620px) {
+  .gates-records th,
+  .gates-records td {
+    padding: 0.55rem 0.4rem;
+    font-size: 0.85rem;
+  }
+}

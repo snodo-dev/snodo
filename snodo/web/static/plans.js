@@ -25,8 +25,8 @@
       : plans.filter((plan) => plan.project === selectedProject);
 
     if (projects.length > 1) {
-      const label = element("label", "Project ");
-      const filter = element("select");
+      const label = element("label", "Project ", "plans-filter");
+      const filter = element("select", undefined, "plans-filter-select");
       filter.setAttribute("aria-label", "Filter plans by project");
       const allOption = element("option", "All projects");
       allOption.value = "all";
@@ -62,15 +62,15 @@
     const tbody = element("tbody");
     for (const plan of visiblePlans) {
       const row = element("tr");
-      const name = element("span", plan.name || "");
+      const name = element("span", plan.name || "", "plans-name");
       if (plan.intent) name.title = plan.intent;
       const nameCell = element("td");
       nameCell.append(name);
       row.append(nameCell);
-      row.append(element("td", plan.project || ""));
+      row.append(element("td", plan.project || "", "plans-project"));
       const total = Math.max(0, Number(plan.tasks_total) || 0);
       const completed = Math.max(0, Number(plan.tasks_completed) || 0);
-      row.append(element("td", `${completed} / ${total}`));
+      row.append(element("td", `${completed} / ${total}`, "plans-tasks"));
       const progressCell = element("td");
       const progress = element("progress");
       progress.max = total || 1;
@@ -97,11 +97,13 @@
       }
       deliveryCell.append(element("span", delivery, `plans-tag ${deliveryClass}`));
       row.append(deliveryCell);
-      row.append(element("td", updatedDate(plan.updated_at)));
+      row.append(element("td", updatedDate(plan.updated_at), "plans-updated"));
       tbody.append(row);
     }
     table.append(tbody);
-    fragment.append(table);
+    const tableWrap = element("div", undefined, "plans-table-wrap");
+    tableWrap.append(table);
+    fragment.append(tableWrap);
     return fragment;
   }
 

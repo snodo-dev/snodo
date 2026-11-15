@@ -28,5 +28,6 @@ Figures come from files Snodo already writes in each project's `.snodo/`
 folder and from Git. When the records cannot support a figure, it appears as
 “n/a”. The dashboard does not add new project records.
 
-Use `--port` to choose the web server port. The terminal dashboard remains
-available with the `--cli` option on `snodo dashboard`.
+Use `--port` to choose the web server port; by default, the OS chooses a free
+port outside the reserved `snodo serve` range 55441-55460. The terminal
+dashboard remains available with the `--cli` option on `snodo dashboard`.
