@@ -15,6 +15,17 @@ def test_static_shell_has_views_and_hash_navigation() -> None:
     assert 'script.src = `/static/${name}.js`' in html
 
 
+def test_static_shell_preloads_markdown_before_rendering_views() -> None:
+    html = SHELL.read_text(encoding="utf-8")
+
+    assert 'script.src = "/static/markdown.js"' in html
+    assert "const markdownReady = new Promise" in html
+    assert html.index('script.src = "/static/markdown.js"') < html.index("await markdownReady")
+    assert html.index("await markdownReady") < html.index("await render(container)")
+    assert "script.onload = resolve" in html
+    assert "script.onerror = resolve" in html
+
+
 def test_static_shell_has_themes_and_view_contract() -> None:
     html = SHELL.read_text(encoding="utf-8")
 

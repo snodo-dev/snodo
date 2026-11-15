@@ -185,6 +185,14 @@
       let active = "";
       let refreshTimer;
 
+      const markdownReady = new Promise((resolve) => {
+        const script = document.createElement("script");
+        script.src = "/static/markdown.js";
+        script.onload = resolve;
+        script.onerror = resolve;
+        document.head.append(script);
+      });
+
       function showMessage(container, message) {
         const line = document.createElement("p");
         line.className = "view-message";
@@ -219,6 +227,7 @@
       async function refresh(name) {
         if (name !== active || document.hidden) return;
         const container = document.getElementById(`view-${name}`);
+        await markdownReady;
         await loadView(name);
         if (name !== active || document.hidden || failed.has(name)) return;
         const render = window.snodoViews && window.snodoViews[name];
