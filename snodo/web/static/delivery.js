@@ -79,10 +79,12 @@
     for (const day of byDay) {
       const column = element("div", undefined, "delivery-day");
       column.append(element("span", day.landed === null || day.landed === undefined ? "n/a" : String(day.landed), "delivery-day-count"));
+      const track = element("div", undefined, "delivery-track");
       const bar = element("div", undefined, "delivery-bar");
       bar.style.height = `${Math.max(2, (Number(day.landed) || 0) / maximum * 100)}%`;
       bar.setAttribute("aria-label", `${day.date}: ${day.landed}`);
-      column.append(bar, element("span", day.date || "", "delivery-day-date"));
+      track.append(bar);
+      column.append(track, element("span", day.date || "", "delivery-day-date"));
       chart.append(column);
     }
     fragment.append(chart);

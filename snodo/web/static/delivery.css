@@ -1,0 +1,120 @@
+/* Delivery-specific layout; colours come from the page shell. */
+.delivery-summary {
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+
+.delivery-windows {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.delivery-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+
+.delivery-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.delivery-figure strong {
+  color: var(--text);
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.delivery-figure span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.delivery-chart {
+  display: grid;
+  grid-auto-columns: minmax(2.5rem, 1fr);
+  grid-auto-flow: column;
+  align-items: end;
+  gap: clamp(0.2rem, 1.5vw, 0.75rem);
+  overflow-x: auto;
+  min-height: 12rem;
+  padding: 0.75rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.delivery-day {
+  display: grid;
+  grid-template-rows: auto 8rem auto;
+  align-items: end;
+  gap: 0.35rem;
+  min-width: 0;
+  text-align: center;
+}
+
+.delivery-day-count,
+.delivery-day-date {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.delivery-track {
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.delivery-bar {
+  width: min(1.5rem, 70%);
+  min-height: 2px;
+  border-radius: 0.35rem 0.35rem 0 0;
+  background: var(--accent);
+}
+
+.delivery-projects {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.delivery-projects th,
+.delivery-projects td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.delivery-projects th:not(:first-child),
+.delivery-projects td:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.delivery-projects tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+@media (max-width: 560px) {
+  .delivery-chart {
+    grid-auto-columns: minmax(2.25rem, 1fr);
+  }
+
+  .delivery-projects th,
+  .delivery-projects td {
+    padding: 0.55rem 0.4rem;
+    font-size: 0.85rem;
+  }
+}

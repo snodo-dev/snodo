@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Style the Delivery dashboard figures, responsive chart and project table for light and dark themes. (Fixes #1191)
 - Package web dashboard assets and declare Starlette and Uvicorn dependencies. (Fixes #1188)
 - Document how to start and read the local web dashboard. (Fixes #1187)
 - Add `snodo dashboard --web` selection with persisted project roots while keeping the terminal dashboard as default. (Fixes #1183)
