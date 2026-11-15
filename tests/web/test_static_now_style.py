@@ -61,3 +61,12 @@ def test_now_plan_rows_hide_bar_and_summary_on_narrow_screens() -> None:
     assert "@media (max-width: 640px)" in css
     assert ".now-wave-segments, .now-plan-summary { display:none; }" in css
     assert ".now-plan-title .now-expand { grid-template-columns:1rem minmax(0,1fr) auto; }" in css
+
+
+def test_now_task_rows_stay_single_line_and_respect_reduced_motion() -> None:
+    css = STYLESHEET.read_text(encoding="utf-8")
+    assert "white-space:nowrap" in css
+    assert "[aria-selected=\"true\"]" in css
+    assert "@media (prefers-reduced-motion:reduce) { .now-task-icon-running" in css
+    assert "@media (max-width:640px)" in css
+    assert ".now-task-button .now-elapsed { display:none; }" in css

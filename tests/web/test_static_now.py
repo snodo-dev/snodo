@@ -101,8 +101,8 @@ def test_now_selected_task_survives_rerender() -> None:
 
 def test_now_selected_row_has_accessible_selection_state() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
-    assert 'button.setAttribute("aria-expanded", String(selectedTaskKey === key))' in source
-    assert 'button.setAttribute("aria-pressed", String(selectedTaskKey === key))' in source
+    assert 'button.setAttribute("role", "option")' in source
+    assert 'button.setAttribute("aria-selected", String(selectedTaskKey === key))' in source
 
 
 def test_now_panel_focuses_on_open_and_returns_to_row_on_close() -> None:
@@ -207,3 +207,13 @@ def test_now_plan_state_selection_uses_pending_for_mixed_inactive_tasks() -> Non
     assert 'completed && String(task.status).toLowerCase() === "completed"' in source
     assert ': true' not in source[source.index("const stateTask ="):source.index("const planState =")]
     assert 'const planState = stateTask ? stateTask.status : "pending"' in source
+
+
+def test_now_wave_and_task_rows_use_compact_list_markup() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'element("span", "Wave", "now-wave-kicker")' in source
+    assert '`${group.total ?? tasks.length} tasks · ${statusSummary}`' in source
+    assert 'taskList.setAttribute("role", "listbox")' in source
+    assert 'id.title = task.task_id' in source
+    assert 'now-task-icon-${iconStatus}' in source
+    assert 'task.elapsed_seconds == null ? "—"' in source

@@ -58,11 +58,22 @@
     if (selectedTaskKey === key) selectedTaskDetails = { task, context, key };
     const button = element("button", undefined, `now-task-button${selectedTaskKey === key ? " now-task-selected" : ""}`);
     button.type = "button";
-    button.setAttribute("aria-expanded", String(selectedTaskKey === key));
-    button.setAttribute("aria-pressed", String(selectedTaskKey === key));
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", String(selectedTaskKey === key));
     button.dataset.taskKey = key;
-    button.append(element("span", task.status === "blocked" || task.status === "errored" ? "!" : task.status === "completed" ? "✓" : "•", "now-task-mark"));
-    button.append(element("span", task.task_id, "now-task-id"));
+    const normalizedStatus = String(task.status || "pending").toLowerCase().replace(/[ _]+/g, "-");
+    const failed = ["failed", "blocked", "errored"].includes(normalizedStatus);
+    const running = ["running", "in-progress"].includes(normalizedStatus);
+    const iconStatus = task.status === "completed" ? "completed" : failed ? "failed" : running ? "running" : "pending";
+    button.append(element("span", task.status === "completed" ? "✓" : failed ? "×" : "", `now-task-mark now-task-icon-${iconStatus}`));
+    const id = element("span", undefined, "now-task-id");
+    id.title = task.task_id;
+    const separator = task.task_id.indexOf("_");
+    if (separator >= 0) {
+      id.append(element("span", task.task_id.slice(0, separator + 1), "now-task-id-prefix"));
+      id.append(document.createTextNode(task.task_id.slice(separator + 1)));
+    } else id.textContent = task.task_id;
+    button.append(id);
     const jobId = task.job && task.job.job_id; // Reads task.job.job_id from the API contract.
     if (jobId) button.dataset.jobId = jobId;
     button.append(element("span", task.status, `now-status ${statusClass(task.status)}`));
@@ -283,13 +294,17 @@
         for (const [waveIndex, group] of groups.entries()) {
           const tasks = group.tasks || [];
           const counts = group.status_counts || {};
-          const summary = Object.entries(counts).filter(([, count]) => count).map(([status, count]) => `${count} ${status}`).join(", ");
+          const statusSummary = Object.entries(counts).filter(([, count]) => count).map(([status, count]) => `${count} ${status}`).join(", ") || "0 completed";
           const allCompleted = tasks.length > 0 && tasks.every((task) => task.status === "completed");
           const waveItem = element("li", undefined, "now-wave");
-          const waveRow = expandableRow(element("span", `Wave ${waveIndex + 1}`, "now-wave-name"), `${planKey}:wave:${group.id || waveIndex}`, !allCompleted, "now-wave-title");
-          waveRow.button.append(element("span", `${group.total ?? tasks.length} tasks${summary ? ` — ${summary}` : ""}`, "now-wave-summary"));
+          const waveLabel = element("span", undefined, "now-wave-label");
+          waveLabel.append(element("span", "Wave", "now-wave-kicker"), element("span", String(waveIndex + 1), "now-wave-number"));
+          const waveRow = expandableRow(waveLabel, `${planKey}:wave:${group.id || waveIndex}`, !allCompleted, "now-wave-title");
+          waveRow.button.append(element("span", `${group.total ?? tasks.length} tasks · ${statusSummary}`, "now-wave-summary"));
           waveItem.append(waveRow.row);
           const taskList = element("ul", undefined, "now-tasks now-tree-children");
+          taskList.setAttribute("role", "listbox");
+          taskList.setAttribute("aria-label", `Wave ${waveIndex + 1} tasks`);
           taskList.hidden = !waveRow.expanded;
           for (const task of tasks) taskList.append(taskRow(task, { project: project.name, plan: plan.name, wave: waveIndex + 1 }));
           waveItem.append(taskList);
