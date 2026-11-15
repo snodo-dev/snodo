@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 - Style the Gates dashboard with responsive panels, visible bar tracks, and distinct outcome pills. (Fixes #1193)
+- Style the shared dashboard shell and load optional per-view stylesheets. (Fixes #1194)
 - Style the Delivery dashboard figures, responsive chart and project table for light and dark themes. (Fixes #1191)
 
 - Bind the web dashboard to an OS-chosen loopback port outside the `snodo serve` reserved range. (Fixes #1192)
