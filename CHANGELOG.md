@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Document the Now task spec API route and the task detail panel, including its Markdown rendering and missing-spec behavior. (Fixes #1219)
 - Render the selected task ticket spec as Markdown in the Now side panel, with safe fallback, retry, and per-task refresh caching. (Fixes #1218)
 - Open a responsive Now task detail panel from In flight rows and preserve its selection across refreshes. (Fixes #1217)
 - Preload the shared Markdown renderer before dashboard views render, without blocking views if it fails. (Fixes #1216)

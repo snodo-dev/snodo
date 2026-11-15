@@ -38,6 +38,13 @@ The dashboard has four views:
 - **Gates** shows what validators sent back and whether the work landed.
 - **Plans** shows each plan, its progress, and whether it reached `main`.
 
+The read-only `GET /api/now/spec` route takes the query values `project`,
+`plan`, and `task`. It returns JSON with `project`, `plan`, `task`, and
+`markdown` keys. A missing value returns **400**; an unknown project, plan or
+task, or a name that is not a plain name, returns **404**. The project is
+selected by name from the dashboard's own project list, so the browser never
+supplies a filesystem path.
+
 Figures come from files Snodo already writes in each project's `.snodo/`
 folder and from Git. When the records cannot support a figure, it appears as
 “n/a”. The dashboard does not add new project records.
