@@ -34,3 +34,14 @@ def test_now_script_uses_safe_dom_apis() -> None:
     script = SCRIPT.read_text(encoding="utf-8")
     assert "innerHTML" not in script
     assert "insertAdjacentHTML" not in script
+
+
+def test_every_emitted_now_class_has_a_css_rule() -> None:
+    script = SCRIPT.read_text(encoding="utf-8")
+    css = STYLESHEET.read_text(encoding="utf-8")
+    emitted = set(re.findall(r'"(now-[a-z-]+)"', script))
+    emitted.update(re.findall(r'"(now-[a-z-]+) ', script))
+    emitted.update(re.findall(r'"(now-[a-z-]+)"', script))
+    emitted.update({"now-task-button", "now-task-panel", "now-task-panel-header", "now-task-panel-id", "now-task-panel-close", "now-task-panel-location", "now-task-panel-job", "now-task-panel-elapsed", "now-task-panel-loading", "now-task-selected", "now-flight-layout"})
+    rules = set(re.findall(r"\.([a-z][a-z0-9-]*)", css))
+    assert emitted <= rules

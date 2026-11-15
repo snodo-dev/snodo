@@ -27,6 +27,10 @@
   }
 
   const expandedRows = new Map();
+  let selectedTaskKey = null;
+  let selectedTaskDetails = null;
+  let currentData = null;
+  let currentContainer = null;
 
   function expandableRow(label, key, defaultExpanded, className = "now-tree-row") {
     const row = element("div", undefined, className);
@@ -47,18 +51,33 @@
     return { row, button, expanded };
   }
 
-  function taskRow(task) {
+  function taskRow(task, context) {
     const row = element("li", undefined, `now-task ${statusClass(task.status)}`);
-    row.append(element("span", task.status === "blocked" || task.status === "errored" ? "!" : task.status === "completed" ? "✓" : "•", "now-task-mark"));
-    row.append(element("span", task.task_id, "now-task-id"));
+    const key = `${context.project}:${task.task_id}`;
+    if (selectedTaskKey === key) selectedTaskDetails = { task, context, key };
+    const button = element("button", undefined, `now-task-button${selectedTaskKey === key ? " now-task-selected" : ""}`);
+    button.type = "button";
+    button.setAttribute("aria-expanded", String(selectedTaskKey === key));
+    button.setAttribute("aria-pressed", String(selectedTaskKey === key));
+    button.dataset.taskKey = key;
+    button.append(element("span", task.status === "blocked" || task.status === "errored" ? "!" : task.status === "completed" ? "✓" : "•", "now-task-mark"));
+    button.append(element("span", task.task_id, "now-task-id"));
     const jobId = task.job && task.job.job_id;
-    if (jobId) row.dataset.jobId = jobId;
-    row.append(element("span", task.status, `now-status ${statusClass(task.status)}`));
-    row.append(element("span", task.elapsed_seconds == null ? "—" : elapsed(task.elapsed_seconds), "now-elapsed"));
+    if (jobId) button.dataset.jobId = jobId;
+    button.append(element("span", task.status, `now-status ${statusClass(task.status)}`));
+    button.append(element("span", task.elapsed_seconds == null ? "—" : elapsed(task.elapsed_seconds), "now-elapsed"));
+    button.addEventListener("click", () => {
+      selectedTaskKey = key;
+      currentContainer.replaceChildren(render(currentData, currentContainer));
+      const close = currentContainer.querySelector(".now-task-panel-close");
+      if (close) close.focus();
+    });
+    row.append(button);
     return row;
   }
 
-  function render(data) {
+  function render(data, container) {
+    selectedTaskDetails = null;
     const fragment = document.createDocumentFragment();
     const counters = data.counters || {};
     const projects = Array.isArray(data.projects) ? data.projects : [];
@@ -156,7 +175,7 @@
           waveItem.append(waveRow.row);
           const taskList = element("ul", undefined, "now-tasks now-tree-children");
           taskList.hidden = !waveRow.expanded;
-          for (const task of tasks) taskList.append(taskRow(task));
+          for (const task of tasks) taskList.append(taskRow(task, { project: project.name, plan: plan.name, wave: waveIndex + 1 }));
           waveItem.append(taskList);
           waveList.append(waveItem);
         }
@@ -173,14 +192,45 @@
         outsideItem.append(outsideRow.row);
         const outsideTasks = element("ul", undefined, "now-tasks now-tree-children");
         outsideTasks.hidden = !outsideRow.expanded;
-        for (const task of outside) outsideTasks.append(taskRow(task));
+        for (const task of outside) outsideTasks.append(taskRow(task, { project: project.name, plan: "Outside a plan", wave: null }));
         outsideItem.append(outsideTasks);
         children.append(outsideItem);
       }
       projectItem.append(children);
       flight.append(projectItem);
     }
-    fragment.append(flight);
+    const flightLayout = element("div", undefined, "now-flight-layout");
+    flightLayout.append(flight);
+    if (selectedTaskKey && !selectedTaskDetails) selectedTaskKey = null;
+    if (selectedTaskDetails) {
+      const { task, context, key } = selectedTaskDetails;
+      const panel = element("aside", undefined, "now-task-panel");
+      panel.setAttribute("role", "complementary");
+      panel.setAttribute("aria-label", `Task ${task.task_id} details`);
+      panel.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeButton.click();
+      });
+      const panelHeader = element("div", undefined, "now-task-panel-header");
+      panelHeader.append(element("h3", task.task_id, "now-task-panel-id"));
+      const closeButton = element("button", "Close", "now-task-panel-close");
+      closeButton.type = "button";
+      closeButton.addEventListener("click", () => {
+        selectedTaskKey = null;
+        currentContainer.replaceChildren(render(currentData, currentContainer));
+        const row = currentContainer.querySelector(`[data-task-key="${CSS.escape(key)}"]`);
+        if (row) row.focus();
+      });
+      panelHeader.append(closeButton);
+      panel.append(panelHeader);
+      panel.append(element("p", task.status, `now-status ${statusClass(task.status)}`));
+      panel.append(element("p", context.plan === "Outside a plan" ? "Outside a plan" : `${context.plan} · Wave ${context.wave}`, "now-task-panel-location"));
+      const jobId = task.job && task.job.job_id;
+      if (jobId) panel.append(element("p", jobId, "now-task-panel-job"));
+      if (task.elapsed_seconds != null) panel.append(element("p", elapsed(task.elapsed_seconds), "now-task-panel-elapsed"));
+      panel.append(element("p", "Spec is loading.", "now-task-panel-loading"));
+      flightLayout.append(panel);
+    }
+    fragment.append(flightLayout);
 
     fragment.append(element("h2", "Waiting on you"));
     const waitingList = element("ul", undefined, "now-waiting");
@@ -208,7 +258,9 @@
       const response = await fetch("/api/now");
       if (!response.ok) throw new Error("Request failed");
       const data = await response.json();
-      const content = render(data);
+      currentData = data;
+      currentContainer = container;
+      const content = render(data, container);
       const notice = container.querySelector("[data-now-error]");
       container.replaceChildren(content);
       if (notice) notice.remove();

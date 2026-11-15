@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Open a responsive Now task detail panel from In flight rows and preserve its selection across refreshes. (Fixes #1217)
 - Preload the shared Markdown renderer before dashboard views render, without blocking views if it fails. (Fixes #1216)
 - Serve task specifications through a read-only local dashboard API route. (Fixes #1214)
 - Render task specs as safe Markdown in the local dashboard. (Fixes #1212)

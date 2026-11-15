@@ -62,3 +62,48 @@ def test_now_tree_expansion_defaults_and_refresh_state() -> None:
     assert 'tasks.every((task) => task.status === "completed")' in source
     assert '!allCompleted' in source
     assert '`${key}:outside`, false' in source
+
+
+def test_now_task_rows_are_buttons() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'element("button", undefined, `now-task-button' in source
+
+
+def test_now_task_click_opens_accessible_panel() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'button.addEventListener("click"' in source
+    assert 'element("aside", undefined, "now-task-panel")' in source
+    assert 'panel.setAttribute("role", "complementary")' in source
+    assert 'panel.setAttribute("aria-label"' in source
+
+
+def test_now_task_panel_header_includes_details() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    for detail in ("task.task_id", "task.status", "context.plan", "context.wave", "task.job && task.job.job_id"):
+        assert detail in source
+
+
+def test_now_task_panel_can_close_by_button_and_escape() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'element("button", "Close", "now-task-panel-close")' in source
+    assert 'event.key === "Escape"' in source
+
+
+def test_now_selected_task_survives_rerender() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "let selectedTaskKey = null" in source
+    assert "selectedTaskKey === key" in source
+    assert "if (selectedTaskKey && !selectedTaskDetails) selectedTaskKey = null" in source
+    assert "currentContainer.replaceChildren(render(currentData, currentContainer))" in source
+
+
+def test_now_selected_row_has_accessible_selection_state() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'button.setAttribute("aria-expanded", String(selectedTaskKey === key))' in source
+    assert 'button.setAttribute("aria-pressed", String(selectedTaskKey === key))' in source
+
+
+def test_now_panel_focuses_on_open_and_returns_to_row_on_close() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "close.focus()" in source
+    assert "row.focus()" in source
