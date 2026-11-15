@@ -107,3 +107,35 @@ def test_now_panel_focuses_on_open_and_returns_to_row_on_close() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
     assert "close.focus()" in source
     assert "row.focus()" in source
+
+
+def test_now_task_spec_fetch_encodes_query_values() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'fetch(url)' in source
+    assert '`/api/now/spec?project=${encodeURIComponent(context.project)}&plan=${encodeURIComponent(context.plan)}&task=${encodeURIComponent(task.task_id)}`' in source
+
+
+def test_now_task_spec_uses_renderer_and_preformatted_fallback() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'window.snodoMarkdown.render(markdown)' in source
+    assert 'element("pre", undefined, "now-task-panel-plain")' in source
+    assert 'pre.textContent = markdown' in source
+
+
+def test_now_task_spec_messages_and_retry_are_present() -> None:
+    source = SCRIPT.read_text(encoding="utf-8").replace("…", "…")
+    for message in ("Loading spec…", "No spec on this machine for this task.", "This task ran outside a plan and has no spec.", "The spec could not be loaded.", 'element("button", "Retry"'):
+        assert message in source
+
+
+def test_now_task_spec_ignores_late_response_after_switch() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'selectedTaskKey !== key || !body.isConnected' in source
+
+
+def test_now_task_spec_cache_survives_refresh() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'const specCache = new Map()' in source
+    assert 'let entry = specCache.get(key)' in source
+    assert 'if (entry && !retry)' in source
+    assert 'specCache.set(key, entry)' in source

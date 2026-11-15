@@ -45,3 +45,11 @@ def test_every_emitted_now_class_has_a_css_rule() -> None:
     emitted.update({"now-task-button", "now-task-panel", "now-task-panel-header", "now-task-panel-id", "now-task-panel-close", "now-task-panel-location", "now-task-panel-job", "now-task-panel-elapsed", "now-task-panel-loading", "now-task-selected", "now-flight-layout"})
     rules = set(re.findall(r"\.([a-z][a-z0-9-]*)", css))
     assert emitted <= rules
+
+
+def test_now_task_spec_styles_use_dashboard_tokens_and_scroll() -> None:
+    css = STYLESHEET.read_text(encoding="utf-8")
+    assert ".now-task-panel-spec" in css
+    assert "overflow: auto" in css
+    assert "var(--mono)" in css
+    assert "var(--muted)" in css

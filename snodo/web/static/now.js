@@ -31,6 +31,7 @@
   let selectedTaskDetails = null;
   let currentData = null;
   let currentContainer = null;
+  const specCache = new Map();
 
   function expandableRow(label, key, defaultExpanded, className = "now-tree-row") {
     const row = element("div", undefined, className);
@@ -74,6 +75,66 @@
     });
     row.append(button);
     return row;
+  }
+
+  function showSpecMessage(body, message, className = "now-task-panel-message") {
+    body.replaceChildren(element("p", message, className));
+  }
+
+  function renderSpec(body, markdown) {
+    body.replaceChildren();
+    if (window.snodoMarkdown && typeof window.snodoMarkdown.render === "function") {
+      body.append(window.snodoMarkdown.render(markdown));
+    } else {
+      const pre = element("pre", undefined, "now-task-panel-plain");
+      pre.textContent = markdown;
+      body.append(pre);
+    }
+  }
+
+  function loadSpec(body, task, context, key, retry = false) {
+    if (context.plan === "Outside a plan") {
+      showSpecMessage(body, "This task ran outside a plan and has no spec.");
+      return;
+    }
+    let entry = specCache.get(key);
+    if (entry && !retry) {
+      if (entry.state === "loaded") renderSpec(body, entry.markdown);
+      else if (entry.state === "missing") showSpecMessage(body, "No spec on this machine for this task.");
+      else if (entry.state === "failed") showRetry(body, task, context, key);
+      else showSpecMessage(body, "Loading spec…", "now-task-panel-loading");
+      return;
+    }
+    entry = { state: "loading", scrollTop: body.scrollTop };
+    specCache.set(key, entry);
+    showSpecMessage(body, "Loading spec…", "now-task-panel-loading");
+    const url = `/api/now/spec?project=${encodeURIComponent(context.project)}&plan=${encodeURIComponent(context.plan)}&task=${encodeURIComponent(task.task_id)}`;
+    fetch(url).then((response) => {
+      if (response.status === 404) return { missing: true };
+      if (!response.ok) throw new Error("Spec request failed");
+      return response.json();
+    }).then((result) => {
+      if (specCache.get(key) !== entry) return;
+      if (result.missing) entry.state = "missing";
+      else { entry.state = "loaded"; entry.markdown = result.markdown; }
+      if (selectedTaskKey !== key || !body.isConnected) return;
+      if (entry.state === "missing") showSpecMessage(body, "No spec on this machine for this task.");
+      else renderSpec(body, entry.markdown);
+      body.scrollTop = entry.scrollTop;
+    }).catch(() => {
+      if (specCache.get(key) !== entry) return;
+      entry.state = "failed";
+      if (selectedTaskKey === key && body.isConnected) showRetry(body, task, context, key);
+    });
+  }
+
+  function showRetry(body, task, context, key) {
+    body.replaceChildren();
+    body.append(element("p", "The spec could not be loaded.", "now-task-panel-error"));
+    const retry = element("button", "Retry", "now-task-panel-retry");
+    retry.type = "button";
+    retry.addEventListener("click", () => loadSpec(body, task, context, key, true));
+    body.append(retry);
   }
 
   function render(data, container) {
@@ -227,7 +288,15 @@
       const jobId = task.job && task.job.job_id;
       if (jobId) panel.append(element("p", jobId, "now-task-panel-job"));
       if (task.elapsed_seconds != null) panel.append(element("p", elapsed(task.elapsed_seconds), "now-task-panel-elapsed"));
-      panel.append(element("p", "Spec is loading.", "now-task-panel-loading"));
+      const specBody = element("div", undefined, "now-task-panel-spec");
+      const cachedSpec = specCache.get(key);
+      if (cachedSpec) specBody.scrollTop = cachedSpec.scrollTop || 0;
+      specBody.addEventListener("scroll", () => {
+        const entry = specCache.get(key);
+        if (entry) entry.scrollTop = specBody.scrollTop;
+      });
+      panel.append(specBody);
+      loadSpec(specBody, task, context, key);
       flightLayout.append(panel);
     }
     fragment.append(flightLayout);

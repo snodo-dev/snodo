@@ -130,3 +130,11 @@
   .now-task-button { grid-template-columns: 1rem minmax(3rem, 1fr) auto; }
   .now-task-button .now-elapsed { grid-column: 2 / -1; }
 }
+
+.now-task-panel-spec { max-height: min(60vh, 42rem); overflow: auto; overscroll-behavior: contain; color: var(--text); }
+.now-task-panel-spec h1, .now-task-panel-spec h2, .now-task-panel-spec h3, .now-task-panel-spec h4 { color: var(--muted); }
+.now-task-panel-spec pre, .now-task-panel-plain { overflow: auto; padding: 0.75rem; border-radius: 0.45rem; background: color-mix(in srgb, var(--accent) 5%, var(--surface)); font-family: var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.now-task-panel-spec code { font-family: var(--mono); }
+.now-task-panel-spec a { color: var(--accent); }
+.now-task-panel-message, .now-task-panel-loading, .now-task-panel-error { overflow-wrap: anywhere; }
+.now-task-panel-retry { padding: 0.35rem 0.6rem; border: 1px solid var(--border); border-radius: 0.45rem; background: var(--surface); color: var(--text); cursor: pointer; }
