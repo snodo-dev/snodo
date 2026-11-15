@@ -95,3 +95,12 @@ def test_now_flight_layout_transitions_from_full_width_and_respects_reduced_moti
     assert ".now-flight-layout-open { grid-template-columns: minmax(0, 1fr) minmax(19rem, 26.5rem); }" in css
     assert "@media (prefers-reduced-motion: reduce) { .now-flight-layout { transition: none; } }" in css
     assert "transition: grid-template-columns 180ms ease" in css
+
+
+def test_now_layout_transition_respects_reduced_motion() -> None:
+    css = STYLESHEET.read_text(encoding="utf-8")
+
+    assert ".now-flight-layout { display: grid; grid-template-columns: minmax(0, 1fr);" in css
+    assert ".now-flight-layout-open { grid-template-columns: minmax(0, 1fr) minmax(19rem, 26.5rem); }" in css
+    assert "transition: grid-template-columns 180ms ease" in css
+    assert "@media (prefers-reduced-motion: reduce) { .now-flight-layout { transition: none; } }" in css

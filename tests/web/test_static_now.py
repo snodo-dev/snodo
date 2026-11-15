@@ -277,3 +277,37 @@ def test_now_layout_is_single_column_until_selection_and_closes_stale_selection(
     assert 'selectedTaskDetails = null;' in source
     assert 'taskOpenerKey || key' in source
     assert 'const openerKey = taskOpenerKey || key' in source
+
+
+def test_now_layout_only_opens_with_a_selected_task() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    layout = source[source.index('const flightLayout = element("div"'):source.index('fragment.append(flightLayout)')]
+
+    assert 'selectedTaskDetails ? " now-flight-layout-open" : ""' in layout
+    assert "if (selectedTaskDetails) {" in layout
+    assert 'const panel = element("aside", undefined, "now-task-panel")' in layout
+    assert 'flightLayout.append(panel)' in layout
+    assert layout.index('if (selectedTaskDetails) {') < layout.index('const panel = element')
+
+
+def test_now_close_and_escape_clear_selection_and_restore_opener_focus() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    panel = source[source.index('if (selectedTaskDetails) {', source.index('const flightLayout = element')):source.index('fragment.append(flightLayout)')]
+
+    assert 'if (event.key === "Escape") closeButton.click();' in panel
+    close_handler = panel[panel.index('closeButton.addEventListener("click"'):panel.index('panelHeader.append(closeButton)')]
+    assert 'selectedTaskKey = null;' in close_handler
+    assert 'const openerKey = taskOpenerKey || key' in close_handler
+    assert 'currentContainer.querySelector(`[data-task-key="${CSS.escape(openerKey)}"]`)' in close_handler
+    assert 'if (row) row.focus();' in close_handler
+    assert 'button.setAttribute("aria-selected", String(selectedTaskKey === key))' in source
+
+
+def test_now_disappeared_selection_closes_before_layout_is_created() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    stale_guard = source.index('if (selectedTaskKey && !selectedTaskDetails)')
+    layout_creation = source.index('const flightLayout = element("div"')
+
+    assert stale_guard < layout_creation
+    assert 'selectedTaskKey = null;' in source[stale_guard:layout_creation]
+    assert 'selectedTaskDetails = null;' in source[stale_guard:layout_creation]
