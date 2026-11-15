@@ -42,7 +42,7 @@ def test_every_emitted_now_class_has_a_css_rule() -> None:
     emitted = set(re.findall(r'"(now-[a-z-]+)"', script))
     emitted.update(re.findall(r'"(now-[a-z-]+) ', script))
     emitted.update(re.findall(r'"(now-[a-z-]+)"', script))
-    emitted.update({"now-task-button", "now-task-panel", "now-task-panel-header", "now-task-panel-id", "now-task-panel-close", "now-task-panel-location", "now-task-panel-job", "now-task-panel-elapsed", "now-task-panel-loading", "now-task-selected", "now-flight-layout"})
+    emitted.update({"now-task-button", "now-task-panel", "now-task-panel-header", "now-task-panel-id", "now-task-panel-close", "now-task-panel-location", "now-task-panel-job", "now-task-panel-elapsed", "now-task-panel-loading", "now-task-selected", "now-flight-layout", "now-flight-layout-open"})
     rules = set(re.findall(r"\.([a-z][a-z0-9-]*)", css))
     assert emitted <= rules
 
@@ -87,3 +87,11 @@ def test_now_refetch_spinner_respects_reduced_motion() -> None:
     assert ".now-spinner" in css
     assert "@media (prefers-reduced-motion: reduce) { .now-spinner { animation: none; } }" in css
     assert ".now-refreshing .now-counts, .now-refreshing .now-flight-layout" in css
+
+
+def test_now_flight_layout_transitions_from_full_width_and_respects_reduced_motion() -> None:
+    css = STYLESHEET.read_text(encoding="utf-8")
+    assert ".now-flight-layout { display: grid; grid-template-columns: minmax(0, 1fr);" in css
+    assert ".now-flight-layout-open { grid-template-columns: minmax(0, 1fr) minmax(19rem, 26.5rem); }" in css
+    assert "@media (prefers-reduced-motion: reduce) { .now-flight-layout { transition: none; } }" in css
+    assert "transition: grid-template-columns 180ms ease" in css

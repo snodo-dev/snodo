@@ -96,7 +96,8 @@ def test_now_selected_task_survives_rerender() -> None:
     assert "let selectedTaskKey = null" in source
     assert "selectedTaskKey === key" in source
     assert "if (selectedTaskKey && !selectedTaskDetails)" in source
-    assert "now-flight-layout-open" in source
+    assert 'selectedTaskDetails ? " now-flight-layout-open" : ""' in source
+    assert source.index("if (selectedTaskKey && !selectedTaskDetails)") < source.index('const flightLayout = element("div"')
     assert "currentContainer.replaceChildren(render(currentData, currentContainer))" in source
 
 
@@ -267,3 +268,12 @@ def test_now_refetch_keeps_previous_view_until_successful_response() -> None:
     assert 'message.textContent = "Refresh failed; showing earlier data."' in failure_path
     assert 'container.classList.add("now-refreshing")' in request
     assert 'container.classList.remove("now-refreshing")' in request
+
+
+def test_now_layout_is_single_column_until_selection_and_closes_stale_selection() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'const flightLayout = element("div", undefined, `now-flight-layout${selectedTaskDetails ? " now-flight-layout-open" : ""}`)' in source
+    assert 'flightLayout.append(panel)' in source
+    assert 'selectedTaskDetails = null;' in source
+    assert 'taskOpenerKey || key' in source
+    assert 'const openerKey = taskOpenerKey || key' in source

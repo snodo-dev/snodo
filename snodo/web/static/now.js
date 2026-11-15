@@ -335,9 +335,13 @@
       projectItem.append(children);
       flight.append(projectItem);
     }
-    const flightLayout = element("div", undefined, `now-flight-layout${selectedTaskKey ? " now-flight-layout-open" : ""}`);
+    if (selectedTaskKey && !selectedTaskDetails) {
+      selectedTaskKey = null;
+      selectedTaskDetails = null;
+      taskOpenerKey = null;
+    }
+    const flightLayout = element("div", undefined, `now-flight-layout${selectedTaskDetails ? " now-flight-layout-open" : ""}`);
     flightLayout.append(flight);
-    if (selectedTaskKey && !selectedTaskDetails) { selectedTaskKey = null; taskOpenerKey = null; }
     if (selectedTaskDetails) {
       const { task, context, key } = selectedTaskDetails;
       const panel = element("aside", undefined, "now-task-panel");
@@ -355,9 +359,10 @@
       closeButton.type = "button";
       closeButton.addEventListener("click", () => {
         selectedTaskKey = null;
-        taskOpenerKey = null;
         currentContainer.replaceChildren(render(currentData, currentContainer));
-        const row = currentContainer.querySelector(`[data-task-key="${CSS.escape(key)}"]`);
+        const openerKey = taskOpenerKey || key;
+        taskOpenerKey = null;
+        const row = currentContainer.querySelector(`[data-task-key="${CSS.escape(openerKey)}"]`);
         if (row) row.focus();
       });
       panelHeader.append(closeButton);
