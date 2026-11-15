@@ -53,3 +53,11 @@ def test_now_task_spec_styles_use_dashboard_tokens_and_scroll() -> None:
     assert "overflow: auto" in css
     assert "var(--mono)" in css
     assert "var(--muted)" in css
+
+
+def test_now_plan_rows_hide_bar_and_summary_on_narrow_screens() -> None:
+    css = STYLESHEET.read_text(encoding="utf-8")
+
+    assert "@media (max-width: 640px)" in css
+    assert ".now-wave-segments, .now-plan-summary { display:none; }" in css
+    assert ".now-plan-title .now-expand { grid-template-columns:1rem minmax(0,1fr) auto; }" in css

@@ -160,3 +160,41 @@ def test_now_attention_state_is_derived_from_current_data() -> None:
     assert 'hasAttentionCount ? " now-count-attention" : ""' in source
     assert 'if (attentionTasks.length)' in source
     assert 'attentionStatuses.has(String(task.status).toLowerCase())' in source
+
+
+def test_now_fleet_and_plan_rows_render_summary_segments_chip_and_age() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert '"now-projects now-fleet"' in source
+    assert '"now-project-name"' in source
+    assert '"now-project-summary"' in source
+    assert '"now-project-age"' in source
+    assert '"now-plan-name"' in source
+    assert '"now-plan-summary"' in source
+    assert '"now-wave-segments"' in source
+    assert '"now-plan-age"' in source
+    assert 'segments.append(element("span", undefined, `now-wave-segment ${statusClass(task.status)}`))' in source
+    assert 'segments.setAttribute("aria-label"' in source
+    assert 'element("span", planState, `now-status now-plan-state ${statusClass(planState)}`)' in source
+    assert 'plan.last_activity_at ? ageLabel(plan.last_activity_at)' in source
+    assert 'groups.flatMap((group) => group.tasks || [])' in source
+
+
+def test_now_plan_state_rules_and_default_expansion() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert '["failed", "blocked", "errored"].includes(status)' in source
+    assert '["in_progress", "in progress", "in-progress", "running"].includes(status)' in source
+    assert 'taskStatuses.every((status) => status === "completed")' in source
+    assert 'const planState = stateTask ? stateTask.status : "pending"' in source
+    assert 'planKey, failedLike || runningLike, "now-plan-title"' in source
+    assert 'expandedRows.has(key) ? expandedRows.get(key) : defaultExpanded' in source
+    assert 'expandedRows.set(key, next)' in source
+
+
+def test_now_plan_state_selection_preserves_contract_status_words() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'const planState = stateTask ? stateTask.status : "pending"' in source
+    assert '["in_progress", "in progress", "in-progress", "running"].includes(status)' in source
+    assert 'String(task.status).toLowerCase() === "completed"' in source
