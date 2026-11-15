@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Keep the Now task tree full width until a task is selected, then restore its width when the panel closes. (Fixes #1235)
 - Render task ticket specs with section headings, preserved line breaks and identifiers, labels, ordered lists, quotes, and rules. (Fixes #1234)
 - Show manual Now refresh progress, prevent duplicate requests, and retain earlier data with a failure notice. (Fixes #1232)
 - Show a reduced-motion-aware loading skeleton while each dashboard view renders for the first time. (Fixes #1231)

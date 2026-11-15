@@ -29,6 +29,7 @@
   const expandedRows = new Map();
   let selectedTaskKey = null;
   let selectedTaskDetails = null;
+  let taskOpenerKey = null;
   let currentData = null;
   let currentContainer = null;
   let nowRequestInFlight = false;
@@ -81,6 +82,7 @@
     button.append(element("span", task.elapsed_seconds == null ? "—" : elapsed(task.elapsed_seconds), "now-elapsed"));
     button.addEventListener("click", () => {
       selectedTaskKey = key;
+      taskOpenerKey = key;
       currentContainer.replaceChildren(render(currentData, currentContainer));
       const close = currentContainer.querySelector(".now-task-panel-close");
       if (close) close.focus();
@@ -232,6 +234,7 @@
         if (first.waveKey) expandedRows.set(first.waveKey, true);
         if (first.outsideKey) expandedRows.set(first.outsideKey, true);
         selectedTaskKey = `${first.project}:${first.task.task_id}`;
+        taskOpenerKey = selectedTaskKey;
         currentContainer.replaceChildren(render(currentData, currentContainer));
         const row = currentContainer.querySelector(`[data-task-key="${CSS.escape(selectedTaskKey)}"]`);
         if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); row.focus(); }
@@ -332,9 +335,9 @@
       projectItem.append(children);
       flight.append(projectItem);
     }
-    const flightLayout = element("div", undefined, "now-flight-layout");
+    const flightLayout = element("div", undefined, `now-flight-layout${selectedTaskKey ? " now-flight-layout-open" : ""}`);
     flightLayout.append(flight);
-    if (selectedTaskKey && !selectedTaskDetails) selectedTaskKey = null;
+    if (selectedTaskKey && !selectedTaskDetails) { selectedTaskKey = null; taskOpenerKey = null; }
     if (selectedTaskDetails) {
       const { task, context, key } = selectedTaskDetails;
       const panel = element("aside", undefined, "now-task-panel");
@@ -352,6 +355,7 @@
       closeButton.type = "button";
       closeButton.addEventListener("click", () => {
         selectedTaskKey = null;
+        taskOpenerKey = null;
         currentContainer.replaceChildren(render(currentData, currentContainer));
         const row = currentContainer.querySelector(`[data-task-key="${CSS.escape(key)}"]`);
         if (row) row.focus();

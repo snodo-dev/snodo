@@ -95,7 +95,8 @@ def test_now_selected_task_survives_rerender() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
     assert "let selectedTaskKey = null" in source
     assert "selectedTaskKey === key" in source
-    assert "if (selectedTaskKey && !selectedTaskDetails) selectedTaskKey = null" in source
+    assert "if (selectedTaskKey && !selectedTaskDetails)" in source
+    assert "now-flight-layout-open" in source
     assert "currentContainer.replaceChildren(render(currentData, currentContainer))" in source
 
 
