@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Calculate local Now activity counters for the last 24 hours, including tasks, plans, waves, and commits; mark unsupported recon data unavailable. (Fixes #1200)
 - Style the Gates view with responsive panels, visible percentage bar tracks, and distinct outcome pills for landed and pending records. (Fixes #1197)
 - Style the Delivery dashboard figures, responsive chart and project table for light and dark themes, with scaled bars in fixed-height tracks. (Fixes #1198)
 - Style the Plans dashboard filter, responsive table, progress bar, and delivery status pills for light and dark themes. (Fixes #1195)
