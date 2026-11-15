@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Tie the Now route response contract to the fields consumed by the static view. (Fixes #1207)
 - Align the local Now view with the cloud page’s 24-hour header, freshness control, and six activity counters while preserving the activity tree. (Fixes #1205)
 - Return 24-hour counters and the activity tree from `/api/now` across all projects while preserving waiting items. (Fixes #1204)
 - Document the local Now view's 24-hour window, counters, activity tree, liveness summaries, and differences from the cloud page. (Fixes #1202)

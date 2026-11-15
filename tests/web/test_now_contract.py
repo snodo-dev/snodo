@@ -42,15 +42,20 @@ def _fixture(root: Path) -> dict:
     project = root / "project"
     _repository(project)
     plan = project / ".snodo" / "plans" / "delivery"
-    _write_json(plan / "status.json", {"tasks": {
-        "done": "completed", "active": "in_progress", "blocked": "blocked",
-    }})
+    _write_json(plan / "status.json", {
+        "tasks": {"done": "completed", "active": "in_progress", "blocked": "blocked"},
+        "integration": {"branch": "plan/delivery"},
+    })
     (plan / "plan.yml").write_text(
         "intent: contract\nwaves:\n"
         "  - id: one\n    tasks: [done, active]\n"
         "  - id: two\n    tasks: [blocked]\n", encoding="utf-8",
     )
     os.utime(plan / "status.json", (NOW - 100, NOW - 100))
+    _git(project, "checkout", "-b", "plan/delivery")
+    (project / "tracked.txt").write_text("branch change", encoding="utf-8")
+    _git(project, "commit", "-am", "branch change")
+    _git(project, "checkout", "main")
     _job(project, "job-active", "active", "running", plan="delivery")
     _job(project, "job-outside", "outside-task", "running")
     (project / "tracked.txt").write_text("uncommitted", encoding="utf-8")
@@ -59,19 +64,26 @@ def _fixture(root: Path) -> dict:
 
 def test_route_shape_and_counters_match_real_tree(tmp_path: Path) -> None:
     result = _fixture(tmp_path)
-    # These exact-key assertions guard route envelope, counter and project/plan/group/task contract fields.
+    # Exact-key assertions guard each route envelope/counter/project/plan/group/task field.
     assert set(result) == {"window_hours", "generated_at", "counters", "projects", "waiting"}
-    assert set(result["counters"]) == {
-        "projects_active", "plans", "queues", "waves", "tasks", "recons", "commits",
-    }
-    assert set(result["counters"]["tasks"]) == {"count", "by_status"}
+    counters = result["counters"]
+    assert set(counters) == {"projects_active", "plans", "queues", "waves", "tasks", "recons", "commits"}
+    assert set(counters["tasks"]) == {"count", "by_status"}
+    assert counters["recons"] is None  # Recons are deliberately unavailable in the local route contract.
     project = result["projects"][0]
     assert set(project) == {"name", "liveness", "last_activity_at", "plans", "outside_plan"}
-    assert set(project["plans"][0]) == {"name", "wave", "waves", "last_activity_at", "wave_groups"}
-    group = project["plans"][0]["wave_groups"][0]
+    plan_row = project["plans"][0]
+    assert set(plan_row) == {"name", "wave", "waves", "last_activity_at", "wave_groups"}
+    group = plan_row["wave_groups"][0]
     assert set(group) == {"id", "total", "status_counts", "tasks"}
     assert set(group["tasks"][0]) == {"task_id", "status", "job", "elapsed_seconds"}
+    planned_rows = [task for wave in plan_row["wave_groups"] for task in wave["tasks"]]
+    assert next(task for task in planned_rows if task["task_id"] == "active")["job"] == {"job_id": "job-active"}
     assert set(project["outside_plan"][0]) == {"task_id", "status", "job", "elapsed_seconds"}
+    assert project["outside_plan"][0]["job"] == {"job_id": "job-outside"}
+    assert result["waiting"] == [
+        {"kind": "uncommitted", "project": "project", "files": ["tracked.txt"]},
+    ]
     # Tree has three planned tasks plus one outside-plan task; all are recent.
     assert result["counters"]["tasks"]["count"] == 4
     assert result["counters"]["tasks"]["by_status"] == {
@@ -84,16 +96,15 @@ def test_route_shape_and_counters_match_real_tree(tmp_path: Path) -> None:
 
 def test_view_mentions_each_contract_field_it_consumes() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
-    # Guards envelope fields read by render/freshness.
-    for field in ("window_hours", "generated_at", "counters", "projects", "waiting"):
-        assert field in source
-    # Guards every counter leaf consumed for tiles and task status details.
-    for field in ("projects_active", "plans", "queues", "waves", "tasks", "count", "by_status", "recons", "commits"):
-        assert field in source
-    # Guards project, plan, wave-group, task, job, and waiting-item leaves consumed by the tree renderers.
-    for field in (
-        "name", "liveness", "outside_plan", "wave", "waves",
-        "wave_groups", "task_id", "status",
-        "job", "job_id", "elapsed_seconds", "kind", "plan", "files",
+    # Each expression assertion guards an actual property read, not a coincidental CSS/class substring.
+    for expression in (
+        "data.window_hours", "data.generated_at", "data.counters", "data.projects", "data.waiting",
+        "counters.projects_active", "counters.plans", "counters.queues", "counters.waves",
+        "counters.tasks", "counters.recons", "counters.commits", "counters.tasks.by_status",
+        "counters.tasks.count", "recons.running", "recons.completed", "recons.count",
+        "project.name", "project.liveness", "project.plans", "project.outside_plan",
+        "plan.name", "plan.wave", "plan.waves", "plan.wave_groups", "group.tasks",
+        "task.task_id", "task.status", "task.job", "task.elapsed_seconds", "task.job.job_id",
+        "item.kind", "item.plan", "item.files",
     ):
-        assert field in source
+        assert expression in source
