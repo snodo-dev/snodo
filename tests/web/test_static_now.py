@@ -239,3 +239,30 @@ def test_now_manual_refetch_has_busy_failure_and_duplicate_request_guards() -> N
     assert 'Refresh failed; showing earlier data.' in source
     assert 'container.classList.add("now-refreshing")' in source
     assert 'fetch("/api/now")' in source
+
+
+def test_now_background_refresh_does_not_enter_manual_busy_state() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    request = source[source.index("window.snodoViews.now = async function now"):source.index("if (!window.__snodoNowAgeTimer)")]
+    manual_branch = request[request.index('if (manual && refetch)'):request.index("    try {")]
+
+    assert "manual = false" in request
+    assert 'window.snodoViews.now(refetch.closest("[data-now-root]"), true)' in source
+    assert 'refetch.disabled = true' in manual_branch
+    assert 'container.classList.add("now-refreshing")' in manual_branch
+    assert 'age.textContent = "Refreshing data…"' in manual_branch
+    assert 'fetch("/api/now")' not in manual_branch
+
+
+def test_now_refetch_keeps_previous_view_until_successful_response() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    request = source[source.index("window.snodoViews.now = async function now"):source.index("if (!window.__snodoNowAgeTimer)")]
+    success_path = request[request.index("const response = await fetch"):request.index("} catch (_)")]
+    failure_path = request[request.index("} catch (_)"):request.index("} finally {")]
+
+    assert 'await fetch("/api/now")' in success_path
+    assert "container.replaceChildren(content)" in success_path
+    assert "container.replaceChildren" not in failure_path
+    assert 'message.textContent = "Refresh failed; showing earlier data."' in failure_path
+    assert 'container.classList.add("now-refreshing")' in request
+    assert 'container.classList.remove("now-refreshing")' in request
