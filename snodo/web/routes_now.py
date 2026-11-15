@@ -83,7 +83,7 @@ def build_now(projects: Iterable[Any], now: datetime | float) -> dict[str, Any]:
     """Build the read-only 24-hour activity summary."""
     rows, waiting = [], []
     counters: dict[str, Any] = {"projects_active": 0, "plans": 0, "queues": None,
-                                "tasks": {"count": 0, "by_status": {}}, "recons": None, "commits": None}
+                                "waves": 0, "tasks": {"count": 0, "by_status": {}}, "recons": None, "commits": None}
     for project in projects:
         row, values, pending = _project_data(project, now)
         rows.append(row)
@@ -92,6 +92,7 @@ def build_now(projects: Iterable[Any], now: datetime | float) -> dict[str, Any]:
         pq = values.get("plans_queues") or {}
         counters["plans"] += pq.get("plans", 0) if isinstance(pq.get("plans"), int) else 0
         counters["queues"] = _sum_counter(counters["queues"], pq.get("queues"))
+        counters["waves"] += values.get("waves", 0) if isinstance(values.get("waves"), int) else 0
         task_data = values.get("tasks") or {}
         counters["tasks"]["count"] += task_data.get("total", 0) if isinstance(task_data.get("total"), int) else 0
         for status, count in task_data.get("by_status", {}).items():
