@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -27,7 +28,7 @@ async def handler(request: Request) -> JSONResponse:
     if project is None:
         return JSONResponse({"error": "Project not found."}, status_code=404)
 
-    markdown = read_task_spec(project.path, plan_name, task_id)
+    markdown = await run_in_threadpool(read_task_spec, project.path, plan_name, task_id)
     if markdown is None:
         return JSONResponse(
             {"error": "Plan or task not found, or the name is invalid."},

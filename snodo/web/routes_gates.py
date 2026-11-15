@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 from snodo.web.gates import gate_records, summarize_gates
@@ -43,6 +44,7 @@ async def handler(request: Any) -> JSONResponse:
     days = request.query_params.get("days", "21")
     if days not in {"7", "21", "30"}:
         return JSONResponse({"error": "days must be 7, 21 or 30"}, status_code=400)
-    return JSONResponse(
-        build_gates(request.app.state.projects, int(days), datetime.now(timezone.utc))
+    result = await run_in_threadpool(
+        build_gates, request.app.state.projects, int(days), datetime.now(timezone.utc)
     )
+    return JSONResponse(result)

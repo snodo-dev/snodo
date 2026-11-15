@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 from snodo.dashboard.providers import DashboardDataProvider
@@ -111,4 +112,7 @@ def build_now(projects: Iterable[Any], now: datetime | float) -> dict[str, Any]:
 
 async def handler(request: Any) -> JSONResponse:
     """GET endpoint returning the current aggregate JSON view."""
-    return JSONResponse(build_now(request.app.state.projects, datetime.now(timezone.utc)))
+    result = await run_in_threadpool(
+        build_now, request.app.state.projects, datetime.now(timezone.utc)
+    )
+    return JSONResponse(result)

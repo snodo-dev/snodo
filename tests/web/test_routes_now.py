@@ -136,3 +136,36 @@ def test_handler_returns_json_200(tmp_path: Path) -> None:
     assert response.status_code == 200
     body = response.json()
     assert set(body) == {"window_hours", "generated_at", "counters", "projects", "waiting"}
+
+
+def test_slow_now_collection_does_not_block_spec_route(monkeypatch, tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from snodo.web.routes_spec import handler as spec_handler
+
+    entered = Event()
+    release = Event()
+
+    def blocked_build(_projects, _now):
+        entered.set()
+        assert release.wait(timeout=5)
+        return {"unchanged": True}
+
+    monkeypatch.setattr("snodo.web.routes_now.build_now", blocked_build)
+    app = Starlette(routes=[
+        Route("/now", handler, methods=["GET"]),
+        Route("/spec", spec_handler, methods=["GET"]),
+    ])
+    app.state.projects = [SimpleNamespace(name="demo", path=tmp_path)]
+    (tmp_path / ".snodo" / "plans" / "plan" / "wave_1").mkdir(parents=True)
+    (tmp_path / ".snodo" / "plans" / "plan" / "wave_1" / "task_task.md").write_text("spec")
+
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=1) as pool:
+        now_response = pool.submit(client.get, "/now")
+        assert entered.wait(timeout=5)
+        spec_response = client.get("/spec", params={"project": "demo", "plan": "plan", "task": "task"})
+        assert spec_response.status_code == 200
+        assert spec_response.json()["markdown"] == "spec"
+        release.set()
+        assert now_response.result(timeout=5).json() == {"unchanged": True}

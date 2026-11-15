@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from statistics import mean, median
 from typing import Any, Iterable
 
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 from snodo.web.delivery import IN_MAIN, NOT_IN_MAIN, plans_delivery
@@ -84,6 +85,7 @@ async def handler(request: Any) -> JSONResponse:
     days = request.query_params.get("days", "7")
     if days not in {"7", "30"}:
         return JSONResponse({"error": "days must be 7 or 30"}, status_code=400)
-    return JSONResponse(
-        build_delivery(request.app.state.projects, int(days), datetime.now(timezone.utc))
+    result = await run_in_threadpool(
+        build_delivery, request.app.state.projects, int(days), datetime.now(timezone.utc)
     )
+    return JSONResponse(result)

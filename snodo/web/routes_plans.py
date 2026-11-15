@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 from snodo.dashboard.providers import DashboardDataProvider
@@ -58,4 +59,5 @@ def build_plans(projects: Iterable[Any]) -> list[dict[str, Any]]:
 
 async def handler(request: Any) -> JSONResponse:
     """GET endpoint returning plans as JSON."""
-    return JSONResponse(build_plans(request.app.state.projects))
+    result = await run_in_threadpool(build_plans, request.app.state.projects)
+    return JSONResponse(result)
