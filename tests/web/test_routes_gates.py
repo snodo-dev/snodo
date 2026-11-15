@@ -53,3 +53,34 @@ def test_handler_returns_json_and_rejects_invalid_days() -> None:
     assert response.json()["window_days"] == 21
     assert response.headers["content-type"].startswith("application/json")
     assert client.get("/gates?days=3").status_code == 400
+
+
+def test_handler_collects_in_worker_thread(monkeypatch) -> None:
+    import threading
+
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+
+    loop_thread = None
+    collection_thread = None
+
+    async def middleware(request: Request, call_next):
+        nonlocal loop_thread
+        loop_thread = threading.get_ident()
+        return await call_next(request)
+
+    def collect(*_args):
+        nonlocal collection_thread
+        collection_thread = threading.get_ident()
+        return {"unchanged": True}
+
+    monkeypatch.setattr(routes_gates, "build_gates", collect)
+    app = Starlette(routes=[Route("/gates", routes_gates.handler, methods=["GET"])])
+    app.add_middleware(BaseHTTPMiddleware, dispatch=middleware)
+    app.state.projects = []
+
+    response = TestClient(app).get("/gates")
+
+    assert response.status_code == 200
+    assert response.json() == {"unchanged": True}
+    assert collection_thread != loop_thread

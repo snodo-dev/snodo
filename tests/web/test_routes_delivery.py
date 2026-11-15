@@ -56,3 +56,34 @@ def test_handler_rejects_unsupported_days() -> None:
     app.state.projects = []
 
     assert TestClient(app).get("/delivery?days=5").status_code == 400
+
+
+def test_handler_collects_in_worker_thread(monkeypatch) -> None:
+    import threading
+
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+
+    loop_thread = None
+    collection_thread = None
+
+    async def middleware(request: Request, call_next):
+        nonlocal loop_thread
+        loop_thread = threading.get_ident()
+        return await call_next(request)
+
+    def collect(*_args):
+        nonlocal collection_thread
+        collection_thread = threading.get_ident()
+        return {"unchanged": True}
+
+    monkeypatch.setattr(routes_delivery, "build_delivery", collect)
+    app = Starlette(routes=[Route("/delivery", routes_delivery.handler, methods=["GET"])])
+    app.add_middleware(BaseHTTPMiddleware, dispatch=middleware)
+    app.state.projects = []
+
+    response = TestClient(app).get("/delivery")
+
+    assert response.status_code == 200
+    assert response.json() == {"unchanged": True}
+    assert collection_thread != loop_thread

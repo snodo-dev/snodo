@@ -78,3 +78,37 @@ def test_post_is_not_allowed(spec_client):
 def test_route_is_registered():
     app = create_app([])
     assert any(getattr(route, "path", None) == "/api/now/spec" for route in app.routes)
+
+
+def test_spec_read_runs_in_worker_thread(spec_client, monkeypatch):
+    import threading
+
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+
+    from snodo.web import routes_spec
+
+    client, _ = spec_client
+    loop_thread = None
+    collection_thread = None
+
+    async def middleware(request: Request, call_next):
+        nonlocal loop_thread
+        loop_thread = threading.get_ident()
+        return await call_next(request)
+
+    def read_spec(*_args):
+        nonlocal collection_thread
+        collection_thread = threading.get_ident()
+        return "spec content"
+
+    monkeypatch.setattr(routes_spec, "read_task_spec", read_spec)
+    client.app.add_middleware(BaseHTTPMiddleware, dispatch=middleware)
+
+    response = client.get(
+        "/api/now/spec", params={"project": "demo", "plan": "plan-1", "task": "task-1"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["markdown"] == "spec content"
+    assert collection_thread != loop_thread
