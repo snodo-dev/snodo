@@ -49,10 +49,12 @@
     for (const row of validators) {
       const line = element("div", undefined, "gates-bar-row");
       line.append(element("span", row.validator || "unknown"));
+      const track = element("span", undefined, "gates-track");
       const bar = element("span", undefined, "gates-bar");
       bar.style.width = `${Math.max(0, Number(row.count) || 0) / maxValidator * 100}%`;
       bar.setAttribute("aria-label", `${row.count} sent back`);
-      line.append(bar, element("strong", String(row.count ?? 0)));
+      track.append(bar);
+      line.append(track, element("strong", String(row.count ?? 0)));
       validatorPanel.append(line);
     }
     panels.append(validatorPanel);
@@ -65,10 +67,12 @@
       const retried = Number(project.landed_after_retry) || 0;
       const line = element("div", undefined, "gates-bar-row");
       line.append(element("span", project.name || "unknown"));
+      const track = element("span", undefined, "gates-track");
       const bar = element("span", undefined, "gates-bar");
       bar.style.width = `${count ? Math.min(100, retried / count * 100) : 0}%`;
       bar.setAttribute("aria-label", `${retried} landed after retry out of ${count} sent back`);
-      line.append(bar, element("strong", `${retried} / ${count}`));
+      track.append(bar);
+      line.append(track, element("strong", `${retried} / ${count}`));
       projectPanel.append(line);
     }
     panels.append(projectPanel);
@@ -95,7 +99,8 @@
       row.append(element("td", record.task || ""));
       row.append(element("td", record.project || ""));
       row.append(element("td", record.validator || "unknown"));
-      row.append(element("td", record.outcome === "landed_after_retry" ? "Landed after a retry" : "Not landed yet"));
+      const landedAfterRetry = record.outcome === "landed_after_retry";
+      row.append(element("td", landedAfterRetry ? "Landed after a retry" : "Not landed yet", landedAfterRetry ? "gates-outcome-landed" : "gates-outcome-pending"));
       row.append(element("td", relativeTime(record.when)));
       tbody.append(row);
     }

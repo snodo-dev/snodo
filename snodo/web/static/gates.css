@@ -1,0 +1,133 @@
+/* Gates-specific layout; colours come from the page shell. */
+.gates-summary {
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+
+.gates-windows {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.gates-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+
+.gates-panel {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.gates-panel h2 {
+  margin-top: 0;
+}
+
+.gates-bar-row {
+  display: grid;
+  grid-template-columns: minmax(5rem, 1fr) minmax(3rem, 2fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.75rem 0;
+}
+
+.gates-bar-row > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gates-track {
+  display: block;
+  width: 100%;
+  height: 0.65rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 18%, var(--surface));
+}
+
+.gates-bar {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.gates-bar-row strong,
+.gates-counts strong {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.gates-counts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: center;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+}
+
+.gates-counts strong {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+}
+
+.gates-counts span,
+.gates-empty {
+  color: var(--muted);
+}
+
+.gates-records {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gates-records th,
+.gates-records td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.gates-records tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.gates-records td:last-child {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.gates-outcome-landed,
+.gates-outcome-pending {
+  white-space: nowrap;
+}
+
+.gates-outcome-landed,
+.gates-outcome-pending {
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.gates-outcome-landed {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.gates-outcome-pending {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 14%, var(--surface));
+}
+
+@media (max-width: 560px) {
+  .gates-records th,
+  .gates-records td {
+    padding: 0.55rem 0.4rem;
+    font-size: 0.85rem;
+  }
+}
