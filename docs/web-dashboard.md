@@ -31,6 +31,14 @@ The dashboard has four views:
   not task or plan states. Where the local files cannot support a figure, it is
   shown as unavailable.
 
+  Select a task row to open its detail panel on the right. The panel shows the
+  task id, status, plan, wave, job, and elapsed time, followed by the task's
+  ticket spec rendered from Markdown. Close it with the panel's close button or
+  press **Escape**. The selected task stays open when the page refreshes. If
+  there is no spec for the task on this machine, the panel says so. The built-in
+  Markdown renderer is intentionally small: it creates DOM nodes only, and
+  displays unsupported Markdown syntax as plain text.
+
   The local page deliberately differs from the cloud Now page: it sees only
   this machine, has no project groups, and keeps a **Waiting on you** list for
   plans not yet merged into `main` and uncommitted files.
