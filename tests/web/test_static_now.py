@@ -37,6 +37,8 @@ def test_now_view_uses_window_counters_and_freshness_controls() -> None:
         assert f'"{label}"' in source
     assert '"—"' in source
     assert '"Refetch"' in source
+    assert '"Last 24 hours"' in source
+    assert '"Refreshes every ten seconds"' in source
     assert '`as of ${seconds}s ago`' in source
 
 
@@ -139,3 +141,22 @@ def test_now_task_spec_cache_survives_refresh() -> None:
     assert 'let entry = specCache.get(key)' in source
     assert 'if (entry && !retry)' in source
     assert 'specCache.set(key, entry)' in source
+
+
+def test_now_head_and_attention_strip_markup_contract() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    for text in ("Last 24 hours", "Now", "Refreshes every ten seconds", "Refetch", "Show task"):
+        assert f'"{text}"' in source
+    assert '"now-attention-strip"' in source
+    assert '"now-attention-status"' in source
+    assert '"now-attention-task"' in source
+    assert '`and ${attentionTasks.length - 1} more`' in source
+    assert '"failed", "blocked", "errored"' in source
+    assert 'scrollIntoView({ behavior: "smooth", block: "center" })' in source
+
+
+def test_now_attention_state_is_derived_from_current_data() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'hasAttentionCount ? " now-count-attention" : ""' in source
+    assert 'if (attentionTasks.length)' in source
+    assert 'attentionStatuses.has(String(task.status).toLowerCase())' in source

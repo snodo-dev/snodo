@@ -14,7 +14,7 @@
 
   function statusClass(status) {
     const normalized = String(status || "").toLowerCase().replace(/[^a-z]+/g, "-");
-    const known = ["running", "in-progress", "completed", "pending", "blocked", "unmerged", "errored"];
+    const known = ["running", "in-progress", "completed", "pending", "blocked", "unmerged", "errored", "failed"];
     return known.includes(normalized) ? `now-status-${normalized}` : "now-status-neutral";
   }
 
@@ -63,7 +63,7 @@
     button.dataset.taskKey = key;
     button.append(element("span", task.status === "blocked" || task.status === "errored" ? "!" : task.status === "completed" ? "✓" : "•", "now-task-mark"));
     button.append(element("span", task.task_id, "now-task-id"));
-    const jobId = task.job && task.job.job_id;
+    const jobId = task.job && task.job.job_id; // Reads task.job.job_id from the API contract.
     if (jobId) button.dataset.jobId = jobId;
     button.append(element("span", task.status, `now-status ${statusClass(task.status)}`));
     button.append(element("span", task.elapsed_seconds == null ? "—" : elapsed(task.elapsed_seconds), "now-elapsed"));
@@ -147,11 +147,15 @@
     const idle = projects.filter((project) => project.liveness !== "working");
 
     const header = element("div", undefined, "now-header");
+    header.dataset.windowHours = String(data.window_hours || 24);
     const heading = element("div", undefined, "now-heading");
-    heading.append(element("p", `${data.window_hours || 24} hours`, "now-eyebrow"));
+    heading.append(element("p", "Last 24 hours", "now-eyebrow"));
     heading.append(element("h1", "Now", "now-title"));
     header.append(heading);
     const freshness = element("div", undefined, "now-freshness");
+    const live = element("span", undefined, "now-live");
+    live.append(element("span", undefined, "now-live-dot"), element("span", "Refreshes every ten seconds", "now-refresh-text"));
+    freshness.append(live);
     const age = element("span", ageLabel(data.generated_at), "now-age");
     age.dataset.generatedAt = data.generated_at || "";
     freshness.append(age);
@@ -179,12 +183,51 @@
     for (const [status, count] of Object.entries((counters.tasks && counters.tasks.by_status) || {})) {
       taskDetail.append(element("span", `${status} ${count}`, `now-status-detail ${statusClass(status)}`));
     }
-    tile("Tasks", (counters.tasks && counters.tasks.count) ?? 0, taskDetail);
+    const attentionStatuses = new Set(["failed", "blocked", "errored"]);
+    const taskCounts = (counters.tasks && counters.tasks.by_status) || {};
+    const hasAttentionCount = Object.entries(taskCounts).some(([status, count]) => attentionStatuses.has(status.toLowerCase()) && Number(count) > 0);
+    const tasksTile = element("div", undefined, `now-count${hasAttentionCount ? " now-count-attention" : ""}`);
+    tasksTile.append(element("span", "Tasks", "now-count-label"));
+    tasksTile.append(element("strong", String((counters.tasks && counters.tasks.count) ?? 0), "now-count-number"));
+    if (taskDetail) tasksTile.append(taskDetail);
+    counts.append(tasksTile);
     const recons = counters.recons;
     const reconDetail = recons ? element("span", `Running ${recons.running} · Completed ${recons.completed}`, "now-count-detail") : undefined;
     tile("Recons", recons ? recons.count : null, reconDetail, recons == null);
     tile("Commits", counters.commits, undefined, counters.commits == null);
     fragment.append(counts);
+    const attentionTasks = [];
+    for (const project of projects) {
+      for (const plan of project.plans || []) {
+        for (const [waveIndex, group] of (plan.wave_groups || []).entries()) {
+          for (const task of group.tasks || []) if (attentionStatuses.has(String(task.status).toLowerCase())) attentionTasks.push({ task, project: project.name, plan: plan.name, wave: waveIndex + 1, projectKey: `project:${project.name}`, planKey: `project:${project.name}:plan:${plan.name}`, waveKey: `project:${project.name}:plan:${plan.name}:wave:${group.id || waveIndex}` });
+        }
+      }
+      for (const task of project.outside_plan || []) if (attentionStatuses.has(String(task.status).toLowerCase())) attentionTasks.push({ task, project: project.name, plan: "Outside a plan", wave: null, projectKey: `project:${project.name}`, outsideKey: `project:${project.name}:outside` });
+    }
+    if (attentionTasks.length) {
+      const first = attentionTasks[0];
+      const strip = element("div", undefined, "now-attention-strip");
+      strip.append(element("span", first.task.status, "now-attention-status"));
+      strip.append(element("span", `${first.task.task_id} · ${first.plan}`, "now-attention-task"));
+      if (attentionTasks.length > 1) strip.append(element("span", `and ${attentionTasks.length - 1} more`, "now-attention-more"));
+      const show = element("button", "Show task", "now-attention-show");
+      show.type = "button";
+      show.addEventListener("click", () => {
+        expandedRows.set(first.projectKey, true);
+        if (first.planKey) expandedRows.set(first.planKey, true);
+        if (first.waveKey) expandedRows.set(first.waveKey, true);
+        if (first.outsideKey) expandedRows.set(first.outsideKey, true);
+        selectedTaskKey = `${first.project}:${first.task.task_id}`;
+        currentContainer.replaceChildren(render(currentData, currentContainer));
+        const row = currentContainer.querySelector(`[data-task-key="${CSS.escape(selectedTaskKey)}"]`);
+        if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); row.focus(); }
+        const close = currentContainer.querySelector(".now-task-panel-close");
+        if (close) close.focus();
+      });
+      strip.append(show);
+      fragment.append(strip);
+    }
     if (Object.values(counters).every((value) => value === 0 || (value && value.count === 0))) {
       fragment.append(element("p", "Nothing moved in the last 24 hours.", "now-quiet-note"));
     }
@@ -285,7 +328,7 @@
       panel.append(panelHeader);
       panel.append(element("p", task.status, `now-status ${statusClass(task.status)}`));
       panel.append(element("p", context.plan === "Outside a plan" ? "Outside a plan" : `${context.plan} · Wave ${context.wave}`, "now-task-panel-location"));
-      const jobId = task.job && task.job.job_id;
+      const jobId = task.job && task.job.job_id; // Reads task.job.job_id from the API contract.
       if (jobId) panel.append(element("p", jobId, "now-task-panel-job"));
       if (task.elapsed_seconds != null) panel.append(element("p", elapsed(task.elapsed_seconds), "now-task-panel-elapsed"));
       const specBody = element("div", undefined, "now-task-panel-spec");
