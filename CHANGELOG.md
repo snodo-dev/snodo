@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 - Align the local Now view with the cloud page’s 24-hour header, freshness control, and six activity counters while preserving the activity tree. (Fixes #1205)
+- Return 24-hour counters and the activity tree from `/api/now` across all projects while preserving waiting items. (Fixes #1204)
 - Document the local Now view's 24-hour window, counters, activity tree, liveness summaries, and differences from the cloud page. (Fixes #1202)
 - Add a read-only 24-hour Now activity tree grouped by project, plan, wave, and task. (Fixes #1201)
 - Calculate local Now activity counters for the last 24 hours, including tasks, plans, waves, and commits; mark unsupported recon data unavailable. (Fixes #1200)
