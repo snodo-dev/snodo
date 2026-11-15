@@ -58,3 +58,17 @@
   .now-task { grid-template-columns: minmax(3rem, auto) auto; }
   .now-job { grid-column: 1 / -1; }
 }
+
+.now-header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; }
+.now-heading { display: grid; gap: 0.2rem; }
+.now-eyebrow { margin: 0; color: var(--muted); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; }
+.now-title { margin: 0; }
+.now-freshness { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; }
+.now-age, .now-count-detail, .now-unavailable { color: var(--muted); font-size: 0.78rem; }
+.now-refetch { padding: 0.4rem 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--surface); color: var(--text); cursor: pointer; }
+.now-refetch:hover { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.now-count-label { order: -1; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; }
+.now-count-number { font-size: clamp(1.6rem, 3vw, 2.2rem); }
+.now-status-breakdown { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.now-status-detail { width: fit-content; padding: 0.12rem 0.35rem; border-radius: 999px; font-size: 0.68rem; white-space: nowrap; }
+.now-quiet-note { margin: -0.9rem 0 1.5rem; color: var(--muted); font-size: 0.9rem; }
