@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Render task specs as safe Markdown in the local dashboard. (Fixes #1212)
 - Read task ticket specs from live and archived project plans for the local Now view. (Fixes #1211)
 - Match the local Now In flight tree to the cloud view, including persistent expansion state. (Fixes #1210)
 - Tie the Now route response contract to the fields consumed by the static view, including every waiting-item variant. (Fixes #1208)
