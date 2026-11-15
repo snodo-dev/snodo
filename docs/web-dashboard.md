@@ -19,25 +19,41 @@ root folders for a `.snodo/` directory. The selected roots are remembered in
 
 The dashboard has four views:
 
-- **Now** covers activity in the last 24 hours. Its header shows how old the
-  data is and provides a **Refetch** control. Six counters summarize **Active
-  projects**, **Plans / Queues**, **Waves**, **Tasks** (with a per-status
+- **Now** covers activity in the last 24 hours. Its page head shows how old the
+  data is and provides a **Refetch** control. Six counter cards summarize
+  **Active projects**, **Plans / Queues**, **Waves**, **Tasks** (with a per-status
   breakdown), **Recons**, and **Commits** over that window.
 
-  The **In flight** tree orders projects, then plans, waves, and tasks by last
-  activity. Completed waves are summarised as counts, and tasks outside a plan
-  appear in their own group. A project is described as **working**, **reporting
-  but not progressing**, or **no recent signal**; these are liveness summaries,
-  not task or plan states. Where the local files cannot support a figure, it is
-  shown as unavailable.
+  An attention strip appears only when a task is **failed**, **blocked**, or
+  **errored**. Its **Show task** button opens that task in the detail panel.
+  These status words, and every other status shown, are the words carried by the
+  project's own records; the dashboard adds none.
 
-  Select a task row to open its detail panel on the right. The panel shows the
-  task id, status, plan, wave, job, and elapsed time, followed by the task's
-  ticket spec rendered from Markdown. Close it with the panel's close button or
-  press **Escape**. The selected task stays open when the page refreshes. If
-  there is no spec for the task on this machine, the panel says so. The built-in
-  Markdown renderer is intentionally small: it creates DOM nodes only, and
-  displays unsupported Markdown syntax as plain text.
+  The **In flight** fleet card orders projects by recent activity. Project
+  headers summarize liveness; each has plan rows with a segmented progress bar,
+  one segment per task, followed by waves and compact one-line task rows. Tasks
+  outside a plan appear in their own group. Completed waves are summarized as
+  counts. A project is described as **working**, **reporting but not
+  progressing**, or **no recent signal**; these are liveness summaries, not task
+  or plan states. Where local files cannot support a figure, it is shown as
+  unavailable.
+
+  Select a task row to open its detail panel on the right. Its header identifies
+  the task and provides close and copy actions; the facts include status, plan,
+  wave, job, and elapsed time. The panel also shows the task's ticket spec
+  rendered from Markdown. Close it with the close button or press **Escape**.
+  The selected task stays open when the page refreshes. If there is no spec for
+  the task on this machine, the panel says so. The built-in Markdown renderer is
+  intentionally small: it creates DOM nodes only, and displays unsupported
+  Markdown syntax as plain text.
+
+  The theme follows the system preference, with dark as the default; the
+  **Theme** button overrides it. The shipped page uses local font stacks and
+  loads no fonts or other files from external hosts. The visual reference,
+  [`docs/design/now-redesign.html`](design/now-redesign.html), is kept in the
+  repository and uses sample data. Its webfont links and illustrative styling
+  are not shipped page behavior; use the local stacks and status vocabulary
+  documented here rather than copying those details.
 
   The local page deliberately differs from the cloud Now page: it sees only
   this machine, has no project groups, and keeps a **Waiting on you** list for
