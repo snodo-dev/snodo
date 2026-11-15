@@ -7,11 +7,12 @@ from pathlib import Path
 
 MAX_SPEC_BYTES = 64 * 1024
 TRUNCATION_MARKER = "\n\n[Task spec truncated: file exceeds 64 KiB.]"
-_NAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+# Task ids carry dots ("1.1_task_spec_reader"), so dots are allowed after the first character.
+_NAME_PATTERN = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}\Z")
 
 
 def _safe_name(value: str) -> bool:
-    return isinstance(value, str) and _NAME_PATTERN.fullmatch(value) is not None
+    return isinstance(value, str) and ".." not in value and _NAME_PATTERN.fullmatch(value) is not None
 
 
 def read_task_spec(project_path: str | Path, plan_name: str, task_id: str) -> str | None:

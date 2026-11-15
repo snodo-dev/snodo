@@ -15,6 +15,12 @@ def test_reads_task_spec_from_live_plan_wave(tmp_path: Path) -> None:
     assert read_task_spec(tmp_path, "plan-a", "task-a") == "# Ticket\n"
 
 
+def test_reads_task_id_containing_dots(tmp_path: Path) -> None:
+    _spec(tmp_path, "plans", "plan-a", "wave_1", "1.1_task_spec_reader", "# Dotted\n")
+    assert read_task_spec(tmp_path, "plan-a", "1.1_task_spec_reader") == "# Dotted\n"
+    assert read_task_spec(tmp_path, "plan-a", "1..1") is None
+
+
 def test_returns_none_for_missing_or_unreadable_spec(tmp_path: Path) -> None:
     assert read_task_spec(tmp_path, "missing", "task") is None
     _spec(tmp_path, "plans", "plan", "wave_1", "other", "text")
