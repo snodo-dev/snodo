@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Show an accessible, reduced-motion-aware task-spec progress bar that learns expected load time from recent loads. (Fixes #1238)
 - Run blocking dashboard data collection and task-spec reads in worker threads so slow views do not stall other requests. (Fixes #1236)
 - Keep the Now task tree full width until a task is selected, then restore its width when the panel closes. (Fixes #1235)
 - Render task ticket specs with section headings, preserved line breaks and identifiers, labels, ordered lists, quotes, and rules. (Fixes #1234)

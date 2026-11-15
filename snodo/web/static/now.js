@@ -34,6 +34,61 @@
   let currentContainer = null;
   let nowRequestInFlight = false;
   const specCache = new Map();
+  const specDurationStorageKey = "snodo-now-spec-load-durations";
+  let specDurations = [];
+  try {
+    const saved = window.localStorage.getItem(specDurationStorageKey);
+    const parsed = saved ? JSON.parse(saved) : [];
+    if (Array.isArray(parsed)) specDurations = parsed.filter((duration) => Number.isFinite(duration) && duration > 0).slice(-10);
+  } catch (_) { /* Storage may be unavailable; in-memory history still works. */ }
+
+  function expectedSpecDuration() {
+    return specDurations.length ? specDurations.reduce((sum, duration) => sum + duration, 0) / specDurations.length : 10_000;
+  }
+
+  function recordSpecDuration(duration) {
+    specDurations = [...specDurations, Math.max(1, duration)].slice(-10);
+    try { window.localStorage.setItem(specDurationStorageKey, JSON.stringify(specDurations)); } catch (_) { /* Keep the in-memory history. */ }
+  }
+
+  function showSpecProgress(body, entry) {
+    if (entry.progressTimer) window.clearInterval(entry.progressTimer);
+    const progress = element("div", undefined, "now-task-panel-progress");
+    progress.setAttribute("role", "progressbar");
+    progress.setAttribute("aria-label", "Loading task spec");
+    progress.setAttribute("aria-valuemin", "0");
+    progress.setAttribute("aria-valuemax", "100");
+    const track = element("div", undefined, "now-task-panel-progress-track");
+    const fill = element("div", undefined, "now-task-panel-progress-fill");
+    const caption = element("p", "Loading spec…", "now-task-panel-loading");
+    track.append(fill);
+    progress.append(track, caption);
+    body.replaceChildren(progress);
+    entry.progressStarted = entry.progressStarted || Date.now();
+    entry.expectedDuration = entry.expectedDuration || expectedSpecDuration();
+    entry.progressFill = fill;
+    entry.progressTimer = window.setInterval(() => {
+      const duration = Date.now() - entry.progressStarted;
+      const percent = duration <= entry.expectedDuration
+        ? Math.min(90, duration / entry.expectedDuration * 90)
+        : Math.min(98, 90 + (duration - entry.expectedDuration) / entry.expectedDuration * 2);
+      fill.style.width = `${percent}%`;
+      progress.setAttribute("aria-valuenow", String(Math.round(percent)));
+      const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      caption.textContent = duration > entry.expectedDuration
+        ? "Taking longer than usual…"
+        : reducedMotion ? `Loading spec… ${Math.floor(duration / 1000)}s` : "Loading spec…";
+    }, 100);
+  }
+
+  function finishSpecProgress(entry) {
+    if (entry.progressTimer) window.clearInterval(entry.progressTimer);
+    entry.progressTimer = null;
+    if (entry.progressFill) {
+      entry.progressFill.style.width = "100%";
+      entry.progressFill.setAttribute("aria-valuenow", "100");
+    }
+  }
 
   function expandableRow(label, key, defaultExpanded, className = "now-tree-row") {
     const row = element("div", undefined, className);
@@ -116,12 +171,12 @@
       if (entry.state === "loaded") renderSpec(body, entry.markdown);
       else if (entry.state === "missing") showSpecMessage(body, "No spec on this machine for this task.");
       else if (entry.state === "failed") showRetry(body, task, context, key);
-      else showSpecMessage(body, "Loading spec…", "now-task-panel-loading");
+      else showSpecProgress(body, entry);
       return;
     }
     entry = { state: "loading", scrollTop: body.scrollTop };
     specCache.set(key, entry);
-    showSpecMessage(body, "Loading spec…", "now-task-panel-loading");
+    showSpecProgress(body, entry);
     const url = `/api/now/spec?project=${encodeURIComponent(context.project)}&plan=${encodeURIComponent(context.plan)}&task=${encodeURIComponent(task.task_id)}`;
     fetch(url).then((response) => {
       if (response.status === 404) return { missing: true };
@@ -129,6 +184,8 @@
       return response.json();
     }).then((result) => {
       if (specCache.get(key) !== entry) return;
+      recordSpecDuration(Date.now() - entry.progressStarted);
+      finishSpecProgress(entry);
       if (result.missing) entry.state = "missing";
       else { entry.state = "loaded"; entry.markdown = result.markdown; }
       if (selectedTaskKey !== key || !body.isConnected) return;
@@ -137,6 +194,8 @@
       body.scrollTop = entry.scrollTop;
     }).catch(() => {
       if (specCache.get(key) !== entry) return;
+      recordSpecDuration(Date.now() - entry.progressStarted);
+      finishSpecProgress(entry);
       entry.state = "failed";
       if (selectedTaskKey === key && body.isConnected) showRetry(body, task, context, key);
     });

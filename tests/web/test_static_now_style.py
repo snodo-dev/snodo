@@ -104,3 +104,11 @@ def test_now_layout_transition_respects_reduced_motion() -> None:
     assert ".now-flight-layout-open { grid-template-columns: minmax(0, 1fr) minmax(19rem, 26.5rem); }" in css
     assert "transition: grid-template-columns 180ms ease" in css
     assert "@media (prefers-reduced-motion: reduce) { .now-flight-layout { transition: none; } }" in css
+
+
+def test_now_spec_progress_styles_use_theme_tokens_and_reduced_motion() -> None:
+    css = STYLESHEET.read_text(encoding="utf-8")
+    assert ".now-task-panel-progress-track" in css
+    assert ".now-task-panel-progress-fill" in css
+    assert "var(--accent)" in css
+    assert "@media (prefers-reduced-motion: reduce) { .now-task-panel-progress-fill { transition: none; } }" in css

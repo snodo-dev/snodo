@@ -311,3 +311,25 @@ def test_now_disappeared_selection_closes_before_layout_is_created() -> None:
     assert stale_guard < layout_creation
     assert 'selectedTaskKey = null;' in source[stale_guard:layout_creation]
     assert 'selectedTaskDetails = null;' in source[stale_guard:layout_creation]
+
+
+def test_now_task_spec_progress_learns_from_recent_durations_and_falls_back_to_memory() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "10_000" in source
+    assert ".slice(-10)" in source
+    assert "expectedSpecDuration" in source
+    assert "recordSpecDuration(Date.now() - entry.progressStarted)" in source
+    assert "window.localStorage.getItem" in source
+    assert "window.localStorage.setItem" in source
+    assert "catch (_)" in source
+    assert '"Taking longer than usual…"' in source
+
+
+def test_now_task_spec_progress_is_accessible_and_completes_on_responses() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'progress.setAttribute("role", "progressbar")' in source
+    assert 'progress.setAttribute("aria-label", "Loading task spec")' in source
+    assert 'entry.progressFill.style.width = "100%"' in source
+    assert "finishSpecProgress(entry)" in source
+    assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in source
+    assert "Loading spec… ${Math.floor(duration / 1000)}s" in source

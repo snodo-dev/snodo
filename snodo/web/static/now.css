@@ -230,3 +230,8 @@
 .now-refreshing .now-counts, .now-refreshing .now-flight-layout { opacity: 0.58; }
 @keyframes now-refetch-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .now-spinner { animation: none; } }
+
+.now-task-panel-progress-track { height: 0.25rem; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--muted) 20%, var(--surface)); }
+.now-task-panel-progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width 120ms linear; }
+.now-task-panel-progress .now-task-panel-loading { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.82rem; }
+@media (prefers-reduced-motion: reduce) { .now-task-panel-progress-fill { transition: none; } }
