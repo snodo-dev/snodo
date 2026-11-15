@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Style the Plans dashboard filter, responsive table, progress bar, and delivery status pills for light and dark themes. (Fixes #1195)
 - Style the Gates dashboard with responsive panels, visible bar tracks, and distinct outcome pills. (Fixes #1193)
 - Style the Delivery dashboard figures, responsive chart and project table for light and dark themes. (Fixes #1191)
 
