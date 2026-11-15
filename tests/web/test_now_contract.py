@@ -52,6 +52,14 @@ def _fixture(root: Path) -> dict:
         "  - id: two\n    tasks: [blocked]\n", encoding="utf-8",
     )
     os.utime(plan / "status.json", (NOW - 100, NOW - 100))
+    waiting_plan = project / ".snodo" / "plans" / "waiting"
+    _write_json(waiting_plan / "status.json", {
+        "tasks": {"shipped": "completed"},
+        "integration": {"branch": "plan/delivery"},
+    })
+    (waiting_plan / "plan.yml").write_text(
+        "intent: waiting\nwaves:\n  - id: one\n    tasks: [shipped]\n", encoding="utf-8",
+    )
     _git(project, "checkout", "-b", "plan/delivery")
     (project / "tracked.txt").write_text("branch change", encoding="utf-8")
     _git(project, "commit", "-am", "branch change")
@@ -72,8 +80,9 @@ def test_route_shape_and_counters_match_real_tree(tmp_path: Path) -> None:
     assert counters["recons"] is None  # Recons are deliberately unavailable in the local route contract.
     project = result["projects"][0]
     assert set(project) == {"name", "liveness", "last_activity_at", "plans", "outside_plan"}
-    plan_row = project["plans"][0]
-    assert set(plan_row) == {"name", "wave", "waves", "last_activity_at", "wave_groups"}
+    assert len(project["plans"]) == 2
+    plan_row = next(plan for plan in project["plans"] if plan["name"] == "delivery")
+    assert all(set(plan) == {"name", "wave", "waves", "last_activity_at", "wave_groups"} for plan in project["plans"])
     group = plan_row["wave_groups"][0]
     assert set(group) == {"id", "total", "status_counts", "tasks"}
     assert set(group["tasks"][0]) == {"task_id", "status", "job", "elapsed_seconds"}
@@ -81,16 +90,20 @@ def test_route_shape_and_counters_match_real_tree(tmp_path: Path) -> None:
     assert next(task for task in planned_rows if task["task_id"] == "active")["job"] == {"job_id": "job-active"}
     assert set(project["outside_plan"][0]) == {"task_id", "status", "job", "elapsed_seconds"}
     assert project["outside_plan"][0]["job"] == {"job_id": "job-outside"}
+    # These exact-key assertions guard every waiting-item field, including both variants.
     assert result["waiting"] == [
+        {"kind": "not_in_main", "project": "project", "plan": "waiting"},
         {"kind": "uncommitted", "project": "project", "files": ["tracked.txt"]},
     ]
-    # Tree has three planned tasks plus one outside-plan task; all are recent.
-    assert result["counters"]["tasks"]["count"] == 4
+    assert set(result["waiting"][0]) == {"kind", "project", "plan"}
+    assert set(result["waiting"][1]) == {"kind", "project", "files"}
+    # Tree has four planned tasks plus one outside-plan task; all are recent.
+    assert result["counters"]["tasks"]["count"] == 5
     assert result["counters"]["tasks"]["by_status"] == {
-        "completed": 1, "in_progress": 1, "blocked": 1, "running": 1,
+        "completed": 2, "in_progress": 1, "blocked": 1, "running": 1,
     }
-    assert result["counters"]["plans"] == 1
-    assert result["counters"]["waves"] == 2
+    assert result["counters"]["plans"] == 2
+    assert result["counters"]["waves"] == 3
     assert result["waiting"]
 
 
