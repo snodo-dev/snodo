@@ -72,3 +72,42 @@
 .now-status-breakdown { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 .now-status-detail { width: fit-content; padding: 0.12rem 0.35rem; border-radius: 999px; font-size: 0.68rem; white-space: nowrap; }
 .now-quiet-note { margin: -0.9rem 0 1.5rem; color: var(--muted); font-size: 0.9rem; }
+
+.now-flight-note { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 1rem; margin: -0.7rem 0 0.55rem; color: var(--muted); font-size: 0.72rem; }
+.now-column-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.now-project-title, .now-plan-title, .now-wave-title, .now-outside-title { display: flex; min-width: 0; }
+.now-expand { display: flex; width: 100%; min-width: 0; align-items: center; gap: 0.55rem; padding: 0.5rem 0; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.now-disclosure { flex: 0 0 1rem; color: var(--muted); }
+.now-project-title .now-expand { flex-wrap: wrap; }
+.now-project-summary, .now-project-age, .now-open-label, .now-plan-summary, .now-wave-summary, .now-outside-label { color: var(--muted); font-size: 0.78rem; }
+.now-liveness { padding: 0.15rem 0.5rem; border: 1px solid var(--border); border-radius: 999px; color: var(--text); font-size: 0.68rem; font-weight: 700; }
+.now-liveness-working { color: var(--green); }
+.now-liveness-reporting_not_progressing { color: var(--amber); }
+.now-liveness-no_recent_signal { color: var(--muted); }
+.now-plan-tag { color: var(--accent); font-size: 0.65rem; letter-spacing: 0.08em; }
+.now-plan-label { display: contents; }
+.now-wave-segments { display: flex; width: 4rem; gap: 2px; }
+.now-wave-segment { width: 0.35rem; height: 0.25rem; border-radius: 2px; background: var(--muted); }
+.now-wave-segment.now-status-completed { background: var(--accent); }
+.now-wave-segment.now-status-running, .now-wave-segment.now-status-in-progress { background: var(--green); }
+.now-wave-segment.now-status-blocked, .now-wave-segment.now-status-unmerged { background: var(--amber); }
+.now-wave-segment.now-status-errored { background: var(--red); }
+.now-plans, .now-waves { display: grid; gap: 0.25rem; padding-left: 1rem; border-left: 1px solid var(--border); }
+.now-plan-title { margin: 0; }
+.now-wave-title, .now-outside-title { margin: 0; }
+.now-task { grid-template-columns: 1rem minmax(4rem, 1fr) auto auto; }
+.now-task-mark { color: var(--muted); text-align: center; }
+.now-task.now-status-blocked .now-task-mark, .now-task.now-status-errored .now-task-mark { color: var(--amber); font-weight: 800; }
+.now-task.now-status-completed { opacity: 0.62; }
+.now-task.now-status-blocked .now-status, .now-task.now-status-errored .now-status { color: var(--amber); }
+.now-elapsed { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; text-align: right; }
+.now-status-neutral { color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, var(--surface)); }
+.now-status-neutral .now-status { color: var(--muted); }
+.now-tree-children[hidden] { display: none; }
+@media (max-width: 560px) {
+  .now-flight-note { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .now-project-summary { flex-basis: 100%; }
+}
+.now-tree-row { min-width: 0; }
+.now-wave, .now-outside { min-width: 0; }
+.now-wave-name, .now-plan-name { overflow-wrap: anywhere; }

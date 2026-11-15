@@ -13,7 +13,9 @@
   }
 
   function statusClass(status) {
-    return `now-status-${String(status || "pending").toLowerCase().replace(/[^a-z]+/g, "-")}`;
+    const normalized = String(status || "").toLowerCase().replace(/[^a-z]+/g, "-");
+    const known = ["running", "in-progress", "completed", "pending", "blocked", "unmerged", "errored"];
+    return known.includes(normalized) ? `now-status-${normalized}` : "now-status-neutral";
   }
 
   function ageLabel(generatedAt) {
@@ -22,6 +24,36 @@
     if (seconds < 60) return `as of ${seconds}s ago`;
     if (seconds < 3600) return `as of ${Math.floor(seconds / 60)}m ago`;
     return `as of ${Math.floor(seconds / 3600)}h ago`;
+  }
+
+  const expandedRows = new Map();
+
+  function expandableRow(label, key, defaultExpanded, className = "now-tree-row") {
+    const row = element("div", undefined, className);
+    const button = element("button", undefined, "now-expand");
+    button.type = "button";
+    const expanded = expandedRows.has(key) ? expandedRows.get(key) : defaultExpanded;
+    button.setAttribute("aria-expanded", String(expanded));
+    button.append(element("span", expanded ? "▾" : "▸", "now-disclosure"), label);
+    button.addEventListener("click", () => {
+      const next = button.getAttribute("aria-expanded") !== "true";
+      expandedRows.set(key, next);
+      button.setAttribute("aria-expanded", String(next));
+      button.querySelector(".now-disclosure").textContent = next ? "▾" : "▸";
+      const children = row.parentElement.querySelector(":scope > .now-tree-children");
+      if (children) children.hidden = !next;
+    });
+    row.append(button);
+    return { row, button, expanded };
+  }
+
+  function taskRow(task) {
+    const row = element("li", undefined, `now-task ${statusClass(task.status)}`);
+    row.append(element("span", task.status === "blocked" || task.status === "errored" ? "!" : task.status === "completed" ? "✓" : "•", "now-task-mark"));
+    row.append(element("span", task.task_id, "now-task-id"));
+    row.append(element("span", task.status, `now-status ${statusClass(task.status)}`));
+    row.append(element("span", task.elapsed_seconds == null ? "—" : elapsed(task.elapsed_seconds), "now-elapsed"));
+    return row;
   }
 
   function render(data) {
@@ -76,40 +108,74 @@
     }
 
     fragment.append(element("h2", "In flight"));
+    const flightNote = element("div", undefined, "now-flight-note");
+    flightNote.append(element("span", "ordered by last activity — deepest first"));
+    flightNote.append(element("span", "state", "now-column-label"));
+    flightNote.append(element("span", "elapsed", "now-column-label"));
+    fragment.append(flightNote);
     const flight = element("ul", undefined, "now-projects");
-    if (working.length === 0) flight.append(element("li", "Nothing is running.", "now-empty"));
+    if (!projects.length) flight.append(element("li", "Nothing is running.", "now-empty"));
     for (const project of [...working, ...idle]) {
-      const isWorking = project.liveness === "working";
-      const projectItem = element("li", undefined, `now-project${isWorking ? "" : " now-project-idle"}`);
-      const projectTitle = element("div", undefined, "now-project-title");
-      projectTitle.append(element("strong", project.name, "now-project-name"));
-      if (!isWorking) projectTitle.append(element("span", "— idle", "now-idle-label"));
-      projectItem.append(projectTitle);
+      const key = `project:${project.name}`;
+      const plans = project.plans || [];
+      const outside = project.outside_plan || [];
+      const activeTasks = [...plans.flatMap((plan) => (plan.wave_groups || []).flatMap((group) => group.tasks || [])), ...outside].length;
+      const labels = { working: "Working", reporting_not_progressing: "Reporting, not progressing", no_recent_signal: "No recent signal" };
+      const projectItem = element("li", undefined, "now-project");
+      const projectRow = expandableRow(element("strong", project.name, "now-project-name"), key, true, "now-project-title");
+      projectRow.button.append(element("span", labels[project.liveness] || labels.no_recent_signal, `now-liveness now-liveness-${project.liveness || "no_recent_signal"}`));
+      projectRow.button.append(element("span", `${plans.length} plans · ${activeTasks} tasks · ${outside.length} outside a plan`, "now-project-summary"));
+      projectRow.button.append(element("span", project.last_activity_at ? ageLabel(project.last_activity_at).replace("as of ", "") : "", "now-project-age"));
+      projectRow.button.append(element("span", "open", "now-open-label"));
+      projectItem.append(projectRow.row);
+      const children = element("div", undefined, "now-tree-children");
+      children.hidden = !projectRow.expanded;
       const planList = element("ul", undefined, "now-plans");
-      for (const plan of project.plans || []) {
+      for (const plan of plans) {
+        const planKey = `${key}:plan:${plan.name}`;
+        const groups = plan.wave_groups || [];
+        const total = groups.reduce((sum, group) => sum + (group.total || (group.tasks || []).length), 0);
         const planItem = element("li", undefined, "now-plan");
-        planItem.append(element("div", `${plan.name} — wave ${plan.wave} of ${plan.waves}`, "now-plan-title"));
-        const taskList = element("ul", undefined, "now-tasks");
-        for (const group of plan.wave_groups || []) {
-          for (const task of group.tasks || []) {
-            const taskItem = element("li", undefined, "now-task");
-            taskItem.append(element("span", task.task_id, "now-task-id"));
-            taskItem.append(element("span", task.status, `now-status ${statusClass(task.status)}`));
-            if (task.job) taskItem.append(element("span", `job ${task.job.job_id}, ${elapsed(task.elapsed_seconds)}`, "now-job"));
-            taskList.append(taskItem);
-          }
+        const planRow = expandableRow(element("span", undefined, "now-plan-label"), planKey, true, "now-plan-title");
+        planRow.button.querySelector(".now-plan-label").append(element("span", "PLAN", "now-plan-tag"), element("strong", plan.name, "now-plan-name"), element("span", `${total} tasks · wave ${plan.wave} of ${plan.waves}`, "now-plan-summary"));
+        const segments = element("span", undefined, "now-wave-segments");
+        for (const group of groups) for (const task of group.tasks || []) segments.append(element("span", undefined, `now-wave-segment ${statusClass(task.status)}`));
+        planRow.button.append(segments);
+        planItem.append(planRow.row);
+        const waveList = element("ul", undefined, "now-waves");
+        for (const [waveIndex, group] of groups.entries()) {
+          const tasks = group.tasks || [];
+          const counts = group.status_counts || {};
+          const summary = Object.entries(counts).filter(([, count]) => count).map(([status, count]) => `${count} ${status}`).join(", ");
+          const allCompleted = tasks.length > 0 && tasks.every((task) => task.status === "completed");
+          const waveItem = element("li", undefined, "now-wave");
+          const waveRow = expandableRow(element("span", `Wave ${waveIndex + 1}`, "now-wave-name"), `${planKey}:wave:${group.id || waveIndex}`, !allCompleted, "now-wave-title");
+          waveRow.button.append(element("span", `${group.total ?? tasks.length} tasks${summary ? ` — ${summary}` : ""}`, "now-wave-summary"));
+          waveItem.append(waveRow.row);
+          const taskList = element("ul", undefined, "now-tasks now-tree-children");
+          taskList.hidden = !waveRow.expanded;
+          for (const task of tasks) taskList.append(taskRow(task));
+          waveItem.append(taskList);
+          waveList.append(waveItem);
         }
-        planItem.append(taskList);
+        const waveChildren = element("div", undefined, "now-tree-children");
+        waveChildren.hidden = !planRow.expanded;
+        waveChildren.append(waveList);
+        planItem.append(waveChildren);
         planList.append(planItem);
       }
-      for (const task of project.outside_plan || []) {
-        const taskItem = element("li", undefined, "now-task");
-        taskItem.append(element("span", task.task_id, "now-task-id"));
-        taskItem.append(element("span", task.status, `now-status ${statusClass(task.status)}`));
-        if (task.job) taskItem.append(element("span", `job ${task.job.job_id}, ${elapsed(task.elapsed_seconds)}`, "now-job"));
-        planList.append(taskItem);
+      children.append(planList);
+      if (outside.length) {
+        const outsideItem = element("li", undefined, "now-outside");
+        const outsideRow = expandableRow(element("span", `Outside a plan · ${outside.length} tasks`, "now-outside-label"), `${key}:outside`, false, "now-outside-title");
+        outsideItem.append(outsideRow.row);
+        const outsideTasks = element("ul", undefined, "now-tasks now-tree-children");
+        outsideTasks.hidden = !outsideRow.expanded;
+        for (const task of outside) outsideTasks.append(taskRow(task));
+        outsideItem.append(outsideTasks);
+        children.append(outsideItem);
       }
-      projectItem.append(planList);
+      projectItem.append(children);
       flight.append(projectItem);
     }
     fragment.append(flight);
