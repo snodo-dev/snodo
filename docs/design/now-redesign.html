@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>snodo local, Now</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Tokens copied from snodo-cloud app/src/app.css: dark is the default, light follows. */
+:root {
+  --bg:#060a0b; --bg-2:#0b1215; --bg-3:#0f181c;
+  --teal:#2dd4bf; --teal-dim:rgba(45,212,191,.1); --teal-border:rgba(45,212,191,.22); --teal-soft:rgba(45,212,191,.04);
+  --text:#dde8ea; --text-dim:#7090a0; --text-muted:#66808f; --text-faint:#3c5560; --code-bg:#0b1518;
+  --grid:rgba(45,212,191,.035);
+  --pass:#4ade80; --pass-dim:rgba(74,222,128,.1); --pass-border:rgba(74,222,128,.24);
+  --blocked:#ff6b5e; --blocked-dim:rgba(255,107,94,.1); --blocked-border:rgba(255,107,94,.26);
+  --abstained:#e0a83a; --abstained-dim:rgba(224,168,58,.1); --abstained-border:rgba(224,168,58,.24);
+  --running:#38bdf8; --running-dim:rgba(56,189,248,.1); --running-border:rgba(56,189,248,.24);
+  --line:rgba(255,255,255,.06); --line-subtle:rgba(255,255,255,.04); --line-2:rgba(255,255,255,.1);
+  --overlay:rgba(255,255,255,.04); --overlay-2:rgba(255,255,255,.08); --shadow:none; --on-teal:var(--bg);
+  --r-1:2px; --r-2:4px; --r-3:8px; --r-pill:999px;
+  --fs-micro:10px; --fs-small:11px; --fs-body:13px; --fs-lead:14px; --fs-title:20px; --fs-loud:30px;
+  --serif:'Archivo',sans-serif; --body:'Hanken Grotesk',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:#f5f7f7; --bg-2:#ffffff; --bg-3:#eef2f3; --teal:#0f766e; --teal-dim:rgba(15,118,110,.08); --teal-border:rgba(15,118,110,.26); --teal-soft:rgba(15,118,110,.04);
+    --text:#13201f; --text-dim:#4a5f66; --text-muted:#5d7179; --text-faint:#c9d4d7; --code-bg:#f1f5f5; --grid:rgba(15,118,110,.025);
+    --pass:#15803d; --pass-dim:rgba(21,128,61,.08); --pass-border:rgba(21,128,61,.26);
+    --blocked:#d42a1f; --blocked-dim:rgba(212,42,31,.08); --blocked-border:rgba(212,42,31,.26);
+    --abstained:#9a6208; --abstained-dim:rgba(154,98,8,.08); --abstained-border:rgba(154,98,8,.26);
+    --running:#0369a1; --running-dim:rgba(3,105,161,.08); --running-border:rgba(3,105,161,.26);
+    --line:rgba(16,40,44,.09); --line-subtle:rgba(16,40,44,.06); --line-2:rgba(16,40,44,.16);
+    --overlay:rgba(16,40,44,.035); --overlay-2:rgba(16,40,44,.07); --shadow:0 1px 2px rgba(16,40,44,.08); --on-teal:#fff; color-scheme:light;
+  }
+}
+:root[data-theme="light"] {
+  --bg:#f5f7f7; --bg-2:#ffffff; --bg-3:#eef2f3; --teal:#0f766e; --teal-dim:rgba(15,118,110,.08); --teal-border:rgba(15,118,110,.26); --teal-soft:rgba(15,118,110,.04);
+  --text:#13201f; --text-dim:#4a5f66; --text-muted:#5d7179; --text-faint:#c9d4d7; --code-bg:#f1f5f5; --grid:rgba(15,118,110,.025);
+  --pass:#15803d; --pass-dim:rgba(21,128,61,.08); --pass-border:rgba(21,128,61,.26);
+  --blocked:#d42a1f; --blocked-dim:rgba(212,42,31,.08); --blocked-border:rgba(212,42,31,.26);
+  --abstained:#9a6208; --abstained-dim:rgba(154,98,8,.08); --abstained-border:rgba(154,98,8,.26);
+  --running:#0369a1; --running-dim:rgba(3,105,161,.08); --running-border:rgba(3,105,161,.26);
+  --line:rgba(16,40,44,.09); --line-subtle:rgba(16,40,44,.06); --line-2:rgba(16,40,44,.16);
+  --overlay:rgba(16,40,44,.035); --overlay-2:rgba(16,40,44,.07); --shadow:0 1px 2px rgba(16,40,44,.08); --on-teal:#fff; color-scheme:light;
+}
+
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text); font-family:var(--body); font-size:var(--fs-body); line-height:1.65; min-height:100vh; position:relative; }
+body::before { content:''; position:fixed; inset:0; background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px); background-size:24px 24px; pointer-events:none; z-index:0; }
+button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+.mono { font-family:var(--mono); }
+.num { font-variant-numeric:tabular-nums; }
+
+/* Top bar, 56px, same as cloud */
+.top { position:fixed; inset:0 0 auto 0; z-index:100; height:56px; border-bottom:1px solid var(--line); backdrop-filter:blur(16px); background:color-mix(in srgb,var(--bg) 88%,transparent); padding-top:env(safe-area-inset-top,0px); }
+.top-in { height:56px; max-width:1480px; margin:0 auto; padding:0 32px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.left { display:flex; align-items:center; gap:28px; min-width:0; }
+.wordmark { font-family:var(--serif); font-weight:700; font-size:17px; letter-spacing:-.4px; white-space:nowrap; }
+.wordmark span { color:var(--teal); }
+.badge { font-family:var(--mono); font-size:var(--fs-micro); font-weight:500; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); background:var(--overlay); border:1px solid var(--line-2); padding:2px 6px; border-radius:3px; margin-left:10px; line-height:1; }
+.tabs { display:flex; gap:2px; overflow-x:auto; }
+.tab { font-size:var(--fs-body); color:var(--text-dim); padding:6px 12px; border-radius:var(--r-2); white-space:nowrap; }
+.tab:hover { color:var(--text); background:var(--overlay); }
+.tab[aria-current="page"] { color:var(--teal); background:var(--teal-dim); }
+.right { display:flex; align-items:center; gap:16px; }
+.stamp { font:var(--fs-small) var(--mono); color:var(--text-muted); white-space:nowrap; }
+.btn { font-size:var(--fs-body); padding:6px 12px; border:1px solid var(--line-2); border-radius:var(--r-2); background:var(--bg-2); color:var(--text); }
+.btn:hover { border-color:var(--teal-border); color:var(--teal); }
+.btn.sm { font-size:var(--fs-small); padding:4px 9px; }
+
+main { position:relative; z-index:1; max-width:1480px; margin:0 auto; padding:80px 32px 64px; }
+.pagehead { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+.eyebrow { font:600 var(--fs-micro) var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); }
+h1 { font-family:var(--serif); font-size:var(--fs-title); font-weight:700; letter-spacing:-.3px; line-height:1.2; margin-top:4px; }
+.asof { font:var(--fs-small) var(--mono); color:var(--text-muted); display:flex; align-items:center; gap:12px; }
+.live { display:inline-flex; align-items:center; gap:6px; }
+.dot { width:6px; height:6px; border-radius:50%; background:var(--pass); }
+.dot.pulse { animation:pulse 2s infinite; }
+@keyframes pulse { 0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--pass) 50%,transparent)} 70%{box-shadow:0 0 0 6px transparent} 100%{box-shadow:0 0 0 0 transparent} }
+@media (prefers-reduced-motion:reduce){ .dot.pulse{animation:none} }
+
+/* Counters */
+.counters { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:14px; }
+.counter { min-width:0; min-height:104px; background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-3); padding:17px 18px; box-shadow:var(--shadow); }
+.counter h3 { font:600 var(--fs-small) var(--mono); letter-spacing:.04em; text-transform:uppercase; color:var(--text-dim); }
+.counter .v { margin-top:12px; font-size:var(--fs-loud); line-height:1; font-weight:700; font-variant-numeric:tabular-nums; }
+.counter .sub { margin-top:8px; font-size:var(--fs-small); line-height:1.35; color:var(--text-dim); display:flex; flex-wrap:wrap; gap:4px 10px; }
+.counter .sub b { font-weight:600; }
+.c-pass { color:var(--pass); } .c-run { color:var(--running); } .c-block { color:var(--blocked); }
+.counter.attn { border-color:var(--blocked-border); background:linear-gradient(var(--blocked-dim),var(--blocked-dim)),var(--bg-2); }
+@media (max-width:1100px){ .counters{grid-template-columns:repeat(3,minmax(0,1fr));} }
+@media (max-width:560px){ .counters{grid-template-columns:repeat(2,minmax(0,1fr));} }
+
+/* Attention strip */
+.attention { margin-top:24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 16px; background:var(--blocked-dim); border:1px solid var(--blocked-border); border-radius:var(--r-3); }
+.attention p { flex:1; min-width:220px; color:var(--text); }
+.attention p span { color:var(--text-dim); }
+
+/* Chips */
+.chip { display:inline-flex; align-items:center; gap:5px; font:600 var(--fs-micro) var(--mono); letter-spacing:.06em; text-transform:uppercase; padding:2px 7px; border-radius:var(--r-1); border:1px solid var(--line-2); color:var(--text-dim); background:var(--overlay); line-height:1.5; white-space:nowrap; }
+.chip.completed,.chip.pass { color:var(--pass); background:var(--pass-dim); border-color:var(--pass-border); }
+.chip.running { color:var(--running); background:var(--running-dim); border-color:var(--running-border); }
+.chip.failed,.chip.blocker { color:var(--blocked); background:var(--blocked-dim); border-color:var(--blocked-border); }
+.chip.abstained { color:var(--abstained); background:var(--abstained-dim); border-color:var(--abstained-border); }
+.chip.idle { color:var(--text-muted); }
+.chip.brand { color:var(--teal); background:var(--teal-dim); border-color:var(--teal-border); }
+
+/* Section header */
+.sec { margin-top:32px; display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+.sec h2 { font:600 var(--fs-small) var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--text-dim); }
+.sec p { font-size:var(--fs-small); color:var(--text-muted); }
+
+.split { display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:24px; align-items:start; }
+@media (max-width:1080px){ .split{grid-template-columns:minmax(0,1fr);} .detail{position:static !important; order:-1;} }
+
+/* Fleet */
+.fleet { background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-3); overflow:hidden; box-shadow:var(--shadow); }
+.proj { border-top:1px solid var(--line); }
+.proj:first-child { border-top:0; }
+.proj-h { width:100%; display:flex; align-items:center; gap:12px; padding:12px 18px; text-align:left; flex-wrap:wrap; }
+.proj-h:hover { background:var(--overlay); }
+.chev { width:10px; color:var(--text-muted); font-size:9px; transition:transform .15s; flex:none; }
+[aria-expanded="true"] > .chev { transform:rotate(90deg); }
+.pname { font-family:var(--serif); font-weight:600; font-size:var(--fs-lead); }
+.pmeta { font:var(--fs-small) var(--mono); color:var(--text-muted); }
+.grow { flex:1; min-width:0; }
+.path { font:var(--fs-small) var(--mono); color:var(--text-muted); padding:0 18px 10px 40px; margin-top:-6px; }
+
+/* Plan row: segmented bar, one segment per task */
+.plan { border-top:1px solid var(--line-subtle); }
+.plan-h { width:100%; display:grid; grid-template-columns:12px minmax(160px,1.4fr) minmax(120px,1fr) 92px 64px; align-items:center; gap:14px; padding:9px 18px 9px 40px; text-align:left; }
+.plan-h:hover { background:var(--overlay); }
+.plan-name { font:500 var(--fs-body) var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.plan-sub { font-size:var(--fs-small); color:var(--text-muted); white-space:nowrap; }
+.segs { display:flex; gap:2px; height:6px; }
+.segs i { flex:1; background:var(--text-faint); border-radius:1px; opacity:.55; }
+.segs i.completed { background:var(--pass); opacity:.85; }
+.segs i.running { background:var(--running); opacity:1; }
+.segs i.failed { background:var(--blocked); opacity:1; }
+.elapsed { font:var(--fs-small) var(--mono); color:var(--text-muted); text-align:right; }
+.waves { padding:2px 18px 12px 62px; display:flex; flex-direction:column; gap:8px; }
+.wave-h { display:flex; align-items:center; gap:10px; padding:4px 0; width:100%; text-align:left; color:var(--text-dim); }
+.wave-h b { font:600 var(--fs-micro) var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--text-muted); }
+.wave-h span { font-size:var(--fs-small); color:var(--text-muted); }
+.tasks { border:1px solid var(--line); border-radius:var(--r-2); overflow:hidden; background:var(--bg); }
+.task { width:100%; display:grid; grid-template-columns:18px minmax(0,1fr) 96px 56px; align-items:center; gap:12px; padding:7px 12px; text-align:left; border-top:1px solid var(--line-subtle); }
+.task:first-child { border-top:0; }
+.task:hover { background:var(--overlay); }
+.task[aria-selected="true"] { background:var(--teal-soft); box-shadow:inset 2px 0 0 var(--teal); }
+.task .id { font:var(--fs-body) var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.task .id em { font-style:normal; color:var(--text-muted); }
+.ico { width:14px; height:14px; border-radius:50%; border:1.5px solid var(--text-faint); flex:none; position:relative; }
+.ico.completed { border-color:var(--pass); background:var(--pass-dim); }
+.ico.completed::after { content:''; position:absolute; left:3.5px; top:1px; width:3px; height:6px; border:solid var(--pass); border-width:0 1.5px 1.5px 0; transform:rotate(40deg); }
+.ico.running { border-color:var(--running); border-top-color:transparent; animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce){ .ico.running{animation:none; border-top-color:var(--running);} }
+.ico.failed { border-color:var(--blocked); background:var(--blocked-dim); }
+.ico.failed::after { content:'×'; position:absolute; inset:0; display:grid; place-items:center; font:700 11px/1 var(--mono); color:var(--blocked); }
+.ico.pending { border-style:dashed; }
+@media (max-width:640px){ .plan-h{grid-template-columns:12px 1fr 64px;} .plan-h .segs-wrap,.plan-h .plan-sub{display:none;} .task{grid-template-columns:18px minmax(0,1fr) 80px;} .task .elapsed{display:none;} .waves{padding-left:24px;} .plan-h{padding-left:24px;} .path{padding-left:24px;} }
+
+/* Detail panel */
+.detail { position:sticky; top:72px; background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-3); box-shadow:var(--shadow); }
+.d-head { padding:16px 18px 14px; border-bottom:1px solid var(--line); }
+.d-head .row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.d-id { font:600 var(--fs-lead) var(--mono); word-break:break-all; margin-top:6px; }
+.d-where { font-size:var(--fs-small); color:var(--text-muted); margin-top:2px; }
+.d-facts { display:grid; grid-template-columns:repeat(3,1fr); border-bottom:1px solid var(--line); }
+.d-facts div { padding:12px 18px; border-left:1px solid var(--line-subtle); }
+.d-facts div:first-child { border-left:0; }
+.d-facts dt { font:600 var(--fs-micro) var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--text-muted); }
+.d-facts dd { font:600 var(--fs-lead) var(--mono); margin-top:2px; }
+.d-sec { padding:14px 18px; border-bottom:1px solid var(--line); }
+.d-sec:last-child { border-bottom:0; }
+.d-sec h4 { font:600 var(--fs-micro) var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
+.v { display:flex; flex-direction:column; }
+.vr { display:grid; grid-template-columns:96px 1fr; gap:10px; align-items:start; padding:6px 0; }
+.vr + .vr { border-top:1px solid var(--line-subtle); }
+.vr .n { font:var(--fs-small) var(--mono); color:var(--text-dim); padding-top:2px; }
+.vr .why { font-size:var(--fs-body); color:var(--text); }
+.vr .why small { display:block; color:var(--text-muted); font-size:var(--fs-small); }
+.stage-label { font:var(--fs-small) var(--mono); color:var(--text-muted); margin:8px 0 2px; }
+.stage-label:first-child { margin-top:0; }
+pre.log { background:var(--code-bg); border:1px solid var(--line); border-radius:var(--r-2); padding:10px 12px; font:var(--fs-small)/1.6 var(--mono); color:var(--text-dim); overflow-x:auto; }
+pre.log .bad { color:var(--blocked); }
+.muted { color:var(--text-muted); font-size:var(--fs-small); }
+.actions { display:flex; gap:8px; flex-wrap:wrap; }
+.copied { font:var(--fs-small) var(--mono); color:var(--text-muted); margin-top:8px; min-height:1em; word-break:break-all; }
+.foot { margin-top:40px; padding-top:14px; border-top:1px solid var(--line); font-size:var(--fs-small); color:var(--text-muted); max-width:90ch; }
+.foot code { font-family:var(--mono); }
+[hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="left">
+      <div class="wordmark">snod<span>o</span><span class="badge">local</span></div>
+      <nav class="tabs" aria-label="Sections">
+        <button class="tab" type="button" aria-current="page">Now</button>
+        <button class="tab" type="button">Delivery</button>
+        <button class="tab" type="button">Gates</button>
+        <button class="tab" type="button">Plans</button>
+      </nav>
+    </div>
+    <div class="right">
+      <span class="stamp">127.0.0.1:7878</span>
+      <button class="btn sm" id="theme" type="button">Theme</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="pagehead">
+    <div>
+      <div class="eyebrow">Last 24 hours</div>
+      <h1>Now</h1>
+    </div>
+    <div class="asof">
+      <span class="live"><span class="dot pulse"></span>live, file watch</span>
+      <span>updated 12:00 PM</span>
+    </div>
+  </div>
+
+  <section class="counters" aria-label="Counters">
+    <div class="counter"><h3>Active projects</h3><div class="v num">1</div><div class="sub"><span>of 3 on this machine</span></div></div>
+    <div class="counter"><h3>Plans / queues</h3><div class="v num">6</div><div class="sub"><span>Queues 0</span></div></div>
+    <div class="counter"><h3>Waves</h3><div class="v num">15</div><div class="sub"><span><b class="c-run">1 running</b></span></div></div>
+    <div class="counter attn"><h3>Tasks</h3><div class="v num">46</div><div class="sub"><b class="c-block">1 failed</b><b class="c-run">1 running</b><b class="c-pass">44 completed</b></div></div>
+    <div class="counter"><h3>Recons</h3><div class="v num">0</div><div class="sub"><span>none in the window</span></div></div>
+    <div class="counter"><h3>Commits</h3><div class="v num">74</div><div class="sub"><span>across 1 project</span></div></div>
+  </section>
+
+  <div class="attention" role="status">
+    <span class="chip failed">Failed</span>
+    <p><span class="mono">1.3_empty_states</span> <span>in web-dashboard-polish stopped at the qa-gate with a failing test.</span></p>
+    <button class="btn sm" type="button" id="jump">Show task</button>
+  </div>
+
+  <div class="sec">
+    <h2>In flight</h2>
+    <p>Projects with the latest activity first. Plans with a failure or a running task open themselves.</p>
+  </div>
+
+  <div class="split">
+    <div class="fleet" id="fleet"></div>
+    <aside class="detail" id="detail" aria-live="polite"></aside>
+  </div>
+
+  <p class="foot">Mockup with sample data. Layout, type, spacing and every colour come from snodo-cloud's own tokens (<code>app/src/app.css</code>), so the same page reads as the same product. Task states are the ones snodo already writes: pending, running, completed, failed. The dashboard reads <code>.snodo/</code> and adds no states, severities or halt types of its own.</p>
+</main>
+
+<script>
+const projects = [
+  { name:'snodo-public', path:'~/Dev/snodo', state:'running', label:'Working', last:'23m ago', open:true,
+    plans:[
+      { name:'web-dashboard-polish', elapsed:'41m', wave:'wave 1 of 2', open:true, tasks:[
+        {w:1, id:'1.1_empty_states_copy', s:'completed', t:'3m 02s'},
+        {w:1, id:'1.2_refetch_button', s:'completed', t:'2m 40s'},
+        {w:1, id:'1.3_empty_states', s:'failed', t:'4m 12s', attempts:3},
+        {w:1, id:'1.4_theme_tokens', s:'completed', t:'3m 55s'},
+        {w:2, id:'2.1_task_panel_spec_fallback', s:'running', t:'1m 18s'},
+        {w:2, id:'2.2_keyboard_nav', s:'pending', t:''}
+      ]},
+      { name:'web-dashboard-task-panel', elapsed:'1h 12m', wave:'wave 4 of 4', tasks:[
+        {w:1,id:'1.1_task_spec_reader',s:'completed',t:'2m 11s'},{w:1,id:'1.2_markdown_renderer',s:'completed',t:'3m 36s'},
+        {w:2,id:'2.1_panel_shell',s:'completed',t:'2m 58s'},{w:2,id:'2.2_validator_results',s:'completed',t:'4m 01s'},
+        {w:3,id:'3.1_log_tail',s:'completed',t:'3m 20s'},
+        {w:4,id:'4.1_panel_close_focus',s:'completed',t:'2m 05s'},{w:4,id:'4.2_panel_a11y',s:'completed',t:'2m 47s'}
+      ]},
+      { name:'web-dashboard-now-parity', elapsed:'58m', wave:'wave 3 of 3', tasks:[
+        {w:1,id:'1.1_counter_strip',s:'completed',t:'3m 12s'},{w:1,id:'1.2_fleet_tree',s:'completed',t:'4m 40s'},{w:1,id:'1.3_status_chips',s:'completed',t:'2m 22s'},
+        {w:2,id:'2.1_plan_rows',s:'completed',t:'3m 09s'},{w:2,id:'2.2_wave_groups',s:'completed',t:'2m 51s'},
+        {w:3,id:'3.1_elapsed_column',s:'completed',t:'2m 14s'},{w:3,id:'3.2_in_flight_order',s:'completed',t:'3m 01s'}
+      ]},
+      { name:'web-dashboard-gates-view', elapsed:'49m', wave:'wave 3 of 3', tasks:[
+        {w:1,id:'1.1_gate_records',s:'completed',t:'3m 33s'},{w:1,id:'1.2_verdict_chips',s:'completed',t:'2m 30s'},
+        {w:2,id:'2.1_gate_filters',s:'completed',t:'3m 10s'},{w:3,id:'3.1_gate_detail',s:'completed',t:'4m 02s'}
+      ]},
+      { name:'local-server-watch', elapsed:'36m', wave:'wave 2 of 2', tasks:[
+        {w:1,id:'1.1_fs_watch',s:'completed',t:'3m 45s'},{w:1,id:'1.2_debounce',s:'completed',t:'2m 05s'},{w:2,id:'2.1_sse_push',s:'completed',t:'3m 52s'}
+      ]},
+      { name:'project-discovery', elapsed:'27m', wave:'wave 1 of 1', tasks:[
+        {w:1,id:'1.1_scan_roots',s:'completed',t:'2m 38s'},{w:1,id:'1.2_manual_add',s:'completed',t:'2m 19s'}
+      ]}
+    ]},
+  { name:'snodo-cloud', path:'~/Dev/snodo-cloud', state:'idle', label:'Idle', last:'2h ago', plans:[] },
+  { name:'nfc-card-v2', path:'~/Dev/nfc-card-v2', state:'idle', label:'Blocked task', last:'1d ago', plans:[] }
+];
+
+const details = {
+  '1.3_empty_states': {
+    plan:'web-dashboard-polish', wave:1, attempts:3,
+    pre:[['meta-spec','pass','Intent, constraints and acceptance are stated.'],['security','pass','No new data crosses a boundary.'],['architecture','pass','Stays inside web/src/views.']],
+    post:[['lint','pass','No findings.'],['qa-gate','blocker','1 failing test','empty-states.test.ts › renders the no-projects message']],
+    log:'qa-gate  FAIL  web/test/empty-states.test.ts\n<span class="bad">  ✕ renders the no-projects message</span>\n    expected "No projects yet"\n    received ""\n  Tests: 1 failed, 18 passed\nattempt 3 of 3 used', jobId:'j_4d1f0c9a77be'
+  }
+};
+function detailFor(t, plan) {
+  if (details[t.id]) return details[t.id];
+  const done = t.s === 'completed';
+  return { plan:plan.name, wave:t.w, attempts:1,
+    pre:[['meta-spec','pass',''],['security','pass',''],['architecture','pass','']],
+    post: done ? [['lint','pass',''],['qa-gate','pass','']] : [],
+    log: done ? 'qa-gate  PASS\nmerged to main' : (t.s==='running' ? 'coder  turn 6 of 30\nediting web/src/views/task-panel.ts' : ''), jobId:'j_' + t.id.replace(/\W/g,'').slice(0,12).padEnd(12,'0') };
+}
+
+const $ = (s,r=document)=>r.querySelector(s);
+let selected = '1.3_empty_states';
+const openProj = new Set(projects.filter(p=>p.open).map(p=>p.name));
+const openPlan = new Set(); projects.forEach(p=>p.plans.forEach(pl=>{ if(pl.open) openPlan.add(pl.name); }));
+const openWave = new Set(['web-dashboard-polish|1','web-dashboard-polish|2']);
+
+function planState(pl){ const s=pl.tasks.map(t=>t.s); return s.includes('failed')?'failed':s.includes('running')?'running':s.every(x=>x==='completed')?'completed':'idle'; }
+function waveSummary(ts){ const c={}; ts.forEach(t=>c[t.s]=(c[t.s]||0)+1); return ts.length+' tasks · '+Object.entries(c).map(([k,v])=>v+' '+k).join(', '); }
+
+function renderFleet(){
+  $('#fleet').innerHTML = projects.map(p=>{
+    const o = openProj.has(p.name);
+    const head = `<button class="proj-h" type="button" aria-expanded="${o}" data-proj="${p.name}">
+      <span class="chev">▶</span><span class="pname">${p.name}</span>
+      <span class="chip ${p.state==='running'?'brand':'idle'}">${p.label}</span>
+      <span class="pmeta">${p.plans.length} plans · ${p.plans.reduce((a,x)=>a+x.tasks.length,0)} tasks</span>
+      <span class="grow"></span><span class="pmeta">${p.last}</span></button>
+      <div class="path">${p.path}</div>`;
+    if(!o) return `<div class="proj">${head}</div>`;
+    const plans = p.plans.map(pl=>{
+      const po = openPlan.has(pl.name), st = planState(pl);
+      const waves = [...new Set(pl.tasks.map(t=>t.w))];
+      return `<div class="plan">
+        <button class="plan-h" type="button" aria-expanded="${po}" data-plan="${pl.name}">
+          <span class="chev">▶</span>
+          <span><span class="plan-name">${pl.name}</span><br><span class="plan-sub">${pl.tasks.length} tasks · ${pl.wave}</span></span>
+          <span class="segs segs-wrap" aria-label="${waveSummary(pl.tasks)}">${pl.tasks.map(t=>`<i class="${t.s}"></i>`).join('')}</span>
+          <span><span class="chip ${st}">${st==='idle'?'pending':st}</span></span>
+          <span class="elapsed num">${pl.elapsed}</span>
+        </button>
+        ${po ? `<div class="waves">${waves.map(w=>{
+          const ts = pl.tasks.filter(t=>t.w===w), key = pl.name+'|'+w, wo = openWave.has(key);
+          return `<div><button class="wave-h" type="button" aria-expanded="${wo}" data-wave="${key}"><span class="chev">▶</span><b>Wave ${w}</b><span>${waveSummary(ts)}</span></button>
+          ${wo ? `<div class="tasks" role="listbox" aria-label="Wave ${w} tasks">${ts.map(t=>`
+            <button class="task" role="option" type="button" aria-selected="${t.id===selected}" data-task="${t.id}" data-plan-of="${pl.name}">
+              <span class="ico ${t.s}"></span><span class="id" title="${t.id}"><em>${t.id.split('_')[0]}_</em>${t.id.slice(t.id.indexOf('_')+1)}</span>
+              <span><span class="chip ${t.s==='pending'?'idle':t.s}">${t.s}</span></span><span class="elapsed num">${t.t||'—'}</span></button>`).join('')}</div>` : ''}</div>`;
+        }).join('')}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="proj">${head}${plans}</div>`;
+  }).join('');
+}
+
+function renderDetail(){
+  let task, plan;
+  projects.forEach(p=>p.plans.forEach(pl=>pl.tasks.forEach(t=>{ if(t.id===selected){ task=t; plan=pl; } })));
+  const d = detailFor(task, plan);
+  const rows = arr => arr.length ? arr.map(r=>`<div class="vr"><span><span class="chip ${r[1]}">${r[1]}</span></span><div class="why"><span class="mono" style="font-size:var(--fs-small);color:var(--text-dim)">${r[0]}</span>${r[2]?`<small>${r[2]}${r[3]?`<br><span class="mono">${r[3]}</span>`:''}</small>`:''}</div></div>`).join('') : '<p class="muted">Not reached yet.</p>';
+  $('#detail').innerHTML = `
+    <div class="d-head"><div class="row"><span class="chip ${task.s==='pending'?'idle':task.s}">${task.s}</span><button class="btn sm" type="button" id="closeDetail">Close</button></div>
+      <div class="d-id">${task.id}</div><div class="d-where">${plan.name} · wave ${task.w}</div></div>
+    <dl class="d-facts"><div><dt>Elapsed</dt><dd class="num">${task.t||'—'}</dd></div><div><dt>Attempts</dt><dd class="num">${task.attempts||d.attempts}</dd></div><div><dt>Job</dt><dd style="font-size:var(--fs-small);padding-top:3px">${d.jobId.slice(0,10)}</dd></div></dl>
+    <div class="d-sec"><h4>Validators</h4><div class="v"><div class="stage-label">before the coder</div>${rows(d.pre)}<div class="stage-label">after the coder</div>${rows(d.post)}</div></div>
+    ${d.log ? `<div class="d-sec"><h4>Log tail</h4><pre class="log">${d.log}</pre></div>` : ''}
+    <div class="d-sec"><h4>Spec</h4><p class="muted">The task spec is not stored on this machine. The plan folder only keeps it while the plan is open.</p></div>
+    <div class="d-sec"><div class="actions"><button class="btn sm" type="button" data-copy="${task.id}">Copy task id</button><button class="btn sm" type="button" data-copy=".snodo/jobs/${d.jobId}/stdout.log">Copy log path</button></div><div class="copied" id="copied"></div></div>`;
+}
+
+document.addEventListener('click', e=>{
+  const t = e.target.closest('[data-task]');
+  if(t){ selected = t.dataset.task; renderFleet(); renderDetail(); return; }
+  const w = e.target.closest('[data-wave]'); if(w){ const k=w.dataset.wave; openWave.has(k)?openWave.delete(k):openWave.add(k); renderFleet(); return; }
+  const pl = e.target.closest('[data-plan]'); if(pl){ const k=pl.dataset.plan; openPlan.has(k)?openPlan.delete(k):openPlan.add(k); renderFleet(); return; }
+  const pr = e.target.closest('[data-proj]'); if(pr){ const k=pr.dataset.proj; openProj.has(k)?openProj.delete(k):openProj.add(k); renderFleet(); return; }
+  const c = e.target.closest('[data-copy]');
+  if(c){ const txt=c.dataset.copy, out=$('#copied'); const say=m=>{ if(out) out.textContent=m; };
+    try{ navigator.clipboard.writeText(txt).then(()=>say('Copied '+txt),()=>say(txt)); }catch{ say(txt); } return; }
+  if(e.target.closest('#jump')){ selected='1.3_empty_states'; openProj.add('snodo-public'); openPlan.add('web-dashboard-polish'); openWave.add('web-dashboard-polish|1'); renderFleet(); renderDetail(); $('#detail').scrollIntoView({block:'nearest'}); return; }
+  if(e.target.closest('#closeDetail')){ $('#detail').innerHTML='<div class="d-sec"><p class="muted">Pick a task to see its validators and log.</p></div>'; }
+});
+$('#theme').addEventListener('click',()=>{
+  const r=document.documentElement; const dark = r.dataset.theme ? r.dataset.theme==='dark' : !matchMedia('(prefers-color-scheme: light)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+});
+renderFleet(); renderDetail();
+</script>
+</body>
+</html>
