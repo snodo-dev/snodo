@@ -33,6 +33,8 @@ dependencies = [
     "GitPython>=3.1.0",
     "litellm>=1.106",
     "rich>=13.0.0",
+    "starlette>=1.8.0",
+    "uvicorn>=0.54.0",
 ]
 
 description = "AI-native Software Development Lifecycle protocol engine"
@@ -91,7 +93,7 @@ include = ["snodo*"]
 namespaces = true
 
 [tool.setuptools.package-data]
-snodo = ["py.typed", "cli/commands/*.txt"]
+snodo = ["py.typed", "cli/commands/*.txt", "web/static/*"]
 
 [tool.pytest.ini_options]
 # Default local run skips e2e for speed (~47s vs ~149s).

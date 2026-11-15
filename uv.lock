@@ -4538,8 +4538,10 @@ dependencies = [
     { name = "snodo-mcp" },
     { name = "snodo-provider-github" },
     { name = "snodo-tools" },
+    { name = "starlette" },
     { name = "textual" },
     { name = "typer" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -4612,8 +4614,10 @@ requires-dist = [
     { name = "snodo-mcp", editable = "packages/snodo-mcp" },
     { name = "snodo-provider-github", editable = "packages/snodo-provider-github" },
     { name = "snodo-tools", editable = "packages/snodo-tools" },
+    { name = "starlette", specifier = ">=1.8.0" },
     { name = "textual", specifier = ">=1.0.0" },
     { name = "typer", specifier = ">=0.9.0" },
+    { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 provides-extras = ["dev", "studies", "docs"]
 
