@@ -96,6 +96,11 @@ def test_missing_project_is_unavailable(tmp_path: Path) -> None:
     assert all(value == UNAVAILABLE for value in result.values())
 
 
+def test_missing_project_has_unavailable_figures(tmp_path: Path) -> None:
+    result = project_now_counters(tmp_path / "missing", NOW)
+    assert all(value == UNAVAILABLE for value in result.values())
+
+
 def test_unreadable_project_returns_unavailable(tmp_path: Path, monkeypatch) -> None:
     project = tmp_path / "project"
     _repo(project)
