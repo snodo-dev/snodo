@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from importlib import import_module
 from typing import Any, Iterable
 
 from starlette.responses import JSONResponse
@@ -11,7 +12,6 @@ from snodo.dashboard.providers import DashboardDataProvider
 from snodo.tools.git import open_repo
 from snodo.web.delivery import NOT_IN_MAIN, plans_delivery
 from snodo.web.now_counters import project_now_counters
-from snodo.web.now_tree import project_now_tree
 
 
 def _now_timestamp(now: datetime | float) -> float:
@@ -32,7 +32,7 @@ def _project_data(project: Any, now: datetime | float) -> tuple[dict[str, Any], 
     path = str(project.path)
     try:
         counters = project_now_counters(path, now)
-        tree = project_now_tree(path, now)
+        tree = import_module("snodo.web.now_tree").project_now_tree(path, now)
         def task_row(task: dict[str, Any]) -> dict[str, Any]:
             return {"task_id": task["task_id"], "status": task["status"],
                     "job": {"job_id": task["job_id"]} if task["job_id"] else None,

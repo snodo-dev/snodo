@@ -57,15 +57,16 @@ def test_route_returns_contract_aggregates_and_orders_projects(tmp_path: Path) -
     seed_job(active, "job-1", "task-1", 900)
     quiet = tmp_path / "quiet"
     repo(quiet)
+    (quiet / ".snodo").mkdir()
     result = build_now([SimpleNamespace(name="quiet", path=quiet), SimpleNamespace(name="active", path=active)], 1000)
 
     assert set(result) == {"window_hours", "generated_at", "counters", "projects", "waiting"}
     assert result["window_hours"] == 24
     assert result["generated_at"] == "1970-01-01T00:16:40+00:00"
     assert result["counters"] == {
-        "projects_active": 1, "plans": 1, "queues": 0, "waves": 1,
+        "projects_active": 2, "plans": 1, "queues": 0, "waves": 1,
         "tasks": {"count": 2, "by_status": {"in_progress": 1, "running": 1}},
-        "recons": None, "commits": 1,
+        "recons": None, "commits": 2,
     }
     assert [p["name"] for p in result["projects"]] == ["active", "quiet"]
     project = result["projects"][0]
@@ -76,6 +77,7 @@ def test_route_returns_contract_aggregates_and_orders_projects(tmp_path: Path) -
     assert plan["wave_groups"] == [{"id": 1, "total": 1, "status_counts": {"in_progress": 1},
         "tasks": [{"task_id": "task-1", "status": "in_progress", "job": {"job_id": "job-1"}, "elapsed_seconds": 100}]}]
     assert result["projects"][1]["liveness"] == "no_recent_signal"
+    assert result["projects"][1]["plans"] == []
 
 
 def test_finished_unmerged_plan_and_tracked_modifications_wait(tmp_path: Path) -> None:
