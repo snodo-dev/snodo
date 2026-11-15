@@ -1,0 +1,60 @@
+/* Now-specific layout; colours come from the page shell. */
+.now-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+
+.now-count {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.now-count-number { color: var(--text); font-size: clamp(1.5rem, 4vw, 2rem); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.now-count-label { color: var(--muted); font-size: 0.8rem; }
+.now-projects, .now-waiting, .now-plans, .now-tasks, .now-waiting-files-list { list-style: none; margin: 0; padding: 0; }
+.now-projects { display: grid; gap: 0.75rem; margin-bottom: 1.75rem; }
+.now-project {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+.now-project-idle { opacity: 0.72; }
+.now-project-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+.now-project-name { overflow-wrap: anywhere; }
+.now-idle-label { color: var(--muted); font-size: 0.85rem; }
+.now-plans { display: grid; gap: 0.65rem; margin-top: 0.8rem; }
+.now-plan { min-width: 0; padding-left: 0.8rem; border-left: 2px solid var(--border); }
+.now-plan-title { margin-bottom: 0.45rem; color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+.now-tasks { display: grid; gap: 0.4rem; }
+.now-task { display: grid; grid-template-columns: minmax(4rem, auto) auto minmax(0, 1fr); align-items: center; gap: 0.5rem; min-width: 0; padding: 0.45rem 0.55rem; border-radius: 0.4rem; background: color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.now-task-id { min-width: 0; overflow-wrap: anywhere; font-size: 0.88rem; }
+.now-status { width: fit-content; padding: 0.12rem 0.5rem; border-radius: 999px; font-size: 0.72rem; font-weight: 650; white-space: nowrap; }
+.now-status-running, .now-status-in-progress { color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--surface)); }
+.now-status-completed { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.now-status-pending { color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, var(--surface)); }
+.now-status-blocked, .now-status-unmerged { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, var(--surface)); }
+.now-status-errored { color: var(--red); background: color-mix(in srgb, var(--red) 14%, var(--surface)); }
+.now-job { min-width: 0; color: var(--muted); font-family: var(--mono); font-size: 0.78rem; overflow-wrap: anywhere; }
+.now-waiting { display: grid; gap: 0.65rem; }
+.now-waiting-entry { min-width: 0; padding: 0.8rem 1rem; border: 1px solid var(--border); border-left: 4px solid var(--amber); border-radius: 0.65rem; background: var(--surface); overflow-wrap: anywhere; }
+.now-waiting-unmerged { border-left-color: var(--accent); }
+.now-waiting-files { border-left-color: var(--amber); }
+.now-waiting-files-list { display: grid; gap: 0.25rem; margin-top: 0.5rem; color: var(--muted); font-family: var(--mono); font-size: 0.8rem; }
+.now-waiting-file { overflow-wrap: anywhere; }
+.now-empty { padding: 0.55rem 0; color: var(--muted); font-style: italic; }
+
+@media (max-width: 560px) {
+  .now-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .now-task { grid-template-columns: minmax(3rem, auto) auto; }
+  .now-job { grid-column: 1 / -1; }
+}

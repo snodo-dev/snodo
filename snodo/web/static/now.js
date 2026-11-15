@@ -12,6 +12,10 @@
     return `${Math.floor(Math.max(0, Number(seconds) || 0) / 60)}m`;
   }
 
+  function statusClass(status) {
+    return `now-status-${String(status || "pending").toLowerCase().replace(/[^a-z]+/g, "-")}`;
+  }
+
   function render(data) {
     const fragment = document.createDocumentFragment();
     const projects = Array.isArray(data.projects) ? data.projects : [];
@@ -24,30 +28,38 @@
 
     const counts = element("div", undefined, "now-counts");
     [
-      `${working.length} projects with work in flight`,
-      `${plans.length} plans in flight`,
-      `${runningTasks.length} tasks running`,
-      `${waiting.length} items waiting`,
-    ].forEach((label) => counts.append(element("span", label)));
+      [working.length, "projects with work in flight"],
+      [plans.length, "plans in flight"],
+      [runningTasks.length, "tasks running"],
+      [waiting.length, "items waiting"],
+    ].forEach(([number, label]) => {
+      const tile = element("div", undefined, "now-count");
+      tile.append(element("strong", String(number), "now-count-number"));
+      tile.append(element("span", label, "now-count-label"));
+      counts.append(tile);
+    });
     fragment.append(counts);
 
     fragment.append(element("h2", "In flight"));
     const flight = element("ul", undefined, "now-projects");
-    if (working.length === 0) flight.append(element("li", "Nothing is running."));
+    if (working.length === 0) flight.append(element("li", "Nothing is running.", "now-empty"));
     for (const project of [...working, ...idle]) {
-      const projectItem = element("li");
-      projectItem.append(element("strong", project.name));
-      if (project.state !== "working") projectItem.append(document.createTextNode(" — idle"));
-      const planList = element("ul");
+      const projectItem = element("li", undefined, `now-project${project.state === "working" ? "" : " now-project-idle"}`);
+      const projectTitle = element("div", undefined, "now-project-title");
+      projectTitle.append(element("strong", project.name, "now-project-name"));
+      if (project.state !== "working") projectTitle.append(element("span", "— idle", "now-idle-label"));
+      projectItem.append(projectTitle);
+      const planList = element("ul", undefined, "now-plans");
       for (const plan of project.plans || []) {
-        const planItem = element("li");
-        planItem.append(document.createTextNode(`${plan.name} — wave ${plan.wave} of ${plan.waves}`));
-        const taskList = element("ul");
+        const planItem = element("li", undefined, "now-plan");
+        planItem.append(element("div", `${plan.name} — wave ${plan.wave} of ${plan.waves}`, "now-plan-title"));
+        const taskList = element("ul", undefined, "now-tasks");
         for (const task of plan.tasks || []) {
-          const taskItem = element("li");
-          taskItem.append(document.createTextNode(`${task.task_id}: ${task.status}`));
+          const taskItem = element("li", undefined, "now-task");
+          taskItem.append(element("span", task.task_id, "now-task-id"));
+          taskItem.append(element("span", task.status, `now-status ${statusClass(task.status)}`));
           if (task.job) {
-            taskItem.append(document.createTextNode(` — job ${task.job.job_id}, ${elapsed(task.job.elapsed_seconds)}`));
+            taskItem.append(element("span", `job ${task.job.job_id}, ${elapsed(task.job.elapsed_seconds)}`, "now-job"));
           }
           taskList.append(taskItem);
         }
@@ -61,15 +73,16 @@
 
     fragment.append(element("h2", "Waiting on you"));
     const waitingList = element("ul", undefined, "now-waiting");
-    if (waiting.length === 0) waitingList.append(element("li", "Nothing is waiting on you."));
+    if (waiting.length === 0) waitingList.append(element("li", "Nothing is waiting on you.", "now-empty"));
     for (const item of waiting) {
-      const entry = element("li");
+      const entryClass = item.kind === "not_in_main" ? "now-waiting-entry now-waiting-unmerged" : "now-waiting-entry now-waiting-files";
+      const entry = element("li", undefined, entryClass);
       if (item.kind === "not_in_main") {
         entry.textContent = `${item.plan}: all tasks completed, not merged into main`;
       } else if (item.kind === "uncommitted") {
         entry.append(document.createTextNode(`${(item.files || []).length} files differ from the last commit`));
-        const files = element("ul");
-        for (const file of item.files || []) files.append(element("li", file));
+        const files = element("ul", undefined, "now-waiting-files-list");
+        for (const file of item.files || []) files.append(element("li", file, "now-waiting-file"));
         entry.append(files);
       }
       waitingList.append(entry);
