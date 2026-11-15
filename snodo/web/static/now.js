@@ -238,7 +238,7 @@
     flightNote.append(element("span", "state", "now-column-label"));
     flightNote.append(element("span", "elapsed", "now-column-label"));
     fragment.append(flightNote);
-    const flight = element("ul", undefined, "now-projects");
+    const flight = element("ul", undefined, "now-projects now-fleet");
     if (!projects.length) flight.append(element("li", "Nothing is running.", "now-empty"));
     for (const project of [...working, ...idle]) {
       const key = `project:${project.name}`;
@@ -249,7 +249,7 @@
       const projectItem = element("li", undefined, "now-project");
       const projectRow = expandableRow(element("strong", project.name, "now-project-name"), key, true, "now-project-title");
       projectRow.button.append(element("span", labels[project.liveness] || labels.no_recent_signal, `now-liveness now-liveness-${project.liveness || "no_recent_signal"}`));
-      projectRow.button.append(element("span", `${plans.length} plans · ${activeTasks} tasks · ${outside.length} outside a plan`, "now-project-summary"));
+      projectRow.button.append(element("span", `${plans.length} plans · ${activeTasks} tasks`, "now-project-summary"));
       projectRow.button.append(element("span", project.last_activity_at ? ageLabel(project.last_activity_at).replace("as of ", "") : "", "now-project-age"));
       projectRow.button.append(element("span", "open", "now-open-label"));
       projectItem.append(projectRow.row);
@@ -261,11 +261,23 @@
         const groups = plan.wave_groups || [];
         const total = groups.reduce((sum, group) => sum + (group.total || (group.tasks || []).length), 0);
         const planItem = element("li", undefined, "now-plan");
-        const planRow = expandableRow(element("span", undefined, "now-plan-label"), planKey, true, "now-plan-title");
-        planRow.button.querySelector(".now-plan-label").append(element("span", "PLAN", "now-plan-tag"), element("strong", plan.name, "now-plan-name"), element("span", `${total} tasks · wave ${plan.wave} of ${plan.waves}`, "now-plan-summary"));
+        const tasksInPlan = groups.flatMap((group) => group.tasks || []);
+        const taskStatuses = tasksInPlan.map((task) => String(task.status).toLowerCase());
+        const failedLike = taskStatuses.some((status) => ["failed", "blocked", "errored"].includes(status));
+        const runningLike = taskStatuses.some((status) => ["in progress", "in-progress", "running"].includes(status));
+        const completed = tasksInPlan.length > 0 && taskStatuses.every((status) => status === "completed");
+        const stateTask = tasksInPlan.find((task) => failedLike ? ["failed", "blocked", "errored"].includes(String(task.status).toLowerCase()) : runningLike ? ["in progress", "in-progress", "running"].includes(String(task.status).toLowerCase()) : completed ? String(task.status).toLowerCase() === "completed" : true);
+        const planState = stateTask ? stateTask.status : "pending";
+        const planRow = expandableRow(element("span", undefined, "now-plan-label"), planKey, failedLike || runningLike, "now-plan-title");
+        const nameBlock = element("span", undefined, "now-plan-name-block");
+        nameBlock.append(element("strong", plan.name, "now-plan-name"), element("span", `${total} tasks · wave ${plan.wave} of ${plan.waves}`, "now-plan-summary"));
+        planRow.button.querySelector(".now-plan-label").append(nameBlock);
         const segments = element("span", undefined, "now-wave-segments");
-        for (const group of groups) for (const task of group.tasks || []) segments.append(element("span", undefined, `now-wave-segment ${statusClass(task.status)}`));
-        planRow.button.append(segments);
+        segments.setAttribute("role", "img");
+        const statusCounts = {};
+        for (const group of groups) for (const task of group.tasks || []) { segments.append(element("span", undefined, `now-wave-segment ${statusClass(task.status)}`)); statusCounts[task.status] = (statusCounts[task.status] || 0) + 1; }
+        segments.setAttribute("aria-label", Object.entries(statusCounts).map(([status, count]) => `${count} ${status}`).join(", ") || "No tasks");
+        planRow.button.append(segments, element("span", planState, `now-status now-plan-state ${statusClass(planState)}`), element("span", plan.last_activity_at ? ageLabel(plan.last_activity_at).replace("as of ", "") : "", "now-plan-age"));
         planItem.append(planRow.row);
         const waveList = element("ul", undefined, "now-waves");
         for (const [waveIndex, group] of groups.entries()) {

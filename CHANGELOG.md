@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Redesign the Now In flight fleet and plan rows with task-status segments and activity-derived state chips. (Fixes #1227)
 - Redesign the Now page header and six counter cards, with an attention strip that opens the first failed, blocked, or errored task. (Fixes #1225)
 - Align the local dashboard shell with snodo-cloud tokens, dark-first theming, grid backdrop, and 56px top bar. (Fixes #1224)
 - Document the Now task spec API route and the task detail panel, including its Markdown rendering and missing-spec behavior. (Fixes #1219)
