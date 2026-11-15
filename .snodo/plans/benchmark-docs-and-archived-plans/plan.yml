@@ -1,0 +1,24 @@
+intent: 'The task-benchmark commands (`snodo models --set-baseline`, `--benchmark-run`,
+  `--compare`) are documented only as three separate paragraphs, with no end-to-end
+  walkthrough, no word on `--benchmark-runs`, no statement of what must be true before
+  a baseline can be set, no JSON description of the comparison, and nothing that says
+  `--model` selects the coder rather than the validators. Evidence: a first real end-to-end
+  attempt on 2026-11-09 for plan coder-tool-surface-guardrails-956, task 1.1_bounded_tool_results,
+  failed at once with "Plan not found" because the plan lived in `.snodo/plans-archive/`;
+  `--set-baseline` and `--benchmark-run` only look in `.snodo/plans/`, and 107 plans
+  sit in the archive. Wave 1 makes both commands find archived plans and fills the
+  command-reference and machine-interface gaps; wave 2 adds the walkthrough to the
+  user guide. Each task opens its own GitHub issue first.'
+name: benchmark-docs-and-archived-plans
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_baseline_and_run_find_archived_plans
+  - 1.2_command_reference_benchmark_gaps
+  - 1.3_machine_interface_compare_json
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_guide_end_to_end_task_benchmark

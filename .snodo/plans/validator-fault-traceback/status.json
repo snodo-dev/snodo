@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_llm_validator_faults_log_their_traceback": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f6fdb7970c643642"
+    },
+    "1.2_validator_isolation_boundary_logs_its_traceback": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "63e321558bec01df"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-fault-traceback/integration",
+    "base_sha": "2975b24b0f44f39db9f47f5b01c3c850ef888454"
+  }
+}

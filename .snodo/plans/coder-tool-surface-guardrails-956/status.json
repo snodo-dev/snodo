@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_bounded_tool_results": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8c9cbc9eeeb68b76"
+    },
+    "2.1_implausible_rewrite_refused": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "272a621a248a8cbd"
+    },
+    "3.1_read_only_history_tools": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7d08bec7e493b8ae"
+    }
+  },
+  "integration": {
+    "branch": "plan/coder-tool-surface-guardrails-956/integration",
+    "base_sha": "76608725cca198b8e86ae2ce4ede0b427099c487"
+  }
+}

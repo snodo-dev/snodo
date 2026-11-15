@@ -16,6 +16,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Add the static dashboard Now view for active work and items waiting on the person. (Fixes #1179)
 - Add the static local dashboard shell with theme and view navigation. (Fixes #1178)
 - Assemble a read-only loopback web dashboard with Host validation and safe port selection. (Fixes #1177)
+- Add the Plans route of the local web dashboard, listing every plan across projects with its progress and whether it reached main. (Fixes #1176)
 - Add the static dashboard Plans view with project filtering, task progress, and Git delivery status. (Fixes #1182)
 
 
@@ -44,6 +45,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Log tracebacks when validator isolation converts an exception to an error result, without changing the surfaced justification. (Fixes #1155)
 
 - Log tracebacks for single-shot and tool-loop LLM validator operational faults without changing the surfaced validation error. (Fixes #1154)
+
+- Make the quality timeout process-group test tolerate delayed process reaping with a bounded wait.
 
 - Document the validator replay JSON record emitted by `snodo models --benchmark-run --validator`, including its comparison fields and metrics. (Fixes #1153)
 - Document `snodo models --benchmark-run --validator`, including the single-validator replay and its comparison. (Fixes #1152)

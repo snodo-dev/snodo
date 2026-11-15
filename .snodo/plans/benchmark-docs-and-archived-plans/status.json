@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1.1_baseline_and_run_find_archived_plans": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "17a0d06a0a6b6d67"
+    },
+    "1.2_command_reference_benchmark_gaps": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6430921ba924f10f"
+    },
+    "1.3_machine_interface_compare_json": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fad5b9accbd385ac"
+    },
+    "2.1_guide_end_to_end_task_benchmark": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "74645909ef4725a4"
+    }
+  },
+  "integration": {
+    "branch": "plan/benchmark-docs-and-archived-plans/integration",
+    "base_sha": "7fb04cec7d7ded3fd75649030707b146202c2ed3"
+  }
+}

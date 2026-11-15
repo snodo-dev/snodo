@@ -1,0 +1,43 @@
+intent: 'snodo dashboard gains a --web mode: a local, read-only web dashboard, bound
+  to loopback, that shows what is running across the projects on this machine (Now),
+  how work is landing (Delivery), what the gates sent back (Gates) and every plan
+  with whether it reached main (Plans). The existing terminal dashboard keeps working
+  unchanged and becomes --cli. Projects are found by scanning configured root folders
+  for a .snodo/ directory. Every figure comes from files snodo already writes and
+  from git, and a figure the data cannot support shows as unavailable. No new task,
+  plan, job or validator states are introduced.'
+name: web-dashboard
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_project_discovery_scans_roots
+  - 1.2_plan_delivery_reads_git
+  - 1.3_flow_metrics_from_task_records
+  - 1.4_gate_records_from_attempt_history
+  - 1.5_web_roots_saved_in_own_file
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_now_route
+  - 2.2_plans_route
+  - 2.3_delivery_route
+  - 2.4_gates_route
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_app_assembly_and_loopback_guard
+  - 3.2_page_shell_and_navigation
+  - 3.3_now_view_script
+  - 3.4_delivery_view_script
+  - 3.5_gates_view_script
+  - 3.6_plans_view_script
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_dashboard_command_web_and_cli_flags
+  - 4.2_docs_for_web_dashboard
+  - 4.3_package_static_files_and_declare_web_deps

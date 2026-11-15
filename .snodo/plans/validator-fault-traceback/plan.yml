@@ -1,0 +1,16 @@
+intent: 'When a validator hits an operational fault, the run halts as validator_error
+  and the log keeps only the exception type and message, so a fault such as "TypeError:
+  ''function'' object is not subscriptable" cannot be traced to a line. Observed twice
+  (jobs j_c0c931ac4dad and j_d8195a65163e, validators architecture and adr, turn 1
+  of the tool loop, only when started by `snodo models --benchmark-run`). Make every
+  place that turns a validator exception into a validator_error also log the traceback,
+  so the next occurrence names the failing line. The surfaced justification, the halt
+  payload, the severities and every state stay exactly as they are; this adds log
+  detail only. Each task opens its own GitHub issue first.'
+name: validator-fault-traceback
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_llm_validator_faults_log_their_traceback
+  - 1.2_validator_isolation_boundary_logs_its_traceback

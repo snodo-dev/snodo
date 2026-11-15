@@ -34,7 +34,7 @@
       "spec_hash": "1d45a8e112ed39d2"
     },
     "3.2_remove_unused_authorized_prior_results": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "150dc44ff38de5cd"
@@ -42,6 +42,6 @@
   },
   "integration": {
     "branch": "plan/retry-reuses-validator-verdicts/integration",
-    "base_sha": "dcf857d383b9c5ae9f06147f1c04a3f8a25e253b"
+    "base_sha": "3f2165fc23f7ebd555294c4bfbbdd05fc0d02aca"
   }
 }

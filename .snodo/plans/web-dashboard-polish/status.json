@@ -1,0 +1,44 @@
+{
+  "tasks": {
+    "1.1_dashboard_binds_os_assigned_port": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "23c1ec0e722907bb"
+    },
+    "1.2_shell_loads_view_styles": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1ab24e876f06e4b7"
+    },
+    "1.3_now_view_styled": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7ed116e5fd3803bd"
+    },
+    "1.6_plans_view_styled": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "bf8ae794c60380fe"
+    },
+    "1.4_delivery_view_gets_layout": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e2f22e8d94b21001"
+    },
+    "1.5_gates_view_gets_layout": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "35eb1689a27c95de"
+    }
+  },
+  "integration": {
+    "branch": "plan/web-dashboard-polish/integration",
+    "base_sha": "40809bbed46431cfcc1c534baf3902fd215b8091"
+  }
+}

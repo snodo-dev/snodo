@@ -1,0 +1,14 @@
+intent: The coder's tool surface must be bounded, must refuse implausible destruction,
+  and must be able to see history
+name: coder-tool-surface-guardrails-956
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_bounded_tool_results
+- id: 2
+  tasks:
+  - 2.1_implausible_rewrite_refused
+- id: 3
+  tasks:
+  - 3.1_read_only_history_tools

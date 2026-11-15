@@ -1,0 +1,22 @@
+intent: 'The local web dashboard (snodo dashboard --web) works but looks unfinished
+  and picks its port badly. Three faults seen on a running instance: (A) the four
+  views render with browser-default styling, so the Now counts run together on one
+  line and lists, tables, bars and tags have no layout; (B) the server scans a fixed
+  port list instead of letting the operating system pick a free port; (C) that fixed
+  list is 55441-55460, the same range snodo serve uses for its tunnel and MCP ports,
+  so the dashboard and snodo serve can collide. After this plan the dashboard binds
+  an operating-system-assigned free loopback port that is never inside 55441-55460
+  (--port still pins one), prints the real URL, and every view is styled with the
+  existing colour tokens in light and dark: stat tiles, cards, tables, tags, bars.
+  No data, route, API or state change.'
+name: web-dashboard-polish
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_dashboard_binds_os_assigned_port
+  - 1.2_shell_loads_view_styles
+  - 1.3_now_view_styled
+  - 1.4_delivery_view_gets_layout
+  - 1.5_gates_view_gets_layout
+  - 1.6_plans_view_styled

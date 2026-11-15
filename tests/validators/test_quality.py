@@ -627,7 +627,7 @@ class TestQualityValidatorEvaluate:
         assert "gate reached slow step" in event.data["output_tail"]
         assert "Timeout after 0.3s" in event.data["output_tail"]
         child_pid = int(child_pid_file.read_text())
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + 6.0
         while time.monotonic() < deadline:
             try:
                 os.kill(child_pid, 0)

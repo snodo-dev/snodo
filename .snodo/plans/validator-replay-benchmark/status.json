@@ -1,0 +1,68 @@
+{
+  "tasks": {
+    "1.1_validate_selects_one_validator_with_model": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "650a7dcba15513e8"
+    },
+    "1.2_resolve_recorded_replay_input": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e691c7b519b0913d"
+    },
+    "1.3_compare_validator_verdicts": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5d83a2eba2802ca3"
+    },
+    "1.4_replay_one_validator_on_a_recorded_tree": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "54bb25ad7085f37f"
+    },
+    "2.1_benchmark_run_accepts_validator": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e9301740d52e385d"
+    },
+    "1.5_validator_replay_notice": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9927e35c6f377434"
+    },
+    "2.2_machine_interface_validate_options": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "cbf761935fbcdc05"
+    },
+    "3.1_guide_validator_benchmark": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "45e250615981d0a4"
+    },
+    "3.2_command_reference_validator_replay": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "de4bbc77d77b3acd"
+    },
+    "3.3_machine_interface_validator_replay_json": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ea3cc98102c40b7c"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-replay-benchmark/integration",
+    "base_sha": "bde0bccfd707b7e8139d3cae6269f3e68355a65d"
+  }
+}

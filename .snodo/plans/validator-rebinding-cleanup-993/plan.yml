@@ -1,0 +1,10 @@
+intent: 'One helper owns the per-validator completion rebinding rule in the validator
+  runner, both validator passes use it, and a model override that cannot be rebound
+  fails loudly instead of silently running against the default provider. Fixes #993.'
+name: validator-rebinding-cleanup-993
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_one_rebinding_helper_and_loud_failure
+  - 1.2_deferred_acceptance_pass_honours_pinned_model

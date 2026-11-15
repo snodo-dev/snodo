@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_post_execute_judges_key_on_spec_and_tree": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8e461388e8c95417"
+    },
+    "1.2_align_cache_subject_comments": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "13acd9bca7a276f2"
+    },
+    "2.1_guard_spec_rewrite_rejudges_acceptance": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3bfbc909926e668a"
+    }
+  },
+  "integration": {
+    "branch": "plan/acceptance-verdict-keys-on-spec/integration",
+    "base_sha": "2ab35c791650f12939321d1c36821cc56af4f603"
+  }
+}

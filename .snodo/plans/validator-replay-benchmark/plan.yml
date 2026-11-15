@@ -1,0 +1,40 @@
+intent: 'A task benchmark can compare a coder across models, but nothing lets one
+  validator be tried with another model. A validator is the cheaper and more frequent
+  judge, so it is the natural thing to benchmark on its own: replay one validator
+  of a baselined task, on the spec and tree recorded for that baseline, with a different
+  model, and compare the new verdict, time and tokens with the recorded ones. Target
+  command: `snodo models --benchmark-run --plan <plan> --task <task> --validator <id>
+  --model <provider/model>`. Existing building blocks: `snodo validate` already runs
+  a phase''s validators without a coder through the shared runner, the baseline already
+  stores each validator''s recorded result, and `plan_compare` already ranks severities.
+  Wave 1 adds three independent pieces (validator selection with a model override
+  in `snodo validate`, resolution of the recorded replay input, and a pure verdict
+  comparison); wave 2 wires `--validator` into `--benchmark-run`; wave 3 documents
+  it. A replay never reads or writes the verdict cache, because that would hand back
+  the recorded verdict instead of judging. No new states, statuses, severities, halt
+  types or event names. Each task opens its own GitHub issue first. Run it after plan
+  benchmark-docs-and-archived-plans is merged, because wave 3 extends the same user
+  guide.'
+name: validator-replay-benchmark
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_validate_selects_one_validator_with_model
+  - 1.2_resolve_recorded_replay_input
+  - 1.3_compare_validator_verdicts
+  - 1.4_replay_one_validator_on_a_recorded_tree
+  - 1.5_validator_replay_notice
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_benchmark_run_accepts_validator
+  - 2.2_machine_interface_validate_options
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_guide_validator_benchmark
+  - 3.2_command_reference_validator_replay
+  - 3.3_machine_interface_validator_replay_json

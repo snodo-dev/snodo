@@ -1,0 +1,119 @@
+{
+  "tasks": {
+    "1.1_project_discovery_scans_roots": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1123394a21d3f760"
+    },
+    "1.2_plan_delivery_reads_git": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8ba2e28199a73c79"
+    },
+    "1.3_flow_metrics_from_task_records": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6897a1e8b914e875"
+    },
+    "1.4_gate_records_from_attempt_history": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "9939f81562e5cd1e"
+    },
+    "1.5_web_roots_saved_in_own_file": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6ae454f5cd3ca143"
+    },
+    "2.1_now_route": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7df2a7d7b40425fd"
+    },
+    "2.2_plans_route": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "97e34f2e395ed5ef"
+    },
+    "2.3_delivery_route": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ba8fa31ef0230d45"
+    },
+    "2.4_gates_route": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "946379f11e85f369"
+    },
+    "3.1_app_assembly_and_loopback_guard": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "cb80f74318a1b2dd"
+    },
+    "3.2_page_shell_and_navigation": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "346810da83a1a048"
+    },
+    "3.3_now_view_script": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "16e31efa5e6bd8d9"
+    },
+    "3.4_delivery_view_script": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a798a84b8fd513a3"
+    },
+    "3.5_gates_view_script": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7cdec192658cc657"
+    },
+    "3.6_plans_view_script": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d0b33f18fd2fc1be"
+    },
+    "4.1_dashboard_command_web_and_cli_flags": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "58f6d621253d1837"
+    },
+    "4.2_docs_for_web_dashboard": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "763ba5b2642049ef"
+    },
+    "4.3_package_static_files_and_declare_web_deps": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f6a7bd5500ab6729",
+      "completed_by": "ylli",
+      "completed_at": "2026-11-15T02:21:06.592977+00:00",
+      "judged": false
+    }
+  },
+  "integration": {
+    "branch": "plan/web-dashboard/integration",
+    "base_sha": "c1476ece83923065f48222edab4e076ae7df2afb"
+  }
+}

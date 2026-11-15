@@ -1,0 +1,25 @@
+intent: 'A post-execute judge such as acceptance judges the produced work against
+  the acceptance criteria written in the task spec, yet its cached verdict is keyed
+  on the tree alone. Rewriting the spec''s acceptance criteria on an unchanged tree
+  therefore replays the old warn. Evidence: plan retry-reuses-validator-verdicts,
+  task 3.2, 2026-11-09 - the spec was corrected, the tree stayed at d017dfcf, and
+  the stale acceptance warn (stored before the rewrite) was returned as "reused" in
+  the run and in all three recovery attempts, which cost about 50 minutes and a manual
+  cache edit. This plan keys post-execute judges that read the spec on spec plus tree,
+  so an unchanged spec and tree still reuse the verdict (a retry stays cheap) while
+  a rewritten spec is judged again. Wave 1 changes the key and aligns the comments;
+  wave 2 adds the end-to-end guard. Each task opens its own GitHub issue first. It
+  must run after plan retry-reuses-validator-verdicts is merged into main, because
+  that plan edits the same function and test file.'
+name: acceptance-verdict-keys-on-spec
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_post_execute_judges_key_on_spec_and_tree
+  - 1.2_align_cache_subject_comments
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_guard_spec_rewrite_rejudges_acceptance
