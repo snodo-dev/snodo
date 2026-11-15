@@ -31,6 +31,7 @@
   let selectedTaskDetails = null;
   let currentData = null;
   let currentContainer = null;
+  let nowRequestInFlight = false;
   const specCache = new Map();
 
   function expandableRow(label, key, defaultExpanded, className = "now-tree-row") {
@@ -172,8 +173,9 @@
     freshness.append(age);
     const refetch = element("button", "Refetch", "now-refetch");
     refetch.type = "button";
-    refetch.addEventListener("click", () => window.snodoViews.now(refetch.closest("[data-now-root]")));
-    freshness.append(refetch);
+    refetch.addEventListener("click", () => window.snodoViews.now(refetch.closest("[data-now-root]"), true));
+    const refetchFeedback = element("span", "", "now-refetch-feedback");
+    freshness.append(refetch, refetchFeedback);
     header.append(freshness);
     fragment.append(header);
 
@@ -420,9 +422,22 @@
     return fragment;
   }
 
-  window.snodoViews.now = async function now(container) {
-    if (!container) return;
+  window.snodoViews.now = async function now(container, manual = false) {
+    if (!container || nowRequestInFlight) return;
     container.dataset.nowRoot = "true";
+    nowRequestInFlight = true;
+    const refetch = container.querySelector(".now-refetch");
+    const age = container.querySelector(".now-age");
+    const feedback = container.querySelector(".now-refetch-feedback");
+    if (manual && refetch) {
+      refetch.disabled = true;
+      refetch.classList.add("now-refetching");
+      refetch.textContent = "";
+      refetch.append(element("span", undefined, "now-spinner"), document.createTextNode("Refetching"));
+      container.classList.add("now-refreshing");
+      if (age) age.textContent = "Refreshing data…";
+      if (feedback) feedback.textContent = "";
+    }
     try {
       const response = await fetch("/api/now");
       if (!response.ok) throw new Error("Request failed");
@@ -430,15 +445,31 @@
       currentData = data;
       currentContainer = container;
       const content = render(data, container);
-      const notice = container.querySelector("[data-now-error]");
       container.replaceChildren(content);
-      if (notice) notice.remove();
     } catch (_) {
-      let notice = container.querySelector("[data-now-error]");
-      if (!notice) {
-        notice = element("p", "The dashboard could not be reached.", "view-message");
-        notice.dataset.nowError = "true";
-        container.append(notice);
+      if (manual && currentData && currentContainer === container) {
+        const message = container.querySelector(".now-refetch-feedback");
+        if (message) message.textContent = "Refresh failed; showing earlier data.";
+      } else if (!currentData) {
+        let notice = container.querySelector("[data-now-error]");
+        if (!notice) {
+          notice = element("p", "The dashboard could not be reached.", "view-message");
+          notice.dataset.nowError = "true";
+          container.append(notice);
+        }
+      }
+    } finally {
+      nowRequestInFlight = false;
+      container.classList.remove("now-refreshing");
+      const button = container.querySelector(".now-refetch");
+      if (button) {
+        button.disabled = false;
+        button.classList.remove("now-refetching");
+        button.textContent = "Refetch";
+      }
+      const currentAge = container.querySelector(".now-age");
+      if (currentAge && currentData && container === currentContainer) {
+        currentAge.textContent = ageLabel(currentData.generated_at);
       }
     }
   };
@@ -446,7 +477,9 @@
   if (!window.__snodoNowAgeTimer) {
     window.__snodoNowAgeTimer = window.setInterval(() => {
       document.querySelectorAll(".now-age[data-generated-at]").forEach((node) => {
-        node.textContent = ageLabel(node.dataset.generatedAt);
+        if (!node.closest("[data-now-root]")?.classList.contains("now-refreshing")) {
+          node.textContent = ageLabel(node.dataset.generatedAt);
+        }
       });
     }, 1000);
   }

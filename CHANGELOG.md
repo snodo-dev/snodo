@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Show manual Now refresh progress, prevent duplicate requests, and retain earlier data with a failure notice. (Fixes #1232)
 - Document the redesigned Now page, its data sources, theme, and repository visual reference. (Fixes #1230)
 - Widen and restructure the Now task detail panel with task facts, spec section, copy actions, and responsive stacking. (Fixes #1229)
 - Render Now waves as compact expandable headers and tasks as accessible, single-line status rows. (Fixes #1228)

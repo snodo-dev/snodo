@@ -80,3 +80,10 @@ def test_now_panel_uses_wide_sticky_column_and_stacks_below_1080px() -> None:
     assert ".now-task-panel { position: static; }" in css
     assert ".now-task-panel-facts" in css
     assert ".now-task-panel-actions" in css
+
+
+def test_now_refetch_spinner_respects_reduced_motion() -> None:
+    css = STYLESHEET.read_text(encoding="utf-8")
+    assert ".now-spinner" in css
+    assert "@media (prefers-reduced-motion: reduce) { .now-spinner { animation: none; } }" in css
+    assert ".now-refreshing .now-counts, .now-refreshing .now-flight-layout" in css

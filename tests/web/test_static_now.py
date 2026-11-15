@@ -227,3 +227,15 @@ def test_now_panel_has_facts_spec_and_conditional_copy_actions() -> None:
     assert 'navigator.clipboard.writeText(value)' in source
     assert 'feedback.textContent = value' in source
     assert '`${context.project}/.snodo/jobs/${jobId}/stdout.log`' in source
+
+
+def test_now_manual_refetch_has_busy_failure_and_duplicate_request_guards() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert '"Refetching"' in source
+    assert 'refetch.disabled = true' in source
+    assert 'button.disabled = false' in source
+    assert 'nowRequestInFlight' in source
+    assert 'window.snodoViews.now(refetch.closest("[data-now-root]"), true)' in source
+    assert 'Refresh failed; showing earlier data.' in source
+    assert 'container.classList.add("now-refreshing")' in source
+    assert 'fetch("/api/now")' in source

@@ -220,3 +220,11 @@
 @keyframes now-task-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .now-task-icon-running { animation:none; border-top-color:var(--accent); } }
 @media (max-width:640px) { .now-task-button { grid-template-columns:1rem minmax(0,1fr) auto; } .now-task-button .now-elapsed { display:none; } }
+
+.now-refetch-feedback { color: var(--red); font-size: 0.78rem; }
+.now-refetching { display: inline-flex; align-items: center; gap: 0.45rem; }
+.now-refetch:disabled { cursor: wait; opacity: 0.8; }
+.now-spinner { width: 0.8rem; height: 0.8rem; border: 2px solid var(--muted); border-top-color: var(--accent); border-radius: 50%; animation: now-refetch-spin 0.8s linear infinite; }
+.now-refreshing .now-counts, .now-refreshing .now-flight-layout { opacity: 0.58; }
+@keyframes now-refetch-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .now-spinner { animation: none; } }
