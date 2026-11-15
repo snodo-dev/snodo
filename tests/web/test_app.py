@@ -55,15 +55,27 @@ def test_accepts_loopback_host(client, host):
     assert client.get("/api/projects", headers={"host": host}).status_code == 200
 
 
-def test_default_port_is_os_assigned_loopback_port():
+def test_default_port_starts_at_the_dashboard_range():
     sock = dashboard_app._bind_socket()
     try:
         port = sock.getsockname()[1]
-        assert port != 0
-        assert port not in range(55441, 55461)
+        assert port >= dashboard_app.DASHBOARD_PORT_START
         assert sock.getsockname()[0] == "127.0.0.1"
     finally:
         sock.close()
+
+
+def test_default_port_walks_up_past_a_taken_port():
+    first = dashboard_app._bind_socket()
+    try:
+        second = dashboard_app._bind_socket()
+        try:
+            assert second.getsockname()[1] > first.getsockname()[1]
+        finally:
+            second.close()
+    finally:
+        first.close()
+
 
 def test_explicit_taken_port_fails():
     held = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -75,22 +87,12 @@ def test_explicit_taken_port_fails():
         held.close()
 
 
-def test_default_port_fails_when_os_only_assigns_reserved_ports(monkeypatch):
-    class ReservedSocket:
-        def __init__(self, *_args):
-            pass
+def test_default_port_fails_when_every_candidate_is_taken(monkeypatch):
+    def taken(port):
+        raise RuntimeError(f"Port {port} is in use")
 
-        def bind(self, _address):
-            pass
-
-        def getsockname(self):
-            return ("127.0.0.1", 55441)
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(dashboard_app.socket, "socket", ReservedSocket)
-    with pytest.raises(RuntimeError, match="55441-55460"):
+    monkeypatch.setattr(dashboard_app, "_bind_one", taken)
+    with pytest.raises(RuntimeError, match="No free dashboard port"):
         dashboard_app._bind_socket()
 
 

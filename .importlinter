@@ -129,5 +129,6 @@ ignore_imports =
     snodo.cli.commands.dashboard_cmd -> snodo.dashboard.app
     snodo.web.flow -> snodo.dashboard.providers
     snodo.web.gates -> snodo.dashboard.providers
+    snodo.web.now_tree -> snodo.dashboard.providers
     snodo.web.routes_now -> snodo.dashboard.providers
     snodo.web.routes_plans -> snodo.dashboard.providers

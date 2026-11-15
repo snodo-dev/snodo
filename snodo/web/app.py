@@ -98,29 +98,42 @@ def create_app(projects: Iterable[Project]) -> Starlette:
     return app
 
 
-_RESERVED_PORT_RANGE = range(55441, 55461)
+#: Where a dashboard started without --port begins looking for a free port.
+#: Kept clear of the `snodo serve` range (55441 and up) so the two never compete.
+DASHBOARD_PORT_START = 44331
+
+#: How many consecutive ports a no---port dashboard tries before giving up.
+_PORT_SCAN_ATTEMPTS = 64
+
 
 def _bind_socket(port: int | None = None) -> socket.socket:
-    """Bind loopback at a requested port or an OS-assigned non-reserved port."""
-    attempts = 5 if port is None else 1
-    for _ in range(attempts):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    """Bind loopback at the requested port, or at the first free port from 44331 up."""
+    if port is not None:
+        return _bind_one(port)
+    for candidate in range(DASHBOARD_PORT_START, DASHBOARD_PORT_START + _PORT_SCAN_ATTEMPTS):
         try:
-            sock.bind(("127.0.0.1", port or 0))
-        except OSError as exc:
-            sock.close()
-            if port is not None:
-                raise RuntimeError(f"Port {port} is in use") from exc
-            raise
-        selected_port = sock.getsockname()[1]
-        if port is not None or selected_port not in _RESERVED_PORT_RANGE:
-            sock.listen(socket.SOMAXCONN)
-            return sock
+            return _bind_one(candidate)
+        except RuntimeError:
+            continue
+    raise RuntimeError(
+        f"No free dashboard port in {DASHBOARD_PORT_START}-"
+        f"{DASHBOARD_PORT_START + _PORT_SCAN_ATTEMPTS - 1}; pass --port to choose one"
+    )
+
+
+def _bind_one(port: int) -> socket.socket:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", port))
+    except OSError as exc:
         sock.close()
-    raise RuntimeError("Could not obtain a dashboard port outside reserved range 55441-55460")
+        raise RuntimeError(f"Port {port} is in use") from exc
+    sock.listen(socket.SOMAXCONN)
+    return sock
+
 
 def serve(projects: Iterable[Project], port: int | None = None) -> None:
-    """Run the dashboard on loopback using an OS-assigned port by default."""
+    """Run the dashboard on loopback on the first free port from 44331 upward by default."""
     sock = _bind_socket(port)
     selected_port = sock.getsockname()[1]
     print(f"Serving Snodo dashboard at http://127.0.0.1:{selected_port}")
