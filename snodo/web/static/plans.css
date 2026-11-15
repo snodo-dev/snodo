@@ -21,18 +21,14 @@
 .plans-table-wrap {
   max-width: 100%;
   overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
 }
 
 .plans-table {
   width: 100%;
   border-collapse: collapse;
-}
-
-.plans-table th,
-.plans-table td {
-  padding: 0.7rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
 }
 
 .plans-table tbody tr:nth-child(even) {
