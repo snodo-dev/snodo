@@ -38,14 +38,21 @@ The dashboard has four views:
   or plan states. Where local files cannot support a figure, it is shown as
   unavailable.
 
-  Select a task row to open its detail panel on the right. Its header identifies
-  the task and provides close and copy actions; the facts include status, plan,
-  wave, job, and elapsed time. The panel also shows the task's ticket spec
-  rendered from Markdown. Close it with the close button or press **Escape**.
-  The selected task stays open when the page refreshes. If there is no spec for
-  the task on this machine, the panel says so. The built-in Markdown renderer is
-  intentionally small: it creates DOM nodes only, and displays unsupported
-  Markdown syntax as plain text.
+  The task tree uses the full width until a task is selected. Select a task row
+  to open its detail panel on the right; the tree narrows to make room. The
+  panel header identifies the task and provides close and copy actions; the
+  facts include status, plan, wave, job, and elapsed time. Close the panel with
+  its close button or press **Escape** to return the tree to full width. The
+  selected task stays open when the page refreshes.
+
+  The panel shows the task's ticket spec rendered from Markdown. While the spec
+  loads, a progress bar estimates the wait: its first expected duration is ten
+  seconds, then it follows the average duration of the last ten loads, kept in
+  the browser's local storage. If there is no spec for the task on this machine,
+  the panel says so. The built-in Markdown renderer is intentionally small: bare
+  lines made up of capital letters are section headings, line breaks are kept,
+  and underscores inside identifiers are left alone. Unsupported Markdown
+  syntax is displayed as plain text; the renderer creates DOM nodes only.
 
   The theme follows the system preference, with dark as the default; the
   **Theme** button overrides it. The shipped page uses local font stacks and
@@ -67,7 +74,8 @@ The read-only `GET /api/now/spec` route takes the query values `project`,
 `markdown` keys. A missing value returns **400**; an unknown project, plan or
 task, or a name that is not a plain name, returns **404**. The project is
 selected by name from the dashboard's own project list, so the browser never
-supplies a filesystem path.
+supplies a filesystem path. Every route runs its blocking work in a worker
+thread, so one slow answer does not hold up other requests.
 
 Figures come from files Snodo already writes in each project's `.snodo/`
 folder and from Git. When the records cannot support a figure, it appears as
