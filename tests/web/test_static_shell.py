@@ -82,3 +82,44 @@ def test_shell_has_no_hex_colours_outside_token_block() -> None:
     css = html.split("<style>", maxsplit=1)[1].split("</style>", maxsplit=1)[0]
     token_end = css.index("    * { box-sizing:border-box; }")
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css[token_end:])
+
+
+def test_static_shell_has_first_render_loading_skeleton() -> None:
+    html = SHELL.read_text(encoding="utf-8")
+
+    assert "const rendered = new Set()" in html
+    assert "const firstRender = !rendered.has(name)" in html
+    assert "if (firstRender) showSkeleton(container)" in html
+    assert "rendered.add(name)" in html
+    assert 'container.setAttribute("aria-busy", "true")' in html
+    assert 'status.textContent = "Loading"' in html
+    assert 'status.setAttribute("role", "status")' in html
+    assert 'container.removeAttribute("aria-busy")' in html
+    assert 'container.replaceChildren(skeleton)' in html
+    assert "innerHTML" not in html
+
+
+def test_static_shell_skeleton_has_reduced_motion_and_token_styles() -> None:
+    html = SHELL.read_text(encoding="utf-8")
+    css = html.split("<style>", maxsplit=1)[1].split("</style>", maxsplit=1)[0]
+    token_end = css.index("    * { box-sizing:border-box; }")
+    component_css = css[token_end:]
+
+    assert ".view-skeleton" in component_css
+    assert ".skeleton-heading" in component_css
+    assert ".skeleton-card" in component_css
+    assert ".skeleton-list" in component_css
+    assert "@media (prefers-reduced-motion: reduce)" in component_css
+    assert "animation:none" in component_css
+    assert "color-mix(" in component_css
+    assert "#" not in component_css
+    assert "rgba(" not in component_css
+
+
+def test_static_shell_failure_replaces_skeleton_with_existing_message() -> None:
+    html = SHELL.read_text(encoding="utf-8")
+
+    assert 'showMessage(container, "This view could not be loaded.")' in html
+    assert 'showMessage(container, "This view is unavailable.")' in html
+    assert "container.replaceChildren(line)" in html
+    assert 'container.removeAttribute("aria-busy")' in html

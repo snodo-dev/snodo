@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Show a reduced-motion-aware loading skeleton while each dashboard view renders for the first time. (Fixes #1231)
 - Document the redesigned Now page, its data sources, theme, and repository visual reference. (Fixes #1230)
 - Widen and restructure the Now task detail panel with task facts, spec section, copy actions, and responsive stacking. (Fixes #1229)
 - Render Now waves as compact expandable headers and tasks as accessible, single-line status rows. (Fixes #1228)
