@@ -8,7 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
-- Match the local Now In flight tree to the cloud view, including persistent expansion state. (Fixes #1209)
+- Match the local Now In flight tree to the cloud view, including persistent expansion state. (Fixes #1210)
 - Tie the Now route response contract to the fields consumed by the static view, including every waiting-item variant. (Fixes #1208)
 - Align the local Now view with the cloud page’s 24-hour header, freshness control, and six activity counters while preserving the activity tree. (Fixes #1205)
 - Return 24-hour counters and the activity tree from `/api/now` across all projects while preserving waiting items. (Fixes #1204)

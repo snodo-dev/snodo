@@ -38,3 +38,27 @@ def test_now_view_uses_window_counters_and_freshness_controls() -> None:
     assert '"—"' in source
     assert '"Refetch"' in source
     assert '`as of ${seconds}s ago`' in source
+
+
+def test_now_tree_emits_hierarchical_rows_and_liveness_labels() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    for row_class in ("now-project", "now-plan", "now-wave", "now-outside"):
+        assert f'"{row_class}"' in source
+    assert "`now-task ${statusClass(task.status)}`" in source
+    assert '"Working"' in source
+    assert '"Reporting, not progressing"' in source
+    assert '"No recent signal"' in source
+
+
+def test_now_tree_expansion_defaults_and_refresh_state() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'const expandedRows = new Map();' in source
+    assert 'expandedRows.has(key) ? expandedRows.get(key) : defaultExpanded' in source
+    assert 'expandedRows.set(key, next)' in source
+    assert 'button.setAttribute("aria-expanded", String(expanded))' in source
+    assert 'button.setAttribute("aria-expanded", String(next))' in source
+    assert 'tasks.every((task) => task.status === "completed")' in source
+    assert '!allCompleted' in source
+    assert '`${key}:outside`, false' in source

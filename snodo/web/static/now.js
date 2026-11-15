@@ -51,6 +51,8 @@
     const row = element("li", undefined, `now-task ${statusClass(task.status)}`);
     row.append(element("span", task.status === "blocked" || task.status === "errored" ? "!" : task.status === "completed" ? "✓" : "•", "now-task-mark"));
     row.append(element("span", task.task_id, "now-task-id"));
+    const jobId = task.job && task.job.job_id;
+    if (jobId) row.dataset.jobId = jobId;
     row.append(element("span", task.status, `now-status ${statusClass(task.status)}`));
     row.append(element("span", task.elapsed_seconds == null ? "—" : elapsed(task.elapsed_seconds), "now-elapsed"));
     return row;
