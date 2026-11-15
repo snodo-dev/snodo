@@ -80,6 +80,26 @@ def test_route_returns_contract_aggregates_and_orders_projects(tmp_path: Path) -
     assert result["projects"][1]["plans"] == []
 
 
+def test_running_plan_lists_job_and_idle_project_has_no_plans(tmp_path: Path) -> None:
+    active = tmp_path / "active"
+    repo(active)
+    seed_plan(active, "build", {"task-1": "in_progress"}, [{"id": "one", "tasks": ["task-1"]}])
+    seed_job(active, "job-1", "task-1", 900)
+    idle = tmp_path / "idle"
+    repo(idle)
+    (idle / ".snodo").mkdir()
+
+    result = build_now([
+        SimpleNamespace(name="active", path=active),
+        SimpleNamespace(name="idle", path=idle),
+    ], 1000)
+
+    active_plan = next(project for project in result["projects"] if project["name"] == "active")["plans"][0]
+    assert active_plan["wave_groups"][0]["tasks"][0]["job"] == {"job_id": "job-1"}
+    idle_project = next(project for project in result["projects"] if project["name"] == "idle")
+    assert idle_project["plans"] == []
+
+
 def test_finished_unmerged_plan_and_tracked_modifications_wait(tmp_path: Path) -> None:
     path = tmp_path / "repo"
     repo(path)
