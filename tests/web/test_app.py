@@ -1,4 +1,5 @@
 from pathlib import Path
+import socket
 
 import pytest
 from starlette.testclient import TestClient
@@ -54,15 +55,65 @@ def test_accepts_loopback_host(client, host):
     assert client.get("/api/projects", headers={"host": host}).status_code == 200
 
 
-def test_default_port_picks_first_free():
-    assert dashboard_app._select_port(lambda port: port >= 55444) == 55444
-
-
-def test_default_port_fails_when_all_taken():
-    with pytest.raises(RuntimeError, match="55441-55460"):
-        dashboard_app._select_port(lambda _port: False)
-
+def test_default_port_is_os_assigned_loopback_port():
+    sock = dashboard_app._bind_socket()
+    try:
+        port = sock.getsockname()[1]
+        assert port != 0
+        assert port not in range(55441, 55461)
+        assert sock.getsockname()[0] == "127.0.0.1"
+    finally:
+        sock.close()
 
 def test_explicit_taken_port_fails():
-    with pytest.raises(RuntimeError, match="55441.*in use"):
-        dashboard_app._select_port(lambda _port: False, 55441)
+    held = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    held.bind(("127.0.0.1", 0))
+    try:
+        with pytest.raises(RuntimeError, match="in use"):
+            dashboard_app._bind_socket(held.getsockname()[1])
+    finally:
+        held.close()
+
+
+def test_default_port_fails_when_os_only_assigns_reserved_ports(monkeypatch):
+    class ReservedSocket:
+        def __init__(self, *_args):
+            pass
+
+        def bind(self, _address):
+            pass
+
+        def getsockname(self):
+            return ("127.0.0.1", 55441)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(dashboard_app.socket, "socket", ReservedSocket)
+    with pytest.raises(RuntimeError, match="55441-55460"):
+        dashboard_app._bind_socket()
+
+
+def test_serve_prints_the_port_of_the_bound_socket(monkeypatch, capsys):
+    bound = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    bound.bind(("127.0.0.1", 0))
+    bound.listen(socket.SOMAXCONN)
+    actual_port = bound.getsockname()[1]
+    captured = {}
+
+    class Server:
+        def __init__(self, config):
+            captured["config"] = config
+
+        def run(self, sockets):
+            captured["socket"] = sockets[0]
+
+    monkeypatch.setattr(dashboard_app, "_bind_socket", lambda _port=None: bound)
+    monkeypatch.setattr(dashboard_app.uvicorn, "Server", Server)
+    try:
+        dashboard_app.serve([])
+        assert f"http://127.0.0.1:{actual_port}" in capsys.readouterr().out
+        assert captured["socket"] is bound
+        assert captured["config"].port == actual_port
+    finally:
+        bound.close()
