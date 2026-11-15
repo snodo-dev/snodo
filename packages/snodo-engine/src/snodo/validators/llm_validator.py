@@ -170,10 +170,9 @@ class LLMValidator(ValidatorBase):
     boundary shared by every submit_verdict judge.
     """
 
-    #: A single-completion judge of the task spec.  This is the pre-execute
-    #: answer; the runner forces every post-execute judge (including a
-    #: subclass that leaves this inherited) onto the tree subject (#246).
-    # The runner forces tool-using and all post-execute judges onto the tree.
+    #: The runner decides the cache subject structurally. A post-execute judge
+    #: that reads the spec is keyed on spec plus tree: an unchanged spec and
+    #: tree reuse the verdict, while a changed spec or tree is judged again.
     cache_subject = "spec"
     VALID_SEVERITIES = {"pass", "warn", "blocker"}
     HANDLED_TYPES = {

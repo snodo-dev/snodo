@@ -197,3 +197,71 @@ def test_retry_reuses_authorized_warn_without_judge_call(tmp_path):
     decision = PolicyEvaluator(decision_issuer=issuer).evaluate([second], DisagreementPolicy.UNANIMOUS, "pre_execute", decision_records=[record.jwt], task_ref="retry")
     assert decision.warn_count == 0
     assert decision.pass_count == 1
+
+
+def test_acceptance_rejudged_after_spec_rewrite_on_unchanged_tree(tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from snodo.core.interfaces import Task
+    from snodo.validators.runner import run_validators
+    from tests.validators.test_verdict_cache import _ToolCompletion
+    from snodo.validators.verdict_cache import VerdictCache
+
+    validator = Validator(validator_id="acceptance", validator_type="acceptance", evaluation_phase="post_execute", criteria=["satisfies the task spec"], tools=["read_file"])
+    protocol = Protocol(protocol_id="p_acceptance", name="Acceptance", version="1.0.0", modes=[Mode(mode_id="producer", name="Producer", tools=["edit"], validators=["acceptance"])], validators=[validator], disagreement_policy=DisagreementPolicy.UNANIMOUS, initial_mode="producer")
+    cache = VerdictCache(tmp_path / "verdict_cache.json", project_root=str(tmp_path))
+    completion = _ToolCompletion(severity="warn")
+
+    workspace = MagicMock()
+    workspace.project_root = "/tmp/project"
+    workspace.read_file.return_value = "unchanged code"
+    git = MagicMock()
+    git.get_head_sha.return_value = "same-tree"
+    git.read_diff.return_value = "same diff"
+    git.get_status.return_value = "clean"
+
+    def run(spec):
+        return run_validators(protocol=protocol, validators=[validator], task=Task(id="rewrite", spec=spec), phase="post_execute", completion_fn=completion, validator_config=SimpleNamespace(max_tokens=1500, max_tool_turns=2), current_mode="producer", verdict_cache=cache, workspace_mcp=workspace, git_mcp=git)[0][0]
+
+    first = run("Original acceptance requirements")
+    second = run("Corrected acceptance requirements")
+
+    assert first.severity == second.severity == "warn"
+    assert first.reused is False
+    assert second.reused is False
+    assert completion.calls == 2
+
+
+def test_acceptance_reused_when_spec_and_tree_unchanged(tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from snodo.core.interfaces import Task
+    from snodo.validators.runner import run_validators
+    from tests.validators.test_verdict_cache import _ToolCompletion
+    from snodo.validators.verdict_cache import VerdictCache
+
+    validator = Validator(validator_id="acceptance", validator_type="acceptance", evaluation_phase="post_execute", criteria=["satisfies the task spec"], tools=["read_file"])
+    protocol = Protocol(protocol_id="p_acceptance", name="Acceptance", version="1.0.0", modes=[Mode(mode_id="producer", name="Producer", tools=["edit"], validators=["acceptance"])], validators=[validator], disagreement_policy=DisagreementPolicy.UNANIMOUS, initial_mode="producer")
+    cache = VerdictCache(tmp_path / "verdict_cache.json", project_root=str(tmp_path))
+    completion = _ToolCompletion(severity="warn")
+
+    workspace = MagicMock()
+    workspace.project_root = "/tmp/project"
+    workspace.read_file.return_value = "unchanged code"
+    git = MagicMock()
+    git.get_head_sha.return_value = "same-tree"
+    git.read_diff.return_value = "same diff"
+    git.get_status.return_value = "clean"
+
+    def run():
+        return run_validators(protocol=protocol, validators=[validator], task=Task(id="unchanged", spec="Acceptance requirements"), phase="post_execute", completion_fn=completion, validator_config=SimpleNamespace(max_tokens=1500, max_tool_turns=2), current_mode="producer", verdict_cache=cache, workspace_mcp=workspace, git_mcp=git)[0][0]
+
+    first = run()
+    second = run()
+
+    assert first.severity == second.severity == "warn"
+    assert first.reused is False
+    assert second.reused is True
+    assert completion.calls == 1

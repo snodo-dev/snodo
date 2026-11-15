@@ -242,42 +242,35 @@ def _verdict_subject_kind(
     """Classify what this judge's answer depends on: ``"tree"``, ``"spec"``,
     ``"spec+tree"``, None.
 
-    The classification is structural, not inherited: a judge that reads the
-    tree is tree-keyed, and **every post-execute judge is tree-keyed** because
-    a judgement about produced work is a judgement about the work.  Phase is
-    authoritative here because an inherited class declaration is exactly the
-    thing that fails silently: ``AcceptanceValidator`` inherits ``"spec"``
-    from ``LLMValidator``, yet it judges the artifacts the coder just wrote.
-    Keying it on the unchanged spec would reuse attempt one's verdict about
-    code attempt two rewrote - and because the reused prose is byte-identical,
-    recovery-stall detection would read it as a repeated verdict and halt a
-    loop a judge was never asked about.
-
-    A *pre-execute* tool-using judge is the mirror case: it is asked whether a
-    proposal is sound, so its answer depends on the spec it reads in the
-    prompt **and** on the tree its read tools can inspect — a composite
-    subject.  Keying it on the tree alone returns a stale verdict about a
-    rewritten proposal whenever the repository has not moved (#295).
+    Judges that read the repository use its tree subject.  Post-execute
+    judgements about produced work also depend on the criteria in the spec,
+    so spec-reading judges use a composite spec-and-tree subject in either
+    phase.  Validators explicitly declaring ``cache_subject = "tree"`` keep
+    tree-only keying when they do not read the spec (for example, the quality
+    gate).  Pre-execute spec-only judges remain keyed on the spec.
     """
-    if _judge_reads_tree(v, context):
-        if getattr(context, "phase", "") == "post_execute":
-            return "tree"
-        return "spec+tree"
-
     always_register = {"quality", "protocol"}
     cls = reg.lookup(v.validator_type) if (
         v.criteria or v.validator_type in always_register
     ) else None
-    kind = getattr(cls, "cache_subject", None) if cls is not None else None
+    declared = getattr(cls, "cache_subject", None) if cls is not None else None
+
+    if _judge_reads_tree(v, context):
+        # Explicit tree-only validators do not depend on the task criteria.
+        if declared == "tree" and v.validator_type == "quality":
+            return "tree"
+        return "spec+tree"
+
+    kind = "spec" if declared == "tree" and v.validator_type == "acceptance" else declared
     if kind is None and cls is None and context.completion_fn is not None and v.criteria:
-        # The fallback single-completion LLM path.
+        # The fallback single-completion LLM path reads the task spec.
         kind = "spec"
 
     if kind == "tree":
         return "tree"
     if kind == "spec":
         if getattr(context, "phase", "") == "post_execute":
-            return "tree"
+            return "spec+tree"
         return "spec"
     return None
 
