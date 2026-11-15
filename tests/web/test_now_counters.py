@@ -91,7 +91,7 @@ def test_counts_recent_plan_tasks_waves_outside_tasks_and_commits_read_only(tmp_
     assert _snapshot(project) == before
 
 
-def test_missing_project_has_unavailable_figures(tmp_path: Path) -> None:
+def test_missing_project_is_unavailable(tmp_path: Path) -> None:
     result = project_now_counters(tmp_path / "missing", NOW)
     assert all(value == UNAVAILABLE for value in result.values())
 
