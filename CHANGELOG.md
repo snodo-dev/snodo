@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Align the local dashboard shell with snodo-cloud tokens, dark-first theming, grid backdrop, and 56px top bar. (Fixes #1224)
 - Document the Now task spec API route and the task detail panel, including its Markdown rendering and missing-spec behavior. (Fixes #1219)
 - Render the selected task ticket spec as Markdown in the Now side panel, with safe fallback, retry, and per-task refresh caching. (Fixes #1218)
 - Start the web dashboard on the first free port from 44331 upward and widen the Now task panel by 20%. (Fixes #1221)

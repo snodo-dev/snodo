@@ -23,4 +23,4 @@ def test_shell_has_shared_view_styles() -> None:
     assert '.view button[aria-pressed="true"]' in html
     assert ".view :focus-visible" in html
     assert ".view .view-message" in html
-    assert "font-variant-numeric: tabular-nums" in html
+    assert "font-variant-numeric:tabular-nums" in html or "font-variant-numeric: tabular-nums" in html
