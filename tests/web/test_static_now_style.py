@@ -70,3 +70,13 @@ def test_now_task_rows_stay_single_line_and_respect_reduced_motion() -> None:
     assert "@media (prefers-reduced-motion:reduce) { .now-task-icon-running" in css
     assert "@media (max-width:640px)" in css
     assert ".now-task-button .now-elapsed { display:none; }" in css
+
+
+def test_now_panel_uses_wide_sticky_column_and_stacks_below_1080px() -> None:
+    css = STYLESHEET.read_text(encoding="utf-8")
+    assert "minmax(19rem, 26.5rem)" in css
+    assert ".now-task-panel { position: sticky" in css
+    assert "@media (max-width: 1080px)" in css
+    assert ".now-task-panel { position: static; }" in css
+    assert ".now-task-panel-facts" in css
+    assert ".now-task-panel-actions" in css

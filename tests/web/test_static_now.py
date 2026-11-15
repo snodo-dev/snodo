@@ -217,3 +217,13 @@ def test_now_wave_and_task_rows_use_compact_list_markup() -> None:
     assert 'id.title = task.task_id' in source
     assert 'now-task-icon-${iconStatus}' in source
     assert 'task.elapsed_seconds == null ? "—"' in source
+
+
+def test_now_panel_has_facts_spec_and_conditional_copy_actions() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    for label in ("Elapsed", "Wave", "Job", "Spec", "Copy task id", "Copy log path"):
+        assert f'"{label}"' in source
+    assert 'if (jobId) copyText("Copy log path"' in source
+    assert 'navigator.clipboard.writeText(value)' in source
+    assert 'feedback.textContent = value' in source
+    assert '`${context.project}/.snodo/jobs/${jobId}/stdout.log`' in source

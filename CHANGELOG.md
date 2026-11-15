@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Widen and restructure the Now task detail panel with task facts, spec section, copy actions, and responsive stacking. (Fixes #1229)
 - Render Now waves as compact expandable headers and tasks as accessible, single-line status rows. (Fixes #1228)
 - Redesign the Now In flight fleet and plan rows with task-status segments and activity-derived state chips. (Fixes #1227)
 - Redesign the Now page header and six counter cards, with an attention strip that opens the first failed, blocked, or errored task. (Fixes #1225)

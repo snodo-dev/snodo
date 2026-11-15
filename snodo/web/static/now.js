@@ -342,7 +342,10 @@
         if (event.key === "Escape") closeButton.click();
       });
       const panelHeader = element("div", undefined, "now-task-panel-header");
-      panelHeader.append(element("h3", task.task_id, "now-task-panel-id"));
+      const headerCopy = element("div", undefined, "now-task-panel-heading");
+      const jobId = task.job && task.job.job_id; // Reads task.job.job_id from the API contract.
+      const status = element("span", task.status, `now-status ${statusClass(task.status)}`);
+      panelHeader.append(status);
       const closeButton = element("button", "Close", "now-task-panel-close");
       closeButton.type = "button";
       closeButton.addEventListener("click", () => {
@@ -352,12 +355,20 @@
         if (row) row.focus();
       });
       panelHeader.append(closeButton);
-      panel.append(panelHeader);
-      panel.append(element("p", task.status, `now-status ${statusClass(task.status)}`));
-      panel.append(element("p", context.plan === "Outside a plan" ? "Outside a plan" : `${context.plan} · Wave ${context.wave}`, "now-task-panel-location"));
-      const jobId = task.job && task.job.job_id; // Reads task.job.job_id from the API contract.
-      if (jobId) panel.append(element("p", jobId, "now-task-panel-job"));
-      if (task.elapsed_seconds != null) panel.append(element("p", elapsed(task.elapsed_seconds), "now-task-panel-elapsed"));
+      headerCopy.append(element("h3", task.task_id, "now-task-panel-id"));
+      headerCopy.append(element("p", context.plan === "Outside a plan" ? "Outside a plan" : `${context.plan} · wave ${context.wave}`, "now-task-panel-location"));
+      panel.append(panelHeader, headerCopy);
+      const facts = element("div", undefined, "now-task-panel-facts");
+      const fact = (label, value, className = "") => {
+        const cell = element("div", undefined, `now-task-panel-fact ${className}`.trim());
+        cell.append(element("span", label, "now-task-panel-fact-label"), element("strong", value, "now-task-panel-fact-value"));
+        facts.append(cell);
+      };
+      fact("Elapsed", task.elapsed_seconds == null ? "—" : elapsed(task.elapsed_seconds));
+      fact("Wave", context.wave == null ? "—" : String(context.wave));
+      fact("Job", jobId ? `${jobId.slice(0, 8)}…` : "—", "now-task-panel-job");
+      panel.append(facts);
+      panel.append(element("h4", "Spec", "now-task-panel-spec-title"));
       const specBody = element("div", undefined, "now-task-panel-spec");
       const cachedSpec = specCache.get(key);
       if (cachedSpec) specBody.scrollTop = cachedSpec.scrollTop || 0;
@@ -366,6 +377,25 @@
         if (entry) entry.scrollTop = specBody.scrollTop;
       });
       panel.append(specBody);
+      const actions = element("div", undefined, "now-task-panel-actions");
+      const feedback = element("p", "", "now-task-panel-copy-feedback");
+      const copyText = (label, value) => {
+        const button = element("button", label, "now-task-panel-copy");
+        button.type = "button";
+        button.addEventListener("click", async () => {
+          try {
+            if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error("Clipboard unavailable");
+            await navigator.clipboard.writeText(value);
+            feedback.textContent = `${label.replace("Copy ", "")} copied.`;
+          } catch (_) {
+            feedback.textContent = value;
+          }
+        });
+        actions.append(button);
+      };
+      copyText("Copy task id", task.task_id);
+      if (jobId) copyText("Copy log path", `${context.project}/.snodo/jobs/${jobId}/stdout.log`);
+      panel.append(actions, feedback);
       loadSpec(specBody, task, context, key);
       flightLayout.append(panel);
     }
