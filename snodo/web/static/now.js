@@ -266,7 +266,7 @@
         const failedLike = taskStatuses.some((status) => ["failed", "blocked", "errored"].includes(status));
         const runningLike = taskStatuses.some((status) => ["in_progress", "in progress", "in-progress", "running"].includes(status));
         const completed = tasksInPlan.length > 0 && taskStatuses.every((status) => status === "completed");
-        const stateTask = tasksInPlan.find((task) => failedLike ? ["failed", "blocked", "errored"].includes(String(task.status).toLowerCase()) : runningLike ? ["in_progress", "in progress", "in-progress", "running"].includes(String(task.status).toLowerCase()) : completed ? String(task.status).toLowerCase() === "completed" : true);
+        const stateTask = tasksInPlan.find((task) => failedLike ? ["failed", "blocked", "errored"].includes(String(task.status).toLowerCase()) : runningLike ? ["in_progress", "in progress", "in-progress", "running"].includes(String(task.status).toLowerCase()) : completed && String(task.status).toLowerCase() === "completed");
         const planState = stateTask ? stateTask.status : "pending";
         const planRow = expandableRow(element("span", undefined, "now-plan-label"), planKey, failedLike || runningLike, "now-plan-title");
         const nameBlock = element("span", undefined, "now-plan-name-block");

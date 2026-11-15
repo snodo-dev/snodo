@@ -198,3 +198,12 @@ def test_now_plan_state_selection_preserves_contract_status_words() -> None:
     assert 'const planState = stateTask ? stateTask.status : "pending"' in source
     assert '["in_progress", "in progress", "in-progress", "running"].includes(status)' in source
     assert 'String(task.status).toLowerCase() === "completed"' in source
+
+
+def test_now_plan_state_selection_uses_pending_for_mixed_inactive_tasks() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'const completed = tasksInPlan.length > 0 && taskStatuses.every((status) => status === "completed")' in source
+    assert 'completed && String(task.status).toLowerCase() === "completed"' in source
+    assert ': true' not in source[source.index("const stateTask ="):source.index("const planState =")]
+    assert 'const planState = stateTask ? stateTask.status : "pending"' in source
