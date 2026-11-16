@@ -197,6 +197,41 @@ def test_role_models_default_to_none():
         assert cfg.classifier.model is None
 
 
+def test_validator_fallback_models_load_in_order_and_default_empty():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            "llm:\n"
+            "  validator:\n"
+            "    model: provider/primary\n"
+            "    fallback:\n"
+            "      - provider/backup\n"
+            "      - provider/backup\n"
+            "      - provider/primary\n"
+        )
+        cfg = load_llm_config(config_dir=tmpdir)
+        assert cfg.validator.model == "provider/primary"
+        assert cfg.validator.fallback == [
+            "provider/backup",
+            "provider/backup",
+            "provider/primary",
+        ]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text("llm: {}\n")
+        assert load_llm_config(config_dir=tmpdir).validator.fallback == []
+
+
+@pytest.mark.parametrize("value", ["provider/model", 3, ["provider/model", 3], [""]])
+def test_invalid_validator_fallback_is_rejected_naming_key(value):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            yaml.safe_dump({"llm": {"validator": {"fallback": value}}})
+        )
+        with pytest.raises(ConfigLoadError) as exc_info:
+            load_llm_config(config_dir=tmpdir)
+        assert "fallback" in str(exc_info.value)
+
+
 # ========== unknown keys under an engine-owned section ==========
 
 
@@ -228,6 +263,8 @@ def test_unknown_key_is_reported_with_name_and_section(section, unknown):
         message = str(exc_info.value)
         assert unknown in message
         assert f"llm.{section}" in message
+        if section == "validator":
+            assert "fallback" in message
 
 
 def test_unknown_top_level_key_under_llm_is_reported():
