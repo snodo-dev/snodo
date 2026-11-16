@@ -137,6 +137,7 @@ class TestInPlaceCoderAttribution:
 
         record = usage[0]
         assert record["source"] == "inplace_coder"
+        assert record["task_id"] == task_id
         assert record["coder"] == "opencode-cli"
         assert record["model"] == "opencode-cli/claude-3-5-sonnet"
         assert record["cost"] is None
@@ -311,7 +312,9 @@ def test_failed_inplace_coder_run_is_recorded(temp_workspace, monkeypatch, error
 
     root = temp_workspace.parent
     job_id = "j_inplace_failure"
+    task_id = "task_inplace_failure"
     _setup_job_dir(root, job_id)
+    _setup_task_dir(root, task_id)
     monkeypatch.setenv("SNODO_PROJECT_ROOT", str(root))
     monkeypatch.setenv("SNODO_JOB_ID", job_id)
 
@@ -324,8 +327,11 @@ def test_failed_inplace_coder_run_is_recorded(temp_workspace, monkeypatch, error
             raise error
 
     with pytest.raises(type(error)):
-        FailingCoder().implement(TaskSpec(description="failure", constraints=[]))
+        FailingCoder().implement(TaskSpec(
+            description="failure", constraints=[], project_context={"task_id": task_id},
+        ))
     record = json.loads((root / ".snodo/jobs" / job_id / "state.json").read_text())["usage"][0]
+    assert record["task_id"] == task_id
     assert record["outcome"] == "error"
     assert record["error_class"] == type(error).__name__
     assert record["duration_ms"] >= 0

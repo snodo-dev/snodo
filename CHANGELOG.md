@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Preserve the executing task ID in successful, failed, and timed-out coder usage records. (Fixes #1292)
 - Attribute classifier completion usage to its role, job, and task, and omit provider error text from model-switch progress. (Fixes #1291)
 - Document validator fallback ordering, operational-only switches, and exhausted-list behavior. (Fixes #1290)
 - Preserve token usage attached to failed validator completion responses across model fallback, without duplicating successful-call records. (Fixes #1289)

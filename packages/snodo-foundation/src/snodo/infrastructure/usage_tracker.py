@@ -346,6 +346,8 @@ def record_inplace_coder_run(
     # Resolve job / task ids: prefer explicit arguments, fall back to job env var.
     resolved_job_id = job_id or os.environ.get("SNODO_JOB_ID") or ""
     resolved_task_id = task_id or ""
+    if resolved_task_id.startswith("task_"):
+        record.setdefault("task_id", resolved_task_id)
 
     if resolved_job_id.startswith("j_"):
         record["job_id"] = resolved_job_id
@@ -358,7 +360,6 @@ def record_inplace_coder_run(
             )
 
     if resolved_task_id.startswith("task_"):
-        record["task_id"] = resolved_task_id
         try:
             _persist_task_usage(resolved_task_id, record)
         except Exception as e:

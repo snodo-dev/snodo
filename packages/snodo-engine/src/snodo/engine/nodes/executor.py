@@ -336,11 +336,13 @@ class ExecutorMixin:
         """Dispatch coder, apply its file operations and commit the artifacts."""
         artifacts = []
         self._prepare_coder(coder, workspace_mcp, task)
+        run_project_context = dict(project_context or {})
+        run_project_context.setdefault("task_id", task.id)
         spec = TaskSpec(
             description=task.spec,
             constraints=[],
             memory_summary=memory_summary,
-            project_context=project_context or {},
+            project_context=run_project_context,
         )
         self._ensure_task_branch(git_mcp, task)
         refs_before = self._repo_ref_snapshot(git_mcp)
