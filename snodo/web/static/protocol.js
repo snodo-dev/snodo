@@ -127,7 +127,7 @@
     }
   }
 
-  window.snodoProtocol = { state, changes, isChanged, subscribe, notify, registerRenderer };
+  window.snodoProtocol = { state, changes, isChanged, subscribe, notify, registerRenderer, renderHead };
   window.snodoViews = window.snodoViews || {};
   window.snodoViews.protocol = renderView;
 })();

@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import json
 import shutil
 import subprocess
 
@@ -67,3 +68,36 @@ def test_protocol_scripts_use_safe_dom_and_register_ordered_sections() -> None:
 def test_protocol_navigation_shows_protocol_container() -> None:
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     assert 'view.hidden = view.id !== (name === "protocol" ? "protocol-view" : `view-${name}`);' in html
+
+
+def test_protocol_head_renders_mockup_classes_and_copy() -> None:
+    node = shutil.which("node")
+    assert node is not None, "Node.js is required to exercise protocol rendering"
+    source = (STATIC / "protocol.js").read_text(encoding="utf-8")
+    harness = r"""
+class Element {
+  constructor(tag) { this.tagName = tag; this.children = []; this.className = ""; }
+  append(...nodes) { this.children.push(...nodes); }
+  replaceChildren(...nodes) { this.children = nodes; }
+  setAttribute() {}
+  addEventListener() {}
+}
+global.document = { createElement: (tag) => new Element(tag), createTextNode: (text) => ({textContent:text}) };
+global.window = {};
+eval(process.argv[1]);
+const api = window.snodoProtocol;
+api.state.data = {protocol:{name:"Example",version:"1.2"}};
+const root = new Element("div");
+api.renderHead(root);
+function flatten(node) { return [node, ...(node.children || []).flatMap(flatten)]; }
+const nodes = flatten(root);
+console.log(JSON.stringify({classes:nodes.map(n=>n.className).filter(Boolean), text:nodes.map(n=>n.textContent).filter(Boolean)}));
+"""
+    result = subprocess.run([node, "-e", harness, source], check=True, capture_output=True, text=True)
+    rendered = json.loads(result.stdout)
+    assert {"head", "eyebrow", "live", "dot", "pill pass", "btn"} <= set(rendered["classes"])
+    assert "Example · v1.2" in rendered["text"]
+    assert "Protocol" in rendered["text"]
+    assert "Reads .snodo/protocol.yml" in rendered["text"]
+    assert "schema valid" in rendered["text"]
+    assert "Reload from disk" in rendered["text"]
