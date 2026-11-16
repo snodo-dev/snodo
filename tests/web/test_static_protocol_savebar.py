@@ -6,7 +6,7 @@ ROOT = Path(__file__).parents[2]
 SOURCE = ROOT / "snodo/web/static/protocol-savebar.js"
 
 
-def test_savebar_behavior_and_mockup_contract() -> None:
+def test_bar_interactions_and_gates() -> None:
     node = shutil.which("node")
     assert node is not None
     source = SOURCE.read_text(encoding="utf-8")
@@ -100,3 +100,22 @@ assert.equal(find(parts().bar,n=>n.className==='dim').textContent,'No unsaved ed
     result = subprocess.run([node, "-e", harness, protocol, source], check=False, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+def test_savebar_builds_mockup_structure_and_copy_without_html() -> None:
+    source = SOURCE.read_text(encoding="utf-8")
+    mockup = (ROOT / "docs/design/protocol-editor.html").read_text(encoding="utf-8")
+    assert "innerHTML" not in source and "insertAdjacentHTML" not in source
+    for class_name in ("bar", "wrap", "pill aut", "dim", "sp", "btn", "btn pri", "diff", "box", "a", "d", "c", "show"):
+        assert f'"{class_name}"' in source
+        assert f'class="{class_name}"' in mockup or class_name in ("a", "d", "c", "show")
+    for copy in (
+        "No unsaved edits.",
+        "Unsaved edits in",
+        "A criterion is empty. Fill it or remove it before saving.",
+        "Review changes",
+        "A diff of .snodo/protocol.yml. Saving writes the file; committing and pushing stay with you.",
+        "Write file",
+        "Written to .snodo/protocol.yml. Commit and push when ready.",
+    ):
+        assert copy in source
