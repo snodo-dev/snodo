@@ -18,7 +18,7 @@ def test_delivery_view_registers_and_fetches_api() -> None:
 def test_delivery_view_offers_supported_windows_and_safe_dom() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
 
-    assert "[7, 30]" in source
+    assert "[7, 30, 90]" in source
     assert "innerHTML" not in source
     assert "insertAdjacentHTML" not in source
     assert '"n/a"' in source

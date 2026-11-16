@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Replace Delivery figure cards with five flow-measure cards, accessible type breakdowns, and a 90-day window. (Fixes #1247)
 - Report Delivery flow efficiency from known gate send-backs and recovery timing, pooling project totals by seconds. (Fixes #1246)
 - Report Delivery flow distribution and timing by type and Monday-starting week, pooling project totals and accepting 90-day windows. (Fixes #1245)
 - Show each project name and Git remote beside the host in the local dashboard header. (Fixes #1243)

@@ -12,7 +12,7 @@
 
 .delivery-figures {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
   gap: 0.75rem;
   margin-bottom: 1.75rem;
 }
@@ -20,7 +20,7 @@
 .delivery-figure {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.45rem;
   min-width: 0;
   padding: 1rem;
   border: 1px solid var(--border);
@@ -40,6 +40,17 @@
   color: var(--muted);
   font-size: 0.8rem;
 }
+
+.delivery-card-label { color: var(--text); font-weight: 600; }
+.delivery-card-explanation, .delivery-card-detail { line-height: 1.35; }
+.delivery-card-detail { font-variant-numeric: tabular-nums; }
+.delivery-velocity-bars { display: flex; gap: 0.25rem; min-height: 0.5rem; margin-top: 0.3rem; }
+.delivery-stack, .delivery-distribution { display: flex; overflow: hidden; width: 100%; height: 0.55rem; border-radius: 999px; background: color-mix(in srgb, var(--muted) 18%, var(--surface)); }
+.delivery-stack { flex: 1; }
+.delivery-segment { display: block; min-width: 0; height: 100%; font-size: 0; }
+.delivery-meter { height: 0.45rem; margin-top: 0.3rem; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--muted) 18%, var(--surface)); }
+.delivery-meter::before { display: block; width: var(--delivery-meter, 85%); height: 100%; border-radius: inherit; background: var(--accent); content: ""; }
+.delivery-not-in-main { margin: -0.65rem 0 1rem; color: var(--muted); font-size: 0.85rem; }
 
 .delivery-chart {
   display: grid;

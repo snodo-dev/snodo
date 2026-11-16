@@ -59,9 +59,13 @@
       summary += ` ${rate(totals.first_try_rate)} landed on the first try.`;
     }
     fragment.append(element("p", summary, "delivery-summary"));
+    if (Number(totals.plans_not_in_main) > 0) {
+      const count = Number(totals.plans_not_in_main);
+      fragment.append(element("p", `${count} ${count === 1 ? "plan" : "plans"} not in main yet`, "delivery-not-in-main"));
+    }
 
     const controls = element("div", undefined, "delivery-windows");
-    for (const daysOption of [7, 30]) {
+    for (const daysOption of [7, 30, 90]) {
       const button = element("button", `${daysOption}d`);
       button.type = "button";
       button.setAttribute("aria-pressed", String(days === daysOption));
@@ -74,19 +78,75 @@
     fragment.append(controls);
 
     const figures = element("div", undefined, "delivery-figures");
-    const values = [
-      ["Landed", totals.landed],
-      ["Flow time", totals.median_flow_seconds === null || totals.median_flow_seconds === undefined ? null : duration(totals.median_flow_seconds)],
-      ["First try", totals.first_try_rate === null || totals.first_try_rate === undefined ? null : rate(totals.first_try_rate)],
-      ["Flow load", totals.flow_load],
-      ["Not in main", totals.plans_not_in_main],
-    ];
-    for (const [label, value] of values) {
-      const figure = element("div", undefined, "delivery-figure");
+    const card = (label, value, explanation) => {
+      const figure = element("section", undefined, "delivery-figure");
+      figure.append(element("span", label, "delivery-card-label"));
       figure.append(element("strong", value === null || value === undefined ? "n/a" : String(value)));
-      figure.append(element("span", label));
-      figures.append(figure);
+      figure.append(element("span", explanation, "delivery-card-explanation"));
+      return figure;
+    };
+    const kinds = ["feature", "defect", "debt", "risk"];
+    const typeColors = { feature: "var(--flow-feature)", defect: "var(--flow-defect)", debt: "var(--flow-debt)", risk: "var(--flow-risk)" };
+    const totalsByType = totals.by_type || {};
+    const weekly = Array.isArray(totals.by_week) ? totals.by_week : (Array.isArray(data.by_week) ? data.by_week : []);
+
+    const velocity = card("Flow velocity", totals.landed, "How much work is getting done");
+    const velocityBars = element("div", undefined, "delivery-velocity-bars");
+    for (const week of weekly) {
+      const bar = element("div", undefined, "delivery-stack");
+      const total = kinds.reduce((sum, kind) => sum + (Number(week[kind]) || 0), 0);
+      bar.setAttribute("role", "img");
+      bar.setAttribute("aria-label", `${week.week_start || "Week"}: ${kinds.map((kind) => `${kind} ${Number(week[kind]) || 0}`).join(", ")}`);
+      for (const kind of kinds) {
+        const count = Number(week[kind]) || 0;
+        const segment = element("span", `${kind} ${count}`, "delivery-segment");
+        segment.style.width = `${total ? count / total * 100 : 0}%`;
+        segment.style.backgroundColor = typeColors[kind];
+        segment.title = `${kind}: ${count}`;
+        bar.append(segment);
+      }
+      velocityBars.append(bar);
     }
+    velocity.append(velocityBars);
+    figures.append(velocity);
+
+    const p85 = totals.p85_flow_seconds ?? totals.pooled_p85_flow_seconds;
+    const flowTime = card("Flow time", totals.median_flow_seconds === null || totals.median_flow_seconds === undefined ? null : duration(totals.median_flow_seconds), "Start to landed");
+    flowTime.append(element("span", p85 === null || p85 === undefined ? "85% under n/a" : `85% under ${duration(p85)}`, "delivery-card-detail"));
+    const timeBar = element("div", undefined, "delivery-meter");
+    timeBar.setAttribute("role", "img");
+    timeBar.setAttribute("aria-label", p85 === null || p85 === undefined ? "85th percentile unavailable" : `85% under ${duration(p85)}`);
+    flowTime.append(timeBar);
+    figures.append(flowTime);
+
+    const efficiency = card("Flow efficiency", rate(totals.efficiency), "Share of flow time not spent on rework");
+    const efficiencyBar = element("div", undefined, "delivery-meter");
+    const efficiencyValue = Number(totals.efficiency);
+    if (totals.efficiency !== null && totals.efficiency !== undefined && Number.isFinite(efficiencyValue)) efficiencyBar.style.setProperty("--delivery-meter", `${Math.max(0, Math.min(100, efficiencyValue * 100))}%`);
+    efficiencyBar.setAttribute("aria-label", `Flow efficiency ${rate(totals.efficiency)}`);
+    efficiency.append(efficiencyBar);
+    figures.append(efficiency);
+
+    figures.append(card("Flow load", totals.flow_load, "Items started and not yet landed"));
+
+    const distribution = card("Flow distribution", "n/a", "The mix of work that landed");
+    const shares = kinds.map((kind) => ({ kind, count: Number(totalsByType[kind]?.landed) || 0, share: Number(totalsByType[kind]?.share) || 0 }));
+    const classified = shares.reduce((sum, item) => sum + item.count, 0);
+    const largest = shares.reduce((best, item) => item.count > best.count ? item : best, shares[0]);
+    if (classified) distribution.querySelector("strong").textContent = `${Math.round(largest.count / classified * 100)}% ${largest.kind}s`;
+    const distributionBar = element("div", undefined, "delivery-distribution");
+    distributionBar.setAttribute("role", "img");
+    distributionBar.setAttribute("aria-label", `Flow distribution: ${shares.map((item) => `${item.kind} ${Math.round((classified ? item.count / classified : item.share) * 100)}%`).join(", ")}`);
+    for (const item of shares) {
+      const share = classified ? item.count / classified : item.share;
+      const segment = element("span", `${item.kind} ${Math.round(share * 100)}%`, "delivery-segment");
+      segment.style.width = `${Math.max(0, share) * 100}%`;
+      segment.style.backgroundColor = typeColors[item.kind];
+      segment.title = `${item.kind}: ${Math.round(share * 100)}%`;
+      distributionBar.append(segment);
+    }
+    distribution.append(distributionBar);
+    figures.append(distribution);
     fragment.append(figures);
 
     fragment.append(element("h2", "Landed per day"));
