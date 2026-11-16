@@ -40,7 +40,7 @@ def test_delivery_chart_uses_short_dates_and_preserves_full_bar_details() -> Non
     assert 'bar.setAttribute("aria-label", `${day.date}: ${day.landed}`)' in source
 
 
-def test_delivery_chart_thins_date_labels_to_fit() -> None:
+def test_delivery_chart_thins_date_labels_even_on_wide_screens() -> None:
     node = shutil.which("node")
     assert node is not None, "Node.js is required to exercise chart label sampling"
 
