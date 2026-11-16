@@ -49,7 +49,7 @@
       "spec_hash": "33264c3c4f2a29cc"
     },
     "3.4_protocol_execution_rules": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "649b7ea184b833b4"
@@ -75,6 +75,6 @@
   },
   "integration": {
     "branch": "plan/protocol-editor/integration",
-    "base_sha": "40efa4185f158190f8d8c817e790fed78af875b3"
+    "base_sha": "e69a9596ad340fcc49264f0143478a9f84d53123"
   }
 }
