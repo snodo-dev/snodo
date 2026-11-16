@@ -25,10 +25,16 @@ waves:
   - 2
   id: 3
   tasks:
-  - 3.1_classifier_uses_fallback
-  - 3.2_fallback_configuration_docs
+  - 2.3_validator_alternatives_wired
 - depends_on:
   - 3
   id: 4
   tasks:
+  - 3.1_classifier_uses_fallback
+  - 2.4_fallback_failure_accounting
+- depends_on:
+  - 4
+  id: 5
+  tasks:
+  - 3.2_fallback_configuration_docs
   - 4.1_fallback_decision_record

@@ -16,13 +16,13 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "1cef74b9a13d53c7"
+      "spec_hash": "3d305fbbdae337f5"
     },
     "2.2_config_command_lists_fallback": {
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "f0fc7c7c179d0eaa"
+      "spec_hash": "ef404186e467b1d3"
     },
     "3.1_classifier_uses_fallback": {
       "status": "pending",
@@ -41,10 +41,22 @@
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "fe66e3cf1745de69"
+    },
+    "2.3_validator_alternatives_wired": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1069e9204ec6f889"
+    },
+    "2.4_fallback_failure_accounting": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4d18dd194681d66f"
     }
   },
   "integration": {
     "branch": "plan/validator-fallback-chain/integration",
-    "base_sha": "89eab1e786edacba8a6d24e142f914998e6c43d7"
+    "base_sha": "d962b631a7111c16101478232b2ba116b1ecb080"
   }
 }
