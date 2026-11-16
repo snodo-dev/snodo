@@ -55,7 +55,11 @@ class UsageTracker(CustomLogger):
 
     def log_failure_event(self, kwargs, exception, start_time, end_time):
         """litellm callback — capture failed completion attempts too."""
-        self._record(kwargs, None, start_time, end_time, outcome="error",
+        # Some providers attach a partial response to the exception even
+        # though the completion failed. Preserve any usage it reports; the
+        # requested model and correlation metadata still come from kwargs.
+        response_obj = getattr(exception, "response", None)
+        self._record(kwargs, response_obj, start_time, end_time, outcome="error",
                      error_class=type(exception).__name__)
 
     def _record(self, kwargs, response_obj, start_time, end_time, outcome, error_class=None):
