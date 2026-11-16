@@ -36,6 +36,13 @@ def _input(payload: Any) -> tuple[Any, str, list[dict[str, Any]]] | JSONResponse
     return project, etag, edits
 
 
+def _constant_time_text_equal(left: str, right: str) -> bool:
+    try:
+        return hmac.compare_digest(left.encode("utf-8"), right.encode("utf-8"))
+    except UnicodeError:
+        return False
+
+
 def _preview(project: Any, etag: str, edits: list[dict[str, Any]]) -> dict[str, Any] | JSONResponse:
     path = project.path / ".snodo" / "protocol.yml"
     try:
@@ -44,7 +51,7 @@ def _preview(project: Any, etag: str, edits: list[dict[str, Any]]) -> dict[str, 
     except (OSError, UnicodeError):
         return JSONResponse({"error": "Protocol file not found or could not be read."}, status_code=400)
     current_etag = hashlib.sha256(original_bytes).hexdigest()
-    if not hmac.compare_digest(current_etag, etag):
+    if not _constant_time_text_equal(current_etag, etag):
         return JSONResponse({"error": "Protocol file changed on disk."}, status_code=409)
     try:
         updated, changes = apply_protocol_edits(original, edits)
@@ -105,7 +112,7 @@ async def save_handler(request: Request) -> JSONResponse:
     name, etag, edits = parsed
     token = payload.get("page_token")
     expected = request.app.state.page_token
-    if not isinstance(token, str) or not hmac.compare_digest(token, expected):
+    if not isinstance(token, str) or not _constant_time_text_equal(token, expected):
         return JSONResponse({"error": "Invalid page token."}, status_code=403)
     project = _project(request, name)
     if project is None:
@@ -117,7 +124,7 @@ async def save_handler(request: Request) -> JSONResponse:
     try:
         # Recheck immediately before replacement to avoid overwriting intervening edits.
         current = path.read_bytes()
-        if not hmac.compare_digest(hashlib.sha256(current).hexdigest(), etag):
+        if not _constant_time_text_equal(hashlib.sha256(current).hexdigest(), etag):
             return JSONResponse({"error": "Protocol file changed on disk."}, status_code=409)
         fd, temp_path = tempfile.mkstemp(prefix=".protocol-", dir=path.parent)
         try:
