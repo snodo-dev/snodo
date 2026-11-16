@@ -1,7 +1,7 @@
 {
   "tasks": {
     "1.1_logs_json_for_recons": {
-      "status": "errored",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "f0624cbfbb5dab5a"
@@ -21,6 +21,6 @@
   },
   "integration": {
     "branch": "plan/logs-json-output/integration",
-    "base_sha": "db706e10a3bb36a87a03c53b3382b74d1c9c025c"
+    "base_sha": "d962b631a7111c16101478232b2ba116b1ecb080"
   }
 }
