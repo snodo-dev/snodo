@@ -317,9 +317,7 @@ represented by `null`, including `difference` when either side is missing.
 Schema: `snodo.logs.v1`
 
 Emits one recon record without human-readable output. Usage totals are computed
-with the same summarizer as the text usage view. JSON is currently supported for
-recon IDs only; `--watch`, job IDs, task IDs, plan names, unknown IDs, and calls
-outside a Snodo project return the uniform error object below.
+with the same summarizer as the text usage view. JSON is supported for recon IDs and job IDs (including plan jobs). `--watch`, task IDs, plan names, unknown IDs, and calls outside a Snodo project return the uniform error object below. Job records include raw usage and a `by_role` summary with `role`, `calls`, `input_tokens`, `output_tokens`, `model_time_seconds`, and `output_tokens_per_second`; totals include token counts, model call time, and calls.
 
 | Field | Type | Meaning |
 |-------|------|---------|
@@ -330,6 +328,8 @@ outside a Snodo project return the uniform error object below.
 | `status` | string \| null | persisted recon status |
 | `elapsed_seconds` | number \| null | wall time between creation and completion |
 | `agents` | array | agent records with `agent`, `model`, optional `served_model`, `status`, and raw `usage` records |
+| `usage` | array | job only: raw per-call usage records |
+| `by_role` | array | job only: role-grouped calls, tokens, model time, and output rate |
 | `totals` | object | aggregate `input_tokens`, `output_tokens`, `model_call_time_seconds`, and `output_tokens_per_second` |
 
 ### `snodo runs --json`

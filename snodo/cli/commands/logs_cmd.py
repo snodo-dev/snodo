@@ -82,9 +82,6 @@ def logs_command(args) -> int:
             return emit_error("logs", "Not inside a snodo project.", 1)
         raise
 
-    if json_mode and composite_id.startswith(("j_", "task_")):
-        return emit_error("logs", f"JSON output is only supported for recon IDs: {composite_id}", 1)
-
     if composite_id.startswith("rec_"):
         return _show_recon(project_root, composite_id, args)
     if composite_id.startswith("j_"):
@@ -618,10 +615,39 @@ def _show_job(project_root: str, job_id: str, args) -> int:
                 or job_status.get("plan")):
             is_plan_job = True
 
+    if bool(getattr(args, "json", False)):
+        return _emit_job_json(job_id, job_status, state_data if "state_data" in locals() else {})
+
     if is_plan_job:
         return _show_plan_job(project_root, job_id, args)
 
     return _stream_job_stdout(project_root, job_id, args)
+
+
+def _emit_job_json(job_id: str, status: dict, state: dict) -> int:
+    from snodo.cli.json_output import emit_json, schema_name
+    from snodo.usage_summary import summarize_usage
+
+    records = state.get("usage") or []
+    records = [record for record in records if isinstance(record, dict)]
+    summary = summarize_usage(records)
+    by_role = [{
+        "role": row["role"], "calls": row["calls"],
+        "input_tokens": row["input_tokens"] or 0,
+        "output_tokens": row["output_tokens"] or 0,
+        "model_time_seconds": row["time_seconds"],
+        "output_tokens_per_second": row["output_tokens_per_second"],
+    } for row in summary["rows"]]
+    total = summary["total"]
+    return emit_json({
+        "schema": schema_name("logs"), "ok": True, "id": job_id, "kind": "job",
+        "status": status.get("status"), "elapsed_seconds": status.get("elapsed_seconds"),
+        "usage": records, "by_role": by_role, "totals": {
+            "input_tokens": total["input_tokens"] or 0,
+            "output_tokens": total["output_tokens"] or 0,
+            "model_call_time_seconds": total["time_seconds"], "calls": total["calls"],
+        },
+    })
 
 
 def _stream_job_stdout(project_root: str, job_id: str, args) -> int:
