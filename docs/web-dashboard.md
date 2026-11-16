@@ -68,9 +68,10 @@ The dashboard has five views:
   plans not yet merged into `main` and uncommitted files.
 - **Protocol** shows the schema state in its head, with **Reload from disk**, six
   summary tiles, the initial-mode pipeline, validator groups with expandable row
-  editors, execution settings, and the rules checked on save. You can edit the
-  protocol type, phase, severity cap, tools, criteria, and whether a validator
-  runs in the initial mode. Adding validators is not available. Saving first
+  editors, execution settings, and the rules checked on save. You can edit a
+  validator's type, phase, severity cap, and criteria. Tools are read-only, and
+  changing whether a validator runs in the initial mode is not saved yet.
+  Adding validators is not available. Saving first
   lets you review a diff, then writes `.snodo/protocol.yml`; committing and
   pushing stay with you. Comments and formatting outside edited validators are
   kept. A file changed on disk or an invalid result stops the save with a
