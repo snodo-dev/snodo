@@ -31,19 +31,19 @@
       "spec_hash": "7e1411075ca5e4ea"
     },
     "3.1_protocol_tiles": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "5b59ad5f9556121f"
     },
     "3.2_protocol_pipeline": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "bbcc0a0b6c46541f"
     },
     "3.3_protocol_validators_list": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "33264c3c4f2a29cc"
@@ -52,7 +52,7 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "afb51e09a57adabb"
+      "spec_hash": "649b7ea184b833b4"
     },
     "4.1_protocol_row_editor": {
       "status": "pending",
@@ -75,6 +75,6 @@
   },
   "integration": {
     "branch": "plan/protocol-editor/integration",
-    "base_sha": "63dc42c00350255892715cf5561969e5fabb7865"
+    "base_sha": "48fd8a7e9d4044b650d1c997fe94657758e5a3b5"
   }
 }
