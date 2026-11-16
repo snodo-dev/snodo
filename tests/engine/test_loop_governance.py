@@ -425,19 +425,22 @@ def test_classifier_uses_validator_model_fallback(sample_protocol, sample_task, 
     builder._project_root = "/fake/project"
     builder._classifier_model = "primary"
     builder._classifier_fallback_models = ["backup"]
+    builder._job_id = "job-123"
     notices = []
     builder._progress = notices.append
     calls = []
+    request_metadata = []
 
     def base_completion(**kwargs):
         model = kwargs["model"]
         calls.append(model)
+        request_metadata.append(kwargs.get("metadata"))
         if model == "primary":
-            raise RuntimeError("rate limit exceeded")
+            raise RuntimeError("429 rate limit; request details must not appear")
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))])
 
     builder._classifier_base_completion_fn = base_completion
-    builder._classifier_completion_fn = lambda **kwargs: base_completion(model="primary")
+    builder._classifier_completion_fn = lambda **kwargs: base_completion(model="primary", **kwargs)
     monkeypatch.setattr(
         "snodo.validators.runner.build_completion_fn",
         lambda model, base: lambda **kwargs: base(model=model, **kwargs),
@@ -467,5 +470,11 @@ def test_classifier_uses_validator_model_fallback(sample_protocol, sample_task, 
         )
 
     assert calls == ["primary", "backup"]
+    assert request_metadata == [
+        {"job_id": "job-123", "task_id": sample_task.id, "role": "classifier"},
+        {"job_id": "job-123", "task_id": sample_task.id, "role": "classifier"},
+    ]
     assert len(notices) == 1
     assert "primary -> backup" in notices[0]
+    assert "RuntimeError" in notices[0]
+    assert "request details" not in notices[0]

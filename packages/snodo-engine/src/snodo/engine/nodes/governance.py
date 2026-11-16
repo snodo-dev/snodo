@@ -223,20 +223,36 @@ class GovernanceNodeMixin:
                         requested_model = kwargs.pop("_configured_model", classifier_model)
                         models = list(dict.fromkeys([requested_model, *fallback_models]))
 
+                        failure_types = {}
+
                         def call_model(model):
                             fn = completion_by_model.get(model)
                             if fn is None:
                                 raise RuntimeError(
                                     f"No completion client configured for fallback model {model}"
                                 )
-                            return fn(_configured_model=model, **kwargs)
+                            try:
+                                metadata = dict(kwargs.get("metadata") or {})
+                                metadata.update({
+                                    "job_id": getattr(self, "_job_id", None)
+                                    or getattr(self, "_session_id", None)
+                                    or "unknown",
+                                    "task_id": loop_state.task.id or "unknown",
+                                    "role": "classifier",
+                                })
+                                call_kwargs = dict(kwargs)
+                                call_kwargs["metadata"] = metadata
+                                return fn(_configured_model=model, **call_kwargs)
+                            except Exception as exc:
+                                failure_types[model] = type(exc).__name__
+                                raise
 
-                        def log_switch(failed, next_model, reason):
+                        def log_switch(failed, next_model, _reason):
                             progress = getattr(self, "_progress", None)
                             if progress is not None:
                                 progress(
                                     f"    classifier model switch {failed} -> {next_model} "
-                                    f"({reason.splitlines()[0][:160]})"
+                                    f"({failure_types.get(failed, 'Exception')})"
                                 )
 
                         response, _ = call_with_model_fallback(
@@ -245,10 +261,27 @@ class GovernanceNodeMixin:
                         return response
 
                     completion_fn = classify_with_fallback
+
+                classifier_job_id = (
+                    getattr(self, "_job_id", None)
+                    or getattr(self, "_session_id", None)
+                    or "unknown"
+                )
+
+                def attributed_classifier_completion(**kwargs):
+                    metadata = dict(kwargs.get("metadata") or {})
+                    metadata.update({
+                        "job_id": classifier_job_id,
+                        "task_id": loop_state.task.id or "unknown",
+                        "role": "classifier",
+                    })
+                    kwargs["metadata"] = metadata
+                    return completion_fn(**kwargs)
+
                 result = registry.classify_task(
                     loop_state.task.spec,
                     loop_state.task.id,
-                    completion_fn,
+                    attributed_classifier_completion,
                     classifier_model,
                 )
                 loop_state.task.flow_type = result.get("flow_type") or "feature"
