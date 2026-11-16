@@ -70,6 +70,10 @@ def test_shell_topbar_matches_cloud_and_uses_location_host() -> None:
     assert 'class="brand-name">snod<span>o</span>' in html
     assert 'class="local">local</span>' in html
     assert 'getElementById("host").textContent = location.host' in html
+    assert 'id="project-identity"' in html
+    assert 'fetch("/api/identity")' in html
+    assert 'label.title = `${identity.name}: ${identity.remote}`' in html
+    assert "label.append(name, separator, remote)" in html
     assert "127.0.0.1:7878" not in html
     assert "fonts.googleapis.com" not in html
     assert "Archivo" in html and "Hanken Grotesk" in html and "JetBrains Mono" in html

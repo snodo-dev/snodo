@@ -17,6 +17,7 @@ from starlette.staticfiles import StaticFiles
 from snodo.web.projects import Project
 from snodo.web.routes_delivery import handler as delivery_handler
 from snodo.web.routes_gates import handler as gates_handler
+from snodo.web.routes_identity import handler as identity_handler
 from snodo.web.routes_now import handler as now_handler
 from snodo.web.routes_plans import handler as plans_handler
 from snodo.web.routes_spec import handler as spec_handler
@@ -85,6 +86,7 @@ def create_app(projects: Iterable[Project]) -> Starlette:
     """Create the local dashboard application for the supplied projects."""
     routes = [
         Route("/api/projects", _projects_handler, methods=["GET", "HEAD"]),
+        Route("/api/identity", identity_handler, methods=["GET", "HEAD"]),
         Route("/api/now", now_handler, methods=["GET", "HEAD"]),
         Route("/api/now/spec", spec_handler, methods=["GET", "HEAD"]),
         Route("/api/plans", plans_handler, methods=["GET", "HEAD"]),

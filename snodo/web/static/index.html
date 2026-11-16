@@ -101,7 +101,7 @@
       <button type="button" data-view="gates" data-hash="#/gates">Gates</button>
       <button type="button" data-view="plans" data-hash="#/plans">Plans</button>
     </nav>
-    <div class="topbar-right"><span class="host" id="host"></span><time class="updated" id="updated" aria-live="polite"></time>
+    <div class="topbar-right"><span class="project-identity" id="project-identity"></span><span class="host" id="host"></span><time class="updated" id="updated" aria-live="polite"></time>
     <button class="theme-button" id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button></div>
     </div>
   </header>
@@ -137,6 +137,16 @@
       }
 
       document.getElementById("host").textContent = location.host;
+      fetch("/api/identity").then((response) => response.json()).then((identity) => {
+        const label = document.getElementById("project-identity");
+        const name = document.createElement("span");
+        name.textContent = identity.name;
+        const separator = document.createTextNode(": ");
+        const remote = document.createElement("span");
+        remote.textContent = identity.remote;
+        label.append(name, separator, remote);
+        label.title = `${identity.name}: ${identity.remote}`;
+      }).catch(() => {});
 
       function markUpdated() {
         const updated = document.getElementById("updated");
