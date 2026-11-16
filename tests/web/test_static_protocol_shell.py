@@ -62,3 +62,8 @@ def test_protocol_scripts_use_safe_dom_and_register_ordered_sections() -> None:
     assert '"Reload from disk"' in source
     assert "innerHTML" not in source
     assert "insertAdjacentHTML" not in source
+
+
+def test_protocol_navigation_shows_protocol_container() -> None:
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert 'view.hidden = view.id !== (name === "protocol" ? "protocol-view" : `view-${name}`);' in html

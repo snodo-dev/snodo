@@ -21,7 +21,7 @@
       --overlay:rgba(255,255,255,.04); --overlay-2:rgba(255,255,255,.08); --shadow:none; --on-teal:var(--bg);
       --r-1:2px; --r-2:4px; --r-3:8px; --r-pill:999px;
       --fs-micro:10px; --fs-small:11px; --fs-body:13px; --fs-lead:14px; --fs-title:20px; --fs-loud:30px;
-      --serif:Georgia,'Times New Roman',serif; --body:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+      --serif:'Archivo',Arial,sans-serif; --body:'Hanken Grotesk',Arial,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
       --background:var(--bg); --surface:var(--bg-2); --border:var(--line); --accent:var(--teal);
       --muted:var(--text-muted); --amber:var(--abstained); --red:var(--blocked); --green:var(--pass);
     }
@@ -35,7 +35,7 @@
         --abstained:#9a6208; --abstained-dim:rgba(154,98,8,.08); --abstained-border:rgba(154,98,8,.26);
         --running:#0369a1; --running-dim:rgba(3,105,161,.08); --running-border:rgba(3,105,161,.26);
        --automated:#6d4fd1; --automated-dim:rgba(109,79,209,.08); --automated-border:rgba(109,79,209,.28);
-       --serif:Georgia,'Times New Roman',serif; --body:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+       --serif:'Archivo',Arial,sans-serif; --body:'Hanken Grotesk',Arial,sans-serif;
         --line:rgba(16,40,44,.09); --line-subtle:rgba(16,40,44,.06); --line-2:rgba(16,40,44,.16);
         --overlay:rgba(16,40,44,.035); --overlay-2:rgba(16,40,44,.07); --shadow:0 1px 2px rgba(16,40,44,.08); --on-teal:#fff;
       }
@@ -52,7 +52,7 @@
          --automated:#6d4fd1; --automated-dim:rgba(109,79,209,.08); --automated-border:rgba(109,79,209,.28);
       --line:rgba(16,40,44,.09); --line-subtle:rgba(16,40,44,.06); --line-2:rgba(16,40,44,.16);
       --overlay:rgba(16,40,44,.035); --overlay-2:rgba(16,40,44,.07); --shadow:0 1px 2px rgba(16,40,44,.08); --on-teal:#fff;
-      --serif:Georgia,'Times New Roman',serif; --body:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      --serif:'Archivo',Arial,sans-serif; --body:'Hanken Grotesk',Arial,sans-serif;
     }
     :root[data-theme="light"] { --background:var(--bg); --surface:var(--bg-2); --border:var(--line); --accent:var(--teal); --muted:var(--text-muted); --amber:var(--abstained); --red:var(--blocked); --green:var(--pass); }
     @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --background:var(--bg); --surface:var(--bg-2); --border:var(--line); --accent:var(--teal); --muted:var(--text-muted); --amber:var(--abstained); --red:var(--blocked); --green:var(--pass); } }
@@ -247,7 +247,7 @@
         if (!names.includes(requested)) history.replaceState(null, "", "#/now");
         active = name;
         document.querySelectorAll(".view").forEach((view) => {
-          view.hidden = view.id !== `view-${name}`;
+          view.hidden = view.id !== (name === "protocol" ? "protocol-view" : `view-${name}`);
         });
         document.querySelectorAll("nav [data-view]").forEach((button) => {
           if (button.dataset.view === name) button.setAttribute("aria-current", "page");
