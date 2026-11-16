@@ -6,7 +6,7 @@
     if (className) node.className = className;
     return node;
   };
-  const defaults = { max_retries: 3, branch_ttl_days: 7, max_recovery_depth: 3, max_total_fix_attempts: 10, branch_prefix: "task", parallel_runs: 1 };
+  const defaults = { max_retries: 3, branch_ttl_days: 7, max_recovery_depth: 3, max_total_fix_attempts: 10, branch_prefix: "task", "queue.parallel_runs": 1 };
   api.hasFailingRule = (state = api.state) => (state.data?.rules || []).some((rule) => rule.ok === false);
 
   function render(state) {
