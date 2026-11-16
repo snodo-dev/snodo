@@ -114,6 +114,50 @@ def test_task_job_finished_prints_its_stdout(capsys):
     assert capsys.readouterr().out == "build started\nbuild complete\n"
 
 
+def test_task_job_text_logs_end_with_ordered_usage_including_failed_calls(capsys):
+    import json
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        job_dir = Path(tmp_dir) / ".snodo" / "jobs" / "j_usage"
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text(json.dumps({"task_id": "1.1_usage"}))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed",
+            "usage": [
+                {"role": "validator:adr", "input_tokens": 10, "output_tokens": 2, "duration_ms": 1000},
+                {"role": "coder", "input_tokens": 20, "output_tokens": 4, "duration_ms": 2000, "outcome": "failed"},
+                {"role": "validator:adr", "input_tokens": 5, "output_tokens": 1, "duration_ms": 500},
+            ],
+        }))
+        (job_dir / "stdout.log").write_text("job output\n")
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            assert logs_command(SimpleNamespace(composite_id="j_usage", watch=False)) == 0
+
+    out = capsys.readouterr().out
+    assert out.startswith("job output\n")
+    assert out.endswith(
+        "Usage: role | input tokens | output tokens | model time | output tok/s\n"
+        "validator:adr: 15 | 3 | 1.5s | 2.0 C\n"
+        "coder: 20 | 4 | 2.0s | 2.0 C\n"
+        "total: 35 | 7 | 3.5s | 2.0 C\n"
+    )
+
+
+def test_task_job_without_usage_has_no_usage_table(capsys):
+    import json
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        job_dir = Path(tmp_dir) / ".snodo" / "jobs" / "j_no_usage"
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text(json.dumps({"task_id": "1.1_plain"}))
+        (job_dir / "state.json").write_text(json.dumps({"status": "completed"}))
+        (job_dir / "stdout.log").write_text("plain output\n")
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            assert logs_command(SimpleNamespace(composite_id="j_no_usage", watch=False)) == 0
+    assert capsys.readouterr().out == "plain output\n"
+
+
 def test_task_job_watch_appends_output_until_status_changes(capsys, monkeypatch):
     """A task watch emits new lines and stops when the on-disk state finishes."""
     import json
