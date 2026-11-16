@@ -127,6 +127,8 @@ def test_wave_judge_receives_configured_fallback_alternatives():
         Task(id="wave:1", spec="wave"),
         current_mode="producer",
         validator_config=config,
+        completion_fn=lambda **kwargs: kwargs,
+        default_model="primary",
         dispatch_fn=dispatch,
     )
 
