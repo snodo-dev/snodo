@@ -13,7 +13,8 @@ snodo dashboard --web --root ~/Dev
 ```
 
 The dashboard listens on `127.0.0.1`, so it is available on this machine. It is
-read-only and does not write to projects. Projects are found by scanning the
+writes only the `.snodo/protocol.yml` file, from the Protocol view, after an
+explicit save. Other views remain read-only. Projects are found by scanning the
 root folders for a `.snodo/` directory. The selected roots are remembered in
 `web.yml` in your Snodo folder.
 

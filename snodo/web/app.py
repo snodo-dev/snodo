@@ -1,7 +1,9 @@
-"""Read-only, loopback-only Starlette application for the local dashboard."""
+"""Loopback-only Starlette application for the local dashboard."""
 
 from __future__ import annotations
 
+import secrets
+from urllib.parse import urlsplit
 import socket
 from pathlib import Path
 from typing import Callable, Iterable
@@ -20,7 +22,7 @@ from snodo.web.routes_gates import handler as gates_handler
 from snodo.web.routes_identity import handler as identity_handler
 from snodo.web.routes_now import handler as now_handler
 from snodo.web.routes_plans import handler as plans_handler
-from snodo.web.routes_protocol import handler as protocol_handler
+from snodo.web.routes_protocol import handler as protocol_handler, save_handler as protocol_handler_save, write_handler as protocol_handler_write
 from snodo.web.routes_spec import handler as spec_handler
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -40,6 +42,16 @@ class _RequestGuard:
         host = headers.get(b"host", b"").decode("latin-1").lower()
         if not _is_loopback_host(host):
             response: Response = PlainTextResponse("Invalid Host header", status_code=400)
+        elif scope["method"] == "POST":
+            if scope.get("path") not in {"/api/protocol/preview", "/api/protocol/save"}:
+                response = PlainTextResponse("Method not allowed", status_code=405)
+            elif headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower() != b"application/json":
+                response = PlainTextResponse("JSON content type required", status_code=415)
+            elif headers.get(b"origin") and urlsplit(headers[b"origin"].decode("latin-1")).netloc.lower() != host:
+                response = PlainTextResponse("Invalid Origin header", status_code=403)
+            else:
+                await self.app(scope, receive, send)
+                return
         elif scope["method"] not in {"GET", "HEAD"}:
             response = PlainTextResponse("Method not allowed", status_code=405)
         else:
@@ -92,6 +104,8 @@ def create_app(projects: Iterable[Project]) -> Starlette:
         Route("/api/now/spec", spec_handler, methods=["GET", "HEAD"]),
         Route("/api/plans", plans_handler, methods=["GET", "HEAD"]),
         Route("/api/protocol", protocol_handler, methods=["GET", "HEAD"]),
+        Route("/api/protocol/preview", protocol_handler_write, methods=["POST"]),
+        Route("/api/protocol/save", protocol_handler_save, methods=["POST"]),
         Route("/api/delivery", delivery_handler, methods=["GET", "HEAD"]),
         Route("/api/gates", gates_handler, methods=["GET", "HEAD"]),
         Route("/", _index_handler, methods=["GET", "HEAD"]),
@@ -99,6 +113,7 @@ def create_app(projects: Iterable[Project]) -> Starlette:
     ]
     app = Starlette(routes=routes, middleware=[Middleware(_RequestGuard)])
     app.state.projects = list(projects)
+    app.state.page_token = secrets.token_urlsafe(32)
     return app
 
 
