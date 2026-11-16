@@ -55,13 +55,13 @@
       "spec_hash": "649b7ea184b833b4"
     },
     "4.1_protocol_row_editor": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "5cde3b875850df47"
     },
     "4.2_protocol_save_bar": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "6ee7cfb454b6cc1d"
@@ -75,6 +75,6 @@
   },
   "integration": {
     "branch": "plan/protocol-editor/integration",
-    "base_sha": "e69a9596ad340fcc49264f0143478a9f84d53123"
+    "base_sha": "e3c25d3009f54f753bc6a156c14dfdb784fb9f18"
   }
 }
