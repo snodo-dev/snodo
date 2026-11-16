@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
-from snodo.validators.runner import run_validators
+from snodo.validators.runner import build_completion_fn, run_validators
 
 
 def _protocol():
@@ -110,3 +110,27 @@ def test_task_judge_still_runs_once_per_task_in_same_wave():
     assert [task_id for validator_id, task_id in calls if validator_id == "task"] == [
         "one", "two", "three"
     ]
+
+
+def test_wave_judge_receives_configured_fallback_alternatives():
+    protocol = _protocol()
+    config = SimpleNamespace(max_tokens=100, max_tool_turns=1, fallback=["backup-a", "backup-b"])
+    captured = []
+
+    def dispatch(validator, context, _registry):
+        captured.append((validator.validator_id, context.model_alternatives))
+        return ValidatorResult(validator_id=validator.validator_id, severity="pass", justification="pass")
+
+    run_validators(
+        protocol,
+        [protocol.validators[0]],
+        Task(id="wave:1", spec="wave"),
+        current_mode="producer",
+        validator_config=config,
+        completion_fn=build_completion_fn("primary", lambda **kwargs: kwargs),
+        default_model="primary",
+        dispatch_fn=dispatch,
+    )
+
+    assert captured[0][0] == "wave"
+    assert [model for model, _completion in captured[0][1]] == ["backup-a", "backup-b"]

@@ -366,6 +366,22 @@ def dispatch_validator(
     return result
 
 
+def _configure_validator_fallback(instance: Any, validator: Validator, context: ValidatorContext) -> None:
+    """Attach configured alternatives and a sanitized switch notice to LLM judges."""
+    from snodo.validators.llm_validator import LLMValidator
+
+    if not isinstance(instance, LLMValidator):
+        return
+    alternatives = getattr(context, "model_alternatives", ())
+    if alternatives:
+        instance._alternatives = list(alternatives)
+        progress = getattr(context, "progress_callback", None)
+        if progress is not None:
+            instance._on_model_switch = lambda failed, tried, reason: progress(
+                f"    {validator.validator_id}: validator model switch {failed} -> {tried} ({reason})"
+            )
+
+
 def _evaluate_validator(
     v: Validator, context: ValidatorContext, reg: Any
 ) -> ValidatorResult:
@@ -377,6 +393,7 @@ def _evaluate_validator(
     if cls is not None:
         try:
             instance = cls(validator_spec=v)
+            _configure_validator_fallback(instance, v, context)
             result = instance.evaluate(context)
         except Exception as e:  # noqa: BLE001 — validator isolation boundary
             # Isolation must not destroy the cause: the halt will say
@@ -402,6 +419,7 @@ def _evaluate_validator(
 
         try:
             instance = LLMValidator(validator_spec=v)
+            _configure_validator_fallback(instance, v, context)
             result = instance.evaluate(context)
         except Exception as e:  # noqa: BLE001
             logger.warning(
@@ -572,6 +590,19 @@ def run_validators(
         verdict_cache=verdict_cache,
         wave_specs=list(wave_specs) if wave_specs is not None else None,
     )
+
+    # Build each fallback independently so provider binding and task headers
+    # use the model actually requested, including for per-validator overrides.
+    fallback_models = list(getattr(_vcfg, "fallback", None) or [])
+    base_completion = getattr(completion_fn, "func", None)
+    model_alternatives = []
+    if fallback_models and base_completion is not None:
+        for fallback_model in fallback_models:
+            rebound = build_completion_fn(fallback_model, base_completion)
+            if task.id:
+                rebound = wrap_completion_fn_with_headers(rebound, task.id)
+            model_alternatives.append((fallback_model, rebound))
+    context.model_alternatives = model_alternatives
 
     # The produced change is read ONCE here, before the validator pool
     # starts, and shared by every post-execute judge through the context

@@ -2985,3 +2985,22 @@ def test_completion_fallback_does_not_retry_an_unusable_verdict(security_validat
     assert result.severity == "warn"
     assert "Invalid severity" in result.justification
     assert calls == ["first"]
+
+
+def test_runner_fallback_switch_emits_one_sanitized_validator_progress_line():
+    from types import SimpleNamespace
+
+    from snodo.validators.runner import _configure_validator_fallback
+
+    validator = Validator(validator_id="security", validator_type="security")
+    instance = LLMValidator(validator_spec=validator)
+    lines = []
+    context = SimpleNamespace(
+        model_alternatives=[("backup", MagicMock())],
+        progress_callback=lines.append,
+    )
+
+    _configure_validator_fallback(instance, validator, context)
+    instance._on_model_switch("primary", "backup", "RateLimitError")
+
+    assert lines == ["    security: validator model switch primary -> backup (RateLimitError)"]

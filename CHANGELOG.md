@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Wire configured validator fallback models into every validator completion chain with sanitized switch logging. (Fixes #1287)
 - Let `snodo config set/get` manage the validator fallback list, including clearing it. (Fixes #1286)
 - Let validator judges switch to ordered alternative completion functions after operational retries are exhausted, without reusing provider credentials. (Fixes #1285)
 - Keep the dashboard shell's heading and list styles from changing how the Protocol view renders.
