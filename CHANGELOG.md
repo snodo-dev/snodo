@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Print per-role usage from the plan job after its progress summary. (Fixes #1295)
 - Fall back to task-matched job usage records in end-of-run task summaries, including recovery rounds. (Fixes #1294)
 - End text output from `snodo logs <job_id>` with per-role usage, including failed attempts. (Fixes #1293)
 - Preserve the executing task ID in successful, failed, and timed-out coder usage records. (Fixes #1292)

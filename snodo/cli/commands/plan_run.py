@@ -1219,6 +1219,7 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
         def sync_integration_before_wave():
             refresh_plan_integration(str(project_root), args.plan, plan_dir, integration_branch)
 
+        plan_start_mono = time.monotonic()
         failed = _execute_waves(
             waves, planner, args, protocol, model,
             all_waves, interactive, effective_concurrency=effective_concurrency,
@@ -1267,6 +1268,20 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
 
 
         _print_plan_progress(planner, args.plan)
+        job_id = os.environ.get("SNODO_JOB_ID")
+        if job_id:
+            state_path = Path(project_root) / ".snodo" / "jobs" / job_id / "state.json"
+            try:
+                job_state = json.loads(state_path.read_text())
+            except (OSError, ValueError):
+                job_state = None
+            usage = job_state.get("usage") if isinstance(job_state, dict) else None
+            records = [record for record in usage if isinstance(record, dict)] if isinstance(usage, list) else []
+            if records:
+                from snodo.usage_summary import render_usage_summary, summarize_usage
+                elapsed = max(0.0, time.monotonic() - plan_start_mono)
+                for line in render_usage_summary(summarize_usage(records, elapsed), elapsed):
+                    print(line)
         from snodo.cli.commands.plan_delivery import print_blocked_plan_outcome
         final_status = planner.get_status(args.plan)
         print_blocked_plan_outcome(
