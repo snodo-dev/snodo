@@ -11,9 +11,9 @@ current code defaults.
 
 import sys
 import warnings
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from snodo.paths import resolve_home
 from snodo.config import ProviderConfig, DEFAULT_PROVIDER_CATALOG, DEFAULT_MODEL  # noqa: F401
@@ -76,6 +76,10 @@ class ValidatorConfig(BaseModel):
     max_tokens: int = Field(default=_VALIDATOR_MAX_TOKENS_DEFAULT, ge=1)
     max_tool_turns: int = Field(default=_VALIDATOR_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
     model: Optional[str] = Field(default=None, description="Validator LLM model. None = use default_model.")
+    fallback: list[Annotated[str, StringConstraints(min_length=1)]] = Field(
+        default_factory=list,
+        description="Ordered validator model fallbacks.",
+    )
 
 
 class ValidatorLLMConfig(BaseModel):
