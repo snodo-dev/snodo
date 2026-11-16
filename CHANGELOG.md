@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Fall back to task-matched job usage records in end-of-run task summaries, including recovery rounds. (Fixes #1294)
 - End text output from `snodo logs <job_id>` with per-role usage, including failed attempts. (Fixes #1293)
 - Preserve the executing task ID in successful, failed, and timed-out coder usage records. (Fixes #1292)
 - Attribute classifier completion usage to its role, job, and task, and omit provider error text from model-switch progress. (Fixes #1291)
