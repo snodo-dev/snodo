@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
-from snodo.validators.runner import run_validators
+from snodo.validators.runner import build_completion_fn, run_validators
 
 
 def _protocol():
@@ -127,7 +127,7 @@ def test_wave_judge_receives_configured_fallback_alternatives():
         Task(id="wave:1", spec="wave"),
         current_mode="producer",
         validator_config=config,
-        completion_fn=lambda **kwargs: kwargs,
+        completion_fn=build_completion_fn("primary", lambda **kwargs: kwargs),
         default_model="primary",
         dispatch_fn=dispatch,
     )
