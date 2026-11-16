@@ -45,7 +45,7 @@ api.renderers[1](state);
 let section=root.querySelector(".pipeline-section");
 function stages(){section=root.querySelector(".pipeline-section"); return section.children[1].children[0].children;}
 function words(n){return n.textContent || n.children.map(words).join("|");}
-const before=stages().map(s=>({cls:s.className,text:words(s),chips:s.children[3].children.map(c=>({text:c.textContent,cls:c.className,click:!!c.handlers.click}))}));
+const before=stages().map(s=>({cls:s.className,text:words(s),pill:s.children[0].textContent,heading:s.children[1].textContent,detail:s.children[2].textContent,chips:s.children[3].children.map(c=>({text:c.textContent,cls:c.className,click:!!c.handlers.click}))}));
 const moved=state.validators.find(v=>v.id==="moved"); moved.phase="post_execute";
 state.validators=state.validators.filter(v=>v.id!=="a"); state.data.modes[0].validators=state.data.modes[0].validators.filter(id=>id!=="a");
 api.renderers[1](state);
@@ -58,6 +58,9 @@ console.log(JSON.stringify({before,after,open:state.openValidator,notified:api.n
     stages = rendered["before"]
     assert [next((text for text in ("pre_execute", "coder", "post_execute", "merge") if text in stage["text"]), "") for stage in stages] == ["pre_execute", "coder", "post_execute", "merge"]
     assert [stage["cls"] for stage in stages] == ["stage", "stage coder", "stage", "stage"]
+    assert [stage["pill"] for stage in stages] == ["pre_execute", "coder", "post_execute", "merge"]
+    assert [stage["heading"] for stage in stages] == ["Spec checks", "Implement", "Gate", "Deliver"]
+    assert [stage["detail"] for stage in stages] == ["before any code is written", "model comes from config", "checks the work", "local_merge"]
     assert [stage["chips"] for stage in stages][0][1]["cls"] == "mod"
     assert [stage["chips"] for stage in stages][0][-1] == {"text": "missing", "cls": "off", "click": False}
     assert rendered["after"][0] == ["edited", "missing"] and "moved" in rendered["after"][2]
