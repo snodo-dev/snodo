@@ -876,3 +876,52 @@ def test_coder_memory_summary_does_not_duplicate_recovery_evidence():
         ]}},
     )
     assert validation.ValidationNodeMixin._coder_memory_summary(loop_state) == "existing recovery evidence"
+
+
+def test_exhausted_validator_fallback_halts_with_last_model_error(sample_task, monkeypatch):
+    from snodo.validators import llm_validator as llm_module
+    from snodo.validators.llm_validator import LLMValidator
+
+    monkeypatch.setattr(llm_module, "_RETRY_ATTEMPTS", 1)
+    protocol = Protocol(
+        protocol_id="test_protocol",
+        name="Test Protocol",
+        version="1.0.0",
+        modes=[Mode(
+            mode_id="producer", name="Producer Mode", tools=["edit"],
+            validators=["security"],
+        )],
+        validators=[Validator(
+            validator_id="security", validator_type="security",
+            criteria=["Check OWASP Top 10"], evaluation_phase="post_execute",
+        )],
+        disagreement_policy=DisagreementPolicy.UNANIMOUS,
+        initial_mode="producer",
+    )
+
+    def fail(message):
+        def completion(**kwargs):
+            raise ConnectionError(message)
+        return completion
+
+    spec = protocol.validators[0]
+    validator = LLMValidator(
+        spec, fail("first model failed"), model="validator-a",
+        alternatives=[("validator-b", fail("last model failed"))],
+    )
+    task = Task(id=sample_task.id, spec=sample_task.spec)
+    result = validator.evaluate(task)
+    assert result.error is True
+    assert "(ConnectionError): last model failed" in result.justification
+
+    builder = GraphBuilder(protocol, validator_fn=lambda *args, **kwargs: [result])
+    halted = builder._post_validate_node({
+        "task": {"id": sample_task.id, "spec": sample_task.spec},
+        "current_mode": "producer", "iteration": 0, "stage": "validate",
+        "validation_results": [], "validation_token": None, "artifacts": [],
+        "constraints_passed": True, "constraint_violations": [],
+        "policy_decision": None, "is_complete": False, "is_blocked": False,
+        "metadata": {},
+    })
+    assert halted["halt_type"] == "validator_error"
+    assert "(ConnectionError): last model failed" in halted["validation_results"][0]["justification"]
