@@ -622,9 +622,29 @@ def _show_job(project_root: str, job_id: str, args) -> int:
         return _emit_job_json(job_id, job_status, state_data if "state_data" in locals() else {})
 
     if is_plan_job:
-        return _show_plan_job(project_root, job_id, args)
+        result = _show_plan_job(project_root, job_id, args)
+    else:
+        result = _stream_job_stdout(project_root, job_id, args)
+    # A watched job may have accumulated usage while the log was streaming.
+    try:
+        if state_file.exists():
+            state_data = json.loads(state_file.read_text())
+    except Exception as e:
+        _logger.debug("Could not refresh state.json for usage: %s", e)
+    _print_job_usage(state_data)
+    return result
 
-    return _stream_job_stdout(project_root, job_id, args)
+
+def _print_job_usage(state: dict) -> None:
+    """Print persisted job usage after the text log has finished streaming."""
+    from snodo.usage_summary import render_usage_summary, summarize_usage
+
+    records = state.get("usage") or []
+    records = [record for record in records if isinstance(record, dict)]
+    if not records:
+        return
+    for line in render_usage_summary(summarize_usage(records)):
+        print(line)
 
 
 def _emit_job_json(job_id: str, status: dict, state: dict) -> int:
