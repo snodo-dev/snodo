@@ -28,10 +28,11 @@
   function updateDateLabels(chart) {
     const labels = Array.from(chart.querySelectorAll(".delivery-day-date"));
     if (labels.length < 2) return;
-    const widthCapacity = Math.max(2, Math.floor(chart.clientWidth / 42));
-    // Thirty-day views are intentionally sampled even on wide displays.
-    const maxLabels = labels.length > 7 ? 6 : labels.length;
-    const capacity = Math.min(widthCapacity, maxLabels);
+    // Seven-day labels remain complete; the chart can scroll horizontally
+    // when its columns cannot all fit in the viewport.
+    const capacity = labels.length <= 7
+      ? labels.length
+      : Math.min(6, Math.max(2, Math.floor(chart.clientWidth / 42)));
     const step = (labels.length - 1) / (capacity - 1);
     const visible = new Set(Array.from({ length: capacity }, (_, slot) => Math.round(slot * step)));
     labels.forEach((label, index) => {

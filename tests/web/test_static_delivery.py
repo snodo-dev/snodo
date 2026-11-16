@@ -1,4 +1,8 @@
 from pathlib import Path
+import json
+import re
+import shutil
+import subprocess
 
 
 SCRIPT = Path(__file__).parents[2] / "snodo" / "web" / "static" / "delivery.js"
@@ -36,13 +40,34 @@ def test_delivery_chart_uses_short_dates_and_preserves_full_bar_details() -> Non
     assert 'bar.setAttribute("aria-label", `${day.date}: ${day.landed}`)' in source
 
 
-def test_delivery_chart_thins_date_labels_even_on_wide_screens() -> None:
-    source = SCRIPT.read_text(encoding="utf-8")
+def test_delivery_chart_thins_date_labels_to_fit() -> None:
+    node = shutil.which("node")
+    assert node is not None, "Node.js is required to exercise chart label sampling"
 
-    assert "const maxLabels = labels.length > 7 ? 6 : labels.length" in source
-    assert "const capacity = Math.min(widthCapacity, maxLabels)" in source
-    assert "const visible = new Set(Array.from({ length: capacity }" in source
-    assert "label.hidden = !visible.has(index)" in source
-    assert 'container.replaceChildren(render(data));\n      observeDateLabels(container);' in source
-    assert "updateDateLabels(chart);" in source
-    assert "new ResizeObserver(() => updateDateLabels(chart))" in source
+    source = SCRIPT.read_text(encoding="utf-8")
+    match = re.search(
+        r"function updateDateLabels\(chart\) \{.*?\n  \}", source, re.DOTALL
+    )
+    assert match is not None
+    harness = r"""
+const updateDateLabels = new Function(`${process.argv[1]}; return updateDateLabels`)();
+function visibleDates(count, width) {
+  const labels = Array.from({ length: count }, (_, index) => ({ hidden: false, index }));
+  updateDateLabels({ clientWidth: width, querySelectorAll: () => labels });
+  return labels.filter((label) => !label.hidden).map((label) => label.index);
+}
+const seven = visibleDates(7, 240);
+const thirty = visibleDates(30, 2400);
+console.log(JSON.stringify({ seven, thirty }));
+"""
+    result = subprocess.run(
+        [node, "-e", harness, match.group(0)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    visible = json.loads(result.stdout)
+    assert visible["seven"] == list(range(7))
+    assert len(visible["thirty"]) < 30
+    assert visible["thirty"][0] == 0
+    assert visible["thirty"][-1] == 29
