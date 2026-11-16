@@ -133,3 +133,24 @@
     font-size: 0.85rem;
   }
 }
+
+.delivery-detail-block { min-width: 0; margin: 1.5rem 0; }
+.delivery-week-chart { display: grid; grid-auto-columns: minmax(3.5rem, 1fr); grid-auto-flow: column; align-items: end; gap: 0.6rem; overflow-x: auto; min-height: 12rem; padding: 0.75rem 0.25rem; border-bottom: 1px solid var(--border); }
+.delivery-week-column { display: grid; grid-template-rows: auto 8rem auto; align-items: end; gap: 0.35rem; min-width: 0; text-align: center; }
+.delivery-week-total, .delivery-week-date { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.delivery-week-stack { display: flex; flex-direction: column; justify-content: end; width: 100%; min-height: 2px; overflow: hidden; border-radius: 0.3rem 0.3rem 0 0; }
+.delivery-week-segment { display: block; min-height: 2px; font-size: 0; }
+.delivery-flow-rows { display: grid; gap: 0.75rem; }
+.delivery-flow-row { display: grid; grid-template-columns: 5rem minmax(4rem, 1fr) auto; align-items: center; gap: 0.75rem; }
+.delivery-flow-kind { color: var(--text); text-transform: capitalize; }
+.delivery-flow-track { position: relative; height: 0.7rem; border-radius: 999px; background: color-mix(in srgb, var(--muted) 18%, var(--surface)); }
+.delivery-flow-range { display: block; height: 100%; border-radius: inherit; opacity: 0.75; }
+.delivery-flow-median { position: absolute; top: -0.2rem; height: 1.1rem; border-left: 2px solid var(--text); }
+.delivery-flow-values, .delivery-flow-na { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.delivery-type-scroll { max-width: 100%; overflow-x: auto; }
+.delivery-types { width: 100%; border-collapse: collapse; }
+.delivery-types th, .delivery-types td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.delivery-types th:first-child, .delivery-types td:first-child { text-align: left; text-transform: capitalize; }
+.delivery-types tbody tr:nth-child(even) { background: color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.delivery-rework-note { margin: 0.65rem 0 0; color: var(--muted); font-size: 0.8rem; }
+@media (max-width: 560px) { .delivery-flow-row { grid-template-columns: 4rem minmax(3rem, 1fr); gap: 0.5rem; } .delivery-flow-values, .delivery-flow-na { grid-column: 2; } .delivery-types { min-width: 34rem; } }

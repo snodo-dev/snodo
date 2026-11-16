@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Add weekly velocity, per-type flow-time ranges, and a by-type detail table to the Delivery dashboard. (Fixes #1249)
 - Exercise Delivery flow cards, efficiency fallbacks, weekly bars, 90-day requests, and theme tokens in behavior-level tests. (Fixes #1248)
 - Replace Delivery figure cards with five flow-measure cards, accessible type breakdowns, and a 90-day window. (Fixes #1247)
 - Report Delivery flow efficiency from known gate send-backs and recovery timing, pooling project totals by seconds. (Fixes #1246)

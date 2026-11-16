@@ -171,6 +171,89 @@
     updateDateLabels(chart);
     fragment.append(chart);
 
+    const byWeekBlock = element("section", undefined, "delivery-detail-block");
+    byWeekBlock.append(element("h2", "Velocity by week"));
+    const weeklyChart = element("div", undefined, "delivery-week-chart");
+    weeklyChart.setAttribute("aria-label", "Landed work by type each week");
+    const maxWeekly = Math.max(1, ...weekly.map((week) => kinds.reduce((sum, kind) => sum + (Number(week[kind]) || 0), 0)));
+    for (const week of weekly) {
+      const total = kinds.reduce((sum, kind) => sum + (Number(week[kind]) || 0), 0);
+      const column = element("div", undefined, "delivery-week-column");
+      column.append(element("span", String(total), "delivery-week-total"));
+      const stack = element("div", undefined, "delivery-week-stack");
+      stack.style.height = `${total / maxWeekly * 100}%`;
+      stack.setAttribute("role", "img");
+      stack.setAttribute("aria-label", `${week.week_start || "Week"}: ${total} landed`);
+      for (const kind of kinds) {
+        const count = Number(week[kind]) || 0;
+        if (!count) continue;
+        const segment = element("span", `${kind} ${count}`, "delivery-week-segment");
+        segment.style.flexGrow = String(count);
+        segment.style.backgroundColor = typeColors[kind];
+        segment.title = `${kind}: ${count}`;
+        stack.append(segment);
+      }
+      column.append(stack);
+      const date = typeof week.week_start === "string" ? new Date(`${week.week_start}T00:00:00Z`) : null;
+      const label = date && Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(date) : (week.week_start || "");
+      column.append(element("span", label, "delivery-week-date"));
+      weeklyChart.append(column);
+    }
+    byWeekBlock.append(weeklyChart);
+    fragment.append(byWeekBlock);
+
+    const flowBlock = element("section", undefined, "delivery-detail-block");
+    flowBlock.append(element("h2", "Flow time by type"));
+    const flowRows = element("div", undefined, "delivery-flow-rows");
+    const typeData = data.by_type || totalsByType;
+    const maxP85 = Math.max(1, ...kinds.map((kind) => Number(typeData[kind]?.p85_flow_seconds) || 0));
+    const minutes = (seconds) => `${(Number(seconds) / 60).toFixed(1)} min`;
+    for (const kind of kinds) {
+      const values = typeData[kind] || {};
+      const median = values.median_flow_seconds;
+      const upper = values.p85_flow_seconds;
+      const row = element("div", undefined, "delivery-flow-row");
+      row.append(element("span", kind, "delivery-flow-kind"));
+      if (median === null || median === undefined || upper === null || upper === undefined) {
+        row.append(element("span", "n/a", "delivery-flow-na"));
+      } else {
+        const track = element("div", undefined, "delivery-flow-track");
+        const range = element("span", undefined, "delivery-flow-range");
+        range.style.width = `${Math.max(0, Number(upper)) / maxP85 * 100}%`;
+        range.style.backgroundColor = typeColors[kind];
+        range.title = `85th percentile: ${minutes(upper)}`;
+        const marker = element("span", undefined, "delivery-flow-median");
+        marker.style.left = `${Math.max(0, Number(median)) / maxP85 * 100}%`;
+        marker.title = `Median: ${minutes(median)}`;
+        track.append(range, marker);
+        row.append(track, element("span", `${minutes(median)} · ${minutes(upper)}`, "delivery-flow-values"));
+      }
+      flowRows.append(row);
+    }
+    flowBlock.append(flowRows);
+    fragment.append(flowBlock);
+
+    const typeBlock = element("section", undefined, "delivery-detail-block");
+    typeBlock.append(element("h2", "By type"));
+    const typeScroll = element("div", undefined, "delivery-type-scroll");
+    const typeTable = element("table", undefined, "delivery-types");
+    const typeHead = element("tr");
+    for (const heading of ["Type", "Landed", "Share", "Median time", "85%"] ) typeHead.append(element("th", heading));
+    const typeThead = element("thead");
+    typeThead.append(typeHead);
+    typeTable.append(typeThead);
+    const typeBody = element("tbody");
+    for (const kind of kinds) {
+      const values = typeData[kind] || {};
+      const row = element("tr");
+      row.append(element("td", kind), element("td", values.landed === null || values.landed === undefined ? "n/a" : String(values.landed)), element("td", rate(values.share)), element("td", values.median_flow_seconds == null ? "n/a" : minutes(values.median_flow_seconds)), element("td", values.p85_flow_seconds == null ? "n/a" : minutes(values.p85_flow_seconds)));
+      typeBody.append(row);
+    }
+    typeTable.append(typeBody);
+    typeScroll.append(typeTable);
+    typeBlock.append(typeScroll, element("p", "Rework is time after a task was first sent back.", "delivery-rework-note"));
+    fragment.append(typeBlock);
+
     fragment.append(element("h2", "By project"));
     const table = element("table", undefined, "delivery-projects");
     const head = element("tr");
