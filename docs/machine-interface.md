@@ -312,6 +312,26 @@ represented by `null`, including `difference` when either side is missing.
 | `justifications` | object | `{baseline, candidate}` justification values |
 | `metrics` | object | metric pairs for `elapsed_seconds`, `input_tokens`, `output_tokens`, and `cost`; each has `baseline`, `candidate`, and `difference`, all `number \| null` |
 
+### `snodo logs <recon-id> --json`
+
+Schema: `snodo.logs.v1`
+
+Emits one recon record without human-readable output. Usage totals are computed
+with the same summarizer as the text usage view. JSON is currently supported for
+recon IDs only; `--watch`, job IDs, task IDs, plan names, unknown IDs, and calls
+outside a Snodo project return the uniform error object below.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.logs.v1` |
+| `ok` | bool | `true` when the recon record was produced |
+| `id` | string | recon ID |
+| `kind` | string | `recon` |
+| `status` | string \| null | persisted recon status |
+| `elapsed_seconds` | number \| null | wall time between creation and completion |
+| `agents` | array | agent records with `agent`, `model`, optional `served_model`, `status`, and raw `usage` records |
+| `totals` | object | aggregate `input_tokens`, `output_tokens`, `model_call_time_seconds`, and `output_tokens_per_second` |
+
 ### `snodo runs --json`
 
 Schema: `snodo.runs.v1`

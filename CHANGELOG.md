@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Emit recon logs as a versioned JSON machine-interface record with aggregate usage totals. (Fixes #1264)
 - Accept an ordered `llm.validator.fallback` model list in configuration, defaulting to empty without changing validator resolution. (Fixes #1257)
 - Ignore all engine-managed plan integration and task branches during workspace escape checks. (Fixes #1263)
 - Clarify that engine-managed branches are ignored by workspace-escape checks, while moved operator branches remain escapes. (Fixes #1263)

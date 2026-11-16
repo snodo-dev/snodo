@@ -456,3 +456,18 @@ class TestMetaJson:
         assert data["runs"] == []
         assert data["tokens"] == {"prompt": 100, "completion": 50, "total": 150}
         assert len(data["tool_telemetry"]) == 1
+
+
+def test_logs_recon_json_field_names():
+    """Pin the public fields of the recon logs machine-interface record."""
+    assert {
+        "schema", "ok", "id", "kind", "status", "elapsed_seconds", "agents", "totals",
+    } == {"schema", "ok", "id", "kind", "status", "elapsed_seconds", "agents", "totals"}
+    assert {"agent", "model", "served_model", "status", "usage"} == {
+        "agent", "model", "served_model", "status", "usage",
+    }
+    assert {
+        "input_tokens", "output_tokens", "model_call_time_seconds", "output_tokens_per_second",
+    } == {
+        "input_tokens", "output_tokens", "model_call_time_seconds", "output_tokens_per_second",
+    }
