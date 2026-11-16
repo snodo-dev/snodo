@@ -180,10 +180,15 @@ class LLMValidator(ValidatorBase):
         "performance", "testing", "planning",
     }
 
-    def __init__(self, validator_spec: Validator, completion_fn=None, model: str = DEFAULT_MODEL):
+    def __init__(
+        self, validator_spec: Validator, completion_fn=None, model: str = DEFAULT_MODEL,
+        alternatives=None, on_model_switch=None,
+    ):
         self.validator_spec = validator_spec
         self._completion_fn = completion_fn
         self.model = model
+        self._alternatives = list(alternatives or [])
+        self._on_model_switch = on_model_switch
         self.completion_tokens = _DEFAULT_MAX_TOKENS
         self._job_id: str = ""
         self._task_id: str = ""
@@ -1131,29 +1136,51 @@ class LLMValidator(ValidatorBase):
         a parameter can be retried without asking a coder to repair the task.
         Changed judge parameters make the resulting verdict non-cacheable.
         """
+        candidates = [(self.model, self._completion_fn), *getattr(self, "_alternatives", [])]
+        for index, (model, completion_fn) in enumerate(candidates):
+            self.model = model
+            self._completion_fn = completion_fn
+            request = dict(kwargs)
+            request["_configured_model"] = model
+            apply_remembered_parameters(model, request)
+            request["messages"] = apply_remembered_message_shape(request.get("messages", []), model)
+            try:
+                return LLMValidator._call_completion_with_retry_for_model(
+                    self, completion_fn, model, parameter_fallback_instruction, request,
+                )
+            except Exception as error:
+                if not _is_transient_error(error) or index == len(candidates) - 1:
+                    raise
+                next_model = candidates[index + 1][0]
+                callback = getattr(self, "_on_model_switch", None)
+                if callback is not None:
+                    try:
+                        callback(model, next_model, type(error).__name__)
+                    except Exception:
+                        _logger.warning("Validator model-switch callback failed", exc_info=True)
+
+    def _call_completion_with_retry_for_model(self, completion_fn, model, instruction, kwargs):
+        """Apply provider compatibility retries for one selected model."""
         removed: Set[str] = set()
         shaped: Set[str] = set()
-        apply_remembered_parameters(self.model, kwargs)
-        kwargs["messages"] = apply_remembered_message_shape(kwargs.get("messages", []), self.model)
         while True:
             try:
-                return self._call_completion_with_transient_retry(**kwargs)
+                return LLMValidator._call_completion_with_transient_retry(
+                    self, completion_fn=completion_fn, **kwargs,
+                )
             except Exception as e:
-                if _reshape_rejected_messages(e, kwargs, self.model, shaped):
+                if _reshape_rejected_messages(e, kwargs, model, shaped):
                     continue
-                parameter = _remove_rejected_parameter(e, kwargs, removed, self.model)
+                parameter = _remove_rejected_parameter(e, kwargs, removed, model)
                 if parameter:
                     self._parameter_fallback_used = True
-                    if parameter_fallback_instruction and parameter == "tool_choice":
-                        kwargs["messages"].append({"role": "user", "content": parameter_fallback_instruction})
-                    _logger.warning(
-                        "Validator %s provider rejected parameter %s (model=%s): %s; retrying without it",
-                        self.validator_spec.validator_id, parameter, self.model, e,
-                    )
+                    if instruction and parameter == "tool_choice":
+                        kwargs["messages"].append({"role": "user", "content": instruction})
                     continue
                 raise
 
-    def _call_completion_with_transient_retry(self, **kwargs) -> Any:
+
+    def _call_completion_with_transient_retry(self, completion_fn=None, **kwargs) -> Any:
         """Retry transient transport faults within attempt and elapsed budgets.
 
         Respect provider retry hints when present, otherwise use exponential
@@ -1162,7 +1189,7 @@ class LLMValidator(ValidatorBase):
         retry_deadline = time.monotonic() + _RETRY_BUDGET_SECONDS
         for attempt in range(_RETRY_ATTEMPTS):
             try:
-                return self._completion_fn(**kwargs)
+                return (completion_fn or self._completion_fn)(**kwargs)
             except Exception as e:
                 is_transient = _is_transient_error(e)
                 if is_transient and attempt < _RETRY_ATTEMPTS - 1:

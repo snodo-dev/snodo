@@ -2887,3 +2887,48 @@ class TestSummarizeDirectoryTool:
             assert "[TRUNCATED:" in tool_message["content"]
         else:
             assert tool_message["content"] == tool_result
+
+
+def test_completion_fallback_uses_alternative_model_and_safe_switch_callback(
+    security_validator, monkeypatch,
+):
+    from snodo.validators import llm_validator as module
+
+    monkeypatch.setattr(module, "_RETRY_ATTEMPTS", 1)
+    calls = []
+    notifications = []
+
+    def first(**kwargs):
+        calls.append(("first", kwargs))
+        raise ConnectionError("secret provider response")
+
+    def second(**kwargs):
+        calls.append(("second", kwargs))
+        return "answer"
+
+    validator = LLMValidator(
+        security_validator, first, model="provider-a",
+        alternatives=[("provider-b", second)],
+        on_model_switch=lambda *args: notifications.append(args),
+    )
+    assert validator._call_completion_with_retry(messages=[{"role": "user", "content": "x"}]) == "answer"
+    assert [name for name, _ in calls] == ["first", "second"]
+    assert calls[1][1]["_configured_model"] == "provider-b"
+    assert notifications == [("provider-a", "provider-b", "ConnectionError")]
+    assert "secret provider response" not in repr(notifications)
+    assert validator.model == "provider-b"
+
+
+def test_completion_fallback_raises_last_operational_error(security_validator, monkeypatch):
+    from snodo.validators import llm_validator as module
+
+    monkeypatch.setattr(module, "_RETRY_ATTEMPTS", 1)
+    error = ConnectionError("last provider failure")
+    validator = LLMValidator(
+        security_validator, lambda **kwargs: (_ for _ in ()).throw(ConnectionError("first")),
+        model="provider-a",
+        alternatives=[("provider-b", lambda **kwargs: (_ for _ in ()).throw(error))],
+    )
+    with pytest.raises(ConnectionError) as raised:
+        validator._call_completion_with_retry(messages=[])
+    assert raised.value is error
