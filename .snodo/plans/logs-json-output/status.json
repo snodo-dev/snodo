@@ -13,7 +13,7 @@
       "spec_hash": "b82d4c27460b330c"
     },
     "3.1_logs_json_docs": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "daad539377849dad"
@@ -21,6 +21,6 @@
   },
   "integration": {
     "branch": "plan/logs-json-output/integration",
-    "base_sha": "150234bc28b2ea5a685fa3e63ecc8cf180923424"
+    "base_sha": "166233e6e6c5784439973cc4ee64537ec9591c35"
   }
 }
