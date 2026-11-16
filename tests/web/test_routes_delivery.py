@@ -56,13 +56,16 @@ def test_handler_accepts_days_30_and_returns_json() -> None:
     assert response.status_code == 200
     assert response.json()["window_days"] == 30
     assert response.headers["content-type"].startswith("application/json")
+    assert client.get("/delivery?days=90").status_code == 200
 
 
 def test_handler_rejects_unsupported_days() -> None:
     app = Starlette(routes=[Route("/delivery", routes_delivery.handler, methods=["GET"])])
     app.state.projects = []
 
-    assert TestClient(app).get("/delivery?days=5").status_code == 400
+    client = TestClient(app)
+    assert client.get("/delivery?days=5").status_code == 400
+    assert client.get("/delivery?days=45").status_code == 400
 
 
 def test_handler_collects_in_worker_thread(monkeypatch) -> None:
@@ -94,3 +97,28 @@ def test_handler_collects_in_worker_thread(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json() == {"unchanged": True}
     assert collection_thread != loop_thread
+
+
+def test_totals_pool_type_durations_and_weekly_counts(monkeypatch) -> None:
+    projects = [SimpleNamespace(name=name, path=f"/{name}") for name in ("one", "two")]
+    metrics = {
+        "/one": {"landed": 2, "landed_by_day": [], "median_flow_seconds": 10,
+                 "first_try_rate": None, "flow_load": 0,
+                 "by_type": {"feature": {"landed": 1}, "defect": {"landed": 1}},
+                 "unclassified": 1, "by_week": [{"week_start": "2026-11-09", "feature": 1, "defect": 1, "debt": 0, "risk": 0, "unclassified": 1}],
+                 "_flow_seconds": [10, 30], "_flow_seconds_by_type": {"feature": [10], "defect": [30]}},
+        "/two": {"landed": 1, "landed_by_day": [], "median_flow_seconds": 50,
+                 "first_try_rate": None, "flow_load": 0,
+                 "by_type": {"feature": {"landed": 1}}, "unclassified": 0,
+                 "by_week": [{"week_start": "2026-11-09", "feature": 1, "defect": 0, "debt": 0, "risk": 0, "unclassified": 0}],
+                 "_flow_seconds": [50], "_flow_seconds_by_type": {"feature": [50]}},
+    }
+    monkeypatch.setattr(routes_delivery, "flow_metrics", lambda path, *_: metrics[str(path)])
+    monkeypatch.setattr(routes_delivery, "plans_delivery", lambda *_: {})
+    result = routes_delivery.build_delivery(projects, 7, datetime(2026, 11, 14, tzinfo=timezone.utc))
+    totals = result["totals"]
+    assert totals["by_type"]["feature"]["landed"] == 2
+    assert totals["by_type"]["feature"]["median_flow_seconds"] == 30
+    assert totals["by_type"]["defect"]["median_flow_seconds"] == 30
+    assert totals["unclassified"] == 1
+    assert totals["by_week"][-1] == {"week_start": "2026-11-09", "feature": 2, "defect": 1, "debt": 0, "risk": 0, "unclassified": 1}

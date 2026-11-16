@@ -51,13 +51,16 @@ def test_flow_load_and_missing_snodo(tmp_path):
     assert missing["landed"] == 0
     assert missing["median_flow_seconds"] is None
     assert missing["first_try_rate"] is None
+    assert missing["unclassified"] == 0
+    assert all(value["landed"] == 0 and value["share"] is None and value["median_flow_seconds"] is None and value["p85_flow_seconds"] is None for value in missing["by_type"].values())
+    assert all(all(week[key] == 0 for key in ("feature", "defect", "debt", "risk", "unclassified")) for week in missing["by_week"])
 
 
 def test_flow_metrics_groups_types_durations_and_weeks(tmp_path, monkeypatch):
     from snodo.web import flow
 
-    now = datetime(2025, 1, 10, 12, tzinfo=timezone.utc)
-    task_ids = {"feature-a": "feature", "feature-b": "feature", "debt-a": "debt", "unknown": None}
+    now = datetime(2025, 1, 11, 12, tzinfo=timezone.utc)
+    task_ids = {"feature-a": "feature", "feature-b": "feature", "debt-a": "debt", "defect-a": "defect", "risk-a": "risk", "unknown": None}
     setup_plan(tmp_path, {task: "completed" for task in task_ids})
     for index, task_id in enumerate(task_ids):
         completed = datetime(2025, 1, 6 + index, 12, tzinfo=timezone.utc)
@@ -73,10 +76,14 @@ def test_flow_metrics_groups_types_durations_and_weeks(tmp_path, monkeypatch):
 
     assert result["by_type"]["feature"]["landed"] == 2
     assert result["by_type"]["debt"]["landed"] == 1
-    assert result["by_type"]["feature"]["share"] == 2 / 3
+    assert result["by_type"]["defect"]["landed"] == 1
+    assert result["by_type"]["risk"]["landed"] == 1
+    assert sum(result["by_type"][kind]["share"] for kind in ("feature", "defect", "debt", "risk")) == 1
+    assert result["by_type"]["feature"]["share"] == 2 / 5
     assert result["by_type"]["feature"]["median_flow_seconds"] == 150
     assert result["by_type"]["feature"]["p85_flow_seconds"] == 185
     assert result["unclassified"] == 1
+    assert sum(result["by_type"][kind]["landed"] for kind in ("feature", "defect", "debt", "risk")) == 5
     assert result["by_week"][0]["week_start"] == "2024-12-30"
     assert result["by_week"][1]["week_start"] == "2025-01-06"
     assert result["by_week"][1]["unclassified"] == 1
