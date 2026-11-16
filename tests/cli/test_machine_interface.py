@@ -458,16 +458,33 @@ class TestMetaJson:
         assert len(data["tool_telemetry"]) == 1
 
 
-def test_logs_recon_json_field_names():
-    """Pin the public fields of the recon logs machine-interface record."""
-    assert {
+def test_logs_recon_json_field_names(tmp_path, capsys):
+    """Pin the public fields emitted by the recon logs machine interface."""
+    from snodo.cli.commands.logs_cmd import logs_command
+
+    recon = tmp_path / ".snodo" / "recons" / "rec_fields"
+    recon.mkdir(parents=True)
+    (recon / "state.json").write_text(json.dumps({
+        "status": "complete", "created_at": 10, "completed_at": 12,
+        "agents": ["agent-a"],
+    }))
+    (recon / "results.json").write_text(json.dumps([{
+        "agent": "agent-a", "model": "model-a", "served_model": "served-a",
+        "status": "complete",
+        "usage": [{"input_tokens": 2, "output_tokens": 3, "duration_ms": 1000}],
+    }]))
+
+    with patch("snodo.infrastructure.paths.require_project_root", return_value=str(tmp_path)):
+        assert logs_command(SimpleNamespace(composite_id="rec_fields", watch=False, json=True)) == 0
+    data = _parse_stdout(capsys)
+
+    assert set(data) == {
         "schema", "ok", "id", "kind", "status", "elapsed_seconds", "agents", "totals",
-    } == {"schema", "ok", "id", "kind", "status", "elapsed_seconds", "agents", "totals"}
-    assert {"agent", "model", "served_model", "status", "usage"} == {
-        "agent", "model", "served_model", "status", "usage",
     }
-    assert {
-        "input_tokens", "output_tokens", "model_call_time_seconds", "output_tokens_per_second",
-    } == {
+    assert set(data["agents"][0]) == {"agent", "model", "served_model", "status", "usage"}
+    assert set(data["agents"][0]["usage"][0]) == {
+        "input_tokens", "output_tokens", "duration_ms",
+    }
+    assert set(data["totals"]) == {
         "input_tokens", "output_tokens", "model_call_time_seconds", "output_tokens_per_second",
     }
