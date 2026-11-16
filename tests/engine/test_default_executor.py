@@ -349,6 +349,50 @@ def test_escape_detector_names_external_checkout_and_changed_ref(tmp_path, sampl
         mcp.repo.close()
 
 
+@pytest.mark.parametrize(
+    ("branch", "plan_name", "expected_escape"),
+    [
+        ("plan/other/integration", "current", False),
+        ("task/other/task-1/feature", "current", False),
+        ("plan/current/integration", "current", True),
+        ("task/current/task-1/feature", "current", True),
+        ("main", "current", True),
+        ("plan/other/integration", None, True),
+    ],
+)
+def test_escape_detector_filters_only_other_plan_refs(
+    tmp_path, sample_protocol, branch, plan_name, expected_escape
+):
+    from snodo.engine.loop import GraphBuilder
+    from snodo.tools.git import GitMCP
+
+    root = (tmp_path / "project").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "base.txt").write_text("base")
+    _git(root, "add", "base.txt")
+    _git(root, "commit", "-m", "initial")
+    external = (tmp_path / "external-checkout").resolve()
+    checkout_branch = "operator-checkout" if branch == "main" else branch
+    _git(root, "worktree", "add", "-b", checkout_branch, str(external))
+    builder = GraphBuilder(sample_protocol)
+    mcp = GitMCP(str(root))
+    try:
+        before = builder._repo_ref_snapshot(mcp)
+        (external / "escape.txt").write_text("escaped")
+        _git(external, "add", "escape.txt")
+        _git(external, "commit", "-m", "external change")
+        if branch == "main":
+            _git(root, "update-ref", "refs/heads/main", "refs/heads/operator-checkout")
+        task = Task(id="task-1", spec="", plan_name=plan_name)
+        result = builder._escaped_repo_commit(mcp, before, task)
+        assert (result is not None) is expected_escape
+    finally:
+        mcp.repo.close()
+
+
 # New tests for detector-level defensive paths
 
 

@@ -114,6 +114,11 @@ for several queues. Cross-queue runners proceed independently; do not assume
 one queue completes before another. Check `queue_validate` warnings and avoid
 concurrent file overlap that could turn into an unmerged result.
 
+Plans in different queues can run at the same time without tripping each
+other's workspace-escape check: branches belonging to other plans are ignored.
+Moving the task's own plan branches or an operator branch is still treated as
+an escape.
+
 `--non-blocking` leaves a blocked, errored, or unmerged plan in place and lets
 later plans in that queue run. Use it only when every later plan is independent
 of every plan it might pass: these must be independent plans, and leaving the

@@ -1,0 +1,16 @@
+intent: 'Plans in different queues run at the same time, but the workspace-escape
+  check treats any local branch that moves during a coder run as an escape, including
+  the integration and task branches of the other plans running alongside. Make the
+  check ignore branches that belong to other plans, so concurrent plans stop blocking
+  each other, while a coder that really moves an operator branch is still caught.
+  Evidence: job j_2e52c3fa0493 (plan logs-json-output) task 1.1 finished its coding
+  and skipped post-validation with "Workspace escape detected: ref ''plan/validator-fallback-chain/integration''
+  changed in external checkout(s)", because another plan''s job advanced that branch
+  meanwhile. No new state, status, severity or halt type.'
+name: parallel-plans-escape-check
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_escape_check_ignores_other_plans
+  - 1.2_queues_doc_parallel_note

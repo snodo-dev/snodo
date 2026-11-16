@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 - Accept an ordered `llm.validator.fallback` model list in configuration, defaulting to empty without changing validator resolution. (Fixes #1257)
+- Ignore ref movement belonging to other plans during workspace escape checks. (Fixes #1259)
+- Clarify that concurrent plans in separate queues do not trip each other's workspace-escape check. (Fixes #1260)
 - Keep Delivery weekly chart columns proportionate and align chart panels, with flow values fitting narrow panels. (Fixes #1253)
 - Give every Delivery detail section a consistent bordered panel, with headings and notes contained inside. (Fixes #1251)
 - Index `task_classified` audit events once in the user cache to provide work types for Delivery flow measures. (Fixes #1250)
