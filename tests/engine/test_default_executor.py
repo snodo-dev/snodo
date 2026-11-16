@@ -362,7 +362,7 @@ def test_escape_detector_names_external_checkout_and_changed_ref(tmp_path, sampl
         ("operator-branch", "current", True),
     ],
 )
-def test_escape_detector_filters_only_other_plan_refs(
+def test_escape_detector_filters_engine_namespaces_regardless_of_plan(
     tmp_path, sample_protocol, branch, plan_name, expected_escape
 ):
     from snodo.engine.loop import GraphBuilder
@@ -377,20 +377,28 @@ def test_escape_detector_filters_only_other_plan_refs(
     _git(root, "add", "base.txt")
     _git(root, "commit", "-m", "initial")
     external = (tmp_path / "external-checkout").resolve()
-    checkout_branch = "operator-checkout" if branch == "main" else branch
-    _git(root, "worktree", "add", "-b", checkout_branch, str(external))
+    if branch == "main":
+        _git(root, "worktree", "add", "--detach", str(external))
+    else:
+        _git(root, "worktree", "add", "-b", branch, str(external))
     builder = GraphBuilder(sample_protocol)
     mcp = GitMCP(str(root))
     try:
         before = builder._repo_ref_snapshot(mcp)
         (external / "escape.txt").write_text("escaped")
         _git(external, "add", "escape.txt")
-        _git(external, "commit", "-m", "external change")
+        commit = _git(external, "commit", "-m", "external change")
         if branch == "main":
-            _git(root, "update-ref", "refs/heads/main", "refs/heads/operator-checkout")
+            _git(root, "update-ref", "refs/heads/main", commit)
         task = Task(id="task-1", spec="", plan_name=plan_name)
         result = builder._escaped_repo_commit(mcp, before, task)
-        assert (result is not None) is expected_escape
+        if not expected_escape:
+            assert result is None
+        else:
+            assert result == (
+                f"Workspace escape detected: ref '{branch}' changed in "
+                f"external checkout(s): {external}. Rescue the work and rerun."
+            )
     finally:
         mcp.repo.close()
 
