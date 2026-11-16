@@ -70,6 +70,10 @@
   white-space: nowrap;
 }
 
+.delivery-day-date[hidden] {
+  display: none;
+}
+
 .delivery-track {
   display: flex;
   align-items: end;

@@ -9,6 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 - Show each project name and Git remote beside the host in the local dashboard header. (Fixes #1243)
+- Keep delivery chart date labels readable with data-based sampling for long windows. (Fixes #1241)
 - Document the Now task panel layout, learned spec-loading progress, Markdown conventions, and worker-thread route behavior. (Fixes #1240)
 - Style rendered task specification Markdown in the Now panel for readable headings, prose, lists, code, quotes, rules, and links. (Fixes #1239)
 - Show an accessible, reduced-motion-aware task-spec progress bar that learns expected load time from recent loads. (Fixes #1238)
