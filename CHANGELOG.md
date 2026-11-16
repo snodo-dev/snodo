@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Port the Protocol editor mockup stylesheet into a scoped view stylesheet and guard exact parity with tests. (Fixes #1255)
 - Keep Delivery weekly chart columns proportionate and align chart panels, with flow values fitting narrow panels. (Fixes #1253)
 - Give every Delivery detail section a consistent bordered panel, with headings and notes contained inside. (Fixes #1251)
 - Index `task_classified` audit events once in the user cache to provide work types for Delivery flow measures. (Fixes #1250)
