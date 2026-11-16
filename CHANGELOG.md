@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Add reusable operational model fallback with ordered switching and reporting. (Fixes #1261)
 - Accept an ordered `llm.validator.fallback` model list in configuration, defaulting to empty without changing validator resolution. (Fixes #1257)
 - Keep Delivery weekly chart columns proportionate and align chart panels, with flow values fitting narrow panels. (Fixes #1253)
 - Give every Delivery detail section a consistent bordered panel, with headings and notes contained inside. (Fixes #1251)
