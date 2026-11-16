@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Preserve protocol YAML comments and layout when editing validator settings. (Fixes #1272)
 - Serve validated project protocol details and published cross-field rules through the read-only dashboard API. (Fixes #1258)
 - Document machine-readable `snodo logs --json` output for recon and job usage. (Fixes #1271)
 - Emit job logs as versioned JSON with usage totals grouped by role. (Fixes #1269)
