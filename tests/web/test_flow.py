@@ -51,3 +51,32 @@ def test_flow_load_and_missing_snodo(tmp_path):
     assert missing["landed"] == 0
     assert missing["median_flow_seconds"] is None
     assert missing["first_try_rate"] is None
+
+
+def test_flow_metrics_groups_types_durations_and_weeks(tmp_path, monkeypatch):
+    from snodo.web import flow
+
+    now = datetime(2025, 1, 10, 12, tzinfo=timezone.utc)
+    task_ids = {"feature-a": "feature", "feature-b": "feature", "debt-a": "debt", "unknown": None}
+    setup_plan(tmp_path, {task: "completed" for task in task_ids})
+    for index, task_id in enumerate(task_ids):
+        completed = datetime(2025, 1, 6 + index, 12, tzinfo=timezone.utc)
+        write_json(tmp_path / ".snodo" / "tasks" / task_id / "state.json", {
+            "started_at": (completed.timestamp() - (index + 1) * 100),
+            "completed_at": completed.isoformat(),
+        })
+    monkeypatch.setattr(flow, "task_flow_types", lambda _root: {
+        task: kind for task, kind in task_ids.items() if kind is not None
+    })
+
+    result = flow.flow_metrics(tmp_path, 7, now)
+
+    assert result["by_type"]["feature"]["landed"] == 2
+    assert result["by_type"]["debt"]["landed"] == 1
+    assert result["by_type"]["feature"]["share"] == 2 / 3
+    assert result["by_type"]["feature"]["median_flow_seconds"] == 150
+    assert result["by_type"]["feature"]["p85_flow_seconds"] == 185
+    assert result["unclassified"] == 1
+    assert result["by_week"][0]["week_start"] == "2024-12-30"
+    assert result["by_week"][1]["week_start"] == "2025-01-06"
+    assert result["by_week"][1]["unclassified"] == 1

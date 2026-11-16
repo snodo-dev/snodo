@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Report Delivery flow distribution and timing by type and Monday-starting week, pooling project totals and accepting 90-day windows. (Fixes #1245)
 - Show each project name and Git remote beside the host in the local dashboard header. (Fixes #1243)
 - Keep delivery chart date labels readable with data-based sampling for long windows. (Fixes #1241)
 - Document the Now task panel layout, learned spec-loading progress, Markdown conventions, and worker-thread route behavior. (Fixes #1240)

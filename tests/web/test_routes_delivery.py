@@ -26,17 +26,24 @@ def test_builder_aggregates_project_metrics(monkeypatch) -> None:
         projects, 7, datetime(2026, 11, 14, tzinfo=timezone.utc)
     )
 
-    assert result["projects"] == [
+    assert [
+        {key: row[key] for key in ("name", "landed", "plans_in_main", "median_flow_seconds", "first_try_rate", "flow_load")}
+        for row in result["projects"]
+    ] == [
         {"name": "one", "landed": 2, "plans_in_main": 1, "median_flow_seconds": 10,
          "first_try_rate": 1.0, "flow_load": 3},
         {"name": "two", "landed": 1, "plans_in_main": 1, "median_flow_seconds": None,
          "first_try_rate": 0.5, "flow_load": 4},
     ]
     assert result["by_day"][-1] == {"date": "2026-11-14", "landed": 3}
-    assert result["totals"] == {
+    assert {key: result["totals"][key] for key in (
+        "landed", "flow_load", "plans_not_in_main", "median_flow_seconds", "first_try_rate"
+    )} == {
         "landed": 3, "flow_load": 7, "plans_not_in_main": 1,
         "median_flow_seconds": None, "first_try_rate": 0.75,
     }
+    assert result["totals"]["unclassified"] == 0
+    assert result["totals"]["by_type"]["feature"]["landed"] == 0
 
 
 def test_handler_accepts_days_30_and_returns_json() -> None:

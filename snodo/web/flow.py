@@ -16,6 +16,8 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 from statistics import median
+
+from snodo.web.flow_types import task_flow_types
 from typing import Any
 
 from snodo.dashboard.providers import DashboardDataProvider
@@ -69,6 +71,12 @@ def flow_metrics(project_path: str | Path, window_days: int, now: datetime | Non
     root = Path(project_path)
     empty = {"landed": 0, "landed_by_day": [], "median_flow_seconds": None,
              "first_try_rate": None, "flow_load": 0}
+    empty.update(_empty_type_metrics())
+    current_for_weeks = now or datetime.now(timezone.utc)
+    if current_for_weeks.tzinfo is None:
+        current_for_weeks = current_for_weeks.replace(tzinfo=timezone.utc)
+    first_for_weeks = (current_for_weeks.date() - timedelta(days=max(0, int(window_days)) - 1))
+    empty["by_week"] = _week_zeros(first_for_weeks, current_for_weeks.date())
     if not (root / ".snodo").is_dir():
         return empty
 
@@ -117,6 +125,27 @@ def flow_metrics(project_path: str | Path, window_days: int, now: datetime | Non
         if started:
             durations.append(max(0.0, (completed - started).total_seconds()))
 
+    flow_types = task_flow_types(root)
+    type_counts = {kind: 0 for kind in _FLOW_KINDS}
+    type_durations: dict[str, list[float]] = {kind: [] for kind in type_counts}
+    unclassified = 0
+    by_week = _week_zeros(first_day, current.date())
+    weeks = {row["week_start"]: row for row in by_week}
+    for task, completed in landed_stamps:
+        task_id = task.get("task_id", "")
+        kind = flow_types.get(task_id)
+        week = weeks[(completed.date() - timedelta(days=completed.weekday())).isoformat()]
+        if kind not in type_counts:
+            unclassified += 1
+            week["unclassified"] += 1
+            continue
+        type_counts[kind] += 1
+        week[kind] += 1
+        started = _timestamp(states.get(task_id, {}).get("started_at"))
+        if started:
+            type_durations[kind].append(max(0.0, (completed - started).total_seconds()))
+
+    by_type = _type_summary(type_counts, type_durations)
     sent_back = {task_id for task_id, state in states.items() if _was_sent_back(root / ".snodo" / "tasks" / task_id)}
     known_attempts = []
     for task, _ in landed_stamps:
@@ -135,4 +164,51 @@ def flow_metrics(project_path: str | Path, window_days: int, now: datetime | Non
         "median_flow_seconds": median(durations) if durations else None,
         "first_try_rate": first_try_rate,
         "flow_load": sum(task.get("status") == "in_progress" for task in tasks),
+        "by_type": by_type,
+        "unclassified": unclassified,
+        "by_week": by_week,
+        "_flow_seconds_by_type": type_durations,
+        "_flow_seconds": durations,
     }
+
+
+_FLOW_KINDS = ("feature", "defect", "debt", "risk")
+
+
+def _percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * percentile
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+
+
+def _type_summary(counts: dict[str, int], durations: dict[str, list[float]]) -> dict[str, Any]:
+    classified = sum(counts.values())
+    return {
+        kind: {
+            "landed": counts[kind],
+            "share": counts[kind] / classified if classified else None,
+            "median_flow_seconds": median(durations[kind]) if durations[kind] else None,
+            "p85_flow_seconds": _percentile(durations[kind], 0.85),
+        }
+        for kind in _FLOW_KINDS
+    }
+
+
+def _week_zeros(first_day, last_day) -> list[dict[str, Any]]:
+    monday = first_day - timedelta(days=first_day.weekday())
+    result = []
+    while monday <= last_day:
+        result.append({"week_start": monday.isoformat(), **{kind: 0 for kind in _FLOW_KINDS}, "unclassified": 0})
+        monday += timedelta(days=7)
+    return result
+
+
+def _empty_type_metrics() -> dict[str, Any]:
+    counts = {kind: 0 for kind in _FLOW_KINDS}
+    durations = {kind: [] for kind in _FLOW_KINDS}
+    return {"by_type": _type_summary(counts, durations), "unclassified": 0,
+            "by_week": [], "_flow_seconds_by_type": durations, "_flow_seconds": []}
