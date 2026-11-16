@@ -1,0 +1,49 @@
+intent: 'A Protocol page in the local web dashboard (snodo dashboard --web) that follows
+  Ylli''s protocol editor mockup (docs/design/protocol-editor.html) as closely as
+  possible, because earlier dashboard attempts drifted far from their designs. The
+  page shows the project''s .snodo/protocol.yml as the mockup does: page head with
+  schema state and Reload, six tiles, a pipeline card, a validators card with expandable
+  row editors (type, phase, severity cap, tools, criteria, add or remove from the
+  mode), execution settings, rules checked on save, and a save bar with a diff review
+  that writes .snodo/protocol.yml. Fidelity rules for every ticket: the stylesheet
+  is a scoped, declaration-for-declaration port of the mockup''s style block guarded
+  by a parity test; class names, element order, copy text and behaviour follow the
+  mockup; the only allowed differences are local font stacks instead of web fonts,
+  the shell''s own top bar, DOM built without innerHTML, and data coming from the
+  real protocol file. Saving is the first write path of the dashboard, so it is loopback
+  only, needs a page token and a matching origin, keeps comments and formatting of
+  protocol.yml outside the edited validators, validates before writing, and is recorded
+  in an ADR. No new state, status, severity or halt type.'
+name: protocol-editor
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_protocol_stylesheet_port
+  - 1.2_protocol_read_api
+  - 1.3_protocol_text_editor
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_protocol_view_shell
+  - 2.2_protocol_write_routes
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_protocol_tiles
+  - 3.2_protocol_pipeline
+  - 3.3_protocol_validators_list
+  - 3.4_protocol_execution_rules
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_protocol_row_editor
+  - 4.2_protocol_save_bar
+- depends_on:
+  - 4
+  id: 5
+  tasks:
+  - 5.1_protocol_view_docs

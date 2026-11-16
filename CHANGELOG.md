@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 - Accept an ordered `llm.validator.fallback` model list in configuration, defaulting to empty without changing validator resolution. (Fixes #1257)
+- Ignore all engine-managed plan integration and task branches during workspace escape checks. (Fixes #1263)
+- Clarify that engine-managed branches are ignored by workspace-escape checks, while moved operator branches remain escapes. (Fixes #1263)
 - Ignore ref movement belonging to other plans during workspace escape checks. (Fixes #1259)
 - Clarify that concurrent plans in separate queues do not trip each other's workspace-escape check. (Fixes #1260)
 - Keep Delivery weekly chart columns proportionate and align chart panels, with flow values fitting narrow panels. (Fixes #1253)

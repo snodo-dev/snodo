@@ -1,0 +1,44 @@
+intent: 'Ylli''s feedback after the panel polish: (1) the dashboard header shows only
+  the host and port, and he runs several dashboards at once, so it should name the
+  project and, when known, its git remote; (2) on the Delivery page the date labels
+  under the Landed per day chart overlap into an unreadable smear; (3) he likes snodo-cloud''s
+  Overview page and wants the same five flow measures locally: flow velocity, flow
+  time, flow efficiency, flow load and flow distribution, with a velocity-by-week
+  chart, a flow-time-by-type chart and a by-type table. Data check: landing and start
+  times, plan task statuses and send-back history exist in .snodo; the work type (feature,
+  defect, debt, risk) is recorded only as task_classified events in .snodo/audit.log
+  and its rotated files (about 600 MB in total, one file alone 578 MB), keyed by task_ref
+  and wave_id, so the type needs a cached index. Flow efficiency has no active-versus-waiting
+  data locally, so it is defined from rework: the share of a landed task''s start-to-landed
+  time that was not spent after its first send-back (recovery rounds or a blocked
+  gate); a task that landed first try scores 100%. Payload contract for the Delivery
+  route, shared by tickets 2.1, 3.1, 3.2 and 4.1: flow_metrics and totals gain by_type
+  (feature, defect, debt, risk, each with landed, share, median_flow_seconds, p85_flow_seconds),
+  unclassified (count), by_week (week_start Monday ISO date plus a count per type
+  and unclassified), and efficiency (0 to 1 or null). Existing keys, status words
+  and the Now page stay as they are.'
+name: web-dashboard-flow-metrics
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_header_names_the_project
+  - 1.2_delivery_date_labels_readable
+  - 1.3_flow_type_index_from_audit
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_flow_by_type_and_week
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_flow_efficiency_from_rework
+  - 3.2_delivery_flow_cards
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_delivery_charts_and_type_table
+  - 4.2_docs_flow_metrics

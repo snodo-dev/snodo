@@ -1,0 +1,16 @@
+intent: 'The local web dashboard shows an empty page for several seconds on first
+  load, and gives no sign that Refetch is working. Evidence: after the page opens,
+  the area below the top bar stays blank until the first GET /api/now answers (the
+  view container is empty until the view''s first render finishes, in snodo/web/static/index.html
+  refresh()); the Refetch button on the Now page gives no feedback while it waits.
+  A visitor cannot tell a slow answer from a broken page. Add loading feedback that
+  matches the cloud look already in place: a quiet skeleton in the shell while a view
+  has not yet drawn for the first time, and a busy state on the Refetch button. Data,
+  routes, status words and the ten-second refresh stay exactly as they are.'
+name: web-dashboard-loading-states
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_shell_first_load_skeleton
+  - 1.2_now_refetch_busy_state

@@ -1,0 +1,80 @@
+{
+  "tasks": {
+    "1.1_protocol_stylesheet_port": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "06f4ceb69b3aa11c"
+    },
+    "1.2_protocol_read_api": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8bd60738f1a8a889"
+    },
+    "1.3_protocol_text_editor": {
+      "status": "blocked",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "31a92b13825c6e28"
+    },
+    "2.1_protocol_view_shell": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "849e07db736c2837"
+    },
+    "2.2_protocol_write_routes": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7e1411075ca5e4ea"
+    },
+    "3.1_protocol_tiles": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5b59ad5f9556121f"
+    },
+    "3.2_protocol_pipeline": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "bbcc0a0b6c46541f"
+    },
+    "3.3_protocol_validators_list": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "33264c3c4f2a29cc"
+    },
+    "3.4_protocol_execution_rules": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "afb51e09a57adabb"
+    },
+    "4.1_protocol_row_editor": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5cde3b875850df47"
+    },
+    "4.2_protocol_save_bar": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6ee7cfb454b6cc1d"
+    },
+    "5.1_protocol_view_docs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "917554115bd81f48"
+    }
+  },
+  "integration": {
+    "branch": "plan/protocol-editor/integration",
+    "base_sha": "3e528399c75b5122a687634476719c670c9824fa"
+  }
+}

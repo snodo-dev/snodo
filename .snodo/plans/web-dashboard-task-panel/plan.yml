@@ -1,0 +1,37 @@
+intent: 'Ylli likes the local Now page now and asked for one missing piece: clicking
+  a task in the In flight tree should open a panel on the right side showing the task''s
+  ticket spec as rendered Markdown, the way the snodo-cloud task detail panel does.
+  Evidence: the local Now page lists each task id, status and elapsed time but the
+  task rows do nothing when clicked, and the task spec lives as Markdown at .snodo/plans/<plan>/wave_<N>/<task_id>_task.md
+  inside each project, which only the file system can show. After this plan a task
+  row is a button; clicking it opens a right-hand panel with the task id, status,
+  plan, wave, job and elapsed time and the spec rendered as Markdown (headings, paragraphs,
+  lists, code, emphasis, links); the panel closes with a button or Escape, stays open
+  across the 10-second refresh, and says plainly when a task has no spec on this machine
+  (for example a task run outside a plan). The dashboard stays loopback-only and read-only;
+  the Markdown is turned into DOM nodes with createElement and textContent, never
+  innerHTML. No new task, plan, job, wave or validator states are introduced.'
+name: web-dashboard-task-panel
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_task_spec_reader
+  - 1.2_markdown_renderer
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_task_spec_route
+  - 2.2_shell_preloads_renderer
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_now_side_panel_shell
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_side_panel_shows_spec
+  - 4.2_docs_task_panel

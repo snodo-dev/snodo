@@ -1,0 +1,35 @@
+intent: 'The Now page''s task panel works but feels rough. Evidence from Ylli''s screenshots
+  after the redesign: on first landing the right-hand panel sits empty beside the
+  tree; the spec takes several seconds to appear with only a "loading" word; the rendered
+  spec is a dense wall of text (the ticket''s section labels INTENT, CONSTRAINTS,
+  ACCEPTANCE and PROCESS run into their paragraphs, and file names such as tests/web/test_static_shell.py
+  show as "teststaticshell.py" because underscores inside words are treated as italics).
+  Behind the slowness: every dashboard route handler is an async function that does
+  its blocking git and file work on the server''s event loop (snodo/web/routes_now.py,
+  routes_plans.py, routes_gates.py, routes_delivery.py, routes_spec.py), so one slow
+  Now answer holds up the spec request and the static files. Fixes wanted: the tree
+  uses the full width until a task is selected, then narrows to make room for the
+  panel, and Close gives the width back; the spec shows a progress bar that learns
+  from earlier load times (ten seconds as the first guess); the Markdown renderer
+  treats the ticket layout and identifiers properly; the rendered spec is typeset
+  for reading; and the routes stop blocking the loop. Data, routes'' payloads and
+  status words stay as they are.'
+name: web-dashboard-panel-polish
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_markdown_reads_ticket_layout
+  - 1.2_now_full_width_until_selection
+  - 1.3_routes_keep_loop_free
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_spec_progress_bar_learns
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_spec_typography
+  - 3.2_docs_panel_polish

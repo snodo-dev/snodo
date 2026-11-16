@@ -247,28 +247,16 @@ class ExecutorMixin:
                 for head in repo.heads
                 if before.get(head.name) != head.commit.hexsha
             ]
-            prefix = self._task_branch_prefix() + "/"
-            plan_name = getattr(task, "plan_name", None)
-            if plan_name:
-                # Plan work is isolated under plan/<name> and task/<name>.
-                # Ignore only another plan's refs; unknown ownership remains
-                # conservative and follows the historical escape check.
-                plan_component = str(plan_name).strip("/")
-                changed = [
-                    ref for ref in changed
-                    if not (
-                        ref.startswith(prefix)
-                        and len(ref.split("/")) >= 4
-                        and ref.split("/", 2)[1] != plan_component
-                    )
-                    and not (
-                        ref.startswith("plan/")
-                        and ref.endswith("/integration")
-                        and ref.removeprefix("plan/").removesuffix("/integration") != plan_component
-                    )
-                ]
-            else:
-                changed = [ref for ref in changed if not ref.startswith(prefix)]
+            task_prefix = self._task_branch_prefix() + "/"
+            changed = [
+                ref for ref in changed
+                if not ref.startswith(task_prefix)
+                and not (
+                    len(ref.split("/")) == 3
+                    and ref.startswith("plan/")
+                    and ref.endswith("/integration")
+                )
+            ]
             if not changed:
                 return None
             root = Path(str(git_mcp.project_root)).resolve()
