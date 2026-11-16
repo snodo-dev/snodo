@@ -31,13 +31,13 @@
       "spec_hash": "dad86d3095fcdb3c"
     },
     "3.2_fallback_configuration_docs": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "0d672525ddc78635"
     },
     "4.1_fallback_decision_record": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "fe66e3cf1745de69"
@@ -57,6 +57,6 @@
   },
   "integration": {
     "branch": "plan/validator-fallback-chain/integration",
-    "base_sha": "7b167f65d9d62badfa274807025c0f0e2e91958f"
+    "base_sha": "ab69f237c2b10c972687feedc3be512444b13f93"
   }
 }
