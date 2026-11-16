@@ -26,3 +26,19 @@ def test_delivery_view_handles_failed_fetch() -> None:
 
     assert "catch (_)" in source
     assert "The delivery dashboard could not be reached." in source
+
+
+def test_delivery_chart_uses_short_dates_and_preserves_full_bar_details() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'day.date.slice(5)' in source
+    assert 'bar.title = `${day.date}: ${day.landed}`' in source
+    assert 'bar.setAttribute("aria-label", `${day.date}: ${day.landed}`)' in source
+
+
+def test_delivery_chart_thins_date_labels_to_fit() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'Math.floor(chart.clientWidth / 42)' in source
+    assert 'index !== labels.length - 1' in source
+    assert 'new ResizeObserver' in source

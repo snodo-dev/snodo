@@ -26,3 +26,9 @@ def test_delivery_styles_use_only_local_theme_tokens() -> None:
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", stylesheet)
     assert "@import" not in stylesheet.lower()
     assert not re.search(r"https?://", stylesheet, re.IGNORECASE)
+
+
+def test_delivery_hidden_date_labels_do_not_take_up_chart_space() -> None:
+    stylesheet = STYLESHEET.read_text(encoding="utf-8")
+    assert ".delivery-day-date[hidden]" in stylesheet
+    assert "display: none" in stylesheet

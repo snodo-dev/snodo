@@ -25,6 +25,16 @@
     return Number.isFinite(number) ? `${Math.round(number * 100)}%` : "n/a";
   }
 
+  function updateDateLabels(chart) {
+    const labels = Array.from(chart.querySelectorAll(".delivery-day-date"));
+    if (labels.length < 2) return;
+    const capacity = Math.max(2, Math.floor(chart.clientWidth / 42));
+    const step = Math.max(1, Math.ceil((labels.length - 1) / (capacity - 1)));
+    labels.forEach((label, index) => {
+      label.hidden = index !== labels.length - 1 && index % step !== 0;
+    });
+  }
+
   function render(data) {
     const fragment = document.createDocumentFragment();
     const totals = data.totals || {};
@@ -83,9 +93,18 @@
       const bar = element("div", undefined, "delivery-bar");
       bar.style.height = `${Math.max(2, (Number(day.landed) || 0) / maximum * 100)}%`;
       bar.setAttribute("aria-label", `${day.date}: ${day.landed}`);
+      bar.title = `${day.date}: ${day.landed}`;
       track.append(bar);
-      column.append(track, element("span", day.date || "", "delivery-day-date"));
+      const shortDate = typeof day.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day.date) ? day.date.slice(5) : day.date || "";
+      column.append(track, element("span", shortDate, "delivery-day-date"));
       chart.append(column);
+    }
+    updateDateLabels(chart);
+    if (window.ResizeObserver) {
+      const observer = new ResizeObserver(() => updateDateLabels(chart));
+      observer.observe(chart);
+    } else {
+      window.addEventListener("resize", () => updateDateLabels(chart));
     }
     fragment.append(chart);
 
