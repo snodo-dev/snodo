@@ -70,11 +70,11 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "917554115bd81f48"
+      "spec_hash": "84f948e8e175206f"
     }
   },
   "integration": {
     "branch": "plan/protocol-editor/integration",
-    "base_sha": "e3c25d3009f54f753bc6a156c14dfdb784fb9f18"
+    "base_sha": "684c0f6c420c5b9b32f0b96b22ddeb96fd7aa8c9"
   }
 }
