@@ -113,3 +113,127 @@ def test_delivery_chart_labels_use_short_date_format_and_no_responsive_observers
     assert "ResizeObserver" not in source
     assert 'addEventListener("resize"' not in source
     assert "innerHTML" not in source
+
+
+def test_delivery_flow_cards_render_from_sample_payload() -> None:
+    node = shutil.which("node")
+    assert node is not None, "Node.js is required to exercise Delivery rendering"
+    source = SCRIPT.read_text(encoding="utf-8")
+    harness = r"""
+class Node {
+  constructor(tag) {
+    this.tagName = tag;
+    this.children = [];
+    this.attributes = {};
+    this.style = { setProperty: (name, value) => { this.style[name] = value; } };
+    this.dataset = {};
+    this.textContent = "";
+  }
+  append(...nodes) { this.children.push(...nodes); }
+  replaceChildren(...nodes) { this.children = [...nodes]; }
+  setAttribute(name, value) { this.attributes[name] = value; }
+  addEventListener(name, callback) { this[name] = callback; }
+  querySelector(selector) {
+    if (selector === "strong") return this.children.find((child) => child.tagName === "strong");
+    return null;
+  }
+  querySelectorAll(selector) {
+    const className = selector.slice(1);
+    return this.children.flatMap((child) => [
+      ...(child.className === className ? [child] : []),
+      ...child.querySelectorAll(selector),
+    ]);
+  }
+}
+global.document = {
+  createElement: (tag) => new Node(tag),
+  createDocumentFragment: () => new Node("fragment"),
+};
+const requested = [];
+global.testEfficiency = 0.4;
+global.fetch = async (url) => {
+  requested.push(url);
+  return { ok: true, json: async () => ({
+    window_days: 7,
+    totals: {
+      landed: 10, median_flow_seconds: 3600, p85_flow_seconds: 7200,
+      efficiency: global.testEfficiency, flow_load: 3, first_try_rate: 0.8,
+      plans_not_in_main: 2,
+      by_type: {
+        feature: { landed: 6, share: 0.6 }, defect: { landed: 2, share: 0.2 },
+        debt: { landed: 1, share: 0.1 }, risk: { landed: 1, share: 0.1 },
+      },
+      by_week: [
+        { week_start: "2026-01-05", feature: 2, defect: 1, debt: 0, risk: 0 },
+        { week_start: "2026-01-12", feature: 4, defect: 1, debt: 1, risk: 1 },
+      ],
+    }, by_day: [], projects: [],
+  }) };
+};
+global.window = { snodoViews: {} };
+const source = process.argv[1];
+eval(source);
+const container = new Node("main");
+(async () => {
+  await window.snodoViews.delivery(container);
+  const all = (node) => [node, ...node.children.flatMap(all)];
+  let nodes = all(container);
+  const cards = nodes.filter((node) => node.className === "delivery-figure");
+  const cardData = cards.map((card) => ({
+    label: card.children[0].textContent,
+    text: all(card).map((node) => node.textContent).join(" "),
+    segments: all(card).filter((node) => node.className === "delivery-segment").map((node) => ({
+      text: node.textContent, title: node.title,
+    })),
+    bars: all(card).filter((node) => node.className === "delivery-stack").length,
+  }));
+  const efficiencyCard = cards[2];
+  const buttons = nodes.filter((node) => node.tagName === "button");
+  await buttons.find((button) => button.textContent === "90d").click();
+  global.testEfficiency = null;
+  eval(source);
+  const nullContainer = new Node("main");
+  await window.snodoViews.delivery(nullContainer);
+  const nullEfficiency = all(nullContainer).find((node) => node.className === "delivery-figure" && node.children[0]?.textContent === "Flow efficiency");
+  global.testEfficiency = undefined;
+  eval(source);
+  const missingContainer = new Node("main");
+  await window.snodoViews.delivery(missingContainer);
+  const missingEfficiency = all(missingContainer).find((node) => node.className === "delivery-figure" && node.children[0]?.textContent === "Flow efficiency");
+  console.log(JSON.stringify({ cardData, requested,
+    nullEfficiency: all(nullEfficiency).map((node) => node.textContent).join(" "),
+    missingEfficiency: all(missingEfficiency).map((node) => node.textContent).join(" ") }));
+})();
+"""
+    result = subprocess.run(
+        [node, "-e", harness, source], check=True, capture_output=True, text=True
+    )
+    rendered = json.loads(result.stdout)
+    cards = rendered["cardData"]
+    assert [card["label"] for card in cards] == [
+        "Flow velocity", "Flow time", "Flow efficiency", "Flow load", "Flow distribution"
+    ]
+    assert "10" in cards[0]["text"] and "How much work is getting done" in cards[0]["text"]
+    assert cards[0]["bars"] == 2
+    assert "60% features" in cards[4]["text"]
+    assert len(cards[4]["segments"]) == 4
+    assert all(segment["text"] and segment["title"] for segment in cards[4]["segments"])
+    assert "1.0 hr" in cards[1]["text"] and "85% under 2.0 hr" in cards[1]["text"]
+    assert "40%" in cards[2]["text"]
+    assert "n/a" in rendered["nullEfficiency"]
+    assert "n/a" in rendered["missingEfficiency"]
+    assert "3" in cards[3]["text"] and "Items started and not yet landed" in cards[3]["text"]
+    assert "/api/delivery?days=90" in rendered["requested"]
+
+
+def test_delivery_efficiency_is_null_safe_and_type_tokens_exist_in_themes() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'rate(totals.efficiency)' in source
+    assert 'totals.efficiency !== null && totals.efficiency !== undefined' in source
+    html = (SCRIPT.parents[0] / "index.html").read_text(encoding="utf-8")
+    for token in ("feature", "defect", "debt", "risk"):
+        assert re.search(rf"--flow-{token}:#[0-9a-fA-F]{{3,8}}", html)
+    assert html.count("--flow-feature:") >= 3
+    assert html.count("--flow-defect:") >= 3
+    assert html.count("--flow-debt:") >= 3
+    assert html.count("--flow-risk:") >= 3
