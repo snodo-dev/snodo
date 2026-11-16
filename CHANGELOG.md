@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Render live Protocol summary tiles from the working validator copy. (Fixes #1277)
 - Preview and atomically save Protocol view edits to a project's protocol file behind loopback and page-token guards. (Fixes #1276)
 - Add the Protocol dashboard shell and shared validator editing state, including the mockup-matched head. (Fixes #1273, #1274)
 - Test Protocol head rendering classes and shared edit-state changes. (Fixes #1275)
