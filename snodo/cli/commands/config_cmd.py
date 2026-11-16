@@ -403,6 +403,7 @@ _LLM_SETTABLE_KEYS = {
     "coder.silence_timeout_seconds": int,
     "coder.concurrency": int,
     "validator.model": str,
+    "validator.fallback": list,
     "validator.max_tokens": int,
     "validator.max_tool_turns": int,
     "classifier.model": str,
@@ -442,7 +443,7 @@ def _set_llm_value(mgr: ConfigManager, subkey: str, value: str) -> int:
     value_type = _LLM_SETTABLE_KEYS[subkey]
     if value_type is list:
         parsed: object = [item.strip() for item in value.split(",") if item.strip()]
-        if not parsed:
+        if not parsed and subkey != "validator.fallback":
             print(f"Error: llm.{subkey} must be a non-empty comma-separated list", file=sys.stderr)
             return 1
     else:
@@ -454,7 +455,15 @@ def _set_llm_value(mgr: ConfigManager, subkey: str, value: str) -> int:
 
     section, sep, field = subkey.partition(".")
     path = ("llm", section, field) if sep else ("llm", subkey)
-    mgr.set_value(path, parsed)
+    if subkey == "validator.fallback":
+        # The targeted YAML editor's absent-path block-list insertion is not
+        # correctly indented. Save the loaded mapping so first writes,
+        # replacements, and empty lists remain valid YAML.
+        config = mgr.load()
+        config.setdefault("llm", {}).setdefault("validator", {})["fallback"] = parsed
+        mgr.save(config)
+    else:
+        mgr.set_value(path, parsed)
     print(f"Set llm.{subkey} = {value}")
     return 0
 

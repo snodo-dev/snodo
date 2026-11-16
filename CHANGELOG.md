@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Let `snodo config set/get` manage the validator fallback list, including clearing it. (Fixes #1286)
 - Let validator judges switch to ordered alternative completion functions after operational retries are exhausted, without reusing provider credentials. (Fixes #1285)
 - Keep the dashboard shell's heading and list styles from changing how the Protocol view renders.
 - Document the Protocol dashboard view, editing scope, guarded save behavior, and visual reference. (Fixes #1283)

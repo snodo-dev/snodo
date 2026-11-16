@@ -196,6 +196,7 @@ validator's own `model` setting takes precedence over the configured role model.
 | `llm.coder.silence_timeout_seconds` | `600` | Stop a subprocess coder after this many seconds without output; minimum 1. |
 | `llm.coder.concurrency` | `1` | Maximum concurrent coders for this operator; minimum 1. |
 | `llm.validator.model` | unset | Validator model; falls back to `model`. |
+| `llm.validator.fallback` | `[]` | Models tried in order when the validator model fails operationally. |
 | `llm.validator.max_tokens` | `1500` | Validator completion token budget; minimum 1. |
 | `llm.validator.max_tool_turns` | `6` | Validator read-tool turn limit (1–200). |
 | `llm.validator_llm.model` | unset | Legacy-compatible validator role model; falls back to `model`. |

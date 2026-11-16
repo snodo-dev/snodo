@@ -1067,6 +1067,43 @@ class TestCLILLMModelKeys:
         assert main(["config", "set", "llm.recon.models", " , "]) == 1
         assert "comma-separated list" in capsys.readouterr().err
 
+    def test_validator_fallback_round_trip_and_clear(self, cli_config_dir, capsys, monkeypatch):
+        from snodo.infrastructure.config import load_llm_config
+
+        config_dir = str(cli_config_dir.config_dir)
+        monkeypatch.setattr(
+            "snodo.infrastructure.config.load_llm_config",
+            lambda: load_llm_config(config_dir),
+        )
+        cli_config_dir.config_path.write_text("model: keep-this\nllm:\n  validator:\n    model: judge-model\n")
+        for value, expected in (
+            ("gpt-4o, claude-sonnet-4-20250514", ["gpt-4o", "claude-sonnet-4-20250514"]),
+            ("deepseek/deepseek-chat", ["deepseek/deepseek-chat"]),
+            ("", []),
+        ):
+            assert main(["config", "set", "llm.validator.fallback", value]) == 0
+            capsys.readouterr()
+            assert load_llm_config(config_dir).validator.fallback == expected
+            assert main(["config", "get", "llm.validator.fallback"]) == 0
+            output = capsys.readouterr().out.strip()
+            assert output == ", ".join(expected)
+            assert cli_config_dir.load()["model"] == "keep-this"
+
+    def test_validator_fallback_can_be_first_written(self, cli_config_dir, capsys, monkeypatch):
+        from snodo.infrastructure.config import load_llm_config
+
+        config_dir = str(cli_config_dir.config_dir)
+        monkeypatch.setattr(
+            "snodo.infrastructure.config.load_llm_config",
+            lambda: load_llm_config(config_dir),
+        )
+        assert not cli_config_dir.config_path.exists()
+        assert main(["config", "set", "llm.validator.fallback", "first, second"]) == 0
+        capsys.readouterr()
+        assert load_llm_config(str(cli_config_dir.config_dir)).validator.fallback == ["first", "second"]
+        assert main(["config", "get", "llm.validator.fallback"]) == 0
+        assert capsys.readouterr().out.strip() == "first, second"
+
 
 # ========== TASK 7.3: SESSION CONFIG TESTS ==========
 
