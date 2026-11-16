@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Ignore all engine-managed plan integration and task branches during workspace escape checks. (Fixes #1263)
 - Ignore ref movement belonging to other plans during workspace escape checks. (Fixes #1259)
 - Clarify that concurrent plans in separate queues do not trip each other's workspace-escape check. (Fixes #1260)
 - Keep Delivery weekly chart columns proportionate and align chart panels, with flow values fitting narrow panels. (Fixes #1253)
