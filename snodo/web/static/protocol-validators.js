@@ -1,3 +1,84 @@
 (() => {
-  window.snodoProtocol.registerRenderer(() => {});
+  const api = window.snodoProtocol;
+  const el = (tag, text, className) => {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  };
+
+  function validatorRow(state, validator, active) {
+    const row = el("div", undefined, `row${state.openValidator === validator.id ? " open" : ""}${api.isChanged(validator.id) ? " mod" : ""}`);
+    row.dataset.id = validator.id;
+    const caret = el("span", "▶", "car");
+    const summary = el("div");
+    const name = el("div", validator.id, "nm");
+    const criteria = validator.criteria || [];
+    const type = validator.type || "";
+    const count = criteria.length;
+    let summaryText = `${type} · ${count} ${count === 1 ? "criterion" : "criteria"}`;
+    if ((validator.tools || []).length) summaryText += " · reads files";
+    summary.append(name, el("div", summaryText, "sb"));
+    const phase = el("div", undefined, "ph");
+    const phaseName = validator.phase || "pre_execute";
+    phase.append(el("span", phaseName, `pill ${phaseName === "pre_execute" ? "run" : "abs"}`));
+    const bars = el("div", undefined, "bars");
+    for (const _ of criteria.slice(0, 8)) bars.append(el("i", undefined, active ? "" : "x"));
+    row.append(caret, summary, phase, bars, el("span", active ? "active" : "unused", `pill ${active ? "pass" : "off"}`));
+    row.addEventListener("click", () => {
+      state.openValidator = state.openValidator === validator.id ? null : validator.id;
+      api.notify();
+    });
+    const edit = el("div", undefined, `edit${state.openValidator === validator.id ? " show" : ""}`);
+    edit.dataset.edit = validator.id;
+    return [row, edit];
+  }
+
+  function appendGroup(state, card, title, initial, activeIds, rows, unusedCount) {
+    const group = el("div", undefined, "grp");
+    group.append(el("h3", title));
+    if (initial) group.append(el("span", "initial", "pill pass"));
+    group.append(el("span", `${activeIds.size} active · ${unusedCount} declared but unused`, "dim"));
+    card.append(group);
+    for (const validator of rows) {
+      const active = activeIds.has(validator.id);
+      const [row, edit] = validatorRow(state, validator, active);
+      card.append(row, edit);
+    }
+  }
+
+  function render(state) {
+    if (!state.container || !state.data) return;
+    const section = el("section", undefined, "sec validators-section");
+    const head = el("div", undefined, "sec-h");
+    const heading = el("div");
+    heading.append(el("div", "Validators", "eyebrow"), el("div", "Ordered as the producer mode runs them. Open a row to edit its criteria. Nothing is written until you save.", "sub"));
+    const add = el("button", "+ Add validator", "btn");
+    add.type = "button";
+    add.disabled = true;
+    add.title = "Adding validators is not available yet";
+    head.append(heading, add);
+    const card = el("div", undefined, "card");
+    const validators = state.validators || [];
+    const byId = new Map(validators.map((validator) => [validator.id, validator]));
+    const modes = state.data.modes || [];
+    const usedIds = new Set(modes.flatMap((mode) => mode.validators || []));
+    const globallyUnused = validators.filter((validator) => !usedIds.has(validator.id));
+    for (const mode of modes) {
+      const activeIds = (mode.validators || []).filter((id) => byId.has(id));
+      const activeSet = new Set(activeIds);
+      const modeRows = [
+        ...activeIds.map((id) => byId.get(id)),
+        ...validators.filter((validator) => !activeSet.has(validator.id) && usedIds.has(validator.id)),
+      ];
+      appendGroup(state, card, mode.name || mode.id, mode.id === (state.data.protocol || {}).initial_mode, activeSet, modeRows, modeRows.length - activeIds.length);
+    }
+    if (globallyUnused.length) appendGroup(state, card, "Unused", false, new Set(), globallyUnused, globallyUnused.length);
+    section.append(head, card);
+    const existing = state.container.querySelector(".validators-section");
+    if (existing) existing.replaceWith(section); else state.container.append(section);
+  }
+
+  api.registerRenderer(() => {});
+  api.registerRenderer(render);
 })();

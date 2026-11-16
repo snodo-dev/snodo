@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Render ordered Protocol validator groups with row summaries, status bars, and shared open-row state. (Fixes #1279)
 - Render the Protocol Pipeline card from the initial mode and link validator chips to editor rows. (Fixes #1278)
 - Render live Protocol summary tiles from the working validator copy. (Fixes #1277)
 - Preview and atomically save Protocol view edits to a project's protocol file behind loopback and page-token guards. (Fixes #1276)
