@@ -259,7 +259,7 @@ const container = new Node("main");
     assert details["flows"][3]["na"] == 1 and "n/a" in details["flows"][3]["text"]
     assert details["tableHeaders"] == ["Type", "Landed", "Share", "Median time", "85%"]
     assert details["tableRows"] == 4
-    assert details["order"] == ["Velocity by week", "Flow time by type", "By type"]
+    assert details["order"] == ["Landed per day", "Velocity by week", "Flow time by type", "By type", "By project"]
     assert details["detailBeforeProjects"]
 
 
