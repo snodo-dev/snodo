@@ -73,7 +73,7 @@ def test_help_shows_mode_options():
     assert "--cli" in result.output
 
 
-def test_help_describes_os_chosen_port_default():
+def test_help_describes_predictable_port_default():
     result = runner.invoke(make_app(), ["--help"])
     assert result.exit_code == 0
-    assert "OS-chosen free port" in result.output
+    assert "44331" in result.output
