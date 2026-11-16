@@ -12,13 +12,13 @@ To scan projects under a folder, pass it as a root:
 snodo dashboard --web --root ~/Dev
 ```
 
-The dashboard listens on `127.0.0.1`, so it is available on this machine. It is
+The dashboard listens on `127.0.0.1`, so it is available on this machine. It
 writes only the `.snodo/protocol.yml` file, from the Protocol view, after an
 explicit save. Other views remain read-only. Projects are found by scanning the
 root folders for a `.snodo/` directory. The selected roots are remembered in
 `web.yml` in your Snodo folder.
 
-The dashboard has four views:
+The dashboard has five views:
 
 - **Now** covers activity in the last 24 hours. Its page head shows how old the
   data is and provides a **Refetch** control. Six counter cards summarize
@@ -66,6 +66,19 @@ The dashboard has four views:
   The local page deliberately differs from the cloud Now page: it sees only
   this machine, has no project groups, and keeps a **Waiting on you** list for
   plans not yet merged into `main` and uncommitted files.
+- **Protocol** shows the schema state in its head, with **Reload from disk**, six
+  summary tiles, the initial-mode pipeline, validator groups with expandable row
+  editors, execution settings, and the rules checked on save. You can edit the
+  protocol type, phase, severity cap, tools, criteria, and whether a validator
+  runs in the initial mode. Adding validators is not available. Saving first
+  lets you review a diff, then writes `.snodo/protocol.yml`; committing and
+  pushing stay with you. Comments and formatting outside edited validators are
+  kept. A file changed on disk or an invalid result stops the save with a
+  message. The write routes are restricted to loopback Host values; a supplied
+  Origin must match the Host, and saves require JSON and the per-process page
+  token. Only the known project's protocol file can be written. The visual
+  reference, [`docs/design/protocol-editor.html`](design/protocol-editor.html),
+  uses web fonts and sample data that the shipped page does not.
 - **Delivery** reports flow over 7, 30, or 90 days. Its five cards show landed
   tasks, typical cycle time, first-try rate, flow load, and flow efficiency.
   Three blocks below the cards show weekly landed-task counts, flow-time ranges
