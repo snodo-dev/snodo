@@ -22,10 +22,10 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "849e07db736c2837"
+      "spec_hash": "2350e80809d21d15"
     },
     "2.2_protocol_write_routes": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "7e1411075ca5e4ea"
@@ -75,6 +75,6 @@
   },
   "integration": {
     "branch": "plan/protocol-editor/integration",
-    "base_sha": "89514393a9df957a6b7f89ba0a65cb916aae0585"
+    "base_sha": "d2ac8ad0f4727d1015ee090c9ffb511299585d56"
   }
 }
