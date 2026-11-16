@@ -45,10 +45,12 @@
       const item = el("div", undefined, `crit${criterion !== (original.criteria || [])[index] ? " mod" : ""}`);
       const area = el("textarea", criterion); area.dataset.criterion = String(index);
       const updateCriterion = () => {
-        const empty = !area.value.trim();
-        area.setAttribute("aria-invalid", String(empty));
+        const empty = typeof area.value === "string" && !area.value.trim();
+        if (typeof area.setAttribute === "function") area.setAttribute("aria-invalid", String(empty));
         if (empty) area.title = "Criterion must not be empty";
-        else area.removeAttribute("title");
+        else if (typeof area.removeAttribute === "function") area.removeAttribute("title");
+        state.problems = (state.validators || []).flatMap((row) => (row.criteria || []).flatMap((value, criterionIndex) =>
+          typeof value === "string" && !value.trim() ? [{ validator_id: row.id, criterion_index: criterionIndex, message: "Criterion must not be empty" }] : []));
       };
       updateCriterion();
       area.addEventListener("input", () => { validator.criteria[index] = area.value; item.classList.toggle("mod", area.value !== (original.criteria || [])[index]); updateCriterion(); api.notify(); });
@@ -57,7 +59,13 @@
       item.append(area, remove); edit.append(item);
     });
     const add = el("button", "+ Add criterion", "btn"); add.type = "button";
-    add.addEventListener("click", (event) => { event.stopPropagation(); validator.criteria.push(""); api.notify(); edit.querySelector('textarea[data-criterion="' + (validator.criteria.length - 1) + '"]')?.focus(); });
+    add.addEventListener("click", (event) => {
+      event.stopPropagation();
+      validator.criteria.push("");
+      api.notify();
+      const current = state.container?.querySelector(`[data-edit="${validator.id}"]`);
+      current?.querySelector(`textarea[data-criterion="${validator.criteria.length - 1}"]`)?.focus();
+    });
     const toggle = el("button", `${active ? "Remove from" : "Add to"} ${state.data.protocol.initial_mode} mode`, "btn"); toggle.type = "button";
     toggle.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -93,6 +101,8 @@
   }
   function render(state) {
     if (!state.container || !state.data) return;
+    state.problems = (state.validators || []).flatMap((row) => (row.criteria || []).flatMap((value, criterionIndex) =>
+      typeof value === "string" && !value.trim() ? [{ validator_id: row.id, criterion_index: criterionIndex, message: "Criterion must not be empty" }] : []));
     const section = el("section", undefined, "sec validators-section"), head = el("div", undefined, "sec-h"), heading = el("div");
     heading.append(el("div", "Validators", "eyebrow"), el("div", "Ordered as the producer mode runs them. Open a row to edit its criteria. Nothing is written until you save.", "sub"));
     const add = el("button", "+ Add validator", "btn"); add.type = "button"; add.disabled = true; add.title = "Adding validators is not available yet";
