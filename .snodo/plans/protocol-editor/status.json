@@ -19,7 +19,7 @@
       "spec_hash": "9bab5aeff866ee78"
     },
     "2.1_protocol_view_shell": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "2350e80809d21d15"
@@ -75,6 +75,6 @@
   },
   "integration": {
     "branch": "plan/protocol-editor/integration",
-    "base_sha": "d2ac8ad0f4727d1015ee090c9ffb511299585d56"
+    "base_sha": "63dc42c00350255892715cf5561969e5fabb7865"
   }
 }
