@@ -53,9 +53,10 @@ def register(app: typer.Typer) -> None:
     def logs(
         composite_id: str = typer.Argument(..., help="Job ID (j_xxx) or Recon ID (rec_xxx)"),
         watch: bool = typer.Option(False, "--watch", "-w", help="Follow job logs or recon results until they finish"),
+        json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
     ):
         """Show output for a job or recon by ID."""
-        args = SimpleNamespace(composite_id=composite_id, watch=watch)
+        args = SimpleNamespace(composite_id=composite_id, watch=watch, json=json_output)
         return logs_command(args)
 
 
@@ -69,7 +70,17 @@ def logs_command(args) -> int:
         print("Error: <id> is required", file=sys.stderr)
         return 1
 
-    project_root = require_project_root()
+    json_mode = bool(getattr(args, "json", False))
+    from snodo.cli.json_output import emit_error
+
+    if json_mode and getattr(args, "watch", False):
+        return emit_error("logs", "--json cannot be used with --watch", 1)
+    try:
+        project_root = require_project_root()
+    except SystemExit:
+        if json_mode:
+            return emit_error("logs", "Not inside a snodo project.", 1)
+        raise
 
     if composite_id.startswith("rec_"):
         return _show_recon(project_root, composite_id, args)
@@ -90,6 +101,8 @@ def logs_command(args) -> int:
     if _has_task_jobs(project_root, composite_id):
         return _show_task_logs(project_root, composite_id, args)
 
+    if json_mode:
+        return emit_error("logs", f"{composite_id!r} not found as a job or recon ID.", 1)
     print(f"Error: {composite_id!r} not found as a job or recon ID.",
           file=sys.stderr)
     return 1
@@ -563,11 +576,13 @@ def _show_job(project_root: str, job_id: str, args) -> int:
     from snodo.jobs import JobManager
     import json
 
-    mgr = JobManager(project_root)
-
     try:
+        mgr = JobManager(project_root)
         job_status = mgr.get_status(job_id)
     except Exception as e:
+        if bool(getattr(args, "json", False)):
+            from snodo.cli.json_output import emit_error
+            return emit_error("logs", f"Could not read job {job_id}: {e}", 1)
         print(f"Error: Could not read job {job_id}: {e}", file=sys.stderr)
         return 1
 
@@ -579,6 +594,7 @@ def _show_job(project_root: str, job_id: str, args) -> int:
     task_file = job_dir / "task.json"
     state_file = job_dir / "state.json"
     is_plan_job = False
+    state_data = {}
 
     if task_file.exists():
         try:
@@ -588,7 +604,7 @@ def _show_job(project_root: str, job_id: str, args) -> int:
         except Exception as e:
             _logger.debug("Could not read task.json: %s", e)
 
-    if state_file.exists() and not is_plan_job:
+    if state_file.exists():
         try:
             state_data = json.loads(state_file.read_text())
             if state_data.get("job_type") == "plan":
@@ -602,10 +618,39 @@ def _show_job(project_root: str, job_id: str, args) -> int:
                 or job_status.get("plan")):
             is_plan_job = True
 
+    if bool(getattr(args, "json", False)):
+        return _emit_job_json(job_id, job_status, state_data if "state_data" in locals() else {})
+
     if is_plan_job:
         return _show_plan_job(project_root, job_id, args)
 
     return _stream_job_stdout(project_root, job_id, args)
+
+
+def _emit_job_json(job_id: str, status: dict, state: dict) -> int:
+    from snodo.cli.json_output import emit_json, schema_name
+    from snodo.usage_summary import summarize_usage
+
+    records = state.get("usage") or []
+    records = [record for record in records if isinstance(record, dict)]
+    summary = summarize_usage(records)
+    by_role = [{
+        "role": row["role"], "calls": row["calls"],
+        "input_tokens": row["input_tokens"] or 0,
+        "output_tokens": row["output_tokens"] or 0,
+        "model_time_seconds": row["time_seconds"],
+        "output_tokens_per_second": row["output_tokens_per_second"],
+    } for row in summary["rows"]]
+    total = summary["total"]
+    return emit_json({
+        "schema": schema_name("logs"), "ok": True, "id": job_id, "kind": "job",
+        "status": status.get("status"), "elapsed_seconds": status.get("elapsed_seconds"),
+        "usage": records, "by_role": by_role, "totals": {
+            "input_tokens": total["input_tokens"] or 0,
+            "output_tokens": total["output_tokens"] or 0,
+            "model_call_time_seconds": total["time_seconds"], "calls": total["calls"],
+        },
+    })
 
 
 def _stream_job_stdout(project_root: str, job_id: str, args) -> int:
@@ -704,6 +749,9 @@ def _show_recon(project_root: str, recon_id: str, args=None) -> int:
 
     recon_dir = Path(project_root) / ".snodo" / "recons" / recon_id
     if not recon_dir.is_dir():
+        if bool(getattr(args, "json", False)):
+            from snodo.cli.json_output import emit_error
+            return emit_error("logs", f"Recon not found: {recon_id}", 1)
         print(f"Error: Recon not found: {recon_id}", file=sys.stderr)
         return 1
 
@@ -733,6 +781,9 @@ def _show_recon(project_root: str, recon_id: str, args=None) -> int:
     query = state.get("query", "—")
     status = state.get("status", "—")
     agents = state.get("agents", [])
+
+    if bool(getattr(args, "json", False)):
+        return _emit_recon_json(recon_id, state, results)
 
     print(f"Recon: {recon_id}")
     print(f"Query: {query}")
@@ -773,6 +824,48 @@ def _show_recon(project_root: str, recon_id: str, args=None) -> int:
         print("No results yet.")
 
     return 0
+
+
+def _recon_usage_records(results: list[dict]) -> list[dict]:
+    records = []
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        model = result.get("model") or "unknown"
+        usage = result.get("usage") or []
+        if usage:
+            records.extend({**item, "role": model} for item in usage if isinstance(item, dict))
+        else:
+            records.append({"role": model})
+    return records
+
+
+def _emit_recon_json(recon_id: str, state: dict, results: list[dict]) -> int:
+    from snodo.cli.json_output import emit_json, schema_name
+    from snodo.usage_summary import summarize_usage
+
+    created, completed = state.get("created_at"), state.get("completed_at")
+    elapsed = max(0.0, completed - created) if created is not None and completed is not None else None
+    total = summarize_usage(_recon_usage_records(results), elapsed)["total"]
+    agents = []
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        agents.append({
+            "agent": result.get("agent"), "model": result.get("model"),
+            "served_model": result.get("served_model"),
+            "status": result.get("status") or ("failed" if result.get("error") else "complete"),
+            "usage": result.get("usage") or [],
+        })
+    return emit_json({
+        "schema": schema_name("logs"), "ok": True, "id": recon_id, "kind": "recon",
+        "status": state.get("status"), "elapsed_seconds": elapsed, "agents": agents,
+        "totals": {
+            "input_tokens": total["input_tokens"], "output_tokens": total["output_tokens"],
+            "model_call_time_seconds": total["time_seconds"],
+            "output_tokens_per_second": total["output_tokens_per_second"],
+        },
+    })
 
 
 _RECON_TERMINAL_STATUSES = {"complete", "failed"}
@@ -871,16 +964,7 @@ def _print_recon_usage(results: list[dict], state: dict) -> None:
     """Render persisted per-model usage through the shared usage helper."""
     from snodo.usage_summary import render_usage_summary, summarize_usage
 
-    records = []
-    for result in results:
-        if not isinstance(result, dict):
-            continue
-        model = result.get("model") or "unknown"
-        usage = result.get("usage") or []
-        if usage:
-            records.extend({**item, "role": model} for item in usage if isinstance(item, dict))
-        else:
-            records.append({"role": model})
+    records = _recon_usage_records(results)
     created, completed = state.get("created_at"), state.get("completed_at")
     elapsed = max(0.0, completed - created) if created is not None and completed is not None else None
     for line in render_usage_summary(summarize_usage(records), elapsed):
