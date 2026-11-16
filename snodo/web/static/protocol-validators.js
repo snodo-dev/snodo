@@ -44,13 +44,20 @@
     (validator.criteria || []).forEach((criterion, index) => {
       const item = el("div", undefined, `crit${criterion !== (original.criteria || [])[index] ? " mod" : ""}`);
       const area = el("textarea", criterion); area.dataset.criterion = String(index);
-      area.addEventListener("input", () => { validator.criteria[index] = area.value; item.classList.toggle("mod", area.value !== (original.criteria || [])[index]); api.notify(); });
+      const updateCriterion = () => {
+        const empty = !area.value.trim();
+        area.setAttribute("aria-invalid", String(empty));
+        if (empty) area.title = "Criterion must not be empty";
+        else area.removeAttribute("title");
+      };
+      updateCriterion();
+      area.addEventListener("input", () => { validator.criteria[index] = area.value; item.classList.toggle("mod", area.value !== (original.criteria || [])[index]); updateCriterion(); api.notify(); });
       const remove = el("button", "×", "x"); remove.type = "button"; remove.title = "Remove";
       remove.addEventListener("click", (event) => { event.stopPropagation(); validator.criteria.splice(index, 1); api.notify(); });
       item.append(area, remove); edit.append(item);
     });
     const add = el("button", "+ Add criterion", "btn"); add.type = "button";
-    add.addEventListener("click", (event) => { event.stopPropagation(); validator.criteria.push(""); api.notify(); const inputs = edit.parentNode?.querySelectorAll?.("textarea") || []; inputs[inputs.length - 1]?.focus(); });
+    add.addEventListener("click", (event) => { event.stopPropagation(); validator.criteria.push(""); api.notify(); edit.querySelector('textarea[data-criterion="' + (validator.criteria.length - 1) + '"]')?.focus(); });
     const toggle = el("button", `${active ? "Remove from" : "Add to"} ${state.data.protocol.initial_mode} mode`, "btn"); toggle.type = "button";
     toggle.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -103,10 +110,12 @@
     if (existing) {
       const focused = document.activeElement;
       if (focused && existing.contains(focused) && focused.dataset) {
+        const owner = focused.closest("[data-edit]")?.dataset.edit;
+        const edit = owner && [...section.querySelectorAll("[data-edit]")].find((node) => node.dataset.edit === owner);
         const selector = focused.dataset.criterion !== undefined
           ? `[data-criterion="${focused.dataset.criterion}"]`
           : focused.dataset.f !== undefined ? `[data-f="${focused.dataset.f}"]` : null;
-        const replacement = selector && section.querySelector(selector);
+        const replacement = selector && edit?.querySelector(selector);
         if (replacement) replacement.replaceWith(focused);
       }
       existing.replaceWith(section);

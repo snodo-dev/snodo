@@ -29,3 +29,12 @@ def test_editor_updates_shared_working_copy_without_recreating_active_input() ->
     assert "existing.contains(focused)" in source
     assert "replacement.replaceWith(focused)" in source
     assert "criterion !== (original.criteria || [])[index]" in source
+
+
+def test_empty_criterion_is_flagged_and_focus_lookup_is_row_scoped() -> None:
+    source = SOURCE.read_text()
+    assert 'area.setAttribute("aria-invalid", String(empty))' in source
+    assert 'Criterion must not be empty' in source
+    assert 'focused.closest("[data-edit]")' in source
+    assert 'edit?.querySelector(selector)' in source
+    assert 'edit.querySelector(\'textarea[data-criterion="\'' in source
