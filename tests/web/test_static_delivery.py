@@ -160,8 +160,10 @@ global.fetch = async (url) => {
       efficiency: global.testEfficiency, flow_load: 3, first_try_rate: 0.8,
       plans_not_in_main: 2,
       by_type: {
-        feature: { landed: 6, share: 0.6 }, defect: { landed: 2, share: 0.2 },
-        debt: { landed: 1, share: 0.1 }, risk: { landed: 1, share: 0.1 },
+        feature: { landed: 6, share: 0.6, median_flow_seconds: 600, p85_flow_seconds: 1200 },
+        defect: { landed: 2, share: 0.2, median_flow_seconds: 300, p85_flow_seconds: 900 },
+        debt: { landed: 1, share: 0.1, median_flow_seconds: 180, p85_flow_seconds: 600 },
+        risk: { landed: 1, share: 0.1, median_flow_seconds: null, p85_flow_seconds: null },
       },
       by_week: [
         { week_start: "2026-01-05", feature: 2, defect: 1, debt: 0, risk: 0 },
@@ -187,7 +189,28 @@ const container = new Node("main");
     })),
     bars: all(card).filter((node) => node.className === "delivery-stack").length,
   }));
-  const efficiencyCard = cards[2];
+  const weeklyColumns = nodes.filter((node) => node.className === "delivery-week-column");
+  const flowRows = nodes.filter((node) => node.className === "delivery-flow-row");
+  const typeTable = nodes.find((node) => node.className === "delivery-types");
+  const detailBlocks = nodes.filter((node) => node.className === "delivery-detail-block");
+  const projectHeading = nodes.findIndex((node) => node.tagName === "h2" && node.textContent === "By project");
+  const detailData = {
+    weeks: weeklyColumns.map((column) => ({
+      total: column.children[0].textContent,
+      date: column.children[2].textContent,
+      segments: all(column).filter((node) => node.className === "delivery-week-segment").map((node) => ({ text: node.textContent, title: node.title })),
+    })),
+    flows: flowRows.map((row) => ({
+      text: all(row).map((node) => node.textContent).join(" "),
+      median: all(row).filter((node) => node.className === "delivery-flow-median").length,
+      range: all(row).filter((node) => node.className === "delivery-flow-range").length,
+      na: all(row).filter((node) => node.className === "delivery-flow-na").length,
+    })),
+    tableHeaders: all(typeTable).filter((node) => node.tagName === "th").map((node) => node.textContent),
+    tableRows: all(typeTable).filter((node) => node.tagName === "tr").length - 1,
+    order: detailBlocks.map((block) => block.children[0].textContent),
+    detailBeforeProjects: Math.max(...nodes.map((node, index) => node.className === "delivery-detail-block" ? index : -1)) < projectHeading,
+  };
   const buttons = nodes.filter((node) => node.tagName === "button");
   await buttons.find((button) => button.textContent === "90d").click();
   global.testEfficiency = null;
@@ -200,7 +223,7 @@ const container = new Node("main");
   const missingContainer = new Node("main");
   await window.snodoViews.delivery(missingContainer);
   const missingEfficiency = all(missingContainer).find((node) => node.className === "delivery-figure" && node.children[0]?.textContent === "Flow efficiency");
-  console.log(JSON.stringify({ cardData, requested,
+  console.log(JSON.stringify({ cardData, requested, detailData,
     nullEfficiency: all(nullEfficiency).map((node) => node.textContent).join(" "),
     missingEfficiency: all(missingEfficiency).map((node) => node.textContent).join(" ") }));
 })();
@@ -224,6 +247,20 @@ const container = new Node("main");
     assert "n/a" in rendered["missingEfficiency"]
     assert "3" in cards[3]["text"] and "Items started and not yet landed" in cards[3]["text"]
     assert "/api/delivery?days=90" in rendered["requested"]
+    details = rendered["detailData"]
+    assert len(details["weeks"]) == 2
+    assert [week["total"] for week in details["weeks"]] == ["3", "7"]
+    assert [week["date"] for week in details["weeks"]] == ["Jan 5", "Jan 12"]
+    assert [segment["text"] for segment in details["weeks"][0]["segments"]] == ["feature 2", "defect 1"]
+    assert all(segment["title"] for week in details["weeks"] for segment in week["segments"])
+    assert len(details["flows"]) == 4
+    assert all(flow["median"] == 1 and flow["range"] == 1 for flow in details["flows"][:3])
+    assert details["flows"][0]["text"].endswith("10.0 min · 20.0 min")
+    assert details["flows"][3]["na"] == 1 and "n/a" in details["flows"][3]["text"]
+    assert details["tableHeaders"] == ["Type", "Landed", "Share", "Median time", "85%"]
+    assert details["tableRows"] == 4
+    assert details["order"] == ["Velocity by week", "Flow time by type", "By type"]
+    assert details["detailBeforeProjects"]
 
 
 def test_delivery_efficiency_is_null_safe_and_type_tokens_exist_in_themes() -> None:
