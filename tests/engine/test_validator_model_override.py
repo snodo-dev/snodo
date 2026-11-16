@@ -210,3 +210,31 @@ class TestFindSetModelOverrides:
         record = signer.issue_record("t1", "sec", result, "proceed", "ok")
         overrides = verifier.find_set_model_overrides([record.jwt])
         assert overrides == []
+
+
+def test_runner_builds_ordered_fallback_alternatives_for_effective_model(monkeypatch):
+    from functools import partial
+    from types import SimpleNamespace
+
+    from snodo.validators.runner import run_validators
+
+    built = []
+    def base(**kwargs):
+        return kwargs
+
+    def bind(model, fn):
+        built.append(model)
+        return partial(fn, model=model)
+
+    monkeypatch.setattr("snodo.validators.runner.build_completion_fn", bind)
+    validator = Validator(validator_id="security", validator_type="security", model="override")
+    captured = []
+    run_validators(
+        protocol=MagicMock(), validators=[validator], task=Task(id="t1", spec="test"),
+        completion_fn=partial(base, model="primary"), default_model="primary",
+        validator_config=SimpleNamespace(max_tokens=100, max_tool_turns=2, fallback=["backup-a", "backup-b"]),
+        dispatch_fn=lambda v, ctx, reg: captured.append((ctx.model, ctx.model_alternatives)) or _stub_result(v.validator_id),
+    )
+    assert captured[0][0] == "override"
+    assert [model for model, _ in captured[0][1]] == ["backup-a", "backup-b"]
+    assert built == ["backup-a", "backup-b", "override"]
