@@ -36,9 +36,13 @@ def test_delivery_chart_uses_short_dates_and_preserves_full_bar_details() -> Non
     assert 'bar.setAttribute("aria-label", `${day.date}: ${day.landed}`)' in source
 
 
-def test_delivery_chart_thins_date_labels_to_fit() -> None:
+def test_delivery_chart_thins_date_labels_even_on_wide_screens() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
 
-    assert 'Math.floor(chart.clientWidth / 42)' in source
-    assert 'index !== labels.length - 1' in source
-    assert 'new ResizeObserver' in source
+    assert "const maxLabels = labels.length > 7 ? 6 : labels.length" in source
+    assert "const capacity = Math.min(widthCapacity, maxLabels)" in source
+    assert "const visible = new Set(Array.from({ length: capacity }" in source
+    assert "label.hidden = !visible.has(index)" in source
+    assert 'container.replaceChildren(render(data));\n      observeDateLabels(container);' in source
+    assert "updateDateLabels(chart);" in source
+    assert "new ResizeObserver(() => updateDateLabels(chart))" in source

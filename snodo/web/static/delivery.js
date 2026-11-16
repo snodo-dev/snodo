@@ -28,11 +28,29 @@
   function updateDateLabels(chart) {
     const labels = Array.from(chart.querySelectorAll(".delivery-day-date"));
     if (labels.length < 2) return;
-    const capacity = Math.max(2, Math.floor(chart.clientWidth / 42));
-    const step = Math.max(1, Math.ceil((labels.length - 1) / (capacity - 1)));
+    const widthCapacity = Math.max(2, Math.floor(chart.clientWidth / 42));
+    // Thirty-day views are intentionally sampled even on wide displays.
+    const maxLabels = labels.length > 7 ? 6 : labels.length;
+    const capacity = Math.min(widthCapacity, maxLabels);
+    const step = (labels.length - 1) / (capacity - 1);
+    const visible = new Set(Array.from({ length: capacity }, (_, slot) => Math.round(slot * step)));
     labels.forEach((label, index) => {
-      label.hidden = index !== labels.length - 1 && index % step !== 0;
+      label.hidden = !visible.has(index);
     });
+  }
+
+  let dateLabelObserver;
+  function observeDateLabels(container) {
+    dateLabelObserver?.disconnect();
+    const chart = container.querySelector(".delivery-chart");
+    if (!chart) return;
+    updateDateLabels(chart);
+    if (window.ResizeObserver) {
+      dateLabelObserver = new ResizeObserver(() => updateDateLabels(chart));
+      dateLabelObserver.observe(chart);
+    } else {
+      window.addEventListener("resize", () => updateDateLabels(chart), { once: true });
+    }
   }
 
   function render(data) {
@@ -99,13 +117,6 @@
       column.append(track, element("span", shortDate, "delivery-day-date"));
       chart.append(column);
     }
-    updateDateLabels(chart);
-    if (window.ResizeObserver) {
-      const observer = new ResizeObserver(() => updateDateLabels(chart));
-      observer.observe(chart);
-    } else {
-      window.addEventListener("resize", () => updateDateLabels(chart));
-    }
     fragment.append(chart);
 
     fragment.append(element("h2", "By project"));
@@ -137,6 +148,7 @@
       if (!response.ok) throw new Error("Request failed");
       const data = await response.json();
       container.replaceChildren(render(data));
+      observeDateLabels(container);
     } catch (_) {
       let notice = container.querySelector("[data-delivery-error]");
       if (!notice) {
