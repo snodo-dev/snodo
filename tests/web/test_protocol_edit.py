@@ -80,3 +80,34 @@ def test_repository_protocol_criteria_edit_is_local():
     assert yaml.safe_load(output)["validators"][0]["criteria"] == criteria
     assert output.replace('      - "editor test criterion"\n', "") == text
 
+
+
+def test_type_edit_alone_changes_only_target_validator_block():
+    output, changes = apply_protocol_edits(FIXTURE, [{"validator_id": "one", "type": "security"}])
+    assert yaml.safe_load(output)["validators"][0]["validator_type"] == "security"
+    assert len(changes) == 1
+    untouched = FIXTURE[FIXTURE.index('  - validator_id: "unused"'):]
+    assert output[output.index('  - validator_id: "unused"'):] == untouched
+    assert output[:FIXTURE.index('  - validator_id: "one"')] == FIXTURE[:FIXTURE.index('  - validator_id: "one"')]
+
+
+def test_severity_cap_edit_alone_is_visible():
+    output, changes = apply_protocol_edits(FIXTURE, [{"validator_id": "one", "severity_cap": "block"}])
+    assert yaml.safe_load(output)["validators"][0]["severity_cap"] == "block"
+    assert changes[0]["field"] == "severity_cap"
+    assert "    # cap comment\n" in output
+
+
+def test_tools_edit_alone_can_remove_key():
+    output, changes = apply_protocol_edits(FIXTURE, [{"validator_id": "one", "tools": []}])
+    assert "    tools:" not in output
+    assert yaml.safe_load(output)["validators"][0].get("tools") is None
+    assert changes[0]["after"] == []
+
+
+def test_mode_edit_is_local_and_unknown_mode_raises():
+    marker = '    validators:\n      - "one"\n'
+    output, _ = apply_protocol_edits(FIXTURE, [{"mode_id": "producer", "remove_validator": "one"}])
+    assert output == FIXTURE.replace(marker, "    validators: []\n")
+    with pytest.raises(ProtocolEditError, match="unknown mode id"):
+        apply_protocol_edits(FIXTURE, [{"mode_id": "missing", "remove_validator": "one"}])
