@@ -25,7 +25,7 @@
       "spec_hash": "54f5e62cae8dec8e"
     },
     "3.1_classifier_uses_fallback": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "dad86d3095fcdb3c"
@@ -49,7 +49,7 @@
       "spec_hash": "717545aa699f9e0b"
     },
     "2.4_fallback_failure_accounting": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "4d18dd194681d66f"
@@ -57,6 +57,6 @@
   },
   "integration": {
     "branch": "plan/validator-fallback-chain/integration",
-    "base_sha": "eff3f79b91cebc11e62dea4673af1d1892c791fe"
+    "base_sha": "7b167f65d9d62badfa274807025c0f0e2e91958f"
   }
 }
