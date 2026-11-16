@@ -65,9 +65,27 @@ The dashboard has four views:
   The local page deliberately differs from the cloud Now page: it sees only
   this machine, has no project groups, and keeps a **Waiting on you** list for
   plans not yet merged into `main` and uncommitted files.
-- **Delivery** shows landed tasks, typical time, first-try rate, and flow load.
+- **Delivery** reports flow over 7, 30, or 90 days. Its five cards show landed
+  tasks, typical cycle time, first-try rate, flow load, and flow efficiency.
+  Three blocks below the cards show weekly landed-task counts, flow-time ranges
+  by work type, and a by-type detail table. Date labels are sampled for longer
+  windows so they remain readable. The response's `by_type`, `by_week`, and
+  `efficiency` fields supply the corresponding type breakdown, weekly series,
+  and efficiency measure.
+
+  Work type comes from `task_classified` audit events. The dashboard indexes
+  those events once and caches the index outside the project, in the user's
+  cache directory. Flow efficiency is the share of start-to-landed time not
+  spent after the first send-back. Tasks with unknown send-back history are
+  excluded; a task that lands on its first try counts as fully efficient. This
+  is a rework measure, not the Flow Framework's active-time-over-total-time
+  measure.
 - **Gates** shows what validators sent back and whether the work landed.
 - **Plans** shows each plan, its progress, and whether it reached `main`.
+
+The dashboard header identifies the project by name and Git remote. When the
+project id is itself the remote, that identity is shown only once. The read-only
+`GET /api/identity` route provides this header identity.
 
 The read-only `GET /api/now/spec` route takes the query values `project`,
 `plan`, and `task`. It returns JSON with `project`, `plan`, `task`, and
