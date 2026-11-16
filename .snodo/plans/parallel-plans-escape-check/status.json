@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_escape_check_ignores_other_plans": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0bcbeda846ec2cbe"
+    },
+    "1.2_queues_doc_parallel_note": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "64341e0a23b11532"
+    }
+  },
+  "integration": {
+    "branch": "plan/parallel-plans-escape-check/integration",
+    "base_sha": "87f53cae974a456711d3786a2439b3d21e0b7d34"
+  }
+}
