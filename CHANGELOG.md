@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Add a guarded protocol save bar and unified diff review overlay. (Fixes #1282)
 - Edit validator fields and criteria in the shared Protocol working copy, including mode membership. (Fixes #1281)
 - Render protocol execution settings and live rule results, including failures. (Fixes #1280)
 - Render ordered Protocol validator groups with row summaries, status bars, and shared open-row state. (Fixes #1279)
