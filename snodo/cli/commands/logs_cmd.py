@@ -576,11 +576,13 @@ def _show_job(project_root: str, job_id: str, args) -> int:
     from snodo.jobs import JobManager
     import json
 
-    mgr = JobManager(project_root)
-
     try:
+        mgr = JobManager(project_root)
         job_status = mgr.get_status(job_id)
     except Exception as e:
+        if bool(getattr(args, "json", False)):
+            from snodo.cli.json_output import emit_error
+            return emit_error("logs", f"Could not read job {job_id}: {e}", 1)
         print(f"Error: Could not read job {job_id}: {e}", file=sys.stderr)
         return 1
 
@@ -592,6 +594,7 @@ def _show_job(project_root: str, job_id: str, args) -> int:
     task_file = job_dir / "task.json"
     state_file = job_dir / "state.json"
     is_plan_job = False
+    state_data = {}
 
     if task_file.exists():
         try:
@@ -601,7 +604,7 @@ def _show_job(project_root: str, job_id: str, args) -> int:
         except Exception as e:
             _logger.debug("Could not read task.json: %s", e)
 
-    if state_file.exists() and not is_plan_job:
+    if state_file.exists():
         try:
             state_data = json.loads(state_file.read_text())
             if state_data.get("job_type") == "plan":

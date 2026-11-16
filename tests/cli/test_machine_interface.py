@@ -488,3 +488,35 @@ def test_logs_recon_json_field_names(tmp_path, capsys):
     assert set(data["totals"]) == {
         "input_tokens", "output_tokens", "model_call_time_seconds", "output_tokens_per_second",
     }
+
+
+def test_logs_job_json_field_names(tmp_path, capsys):
+    """Pin the public fields emitted by the job logs machine interface."""
+    from snodo.cli.commands.logs_cmd import logs_command
+
+    job_dir = tmp_path / ".snodo" / "jobs" / "j_fields"
+    job_dir.mkdir(parents=True)
+    (job_dir / "state.json").write_text(json.dumps({
+        "status": "completed",
+        "usage": [{"role": "coder", "input_tokens": 3, "output_tokens": 2,
+                   "duration_ms": 1000}],
+    }))
+    with patch("snodo.infrastructure.paths.require_project_root", return_value=str(tmp_path)), patch(
+        "snodo.jobs.JobManager.get_status", return_value={"status": "completed", "elapsed_seconds": 1}
+    ), patch("snodo.jobs.JobManager._job_dir", return_value=job_dir):
+        assert logs_command(SimpleNamespace(composite_id="j_fields", watch=False, json=True)) == 0
+
+    data = _parse_stdout(capsys)
+    assert data["schema"] == "snodo.logs.v1"
+    assert data["ok"] is True
+    assert set(data) == {
+        "schema", "ok", "id", "kind", "status", "elapsed_seconds",
+        "usage", "by_role", "totals",
+    }
+    assert set(data["by_role"][0]) == {
+        "role", "calls", "input_tokens", "output_tokens",
+        "model_time_seconds", "output_tokens_per_second",
+    }
+    assert set(data["totals"]) == {
+        "input_tokens", "output_tokens", "model_call_time_seconds", "calls",
+    }
