@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Edit validator fields and criteria in the shared Protocol working copy, including mode membership. (Fixes #1281)
 - Render protocol execution settings and live rule results, including failures. (Fixes #1280)
 - Render ordered Protocol validator groups with row summaries, status bars, and shared open-row state. (Fixes #1279)
 - Render the Protocol Pipeline card from the initial mode and link validator chips to editor rows. (Fixes #1278)
