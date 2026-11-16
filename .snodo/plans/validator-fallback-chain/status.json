@@ -57,6 +57,6 @@
   },
   "integration": {
     "branch": "plan/validator-fallback-chain/integration",
-    "base_sha": "f7533c18172e4c5421c357db6ae7f3bab5293a4b"
+    "base_sha": "30771c0a44bf53f92e6762ba8dbc8f45b844f3c0"
   }
 }
