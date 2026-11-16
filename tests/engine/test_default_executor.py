@@ -362,7 +362,7 @@ def test_escape_detector_names_external_checkout_and_changed_ref(tmp_path, sampl
         ("operator-branch", "current", True),
     ],
 )
-def test_escape_detector_filters_engine_namespaces_regardless_of_plan(
+def test_escape_detector_filters_only_other_plan_refs(
     tmp_path, sample_protocol, branch, plan_name, expected_escape
 ):
     from snodo.engine.loop import GraphBuilder
