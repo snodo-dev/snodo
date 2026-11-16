@@ -46,6 +46,27 @@ def test_builder_aggregates_project_metrics(monkeypatch) -> None:
     assert result["totals"]["by_type"]["feature"]["landed"] == 0
 
 
+def test_delivery_efficiency_is_null_when_no_tasks_have_known_history(monkeypatch) -> None:
+    metrics = {
+        "landed": 1, "landed_by_day": [], "median_flow_seconds": None,
+        "first_try_rate": None, "flow_load": 0, "efficiency": None,
+        "efficiency_tasks": 0, "_efficiency_flow_seconds": 0.0,
+        "_efficiency_rework_seconds": 0.0,
+    }
+    monkeypatch.setattr(routes_delivery, "flow_metrics", lambda *_args: metrics)
+    monkeypatch.setattr(routes_delivery, "plans_delivery", lambda _path: {})
+
+    result = routes_delivery.build_delivery(
+        [SimpleNamespace(name="project", path="/project")],
+        7, datetime(2026, 11, 14, tzinfo=timezone.utc),
+    )
+
+    assert result["projects"][0]["efficiency"] is None
+    assert result["projects"][0]["efficiency_tasks"] == 0
+    assert result["totals"]["efficiency"] is None
+    assert result["totals"]["efficiency_tasks"] == 0
+
+
 def test_handler_accepts_days_30_and_returns_json() -> None:
     app = Starlette(routes=[Route("/delivery", routes_delivery.handler, methods=["GET"])])
     app.state.projects = []

@@ -51,6 +51,8 @@ def test_flow_load_and_missing_snodo(tmp_path):
     assert missing["landed"] == 0
     assert missing["median_flow_seconds"] is None
     assert missing["first_try_rate"] is None
+    assert missing["efficiency"] is None
+    assert missing["efficiency_tasks"] == 0
     assert missing["unclassified"] == 0
     assert all(value["landed"] == 0 and value["share"] is None and value["median_flow_seconds"] is None and value["p85_flow_seconds"] is None for value in missing["by_type"].values())
     assert all(all(week[key] == 0 for key in ("feature", "defect", "debt", "risk", "unclassified")) for week in missing["by_week"])
