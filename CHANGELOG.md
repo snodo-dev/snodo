@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Document validator fallback ordering, operational-only switches, and exhausted-list behavior. (Fixes #1290)
 - Preserve token usage attached to failed validator completion responses across model fallback, without duplicating successful-call records. (Fixes #1289)
 - Use ordered validator model fallbacks for operational classifier failures, preserving the existing non-fatal classification behavior. (Fixes #1288)
 - Wire configured validator fallback models into every validator completion chain with sanitized switch logging. (Fixes #1287)

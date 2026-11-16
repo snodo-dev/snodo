@@ -196,7 +196,7 @@ validator's own `model` setting takes precedence over the configured role model.
 | `llm.coder.silence_timeout_seconds` | `600` | Stop a subprocess coder after this many seconds without output; minimum 1. |
 | `llm.coder.concurrency` | `1` | Maximum concurrent coders for this operator; minimum 1. |
 | `llm.validator.model` | unset | Validator model; falls back to `model`. |
-| `llm.validator.fallback` | `[]` | Models tried in order when the validator model fails operationally. |
+| `llm.validator.fallback` | `[]` | Ordered fallback models for validator and classifier calls. |
 | `llm.validator.max_tokens` | `1500` | Validator completion token budget; minimum 1. |
 | `llm.validator.max_tool_turns` | `6` | Validator read-tool turn limit (1–200). |
 | `llm.validator_llm.model` | unset | Legacy-compatible validator role model; falls back to `model`. |
@@ -210,6 +210,22 @@ validator's own `model` setting takes precedence over the configured role model.
 | `llm.recon.deadline_seconds` | `300` | Wall-clock limit per recon agent, including provider calls and retries; applies to `snodo recon` on the CLI and through MCP; minimum 1. |
 | `llm.wave.max_age_days` | `14` | Hard expiry age for a wave; minimum 1. |
 | `llm.wave.max_idle_days` | `5` | Idle timeout before a wave closes; minimum 1. |
+
+### Validator model fallbacks
+
+`llm.validator.fallback` is an ordered list tried after the configured model.
+Snodo switches only when a call fails for an operational reason (rate limit,
+timeout, connection fault, or provider server error) and that model's retries
+are spent. Any answer is final, whatever it says; an unfavorable verdict does
+not trigger a switch. The classifier uses the same fallback list. Each switch
+writes one line to the job log. If every model fails, the run halts as
+`validator_error`, as before.
+
+Set the list with one command:
+
+```bash
+snodo config set llm.validator.fallback model-a,model-b
+```
 
 For a slower local model, raise the per-agent deadline; for example, to allow
 15 minutes per agent:
