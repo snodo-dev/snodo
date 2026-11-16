@@ -2894,13 +2894,20 @@ def test_completion_fallback_uses_alternative_model_and_safe_switch_callback(
 ):
     from snodo.validators import llm_validator as module
 
-    monkeypatch.setattr(module, "_RETRY_ATTEMPTS", 1)
+    from litellm.exceptions import RateLimitError
+
+    monkeypatch.setattr(module, "_RETRY_BASE_DELAY_SECONDS", 0)
+    monkeypatch.setattr(module, "_RETRY_JITTER_RATIO", 0)
+    monkeypatch.setattr(module.time, "sleep", lambda _: None)
     calls = []
     notifications = []
 
     def first(**kwargs):
         calls.append(("first", kwargs))
-        raise ConnectionError("secret provider response")
+        raise RateLimitError(
+            message="secret provider response", model="provider-a",
+            llm_provider="test", response=None,
+        )
 
     def second(**kwargs):
         calls.append(("second", kwargs))
@@ -2912,9 +2919,9 @@ def test_completion_fallback_uses_alternative_model_and_safe_switch_callback(
         on_model_switch=lambda *args: notifications.append(args),
     )
     assert validator._call_completion_with_retry(messages=[{"role": "user", "content": "x"}]) == "answer"
-    assert [name for name, _ in calls] == ["first", "second"]
-    assert calls[1][1]["_configured_model"] == "provider-b"
-    assert notifications == [("provider-a", "provider-b", "ConnectionError")]
+    assert [name for name, _ in calls] == ["first", "first", "first", "second"]
+    assert calls[-1][1]["_configured_model"] == "provider-b"
+    assert notifications == [("provider-a", "provider-b", "RateLimitError")]
     assert "secret provider response" not in repr(notifications)
     assert validator.model == "provider-b"
 
@@ -2932,3 +2939,49 @@ def test_completion_fallback_raises_last_operational_error(security_validator, m
     with pytest.raises(ConnectionError) as raised:
         validator._call_completion_with_retry(messages=[])
     assert raised.value is error
+
+
+@pytest.mark.parametrize("severity", ["pass", "warn", "blocker"])
+def test_completion_fallback_does_not_retry_a_verdict(
+    security_validator, severity,
+):
+    calls = []
+
+    def first(**kwargs):
+        calls.append("first")
+        return _make_llm_response(severity, "final verdict")
+
+    def alternative(**kwargs):
+        calls.append("alternative")
+        return _make_llm_response("pass", "should not run")
+
+    validator = LLMValidator(
+        security_validator, first, model="provider-a",
+        alternatives=[("provider-b", alternative)],
+    )
+    result = validator._parse_response(validator._call_llm("review"))
+
+    assert result.severity == severity
+    assert calls == ["first"]
+
+
+def test_completion_fallback_does_not_retry_an_unusable_verdict(security_validator):
+    calls = []
+
+    def first(**kwargs):
+        calls.append("first")
+        return _make_llm_response("unusable", "not a supported severity")
+
+    def alternative(**kwargs):
+        calls.append("alternative")
+        return _make_llm_response("pass", "should not run")
+
+    validator = LLMValidator(
+        security_validator, first, model="provider-a",
+        alternatives=[("provider-b", alternative)],
+    )
+    result = validator._parse_response(validator._call_llm("review"))
+
+    assert result.severity == "warn"
+    assert "Invalid severity" in result.justification
+    assert calls == ["first"]
