@@ -16,13 +16,13 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "3d305fbbdae337f5"
+      "spec_hash": "cc508a32c8f0ffb6"
     },
     "2.2_config_command_lists_fallback": {
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "ef404186e467b1d3"
+      "spec_hash": "54f5e62cae8dec8e"
     },
     "3.1_classifier_uses_fallback": {
       "status": "pending",
@@ -57,6 +57,6 @@
   },
   "integration": {
     "branch": "plan/validator-fallback-chain/integration",
-    "base_sha": "a4d22fa0d2d9708fbe45397ab634cd4d95568e8f"
+    "base_sha": "fb2de0c74c5e4adb301731bfd0f45fb314068b06"
   }
 }
