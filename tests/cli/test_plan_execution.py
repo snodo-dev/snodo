@@ -225,6 +225,76 @@ def test_full_plan_execution_happy_path(plan_project_env, capsys):
     assert "Plan progress: 2/2 completed" in out
 
 
+def test_plan_run_prints_job_usage_after_progress(plan_project_env, capsys, monkeypatch):
+    """The plan's own job usage is summarized after progress, including retries."""
+    import json
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "usage_plan")
+    job_id = "j_planusage"
+    monkeypatch.setenv("SNODO_JOB_ID", job_id)
+    state_path = plan_project_env / ".snodo" / "jobs" / job_id / "state.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(json.dumps({"usage": [
+        {"role": "validator:quality", "input_tokens": 10, "output_tokens": 2},
+        {"role": "coder", "input_tokens": 20, "output_tokens": 4},
+        {"role": "validator:quality", "input_tokens": 3, "output_tokens": 1, "failed": True},
+    ]}))
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", return_value=0):
+        result = _run_plan(_make_plan_args(plan_name))
+
+    assert result == 0
+    out = capsys.readouterr().out
+    progress = out.index("Plan progress: 2/2 completed")
+    validator = out.index("validator:quality: 13 | 3")
+    coder = out.index("coder: 20 | 4")
+    total = out.index("total: 33 | 7")
+    assert progress < validator < coder < total
+
+
+def test_plan_run_without_job_usage_keeps_progress_and_exit_code(
+    plan_project_env, capsys, monkeypatch
+):
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "no_usage_plan")
+    job_id = "j_nousage"
+    monkeypatch.setenv("SNODO_JOB_ID", job_id)
+    state_path = plan_project_env / ".snodo" / "jobs" / job_id / "state.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text('{"usage": []}')
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", return_value=0):
+        result = _run_plan(_make_plan_args(plan_name))
+
+    assert result == 0
+    out = capsys.readouterr().out
+    assert "Plan progress: 2/2 completed" in out
+    assert "Usage: role | input tokens" not in out
+
+
+def test_plan_run_usage_does_not_change_failure_exit_code(plan_project_env, capsys, monkeypatch):
+    import json
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "failed_usage_plan")
+    job_id = "j_failedusage"
+    monkeypatch.setenv("SNODO_JOB_ID", job_id)
+    state_path = plan_project_env / ".snodo" / "jobs" / job_id / "state.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(json.dumps({"usage": [
+        {"role": "coder", "input_tokens": 1, "output_tokens": 1},
+    ]}))
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", return_value=1):
+        result = _run_plan(_make_plan_args(plan_name))
+
+    assert result == 1
+    out = capsys.readouterr().out
+    assert "Plan progress: 0/2 completed" in out
+    assert "coder: 1 | 1" in out
+
+
 def test_benchmark_fixture_repeated_runs_start_from_same_state(plan_project_env):
     """Each fixture run gets a fresh clone, while the fixture stays untouched."""
     planner = PlannerMCP(plan_project_env)
