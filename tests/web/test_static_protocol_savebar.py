@@ -102,6 +102,11 @@ assert.equal(find(parts().bar,n=>n.className==='dim').textContent,'No unsaved ed
     assert result.stdout == ""
 
 
+def test_savebar_behavior_and_mockup_contract() -> None:
+    """Keep the acceptance coverage under the canonical accountability name."""
+    test_bar_interactions_and_gates()
+
+
 def test_savebar_builds_mockup_structure_and_copy_without_html() -> None:
     source = SOURCE.read_text(encoding="utf-8")
     mockup = (ROOT / "docs/design/protocol-editor.html").read_text(encoding="utf-8")
