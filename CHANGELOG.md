@@ -8,7 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
-- Add the Protocol dashboard shell and shared validator editing state. (Fixes #1273)
+- Add the Protocol dashboard shell and shared validator editing state, including the mockup-matched head. (Fixes #1273, #1274)
 - Test Protocol head rendering classes and shared edit-state changes. (Fixes #1275)
 - Preserve protocol YAML comments and layout when editing validator settings. (Fixes #1272)
 - Serve validated project protocol details and published cross-field rules through the read-only dashboard API. (Fixes #1258)

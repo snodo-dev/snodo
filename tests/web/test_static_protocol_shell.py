@@ -101,3 +101,13 @@ console.log(JSON.stringify({classes:nodes.map(n=>n.className).filter(Boolean), t
     assert "Reads .snodo/protocol.yml" in rendered["text"]
     assert "schema valid" in rendered["text"]
     assert "Reload from disk" in rendered["text"]
+
+
+def test_protocol_section_scripts_register_in_shell_order() -> None:
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    names = ("tiles", "pipeline", "validators", "execution", "savebar")
+    positions = [html.index(f'/static/protocol-{name}.js') for name in names]
+    assert positions == sorted(positions)
+    for name in names:
+        source = (STATIC / f"protocol-{name}.js").read_text(encoding="utf-8")
+        assert "registerRenderer(() => {})" in source
