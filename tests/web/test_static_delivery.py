@@ -193,7 +193,9 @@ const container = new Node("main");
   const flowRows = nodes.filter((node) => node.className === "delivery-flow-row");
   const typeTable = nodes.find((node) => node.className === "delivery-types");
   const detailBlocks = nodes.filter((node) => node.className === "delivery-detail-block");
-  const projectHeading = nodes.findIndex((node) => node.tagName === "h2" && node.textContent === "By project");
+  const figureIndexes = nodes.flatMap((node, index) => node.className === "delivery-figure" ? [index] : []);
+  const detailIndexes = nodes.flatMap((node, index) => node.className === "delivery-detail-block" ? [index] : []);
+  const typeBlock = detailBlocks.find((block) => block.children[0].textContent === "By type");
   const detailData = {
     weeks: weeklyColumns.map((column) => ({
       total: column.children[0].textContent,
@@ -209,7 +211,8 @@ const container = new Node("main");
     tableHeaders: all(typeTable).filter((node) => node.tagName === "th").map((node) => node.textContent),
     tableRows: all(typeTable).filter((node) => node.tagName === "tr").length - 1,
     order: detailBlocks.map((block) => block.children[0].textContent),
-    detailBeforeProjects: Math.max(...nodes.map((node, index) => node.className === "delivery-detail-block" ? index : -1)) < projectHeading,
+    detailAfterFigures: Math.min(...detailIndexes) > Math.max(...figureIndexes),
+    reworkNoteInByType: all(typeBlock).some((node) => node.className === "delivery-rework-note"),
   };
   const buttons = nodes.filter((node) => node.tagName === "button");
   await buttons.find((button) => button.textContent === "90d").click();
@@ -260,7 +263,8 @@ const container = new Node("main");
     assert details["tableHeaders"] == ["Type", "Landed", "Share", "Median time", "85%"]
     assert details["tableRows"] == 4
     assert details["order"] == ["Landed per day", "Velocity by week", "Flow time by type", "By type", "By project"]
-    assert details["detailBeforeProjects"]
+    assert details["detailAfterFigures"]
+    assert details["reworkNoteInByType"]
 
 
 def test_delivery_efficiency_is_null_safe_and_type_tokens_exist_in_themes() -> None:

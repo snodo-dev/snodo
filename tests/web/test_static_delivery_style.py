@@ -32,3 +32,19 @@ def test_delivery_hidden_date_labels_do_not_take_up_chart_space() -> None:
     stylesheet = STYLESHEET.read_text(encoding="utf-8")
     assert ".delivery-day-date[hidden]" in stylesheet
     assert "display: none" in stylesheet
+
+
+def test_delivery_detail_panels_match_figure_border_and_radius_tokens() -> None:
+    stylesheet = STYLESHEET.read_text(encoding="utf-8")
+
+    def declarations(selector: str) -> dict[str, str]:
+        match = re.search(rf"\.{selector}\s*\{{([^}}]*)\}}", stylesheet)
+        assert match is not None
+        return dict(
+            re.findall(r"([\w-]+)\s*:\s*([^;]+);", match.group(1))
+        )
+
+    figure = declarations("delivery-figure")
+    detail = declarations("delivery-detail-block")
+    assert detail["border"] == figure["border"] == "1px solid var(--border)"
+    assert detail["border-radius"] == figure["border-radius"] == "0.75rem"
