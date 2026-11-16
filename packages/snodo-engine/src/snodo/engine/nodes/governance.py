@@ -199,10 +199,56 @@ class GovernanceNodeMixin:
                 classifier_model = getattr(
                     self, "_classifier_model", None
                 ) or self._default_model
+                completion_fn = getattr(self, "_classifier_completion_fn", self._completion_fn)
+                fallback_models = list(getattr(self, "_classifier_fallback_models", []) or [])
+                if fallback_models:
+                    from snodo.infrastructure.model_fallback import call_with_model_fallback
+                    from snodo.validators.runner import build_completion_fn
+                    from snodo.infrastructure.completion_headers import wrap_completion_fn_with_headers
+
+                    base_completion = getattr(self, "_classifier_base_completion_fn", None)
+                    completion_by_model = {
+                        classifier_model: wrap_completion_fn_with_headers(
+                            completion_fn, loop_state.task.id
+                        )
+                    }
+                    for fallback_model in fallback_models:
+                        if fallback_model not in completion_by_model and base_completion is not None:
+                            rebound = build_completion_fn(fallback_model, base_completion)
+                            completion_by_model[fallback_model] = wrap_completion_fn_with_headers(
+                                rebound, loop_state.task.id
+                            )
+
+                    def classify_with_fallback(**kwargs):
+                        requested_model = kwargs.pop("_configured_model", classifier_model)
+                        models = list(dict.fromkeys([requested_model, *fallback_models]))
+
+                        def call_model(model):
+                            fn = completion_by_model.get(model)
+                            if fn is None:
+                                raise RuntimeError(
+                                    f"No completion client configured for fallback model {model}"
+                                )
+                            return fn(_configured_model=model, **kwargs)
+
+                        def log_switch(failed, next_model, reason):
+                            progress = getattr(self, "_progress", None)
+                            if progress is not None:
+                                progress(
+                                    f"    classifier model switch {failed} -> {next_model} "
+                                    f"({reason.splitlines()[0][:160]})"
+                                )
+
+                        response, _ = call_with_model_fallback(
+                            models, call_model, on_switch=log_switch
+                        )
+                        return response
+
+                    completion_fn = classify_with_fallback
                 result = registry.classify_task(
                     loop_state.task.spec,
                     loop_state.task.id,
-                    getattr(self, '_classifier_completion_fn', self._completion_fn),
+                    completion_fn,
                     classifier_model,
                 )
                 loop_state.task.flow_type = result.get("flow_type") or "feature"

@@ -571,6 +571,13 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             classifier_completion_fn = validator_completion_fn
 
         self._classifier_completion_fn = classifier_completion_fn
+        self._classifier_base_completion_fn = _base_fn or (
+            mock_base if is_mock_mode_active() or isinstance(self.coder, MockAdapter)
+            else litellm_completion
+        )
+        self._classifier_fallback_models = list(
+            (config.get("llm", {}).get("validator", {}) or {}).get("fallback", []) or []
+        )
         # The classifier model is resolved exactly once, here.  The same value
         # binds the completion function (model + api_base) and is passed to the
         # classification call, so the two can never disagree (ADR 020).

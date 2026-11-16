@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Use ordered validator model fallbacks for operational classifier failures, preserving the existing non-fatal classification behavior. (Fixes #1288)
 - Wire configured validator fallback models into every validator completion chain with sanitized switch logging. (Fixes #1287)
 - Let `snodo config set/get` manage the validator fallback list, including clearing it. (Fixes #1286)
 - Let validator judges switch to ordered alternative completion functions after operational retries are exhausted, without reusing provider credentials. (Fixes #1285)

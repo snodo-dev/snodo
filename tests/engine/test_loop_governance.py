@@ -415,3 +415,57 @@ def test_wave_created_not_reemitted_for_subsequent_tasks_in_wave(sample_protocol
     assert event_types.count("wave_created") == 1
     assert event_types.count("task_classified") == 2
 
+
+
+def test_classifier_uses_validator_model_fallback(sample_protocol, sample_task, monkeypatch):
+    """A transient classifier failure switches once and accepts fallback output."""
+    from types import SimpleNamespace
+
+    builder = GraphBuilder(sample_protocol)
+    builder._project_root = "/fake/project"
+    builder._classifier_model = "primary"
+    builder._classifier_fallback_models = ["backup"]
+    notices = []
+    builder._progress = notices.append
+    calls = []
+
+    def base_completion(**kwargs):
+        model = kwargs["model"]
+        calls.append(model)
+        if model == "primary":
+            raise RuntimeError("rate limit exceeded")
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))])
+
+    builder._classifier_base_completion_fn = base_completion
+    builder._classifier_completion_fn = lambda **kwargs: base_completion(model="primary")
+    monkeypatch.setattr(
+        "snodo.validators.runner.build_completion_fn",
+        lambda model, base: lambda **kwargs: base(model=model, **kwargs),
+    )
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.resolve_extra_headers",
+        lambda *args, **kwargs: {},
+    )
+
+    def classify_task(spec, task_id, completion_fn, model):
+        response = completion_fn(_configured_model=model, messages=[])
+        assert response.choices[0].message.content == "ok"
+        return {
+            "flow_type": "feature", "wave_id": "w_0001",
+            "task_summary": "summary", "new_wave": False,
+        }
+
+    with patch(
+        "snodo.infrastructure.wave_registry.WaveRegistry.classify_task",
+        side_effect=classify_task,
+    ):
+        builder._classify_wave(
+            builder._dict_to_state({
+                "task": {"id": sample_task.id, "spec": sample_task.spec},
+                "iteration": 1, "metadata": {},
+            })
+        )
+
+    assert calls == ["primary", "backup"]
+    assert len(notices) == 1
+    assert "primary -> backup" in notices[0]
