@@ -75,6 +75,6 @@
   },
   "integration": {
     "branch": "plan/protocol-editor/integration",
-    "base_sha": "d11c3060174aeeb4d4897f96fe2240a6214f013b"
+    "base_sha": "06403256c56b226acecca579e294b50445341245"
   }
 }
