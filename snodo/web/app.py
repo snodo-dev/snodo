@@ -20,6 +20,7 @@ from snodo.web.routes_gates import handler as gates_handler
 from snodo.web.routes_identity import handler as identity_handler
 from snodo.web.routes_now import handler as now_handler
 from snodo.web.routes_plans import handler as plans_handler
+from snodo.web.routes_protocol import handler as protocol_handler
 from snodo.web.routes_spec import handler as spec_handler
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -90,6 +91,7 @@ def create_app(projects: Iterable[Project]) -> Starlette:
         Route("/api/now", now_handler, methods=["GET", "HEAD"]),
         Route("/api/now/spec", spec_handler, methods=["GET", "HEAD"]),
         Route("/api/plans", plans_handler, methods=["GET", "HEAD"]),
+        Route("/api/protocol", protocol_handler, methods=["GET", "HEAD"]),
         Route("/api/delivery", delivery_handler, methods=["GET", "HEAD"]),
         Route("/api/gates", gates_handler, methods=["GET", "HEAD"]),
         Route("/", _index_handler, methods=["GET", "HEAD"]),
