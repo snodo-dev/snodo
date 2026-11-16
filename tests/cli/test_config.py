@@ -1089,6 +1089,12 @@ class TestCLILLMModelKeys:
             assert output == ", ".join(expected)
             assert cli_config_dir.load()["model"] == "keep-this"
 
+    def test_validator_fallback_rejects_nonempty_blank_list_like_recon(self, cli_config_dir, capsys):
+        assert main(["config", "set", "llm.validator.fallback", " , "]) == 1
+        assert "llm.validator.fallback must be a non-empty comma-separated list" in capsys.readouterr().err
+        assert main(["config", "set", "llm.recon.models", " , "]) == 1
+        assert "llm.recon.models must be a non-empty comma-separated list" in capsys.readouterr().err
+
     def test_validator_fallback_can_be_first_written(self, cli_config_dir, capsys, monkeypatch):
         from snodo.infrastructure.config import load_llm_config
 

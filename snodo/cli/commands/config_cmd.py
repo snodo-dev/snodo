@@ -443,7 +443,7 @@ def _set_llm_value(mgr: ConfigManager, subkey: str, value: str) -> int:
     value_type = _LLM_SETTABLE_KEYS[subkey]
     if value_type is list:
         parsed: object = [item.strip() for item in value.split(",") if item.strip()]
-        if not parsed and subkey != "validator.fallback":
+        if not parsed and (subkey != "validator.fallback" or value.strip()):
             print(f"Error: llm.{subkey} must be a non-empty comma-separated list", file=sys.stderr)
             return 1
     else:
