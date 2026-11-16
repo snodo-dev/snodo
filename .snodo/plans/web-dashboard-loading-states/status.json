@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_shell_first_load_skeleton": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "aac8586eac3189dd"
+    },
+    "1.2_now_refetch_busy_state": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "00b83fba6acbb403"
+    }
+  },
+  "integration": {
+    "branch": "plan/web-dashboard-loading-states/integration",
+    "base_sha": "1cfc292aba3198e1ee4f7778159158fc4747c740"
+  }
+}

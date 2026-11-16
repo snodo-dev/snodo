@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1.1_logs_json_for_recons": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f0624cbfbb5dab5a"
+    },
+    "2.1_logs_json_for_jobs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b82d4c27460b330c"
+    },
+    "3.1_logs_json_docs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "daad539377849dad"
+    }
+  },
+  "integration": {
+    "branch": "plan/logs-json-output/integration",
+    "base_sha": "db706e10a3bb36a87a03c53b3382b74d1c9c025c"
+  }
+}

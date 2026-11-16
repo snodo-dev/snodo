@@ -1,0 +1,50 @@
+{
+  "tasks": {
+    "1.1_task_spec_reader": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d95adaa1f419d8b4"
+    },
+    "1.2_markdown_renderer": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1f791b7171f6dd63"
+    },
+    "2.1_task_spec_route": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2baef60c583d3a02"
+    },
+    "2.2_shell_preloads_renderer": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ec1122301f40c1ac"
+    },
+    "3.1_now_side_panel_shell": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0a89114060f0f239"
+    },
+    "4.1_side_panel_shows_spec": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c4da654448c8fd20"
+    },
+    "4.2_docs_task_panel": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "648d1c81489fdf73"
+    }
+  },
+  "integration": {
+    "branch": "plan/web-dashboard-task-panel/integration",
+    "base_sha": "6f064d3c7c72d7f0246ac6c28fb3cf2eb147ec23"
+  }
+}

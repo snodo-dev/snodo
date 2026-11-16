@@ -1,0 +1,50 @@
+{
+  "tasks": {
+    "1.1_validator_fallback_config_key": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "23abbdb78656c7e0"
+    },
+    "1.2_model_fallback_helper": {
+      "status": "errored",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3a751b78d5bf54af"
+    },
+    "2.1_validator_calls_use_fallback": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "1cef74b9a13d53c7"
+    },
+    "2.2_config_command_lists_fallback": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f0fc7c7c179d0eaa"
+    },
+    "3.1_classifier_uses_fallback": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "dad86d3095fcdb3c"
+    },
+    "3.2_fallback_configuration_docs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0d672525ddc78635"
+    },
+    "4.1_fallback_decision_record": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fe66e3cf1745de69"
+    }
+  },
+  "integration": {
+    "branch": "plan/validator-fallback-chain/integration",
+    "base_sha": "b004de1c3a37fed920ec8136acd12894548668f9"
+  }
+}

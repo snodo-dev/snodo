@@ -1,0 +1,20 @@
+intent: 'Ylli''s feedback on the new Delivery page (screenshot): the five figure cards
+  at the top sit in surface cards, but everything below them (Landed per day, Velocity
+  by week, Flow time by type, By type, By project) floats on the bare page background
+  with no container, so the sections run into each other and are hard to read, and
+  the Velocity by week bars become two huge slabs when only a couple of weeks have
+  data. Wanted: each section in a panel that matches the card style above (same surface,
+  border and radius tokens, a heading inside the panel), consistent spacing between
+  panels, and week columns of a sensible width. Pure presentation: no payload, route
+  or backend change; Existing keys, test names and the Now page stay as they are.'
+name: web-dashboard-delivery-panels
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_delivery_sections_in_panels
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_delivery_week_chart_proportions

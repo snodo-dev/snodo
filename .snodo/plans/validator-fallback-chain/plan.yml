@@ -1,0 +1,34 @@
+intent: 'Let the validator model be a short ordered list. When the configured validator
+  model fails for an operational reason that survived the existing transient retries
+  (rate limit, timeout, connection fault, provider 5xx), the call is tried on the
+  next model in the list, so one rate-limited provider no longer halts a whole task
+  as validator_error. Verdicts are never a trigger: a model that answers (pass, warn,
+  blocker, or an unusable verdict) is final, and a model is never switched because
+  of what it said. Applies to every validator LLM call, including the wave validators
+  and the work-type classifier. Recon already fails over this way; the new key follows
+  that pattern. An exhausted list ends in the existing validator_error halt. No new
+  state, status, severity or halt type.'
+name: validator-fallback-chain
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_validator_fallback_config_key
+  - 1.2_model_fallback_helper
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_validator_calls_use_fallback
+  - 2.2_config_command_lists_fallback
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_classifier_uses_fallback
+  - 3.2_fallback_configuration_docs
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_fallback_decision_record

@@ -1,0 +1,17 @@
+intent: 'The workspace-escape check still stops healthy tasks. Evidence from job j_37de6ed4dee1:
+  protocol-editor task 1.3 coded fine and then halted with "Workspace escape detected:
+  ref ''plan/protocol-editor/integration'' changed", because the task before it in
+  the same plan merged into that integration branch while 1.3 was running; and job
+  j_b57b30ef7fa0 (plan logs-json-output) halted on the same message for the branch
+  of a different plan, even after the earlier fix (plan parallel-plans-escape-check)
+  was merged. The check should only count branches the engine does not manage. Branches
+  the engine itself creates and moves (every plan integration branch and every task
+  branch) are never evidence that a coder escaped; operator branches such as main
+  and any other branch still are. No new state, status, severity or halt type.'
+name: escape-check-engine-refs
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_escape_check_skips_engine_branches
+  - 1.2_queues_doc_engine_branches_note

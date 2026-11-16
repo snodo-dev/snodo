@@ -1,0 +1,22 @@
+intent: 'Add a --json option to snodo logs so a recon id or a job id prints one machine-readable
+  JSON object with status, elapsed time and token usage totals. Motivation: benchmark
+  throughput numbers (input tokens, output tokens, model call time per agent or role)
+  can be computed without scraping the text output. Today `snodo logs rec_079678 --json`
+  fails with ''No such option: --json''. Existing text output, --watch and every other
+  behaviour stay as they are. No new state, status or halt type.'
+name: logs-json-output
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_logs_json_for_recons
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_logs_json_for_jobs
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_logs_json_docs

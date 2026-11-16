@@ -1,0 +1,44 @@
+{
+  "tasks": {
+    "1.1_shell_tokens_and_top_bar": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "68cc2de1b61f44fd"
+    },
+    "1.2_now_head_counters_attention": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0e0e57ddc7d1b367"
+    },
+    "2.1_now_fleet_and_plan_rows": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7a03b0cb68a01256"
+    },
+    "3.1_now_wave_and_task_rows": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a342c353ba711908"
+    },
+    "4.1_now_detail_panel_layout": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b8b4b32bc07acab8"
+    },
+    "4.2_docs_redesign": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f965cc4bf1dd5728"
+    }
+  },
+  "integration": {
+    "branch": "plan/web-dashboard-redesign/integration",
+    "base_sha": "cad7dded3ba269e563305f1baf8c260ba919148c"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "tasks": {
+    "1.1_markdown_reads_ticket_layout": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3ec3b2d564a92a51"
+    },
+    "1.2_now_full_width_until_selection": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "00d8ba572e52ad00"
+    },
+    "1.3_routes_keep_loop_free": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a0ba69b88a239550"
+    },
+    "2.1_spec_progress_bar_learns": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5fe93b519e6fc7ce"
+    },
+    "3.1_spec_typography": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a7badfc2ca23ccb7"
+    },
+    "3.2_docs_panel_polish": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b75fe06087988fcd"
+    }
+  },
+  "integration": {
+    "branch": "plan/web-dashboard-panel-polish/integration",
+    "base_sha": "493e0dae031c5a17e10deb79c3cbc87d79f344b1"
+  }
+}
