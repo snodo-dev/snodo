@@ -46,7 +46,7 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "1069e9204ec6f889"
+      "spec_hash": "717545aa699f9e0b"
     },
     "2.4_fallback_failure_accounting": {
       "status": "pending",
@@ -57,6 +57,6 @@
   },
   "integration": {
     "branch": "plan/validator-fallback-chain/integration",
-    "base_sha": "59b19aa6593faf250adcf76ed4024b82e92f884c"
+    "base_sha": "f7533c18172e4c5421c357db6ae7f3bab5293a4b"
   }
 }
