@@ -354,13 +354,15 @@ def test_escape_detector_names_external_checkout_and_changed_ref(tmp_path, sampl
     [
         ("plan/other/integration", "current", False),
         ("task/other/task-1/feature", "current", False),
-        ("plan/current/integration", "current", True),
-        ("task/current/task-1/feature", "current", True),
+        ("plan/current/integration", "current", False),
+        ("task/current/task-1/feature", "current", False),
+        ("plan/other/integration", None, False),
+        ("task/other/task-1/feature", None, False),
         ("main", "current", True),
-        ("plan/other/integration", None, True),
+        ("operator-branch", "current", True),
     ],
 )
-def test_escape_detector_filters_only_other_plan_refs(
+def test_escape_detector_filters_engine_namespaces_regardless_of_plan(
     tmp_path, sample_protocol, branch, plan_name, expected_escape
 ):
     from snodo.engine.loop import GraphBuilder
