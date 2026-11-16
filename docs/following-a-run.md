@@ -92,6 +92,23 @@ on model-call time. `n/a` means the relevant summary value was not reported or c
 measured, not zero. Input-token counts from the in-place `opencode-cli` coder and
 the LiteLLM coder are counted differently and are not directly comparable.
 
+### Machine-readable usage summary
+
+Use `snodo logs <id> --json` to get throughput data for a recon or job:
+
+```sh
+snodo logs rec_a1b2c3d4 --json
+snodo logs j_a1b2c3d4 --json
+```
+
+Each record includes its schema, status, and elapsed seconds. Recon records
+break usage down by agent; job records break it down by role. The breakdown
+includes input and output tokens, model time, and output tokens per second;
+totals include input and output tokens and model time (recon totals also include
+output tokens per second). This option cannot be combined with `--watch`. See
+the [machine interface page](machine-interface.md) for the
+exact fields.
+
 ## Interpret the result
 
 Job status is separate from plan task status. A job moves through `queued` and

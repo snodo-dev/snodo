@@ -231,7 +231,7 @@ are used as described above. See [CLI recon](decompose-and-recon.md#cli-recon).
 | Command | Arguments and options |
 |---|---|
 | `snodo status` | `--json` |
-| `snodo logs` | `<composite_id>`, `--watch`/`-w` |
+| `snodo logs` | `<composite_id>`, `--watch`/`-w`, `--json` |
 | `snodo runs` | `--json`, `--send` |
 | `snodo meta` | `<composite_id>`, `--json` |
 | `snodo job list` | — |
@@ -260,6 +260,8 @@ are used as described above. See [CLI recon](decompose-and-recon.md#cli-recon).
 | `snodo agent reset` | `<agent_id>` |
 | `snodo agent rotate` | `<agent_id>` |
 | `snodo dashboard` | `--web`, `--cli`, `--port`, `--root` |
+
+`snodo logs <id> --json` prints machine-readable output for recon and job IDs; see the [machine interface page](machine-interface.md) for the exact fields. It cannot be combined with `--watch`.
 
 For a live job, the cloud live view at the configured cloud liveness/app URL
 with `?task_ref=<task_ref>` shows task status and progress when cloud sync is

@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Document machine-readable `snodo logs --json` output for recon and job usage. (Fixes #1271)
 - Emit job logs as versioned JSON with usage totals grouped by role. (Fixes #1269)
 - Include plan-job usage and uniform JSON errors in job logs output. (Fixes #1270)
 - Emit recon logs as a versioned JSON machine-interface record with aggregate usage totals. (Fixes #1264)
