@@ -1,19 +1,19 @@
 {
   "tasks": {
     "1.1_classifier_calls_attributed": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "d1ede2bdff111a25"
     },
     "1.2_coder_usage_carries_task": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "1aabfe0d11019889"
     },
     "1.3_job_logs_print_usage_table": {
-      "status": "pending",
+      "status": "errored",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "494bdb8e60b17797"
@@ -36,5 +36,9 @@
       "depth": 0,
       "spec_hash": "f713b2e27ba4696f"
     }
+  },
+  "integration": {
+    "branch": "plan/usage-table/integration",
+    "base_sha": "4ff7ee42723b1bdda988a9f5e0cf508142f841f4"
   }
 }
