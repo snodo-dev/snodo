@@ -13,7 +13,7 @@
       "spec_hash": "1aabfe0d11019889"
     },
     "1.3_job_logs_print_usage_table": {
-      "status": "errored",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "494bdb8e60b17797"
@@ -39,6 +39,6 @@
   },
   "integration": {
     "branch": "plan/usage-table/integration",
-    "base_sha": "4ff7ee42723b1bdda988a9f5e0cf508142f841f4"
+    "base_sha": "43c34bd6ec58aaf4df502e6cf29358b937bcecbc"
   }
 }
