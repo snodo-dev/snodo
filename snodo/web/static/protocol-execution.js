@@ -58,4 +58,5 @@
     }
   }
   api.registerRenderer(render);
+  api.registerRenderer(() => {});
 })();
