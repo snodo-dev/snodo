@@ -7,7 +7,7 @@
       "spec_hash": "23abbdb78656c7e0"
     },
     "1.2_model_fallback_helper": {
-      "status": "errored",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "3a751b78d5bf54af"
@@ -45,6 +45,6 @@
   },
   "integration": {
     "branch": "plan/validator-fallback-chain/integration",
-    "base_sha": "b004de1c3a37fed920ec8136acd12894548668f9"
+    "base_sha": "89eab1e786edacba8a6d24e142f914998e6c43d7"
   }
 }
