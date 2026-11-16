@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Clarify that concurrent plans in separate queues do not trip each other's workspace-escape check. (Fixes #1260)
 - Keep Delivery weekly chart columns proportionate and align chart panels, with flow values fitting narrow panels. (Fixes #1253)
 - Give every Delivery detail section a consistent bordered panel, with headings and notes contained inside. (Fixes #1251)
 - Index `task_classified` audit events once in the user cache to provide work types for Delivery flow measures. (Fixes #1250)
