@@ -35,6 +35,9 @@ def build_delivery(
     type_counts = {kind: 0 for kind in ("feature", "defect", "debt", "risk")}
     type_durations = {kind: [] for kind in type_counts}
     unclassified_total = 0
+    efficiency_flow_total = 0.0
+    efficiency_rework_total = 0.0
+    efficiency_tasks_total = 0
     weekly = _week_zeros(first_day, current.date())
     weekly_by_start = {row["week_start"]: row for row in weekly}
 
@@ -45,6 +48,9 @@ def build_delivery(
         landed_total += landed
         all_durations.extend(metrics.get("_flow_seconds", []))
         unclassified_total += metrics.get("unclassified", 0)
+        efficiency_flow_total += metrics.get("_efficiency_flow_seconds", 0.0)
+        efficiency_rework_total += metrics.get("_efficiency_rework_seconds", 0.0)
+        efficiency_tasks_total += metrics.get("efficiency_tasks", 0)
         for kind in type_counts:
             type_counts[kind] += metrics.get("by_type", {}).get(kind, {"landed": 0})["landed"]
             type_durations[kind].extend(metrics.get("_flow_seconds_by_type", {}).get(kind, []))
@@ -66,6 +72,8 @@ def build_delivery(
             "plans_in_main": sum(status == IN_MAIN for status in delivery.values()),
             "median_flow_seconds": metrics["median_flow_seconds"],
             "first_try_rate": metrics["first_try_rate"],
+            "efficiency": metrics.get("efficiency"),
+            "efficiency_tasks": metrics.get("efficiency_tasks", 0),
             "flow_load": metrics["flow_load"],
             "by_type": metrics.get("by_type", _type_summary({kind: 0 for kind in type_counts}, {kind: [] for kind in type_counts})),
             "unclassified": metrics.get("unclassified", 0),
@@ -91,6 +99,9 @@ def build_delivery(
             "plans_not_in_main": not_in_main_total,
             "median_flow_seconds": totals_median,
             "first_try_rate": totals_first_try,
+            "efficiency": (1.0 - efficiency_rework_total / efficiency_flow_total
+                           if efficiency_flow_total else (1.0 if efficiency_tasks_total else None)),
+            "efficiency_tasks": efficiency_tasks_total,
             "by_type": totals_by_type,
             "unclassified": unclassified_total,
             "by_week": weekly,

@@ -66,11 +66,47 @@ def _was_sent_back(task_dir: Path) -> bool:
     return any(isinstance(item.get("halt"), dict) and item["halt"].get("status") == "blocked" for item in records)
 
 
+def _send_back_moment(root: Path, task_id: str) -> tuple[bool, datetime | None]:
+    """Return whether history is known and the earliest recorded send-back."""
+    task_dir = root / ".snodo" / "tasks" / task_id
+    moments: list[datetime] = []
+    known = False
+    records = [_read(task_dir / "state.json")]
+    try:
+        records.extend(_read(path) for path in (task_dir / "attempts").glob("*.json"))
+    except OSError:
+        pass
+    for record in records:
+        halt = record.get("halt")
+        if not isinstance(halt, dict):
+            continue
+        if isinstance(halt.get("attempts"), dict) and isinstance(halt["attempts"].get("total"), (int, float)):
+            known = True
+        if halt.get("status") == "blocked":
+            known = True
+            stamp = _timestamp(record.get("completed_at"))
+            if stamp is None:
+                return False, None
+            moments.append(stamp)
+    try:
+        fix_dirs = [path for path in (root / ".snodo" / "tasks").iterdir()
+                    if path.is_dir() and path.name.startswith(f"{task_id}_fix_")]
+    except OSError:
+        fix_dirs = []
+    for fix_dir in fix_dirs:
+        known = True
+        stamp = _timestamp(_read(fix_dir / "state.json").get("started_at"))
+        if stamp is None:
+            return False, None
+        moments.append(stamp)
+    return known, min(moments) if moments else None
+
+
 def flow_metrics(project_path: str | Path, window_days: int, now: datetime | None = None) -> dict[str, Any]:
     """Compute landed throughput, duration, first-try rate, and active load."""
     root = Path(project_path)
     empty = {"landed": 0, "landed_by_day": [], "median_flow_seconds": None,
-             "first_try_rate": None, "flow_load": 0}
+             "first_try_rate": None, "flow_load": 0, "efficiency": None, "efficiency_tasks": 0}
     empty.update(_empty_type_metrics())
     current_for_weeks = now or datetime.now(timezone.utc)
     if current_for_weeks.tzinfo is None:
@@ -158,11 +194,34 @@ def flow_metrics(project_path: str | Path, window_days: int, now: datetime | Non
             known_attempts.append(task)
     first_try_rate = (sum(task.get("task_id") not in sent_back for task in known_attempts) / len(known_attempts)
                       if known_attempts else None)
+    efficiency_flow = 0.0
+    efficiency_rework = 0.0
+    efficiency_tasks = 0
+    for task, completed in landed_stamps:
+        task_id = task.get("task_id", "")
+        started = _timestamp(states.get(task_id, {}).get("started_at"))
+        if started is None:
+            continue
+        known, send_back = _send_back_moment(root, task_id)
+        if not known:
+            continue
+        flow_seconds = max(0.0, (completed - started).total_seconds())
+        rework_seconds = (0.0 if send_back is None else
+                          min(flow_seconds, max(0.0, (completed - send_back).total_seconds())))
+        efficiency_flow += flow_seconds
+        efficiency_rework += rework_seconds
+        efficiency_tasks += 1
+    efficiency = (1.0 - efficiency_rework / efficiency_flow if efficiency_flow else
+                  (1.0 if efficiency_tasks else None))
     return {
         "landed": len(landed_stamps),
         "landed_by_day": [{"date": day, "landed": count} for day, count in by_day.items()],
         "median_flow_seconds": median(durations) if durations else None,
         "first_try_rate": first_try_rate,
+        "efficiency": efficiency,
+        "efficiency_tasks": efficiency_tasks,
+        "_efficiency_flow_seconds": efficiency_flow,
+        "_efficiency_rework_seconds": efficiency_rework,
         "flow_load": sum(task.get("status") == "in_progress" for task in tasks),
         "by_type": by_type,
         "unclassified": unclassified,

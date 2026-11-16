@@ -122,3 +122,17 @@ def test_totals_pool_type_durations_and_weekly_counts(monkeypatch) -> None:
     assert totals["by_type"]["defect"]["median_flow_seconds"] == 30
     assert totals["unclassified"] == 1
     assert totals["by_week"][-1] == {"week_start": "2026-11-09", "feature": 2, "defect": 1, "debt": 0, "risk": 0, "unclassified": 1}
+
+
+def test_efficiency_totals_pool_seconds_not_project_ratios(monkeypatch) -> None:
+    projects = [SimpleNamespace(name=name, path=f"/{name}") for name in ("one", "two")]
+    metrics = {
+        "/one": {"landed": 1, "landed_by_day": [], "median_flow_seconds": None, "first_try_rate": None, "flow_load": 0, "efficiency": 0.5, "efficiency_tasks": 1, "_efficiency_flow_seconds": 100.0, "_efficiency_rework_seconds": 50.0},
+        "/two": {"landed": 1, "landed_by_day": [], "median_flow_seconds": None, "first_try_rate": None, "flow_load": 0, "efficiency": 0.9, "efficiency_tasks": 1, "_efficiency_flow_seconds": 900.0, "_efficiency_rework_seconds": 90.0},
+    }
+    monkeypatch.setattr(routes_delivery, "flow_metrics", lambda path, *_: metrics[str(path)])
+    monkeypatch.setattr(routes_delivery, "plans_delivery", lambda *_: {})
+    result = routes_delivery.build_delivery(projects, 7, datetime(2026, 11, 14, tzinfo=timezone.utc))
+    assert [row["efficiency"] for row in result["projects"]] == [0.5, 0.9]
+    assert result["totals"]["efficiency"] == 0.86
+    assert result["totals"]["efficiency_tasks"] == 2
