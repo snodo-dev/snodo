@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Protocol page mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#060a0b;--bg-2:#0b1215;--bg-3:#0f181c;--teal:#2dd4bf;--teal-dim:rgba(45,212,191,.1);--teal-border:rgba(45,212,191,.22);
+  --text:#dde8ea;--text-dim:#7090a0;--text-muted:#66808f;--text-faint:#3c5560;--code-bg:#0b1518;--grid:rgba(45,212,191,.035);
+  --pass:#4ade80;--pass-dim:rgba(74,222,128,.1);--pass-border:rgba(74,222,128,.24);
+  --blocked:#ff6b5e;--blocked-dim:rgba(255,107,94,.1);--blocked-border:rgba(255,107,94,.26);
+  --abstained:#e0a83a;--abstained-dim:rgba(224,168,58,.1);--abstained-border:rgba(224,168,58,.24);
+  --running:#38bdf8;--running-dim:rgba(56,189,248,.1);--running-border:rgba(56,189,248,.24);
+  --automated:#a78bfa;--automated-dim:rgba(167,139,250,.1);--automated-border:rgba(167,139,250,.24);
+  --line:rgba(255,255,255,.06);--line-2:rgba(255,255,255,.1);--overlay:rgba(255,255,255,.04);
+  --on-teal:var(--bg);--r-1:2px;--r-2:4px;--r-3:8px;--r-pill:999px;
+  --serif:'Archivo',sans-serif;--body:'Hanken Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --bg:#f6f9f9;--bg-2:#ffffff;--bg-3:#eef4f4;--teal:#0f766e;--teal-dim:rgba(15,118,110,.08);--teal-border:rgba(15,118,110,.28);
+  --text:#12262b;--text-dim:#42606b;--text-muted:#52707b;--text-faint:#9db3ba;--code-bg:#eef4f4;--grid:rgba(15,118,110,.025);
+  --pass:#15803d;--pass-dim:rgba(21,128,61,.08);--pass-border:rgba(21,128,61,.28);
+  --blocked:#c2362a;--blocked-dim:rgba(194,54,42,.08);--blocked-border:rgba(194,54,42,.28);
+  --abstained:#a16207;--abstained-dim:rgba(161,98,7,.08);--abstained-border:rgba(161,98,7,.28);
+  --running:#0369a1;--running-dim:rgba(3,105,161,.08);--running-border:rgba(3,105,161,.28);
+  --automated:#6d4fd1;--automated-dim:rgba(109,79,209,.08);--automated-border:rgba(109,79,209,.28);
+  --line:rgba(0,0,0,.08);--line-2:rgba(0,0,0,.14);--overlay:rgba(0,0,0,.035);--on-teal:#fff}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:13px/1.45 var(--body);min-height:100vh;padding-bottom:72px;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px}
+.wrap{max-width:1440px;margin:0 auto;padding:0 24px}
+/* top bar */
+.top{border-bottom:1px solid var(--line);background:var(--bg)}
+.top .wrap{display:flex;align-items:center;gap:20px;min-height:54px;flex-wrap:wrap;padding-block:8px}
+.logo{font:800 17px var(--serif);letter-spacing:-.01em}
+.env{font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--line-2);color:var(--text-dim);padding:2px 6px;border-radius:var(--r-2);margin-left:-8px}
+.tabs{display:flex;gap:4px}
+.tabs a{color:var(--text-dim);text-decoration:none;font-size:13px;padding:7px 14px;border:1px solid transparent;border-radius:var(--r-2)}
+.tabs a.on{color:var(--text);border-color:var(--teal);box-shadow:0 0 0 2px var(--teal-border)}
+.meta{margin-left:auto;display:flex;align-items:center;gap:14px;font:400 11px var(--mono);color:var(--text-muted);flex-wrap:wrap}
+.meta b{font:500 12px var(--body);color:var(--text)}
+.btn{font:500 12px var(--body);border-radius:var(--r-2);padding:6px 12px;border:1px solid var(--line-2);background:transparent;color:var(--text);cursor:pointer}
+.btn:hover{background:var(--overlay)}
+.btn.pri{background:var(--teal);color:var(--on-teal);border-color:var(--teal);font-weight:600}
+.btn:disabled{opacity:.4;cursor:default}
+/* page head */
+.eyebrow{font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--text-muted)}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding-top:32px;flex-wrap:wrap}
+.head .eyebrow+.eyebrow{margin-top:6px}
+.live{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text-dim)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--pass);display:inline-block;margin-right:6px}
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:16px}
+.tile{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-3);padding:18px 18px 16px;box-shadow:inset 0 0 0 1px var(--teal-dim)}
+.tile .eyebrow{margin-bottom:8px}
+.tile .n{font:700 40px/1 var(--serif);letter-spacing:-.02em}
+.tile .n small{font-size:16px;color:var(--text-muted);font-weight:500}
+.tile .s{font-size:12px;color:var(--text-dim);margin-top:10px}
+.tile .s.ok{color:var(--pass)}
+/* section */
+.sec{margin-top:32px}
+.sec-h{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.sec-h .sub{font-size:12px;color:var(--text-dim);margin-top:2px;max-width:70ch}
+.card{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-3);overflow:hidden}
+.grp{display:flex;align-items:center;gap:12px;padding:14px 18px;background:var(--bg-3);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.grp h3{font:700 17px var(--serif)}
+.pill{font:500 11px var(--body);padding:2px 9px;border-radius:var(--r-pill);border:1px solid var(--line-2);color:var(--text-dim)}
+.pill.pass{color:var(--pass);border-color:var(--pass-border);background:var(--pass-dim)}
+.pill.run{color:var(--running);border-color:var(--running-border);background:var(--running-dim)}
+.pill.abs{color:var(--abstained);border-color:var(--abstained-border);background:var(--abstained-dim)}
+.pill.aut{color:var(--automated);border-color:var(--automated-border);background:var(--automated-dim)}
+.pill.off{color:var(--text-muted)}
+.dim{color:var(--text-dim);font-size:12px}
+/* rows */
+.row{display:grid;grid-template-columns:16px minmax(180px,1.2fr) minmax(120px,1fr) auto auto;align-items:center;gap:14px;padding:14px 18px;border-top:1px solid var(--line);cursor:pointer;position:relative}
+.row:first-child{border-top:0}
+.row:hover{background:var(--overlay)}
+.row .car{color:var(--text-muted);font-size:9px;transition:transform .15s}
+.row.open .car{transform:rotate(90deg)}
+.row.open{background:var(--teal-dim)}
+.row .nm{font:700 14px var(--mono)}
+.row .sb{font-size:12px;color:var(--text-dim);margin-top:2px}
+.bars{display:flex;gap:3px}
+.bars i{width:10px;height:3px;background:var(--pass);border-radius:1px;display:block}
+.bars i.x{background:var(--text-faint)}
+.row.mod .nm::after{content:"edited";font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;margin-left:10px;color:var(--abstained);border:1px solid var(--abstained-border);padding:1px 5px;border-radius:var(--r-1)}
+.edit{display:none;padding:4px 18px 20px 48px;border-top:1px solid var(--line);background:var(--teal-dim)}
+.edit.show{display:block}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:14px 0}
+label{display:block;font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:5px}
+input,select,textarea{width:100%;background:var(--code-bg);color:var(--text);border:1px solid var(--line-2);border-radius:var(--r-2);padding:7px 9px;font:400 12px var(--mono)}
+textarea{font:400 13px/1.5 var(--body);resize:vertical;min-height:58px}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--teal);border-color:var(--teal)}
+.seg{display:flex;border:1px solid var(--line-2);border-radius:var(--r-2);overflow:hidden}
+.seg button{flex:1;background:none;border:0;color:var(--text-dim);padding:7px;font:500 11px var(--mono);cursor:pointer}
+.seg button.on{background:var(--teal-dim);color:var(--text);box-shadow:inset 0 -2px var(--teal)}
+.crit{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;margin-bottom:6px}
+.crit.mod textarea{border-color:var(--abstained-border);background:var(--abstained-dim)}
+.x{background:none;border:1px solid var(--line-2);color:var(--text-muted);border-radius:var(--r-2);width:28px;height:28px;cursor:pointer}
+/* pipeline */
+.flow{display:flex;gap:0;padding:18px;overflow-x:auto}
+.stage{flex:1 0 170px;border:1px solid var(--line-2);border-radius:var(--r-3);background:var(--bg-3);padding:12px 14px;position:relative}
+.stage+.stage{margin-left:30px}
+.stage+.stage::before{content:"";position:absolute;left:-30px;top:50%;width:30px;border-top:1px dashed var(--text-faint)}
+.stage+.stage::after{content:"";position:absolute;left:-8px;top:calc(50% - 4px);border:4px solid transparent;border-left:6px solid var(--text-faint)}
+.stage.coder{border-color:var(--teal-border);background:var(--teal-dim)}
+.stage h4{font:700 14px var(--serif);margin:8px 0 2px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
+.chips span{font:400 10px var(--mono);border:1px solid var(--line-2);border-radius:var(--r-1);padding:2px 6px;background:var(--overlay)}
+.chips span.off{color:var(--text-faint);text-decoration:line-through}
+.chips span.mod{border-color:var(--abstained-border);color:var(--abstained)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line)}
+.kv div{background:var(--bg-2);padding:14px 18px}
+.kv b{display:block;font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px}
+.kv span{font:700 18px var(--mono)}
+.rules{list-style:none}
+.rules li{display:flex;gap:14px;align-items:center;padding:11px 18px;border-top:1px solid var(--line);flex-wrap:wrap}
+.rules li:first-child{border-top:0}
+.rules code{font:700 12px var(--mono);min-width:230px}
+/* save bar */
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg-2);border-top:1px solid var(--line-2);z-index:4}
+.bar .wrap{display:flex;align-items:center;gap:12px;padding-block:12px;flex-wrap:wrap}
+.bar .sp{margin-left:auto;display:flex;gap:8px}
+.diff{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:6;padding:5vh 16px}
+.diff.show{display:block}
+.box{max-width:760px;margin:0 auto;max-height:90vh;overflow:auto;background:var(--bg-2);border:1px solid var(--line-2);border-radius:var(--r-3);padding:20px}
+.box h2{font:700 18px var(--serif)}
+pre{font:400 11.5px/1.6 var(--mono);background:var(--code-bg);border:1px solid var(--line);border-radius:var(--r-2);padding:10px;overflow-x:auto;margin:12px 0}
+.a{color:var(--pass);background:var(--pass-dim);display:block}.d{color:var(--blocked);background:var(--blocked-dim);display:block}.c{color:var(--text-muted);display:block}
+.empty{padding:18px;color:var(--text-dim);font-style:italic}
+@media (max-width:760px){.row{grid-template-columns:16px minmax(0,1fr) auto}.row .bars,.row .ph{display:none}.edit{padding-left:18px}.wrap{padding:0 16px}.rules code{min-width:0}.meta{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="top"><div class="wrap">
+  <span class="logo">snodo</span><span class="env">Local</span>
+  <nav class="tabs"><a href="#">Now</a><a href="#">Delivery</a><a href="#">Gates</a><a href="#">Plans</a><a href="#" class="on">Protocol</a></nav>
+  <div class="meta"><b>snodo: github.com/snodo-dev/snodo</b><span>127.0.0.1:44332</span><span>updated 11:01 PM</span><button class="btn" id="theme">Theme</button></div>
+</div></div>
+
+<div class="wrap">
+  <div class="head">
+    <div><div class="eyebrow">Solo Developer Protocol · v1.0.0</div><div class="eyebrow">Protocol</div></div>
+    <div class="live"><span><span class="dot"></span>Reads .snodo/protocol.yml</span><span id="vstate" class="pill pass">schema valid</span><button class="btn" onclick="location.reload()">Reload from disk</button></div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="eyebrow">Modes</div><div class="n">1</div><div class="s">initial: producer</div></div>
+    <div class="tile"><div class="eyebrow">Validators</div><div class="n" id="t-active">9</div><div class="s" id="t-sub">of 10 declared</div></div>
+    <div class="tile"><div class="eyebrow">Before coder</div><div class="n" id="t-pre">6</div><div class="s">spec checks</div></div>
+    <div class="tile"><div class="eyebrow">After coder</div><div class="n" id="t-post">3</div><div class="s">the gate</div></div>
+    <div class="tile"><div class="eyebrow">Disagreement</div><div class="n" style="font-size:26px;padding-top:8px">unanimous</div><div class="s">one blocker halts</div></div>
+    <div class="tile"><div class="eyebrow">Delivery</div><div class="n" style="font-size:26px;padding-top:8px">auto-merge</div><div class="s ok">on a clean pass</div></div>
+  </div>
+
+  <section class="sec">
+    <div class="sec-h"><div><div class="eyebrow">Pipeline</div><div class="sub">What a task passes through, in order. Click a validator chip to jump to its editor.</div></div></div>
+    <div class="card"><div class="flow">
+      <div class="stage"><span class="pill run">pre_execute</span><h4>Spec checks</h4><span class="dim">before any code is written</span><div class="chips" id="c-pre"></div></div>
+      <div class="stage coder"><span class="pill">coder</span><h4>Implement</h4><span class="dim">model comes from config</span><div class="chips"><span>retries 3</span><span>recovery depth 3</span><span>fix attempts 10</span></div></div>
+      <div class="stage"><span class="pill abs">post_execute</span><h4>Gate</h4><span class="dim">checks the work</span><div class="chips" id="c-post"></div></div>
+      <div class="stage"><span class="pill pass">merge</span><h4>Deliver</h4><span class="dim">local_merge</span><div class="chips"><span>edit</span><span>dispatch</span><span>plan</span><span>test</span><span>validate</span><span>commit</span><span>merge</span></div></div>
+    </div></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h"><div><div class="eyebrow">Validators</div><div class="sub">Ordered as the producer mode runs them. Open a row to edit its criteria. Nothing is written until you save.</div></div><button class="btn">+ Add validator</button></div>
+    <div class="card">
+      <div class="grp"><h3>producer</h3><span class="pill pass">initial</span><span class="dim">9 active · 1 declared but unused</span></div>
+      <div id="vlist"></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h"><div><div class="eyebrow">Execution</div><div class="sub">Branch isolation, retries and delivery. Delivery and auto_merge cannot both be set.</div></div></div>
+    <div class="card"><div class="kv">
+      <div><b>max_retries</b><span>3</span></div><div><b>branch_ttl_days</b><span>7</span></div><div><b>max_recovery_depth</b><span>3</span></div>
+      <div><b>max_total_fix_attempts</b><span>10</span></div><div><b>branch_prefix</b><span>task</span></div><div><b>queue.parallel_runs</b><span>1</span></div>
+    </div></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h"><div><div class="eyebrow">Rules checked on save</div><div class="sub">Save stays disabled while any of these fail.</div></div></div>
+    <div class="card"><ul class="rules" id="rules"></ul></div>
+  </section>
+</div>
+
+<div class="bar"><div class="wrap">
+  <span class="pill aut" id="chg">0 changes</span><span class="dim" id="msg">No unsaved edits.</span>
+  <div class="sp"><button class="btn" id="reset" disabled>Discard</button><button class="btn" id="rev" disabled>Review diff</button><button class="btn pri" id="save" disabled>Save to protocol.yml</button></div>
+</div></div>
+
+<div class="diff" id="diff"><div class="box">
+  <div style="display:flex;align-items:center;gap:10px"><h2>Review changes</h2><span class="pill aut" id="dtag"></span></div>
+  <p class="dim" style="margin-top:6px">A diff of .snodo/protocol.yml. Saving writes the file; committing and pushing stay with you.</p>
+  <pre id="dbody"></pre>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="close">Back</button><button class="btn pri" id="confirm">Write file</button></div>
+</div></div>
+
+<script>
+const V=[
+ {id:'security',type:'security',ph:'pre',cap:'none',tools:'',crit:['API keys and secrets must never appear in source code or logs, and are never stored in plaintext.','org_id must always be derived from KV API key lookup server-side, never trusted from request payload','All D1 queries must include org_id filter — no cross-tenant data access'],on:true},
+ {id:'architecture',type:'architecture',ph:'pre',cap:'none',tools:'',crit:['Workers, Dispatcher, D1 and R2 responsibilities must match the current ADRs.'],on:true},
+ {id:'adr',type:'architecture',ph:'pre',cap:'none',tools:'read_file, list_files',crit:['All architectural decisions must conform to the Architecture Decision Records in docs/adr/.','When multiple ADRs apply, the highest-numbered ADR on a topic takes precedence.','Any deviation from an ADR requires updating or superseding the ADR first.'],on:true},
+ {id:'meta-spec',type:'architecture',ph:'pre',cap:'none',tools:'',crit:['The task spec must define INTENT and CONSTRAINTS and leave implementation decisions to the coder.','If more than roughly 40% of the spec is literal implementation code, reject as a blocker.'],on:true},
+ {id:'meta-spec-b',type:'architecture',ph:'pre',cap:'none',tools:'',crit:['Same criteria as meta-spec, judged by a second model.'],on:true},
+ {id:'authz-architecture',type:'architecture',ph:'pre',cap:'none',tools:'',crit:['can() is the single authz decision point.','users.role stays a plain string.'],on:true},
+ {id:'lint',type:'quality',ph:'post',cap:'none',tools:'',crit:['cd api && npm run lint exits 0.'],on:true},
+ {id:'qa-gate',type:'testing',ph:'post',cap:'none',tools:'',crit:['make gate passes. A failure that also fails on the base commit is not routed to task recovery.'],on:true},
+ {id:'qa-composition',type:'testing',ph:'post',cap:'none',tools:'',crit:['Composition scripts pass.'],on:true},
+ {id:'security-b',type:'security',ph:'pre',cap:'none',tools:'',crit:['Same criteria as security, judged by a second model.'],on:false}
+];
+const orig=JSON.parse(JSON.stringify(V));
+const types=['acceptance','architecture','conventions','llm','performance','planning','protocol','quality','security','testing'];
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+let open=null;
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const rules=[['delivery-auto-merge-exclusive','Protocol execution and each mode may not set delivery and auto_merge together.'],['exclusive-tools-per-mode','approve and merge each appear in at most one mode.'],['module-ids-unique','Module identifiers must be unique.'],['validator-references-declared','Validators referenced by modes must be declared; dispatch modes need a pre_execute validator.'],['initial-mode-exists','initial_mode names a declared mode.'],['mode-validator-identifiers-unique','Mode ids and validator ids must each be unique.']];
+$('#rules').innerHTML=rules.map(r=>`<li><span class="pill pass">ok</span><code>${r[0]}</code><span class="dim">${r[1]}</span></li>`).join('');
+const isMod=(v,i)=>JSON.stringify(v)!==JSON.stringify(orig[i]);
+function render(){
+  $('#vlist').innerHTML=V.map((v,i)=>{
+    const o=orig[i];
+    return `<div class="row ${open===v.id?'open':''} ${isMod(v,i)?'mod':''}" data-id="${v.id}" id="r-${v.id}">
+      <span class="car">▶</span>
+      <div><div class="nm">${v.id}</div><div class="sb">${v.type} · ${v.crit.length} criteri${v.crit.length===1?'on':'a'}${v.tools?' · reads files':''}</div></div>
+      <div class="ph"><span class="pill ${v.ph==='pre'?'run':'abs'}">${v.ph==='pre'?'pre_execute':'post_execute'}</span></div>
+      <div class="bars">${v.crit.slice(0,8).map(()=>`<i class="${v.on?'':'x'}"></i>`).join('')}</div>
+      <span class="pill ${v.on?'pass':'off'}">${v.on?'active':'unused'}</span></div>
+    <div class="edit ${open===v.id?'show':''}" data-edit="${v.id}">
+      <div class="fields">
+        <div><label>Type</label><select data-f="type">${types.map(t=>`<option ${t===v.type?'selected':''}>${t}</option>`).join('')}</select></div>
+        <div><label>Phase</label><div class="seg"><button data-ph="pre" class="${v.ph==='pre'?'on':''}">pre_execute</button><button data-ph="post" class="${v.ph==='post'?'on':''}">post_execute</button></div></div>
+        <div><label>Severity cap</label><select data-f="cap">${['none','warn','pass'].map(t=>`<option ${t===v.cap?'selected':''}>${t}</option>`).join('')}</select></div>
+        <div><label>Tools (read-only)</label><input data-f="tools" value="${esc(v.tools)}" placeholder="none"></div>
+      </div>
+      <label>Criteria</label>
+      ${v.crit.map((c,k)=>`<div class="crit ${o.crit[k]!==c?'mod':''}"><textarea data-k="${k}">${esc(c)}</textarea><button class="x" data-del="${k}" title="Remove">×</button></div>`).join('')}
+      <button class="btn" data-add="1">+ Add criterion</button>
+      <button class="btn" data-toggle="1" style="margin-left:6px">${v.on?'Remove from producer mode':'Add to producer mode'}</button>
+    </div>`}).join('');
+  const act=V.filter(v=>v.on);
+  $('#t-active').textContent=act.length;$('#t-sub').textContent='of '+V.length+' declared';
+  $('#t-pre').textContent=act.filter(v=>v.ph==='pre').length;$('#t-post').textContent=act.filter(v=>v.ph==='post').length;
+  ['pre','post'].forEach(p=>$('#c-'+p).innerHTML=V.map((v,i)=>({v,i})).filter(x=>x.v.ph===p&&x.v.on).map(x=>`<span class="${isMod(x.v,x.i)?'mod':''}" data-jump="${x.v.id}" style="cursor:pointer">${x.v.id}</span>`).join(''));
+  status();
+}
+function changes(){const out=[];V.forEach((v,k)=>{const o=orig[k];['type','ph','cap','tools','on'].forEach(f=>{if(v[f]!==o[f])out.push([v.id,f,o[f],v[f]])});
+ const n=Math.max(v.crit.length,o.crit.length);for(let i=0;i<n;i++)if(v.crit[i]!==o.crit[i])out.push([v.id,'criteria['+i+']',o.crit[i],v.crit[i]])});return out}
+function status(){
+  const c=changes(),bad=V.some(v=>v.crit.some(x=>!x.trim()));
+  $('#chg').textContent=c.length+(c.length===1?' change':' changes');
+  $('#msg').textContent=bad?'A criterion is empty. Fill it or remove it before saving.':c.length?'Unsaved edits in '+[...new Set(c.map(x=>x[0]))].join(', ')+'.':'No unsaved edits.';
+  $('#reset').disabled=!c.length;$('#rev').disabled=!c.length||bad;$('#save').disabled=!c.length||bad;
+  const vs=$('#vstate');vs.className='pill '+(bad?'abs':'pass');vs.textContent=bad?'empty criterion':'schema valid';
+}
+const cur=e=>{const w=e.target.closest('[data-edit]');return w&&V.find(x=>x.id===w.dataset.edit)};
+document.addEventListener('click',e=>{
+  const j=e.target.closest('[data-jump]');if(j){open=j.dataset.jump;render();$('#r-'+open).scrollIntoView({behavior:'smooth',block:'center'});return}
+  const r=e.target.closest('.row');if(r){open=open===r.dataset.id?null:r.dataset.id;render();return}
+  const v=cur(e);if(!v)return;
+  const ph=e.target.closest('[data-ph]');if(ph){v.ph=ph.dataset.ph;render();return}
+  if(e.target.dataset.del!==undefined){v.crit.splice(+e.target.dataset.del,1);render();return}
+  if(e.target.dataset.add){v.crit.push('');render();const t=$$(`[data-edit="${v.id}"] textarea`);t[t.length-1].focus();return}
+  if(e.target.dataset.toggle){v.on=!v.on;render()}
+});
+document.addEventListener('input',e=>{const v=cur(e);if(!v)return;
+  if(e.target.dataset.k!==undefined){const k=+e.target.dataset.k;v.crit[k]=e.target.value;e.target.parentElement.classList.toggle('mod',orig[V.indexOf(v)].crit[k]!==e.target.value);status();return}
+  if(e.target.dataset.f==='tools'){v.tools=e.target.value;status()}});
+document.addEventListener('change',e=>{const v=cur(e);if(v&&e.target.dataset.f&&e.target.dataset.f!=='tools'){v[e.target.dataset.f]=e.target.value;render()}});
+$('#reset').onclick=()=>{V.splice(0,V.length,...JSON.parse(JSON.stringify(orig)));render()};
+const showDiff=()=>{const c=changes();$('#dtag').textContent=c.length+' changes';
+  $('#dbody').innerHTML=c.map(x=>`<span class="c"> validator_id: ${x[0]}</span><span class="d">-   ${x[1]}: ${String(x[2]??'').slice(0,90)}</span><span class="a">+   ${x[1]}: ${String(x[3]??'').slice(0,90)}</span>`).join('');
+  $('#diff').classList.add('show')};
+$('#rev').onclick=showDiff;$('#save').onclick=showDiff;$('#close').onclick=()=>$('#diff').classList.remove('show');
+$('#confirm').onclick=()=>{$('#diff').classList.remove('show');orig.splice(0,orig.length,...JSON.parse(JSON.stringify(V)));render();$('#msg').textContent='Written to .snodo/protocol.yml. Commit and push when ready.'};
+$('#theme').onclick=()=>{const r=document.documentElement;r.dataset.theme=r.dataset.theme==='light'?'dark':'light'};
+render();
+</script>
+</body>
+</html>
