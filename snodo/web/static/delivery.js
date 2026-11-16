@@ -149,7 +149,8 @@
     figures.append(distribution);
     fragment.append(figures);
 
-    fragment.append(element("h2", "Landed per day"));
+    const dayBlock = element("section", undefined, "delivery-detail-block");
+    dayBlock.append(element("h2", "Landed per day"));
     const chart = element("div", undefined, "delivery-chart");
     chart.setAttribute("role", "img");
     chart.setAttribute("aria-label", "Tasks landed per day");
@@ -169,7 +170,8 @@
       chart.append(column);
     }
     updateDateLabels(chart);
-    fragment.append(chart);
+    dayBlock.append(chart);
+    fragment.append(dayBlock);
 
     const byWeekBlock = element("section", undefined, "delivery-detail-block");
     byWeekBlock.append(element("h2", "Velocity by week"));
@@ -254,7 +256,8 @@
     typeBlock.append(typeScroll, element("p", "Rework is time after a task was first sent back.", "delivery-rework-note"));
     fragment.append(typeBlock);
 
-    fragment.append(element("h2", "By project"));
+    const projectBlock = element("section", undefined, "delivery-detail-block");
+    projectBlock.append(element("h2", "By project"));
     const table = element("table", undefined, "delivery-projects");
     const head = element("tr");
     for (const heading of ["Project", "Landed", "First try", "Median"]) head.append(element("th", heading));
@@ -271,7 +274,8 @@
       tbody.append(row);
     }
     table.append(tbody);
-    fragment.append(table);
+    projectBlock.append(table);
+    fragment.append(projectBlock);
     return fragment;
   }
 

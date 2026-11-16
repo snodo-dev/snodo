@@ -8,6 +8,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Keep Delivery weekly chart columns proportionate and align chart panels, with flow values fitting narrow panels. (Fixes #1253)
+- Give every Delivery detail section a consistent bordered panel, with headings and notes contained inside. (Fixes #1251)
 - Index `task_classified` audit events once in the user cache to provide work types for Delivery flow measures. (Fixes #1250)
 - Add weekly velocity, per-type flow-time ranges, and a by-type detail table to the Delivery dashboard. (Fixes #1249)
 - Exercise Delivery flow cards, efficiency fallbacks, weekly bars, 90-day requests, and theme tokens in behavior-level tests. (Fixes #1248)
