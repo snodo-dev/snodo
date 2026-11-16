@@ -16,11 +16,12 @@
       --blocked:#ff6b5e; --blocked-dim:rgba(255,107,94,.1); --blocked-border:rgba(255,107,94,.26);
       --abstained:#e0a83a; --abstained-dim:rgba(224,168,58,.1); --abstained-border:rgba(224,168,58,.24);
       --running:#38bdf8; --running-dim:rgba(56,189,248,.1); --running-border:rgba(56,189,248,.24);
+       --automated:#a78bfa; --automated-dim:rgba(167,139,250,.1); --automated-border:rgba(167,139,250,.24);
       --line:rgba(255,255,255,.06); --line-subtle:rgba(255,255,255,.04); --line-2:rgba(255,255,255,.1);
       --overlay:rgba(255,255,255,.04); --overlay-2:rgba(255,255,255,.08); --shadow:none; --on-teal:var(--bg);
       --r-1:2px; --r-2:4px; --r-3:8px; --r-pill:999px;
       --fs-micro:10px; --fs-small:11px; --fs-body:13px; --fs-lead:14px; --fs-title:20px; --fs-loud:30px;
-      --serif:'Archivo',system-ui,sans-serif; --body:'Hanken Grotesk',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+      --serif:Georgia,'Times New Roman',serif; --body:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
       --background:var(--bg); --surface:var(--bg-2); --border:var(--line); --accent:var(--teal);
       --muted:var(--text-muted); --amber:var(--abstained); --red:var(--blocked); --green:var(--pass);
     }
@@ -33,6 +34,8 @@
         --blocked:#d42a1f; --blocked-dim:rgba(212,42,31,.08); --blocked-border:rgba(212,42,31,.26);
         --abstained:#9a6208; --abstained-dim:rgba(154,98,8,.08); --abstained-border:rgba(154,98,8,.26);
         --running:#0369a1; --running-dim:rgba(3,105,161,.08); --running-border:rgba(3,105,161,.26);
+       --automated:#6d4fd1; --automated-dim:rgba(109,79,209,.08); --automated-border:rgba(109,79,209,.28);
+       --serif:Georgia,'Times New Roman',serif; --body:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
         --line:rgba(16,40,44,.09); --line-subtle:rgba(16,40,44,.06); --line-2:rgba(16,40,44,.16);
         --overlay:rgba(16,40,44,.035); --overlay-2:rgba(16,40,44,.07); --shadow:0 1px 2px rgba(16,40,44,.08); --on-teal:#fff;
       }
@@ -46,8 +49,10 @@
       --blocked:#d42a1f; --blocked-dim:rgba(212,42,31,.08); --blocked-border:rgba(212,42,31,.26);
       --abstained:#9a6208; --abstained-dim:rgba(154,98,8,.08); --abstained-border:rgba(154,98,8,.26);
       --running:#0369a1; --running-dim:rgba(3,105,161,.08); --running-border:rgba(3,105,161,.26);
+         --automated:#6d4fd1; --automated-dim:rgba(109,79,209,.08); --automated-border:rgba(109,79,209,.28);
       --line:rgba(16,40,44,.09); --line-subtle:rgba(16,40,44,.06); --line-2:rgba(16,40,44,.16);
       --overlay:rgba(16,40,44,.035); --overlay-2:rgba(16,40,44,.07); --shadow:0 1px 2px rgba(16,40,44,.08); --on-teal:#fff;
+      --serif:Georgia,'Times New Roman',serif; --body:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     }
     :root[data-theme="light"] { --background:var(--bg); --surface:var(--bg-2); --border:var(--line); --accent:var(--teal); --muted:var(--text-muted); --amber:var(--abstained); --red:var(--blocked); --green:var(--pass); }
     @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --background:var(--bg); --surface:var(--bg-2); --border:var(--line); --accent:var(--teal); --muted:var(--text-muted); --amber:var(--abstained); --red:var(--blocked); --green:var(--pass); } }
@@ -103,6 +108,7 @@
       <button type="button" data-view="delivery" data-hash="#/delivery">Delivery</button>
       <button type="button" data-view="gates" data-hash="#/gates">Gates</button>
       <button type="button" data-view="plans" data-hash="#/plans">Plans</button>
+      <button type="button" data-view="protocol" data-hash="#/protocol">Protocol</button>
     </nav>
     <div class="topbar-right"><span class="project-identity" id="project-identity"></span><span class="host" id="host"></span><time class="updated" id="updated" aria-live="polite"></time>
     <button class="theme-button" id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button></div>
@@ -113,11 +119,19 @@
     <section class="view" id="view-delivery" aria-label="Delivery" hidden></section>
     <section class="view" id="view-gates" aria-label="Gates" hidden></section>
     <section class="view" id="view-plans" aria-label="Plans" hidden></section>
+    <section class="view" id="protocol-view" aria-label="Protocol" hidden></section>
   </main>
+  <link rel="stylesheet" href="/static/protocol.css">
+  <script src="/static/protocol.js"></script>
+  <script src="/static/protocol-tiles.js"></script>
+  <script src="/static/protocol-pipeline.js"></script>
+  <script src="/static/protocol-validators.js"></script>
+  <script src="/static/protocol-execution.js"></script>
+  <script src="/static/protocol-savebar.js"></script>
   <script>
     (() => {
-      const names = ["now", "delivery", "gates", "plans"];
-      const loaded = new Set();
+      const names = ["now", "delivery", "gates", "plans", "protocol"];
+      const loaded = new Set(["protocol"]);
       const failed = new Set();
       const rendered = new Set();
       let active = "";
@@ -168,7 +182,7 @@
           script.onload = () => { loaded.add(name); resolve(); };
           script.onerror = () => {
             failed.add(name);
-            showMessage(document.getElementById(`view-${name}`), "This view could not be loaded.");
+            showMessage(document.getElementById(name === "protocol" ? "protocol-view" : `view-${name}`), "This view could not be loaded.");
             resolve();
           };
           document.head.append(script);
@@ -201,7 +215,7 @@
 
       async function refresh(name) {
         if (name !== active || document.hidden) return;
-        const container = document.getElementById(`view-${name}`);
+        const container = document.getElementById(name === "protocol" ? "protocol-view" : `view-${name}`);
         const firstRender = !rendered.has(name);
         const skeleton = firstRender ? showSkeleton(container) : null;
         await markdownReady;
