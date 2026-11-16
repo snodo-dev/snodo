@@ -13,10 +13,10 @@
       "spec_hash": "8bd60738f1a8a889"
     },
     "1.3_protocol_text_editor": {
-      "status": "blocked",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "31a92b13825c6e28"
+      "spec_hash": "9bab5aeff866ee78"
     },
     "2.1_protocol_view_shell": {
       "status": "pending",
@@ -75,6 +75,6 @@
   },
   "integration": {
     "branch": "plan/protocol-editor/integration",
-    "base_sha": "3e528399c75b5122a687634476719c670c9824fa"
+    "base_sha": "89514393a9df957a6b7f89ba0a65cb916aae0585"
   }
 }
