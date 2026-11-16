@@ -1,0 +1,50 @@
+{
+  "tasks": {
+    "1.1_now_counters_cover_last_24h": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "dc7ca37dd90a8fd6"
+    },
+    "1.2_now_tree_groups_plans_and_waves": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3fc741f03fe95a2d"
+    },
+    "1.3_docs_describe_the_now_window": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f38268ba143bea79"
+    },
+    "2.1_now_route_returns_counters_and_tree": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0317bfbe77fdd501"
+    },
+    "2.2_now_view_shows_header_and_counters": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fcaf482975d73dad"
+    },
+    "3.1_now_view_has_plan_wave_tree": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4075b5e824721730"
+    },
+    "3.2_now_contract_test_ties_route_to_view": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "826822c014e41f62"
+    }
+  },
+  "integration": {
+    "branch": "plan/web-dashboard-now-parity/integration",
+    "base_sha": "8cee2c20d3c221a2f4eae79accc582990933c07e"
+  }
+}

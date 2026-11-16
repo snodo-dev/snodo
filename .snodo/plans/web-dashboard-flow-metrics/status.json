@@ -1,0 +1,56 @@
+{
+  "tasks": {
+    "1.1_header_names_the_project": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "532d27dbdf61f44d"
+    },
+    "1.2_delivery_date_labels_readable": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "13bf6abdd24977fb"
+    },
+    "1.3_flow_type_index_from_audit": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "77d88c8869565705"
+    },
+    "2.1_flow_by_type_and_week": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2c48373b57b0f173"
+    },
+    "3.1_flow_efficiency_from_rework": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "2e3e830f027cb530"
+    },
+    "3.2_delivery_flow_cards": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "f38caf94127611db"
+    },
+    "4.1_delivery_charts_and_type_table": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "065eb8a47fcb8161"
+    },
+    "4.2_docs_flow_metrics": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6677741fe631bdb9"
+    }
+  },
+  "integration": {
+    "branch": "plan/web-dashboard-flow-metrics/integration",
+    "base_sha": "ca4d60a81b4402fcd1d23bc469ceddbd363b7a16"
+  }
+}

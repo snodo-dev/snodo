@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1.1_delivery_sections_in_panels": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "4ca7d4207776d5df"
+    },
+    "2.1_delivery_week_chart_proportions": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "94d823c3aead61ed"
+    }
+  },
+  "integration": {
+    "branch": "plan/web-dashboard-delivery-panels/integration",
+    "base_sha": "d66557244e2588440f5d4741a9d98a26d5321114"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "1.1_escape_check_skips_engine_branches": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5c18a34f4b4a7674",
+      "completed_by": "claude-orchestrator",
+      "completed_at": "2026-11-16T16:53:12.000630+00:00",
+      "judged": false
+    },
+    "1.2_queues_doc_engine_branches_note": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "29d7729d5066196e"
+    }
+  },
+  "integration": {
+    "branch": "plan/escape-check-engine-refs/integration",
+    "base_sha": "db706e10a3bb36a87a03c53b3382b74d1c9c025c"
+  }
+}

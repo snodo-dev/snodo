@@ -1,0 +1,42 @@
+intent: 'The local web dashboard''s Now view tells a different story from the snodo
+  cloud Now page for the same work, and Ylli wants them to be the same. Evidence from
+  two screenshots: the cloud page is titled Now with "last 24 hours", shows an as-of
+  age with a Refetch button, six counter tiles (Active projects, Plans / Queues, Waves,
+  Tasks with a per-status breakdown, Recons, Commits) that all cover the last 24 hours,
+  and an In flight tree ordered by last activity: each project with a liveness badge
+  (for example Working, or Reporting, not progressing) and its plan count, task count
+  and tasks outside a plan, under it each plan with wave progress, under it each wave
+  with its task count and per-status summary, then the tasks with state and elapsed
+  time, with an "Outside a plan" group. The local page shows only four counts (projects
+  with work in flight, plans in flight, tasks running, items waiting) and lists only
+  tasks that are running right now, so a plan that finished an hour ago, its waves
+  and its blocked task are invisible, and a project that reported minutes ago but
+  is between plans shows as nothing. Cause: the local Now was specified from a smaller
+  brief and only reads running state, while the cloud page windows everything to 24
+  hours and keeps settled work visible. After this plan the local Now shows the same
+  header, the same six counters over the last 24 hours, and the same In flight tree
+  and liveness wording, computed from the files snodo already writes and from git;
+  a figure the local files cannot support shows as unavailable. What stays different
+  on purpose: the local page only sees this machine, it has no project groups, and
+  it keeps its own Waiting on you list. No new task, plan, job, wave or validator
+  states are introduced; the liveness wording is display text only.'
+name: web-dashboard-now-parity
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_now_counters_cover_last_24h
+  - 1.2_now_tree_groups_plans_and_waves
+  - 1.3_docs_describe_the_now_window
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_now_route_returns_counters_and_tree
+  - 2.2_now_view_shows_header_and_counters
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_now_view_has_plan_wave_tree
+  - 3.2_now_contract_test_ties_route_to_view

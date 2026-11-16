@@ -1,0 +1,36 @@
+intent: 'The local web dashboard''s Now page should look like the same product as
+  snodo-cloud. Ylli supplied the target as a standalone mockup, saved in the repo
+  at docs/design/now-redesign.html: the cloud colour tokens (dark by default, light
+  as an alternative), a 56px blurred top bar, six counter cards, an attention strip
+  when a task has failed, a fleet card with plan rows that carry a segmented progress
+  bar, one-line task rows with status icons, and a wider detail panel that holds the
+  task''s rendered spec. Evidence: the current page (snodo/web/static/index.html,
+  now.css, now.js) is the older light-first look; task ids wrap onto three lines because
+  the tree column is narrow and the rows are heavy cards; the detail panel is narrow
+  and cramped. The data the page reads is unchanged, so this plan changes presentation
+  and structure only: the GET /api/now contract, the spec route and every task status
+  word stay exactly as they are. Panels in the mockup that need new data (validator
+  results, log tail, attempt counts) are out of scope and come in a follow-up plan.'
+name: web-dashboard-redesign
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_shell_tokens_and_top_bar
+  - 1.2_now_head_counters_attention
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_now_fleet_and_plan_rows
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_now_wave_and_task_rows
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_now_detail_panel_layout
+  - 4.2_docs_redesign

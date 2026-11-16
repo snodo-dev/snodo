@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 - Serve validated project protocol details and published cross-field rules through the read-only dashboard API. (Fixes #1258)
+- Ignore all engine-managed plan integration and task branches during workspace escape checks. (Fixes #1263)
+- Clarify that engine-managed branches are ignored by workspace-escape checks, while moved operator branches remain escapes. (Fixes #1263)
 - Ignore ref movement belonging to other plans during workspace escape checks. (Fixes #1259)
 - Clarify that concurrent plans in separate queues do not trip each other's workspace-escape check. (Fixes #1260)
 - Port the Protocol editor mockup stylesheet into a scoped view stylesheet and guard exact parity with tests. (Fixes #1255)

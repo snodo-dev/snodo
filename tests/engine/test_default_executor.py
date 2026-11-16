@@ -354,10 +354,12 @@ def test_escape_detector_names_external_checkout_and_changed_ref(tmp_path, sampl
     [
         ("plan/other/integration", "current", False),
         ("task/other/task-1/feature", "current", False),
-        ("plan/current/integration", "current", True),
-        ("task/current/task-1/feature", "current", True),
+        ("plan/current/integration", "current", False),
+        ("task/current/task-1/feature", "current", False),
+        ("plan/other/integration", None, False),
+        ("task/other/task-1/feature", None, False),
         ("main", "current", True),
-        ("plan/other/integration", None, True),
+        ("operator-branch", "current", True),
     ],
 )
 def test_escape_detector_filters_only_other_plan_refs(
@@ -375,8 +377,10 @@ def test_escape_detector_filters_only_other_plan_refs(
     _git(root, "add", "base.txt")
     _git(root, "commit", "-m", "initial")
     external = (tmp_path / "external-checkout").resolve()
-    checkout_branch = "operator-checkout" if branch == "main" else branch
-    _git(root, "worktree", "add", "-b", checkout_branch, str(external))
+    if branch == "main":
+        _git(root, "worktree", "add", "--detach", str(external))
+    else:
+        _git(root, "worktree", "add", "-b", branch, str(external))
     builder = GraphBuilder(sample_protocol)
     mcp = GitMCP(str(root))
     try:
@@ -385,10 +389,15 @@ def test_escape_detector_filters_only_other_plan_refs(
         _git(external, "add", "escape.txt")
         _git(external, "commit", "-m", "external change")
         if branch == "main":
-            _git(root, "update-ref", "refs/heads/main", "refs/heads/operator-checkout")
+            commit = _git(external, "rev-parse", "HEAD")
+            _git(root, "update-ref", "refs/heads/main", commit)
         task = Task(id="task-1", spec="", plan_name=plan_name)
         result = builder._escaped_repo_commit(mcp, before, task)
-        assert (result is not None) is expected_escape
+        if not expected_escape:
+            assert result is None
+        else:
+            assert result.startswith("Workspace escape detected")
+            assert f"ref '{branch}'" in result
     finally:
         mcp.repo.close()
 
