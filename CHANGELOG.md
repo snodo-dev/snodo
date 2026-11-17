@@ -8,6 +8,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Add the Now page redesign mockup as a design reference. (Fixes #1222)
+- Match the local Now In flight tree to the cloud view, including persistent expansion state. (Fixes #1209)
+- Tie the Now route response contract to the fields consumed by the static view. (Fixes #1207)
+- Add contract tests for the Now route and its static view. (Fixes #1206)
+- Pin the deferred acceptance pass to its own model's provider and fail loudly when a model override cannot be rebound. (Fixes #993)
 - Document where job usage tables appear, their per-call records and roles, and when they are omitted. (Fixes #1296)
 - Print per-role usage from the plan job after its progress summary. (Fixes #1295)
 - Fall back to task-matched job usage records in end-of-run task summaries, including recovery rounds. (Fixes #1294)
