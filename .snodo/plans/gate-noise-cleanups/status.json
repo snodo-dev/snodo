@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "1.1_renamed_test_is_not_lost": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fc95ffd55c3b597c"
+    },
+    "1.2_protection_test_isolates_home": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "31f36fc5f0595971"
+    }
+  }
+}

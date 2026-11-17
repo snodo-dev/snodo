@@ -1,0 +1,11 @@
+intent: 'Remove two sources of noise in runs: the coverage_accountability validator
+  warning when a test is only renamed inside its file, and a protection test that
+  reads the real ~/.snodo so snodo activity on the gate host can break the gate. Two
+  independent small tickets in one wave. No new state, status, severity or halt type.'
+name: gate-noise-cleanups
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_renamed_test_is_not_lost
+  - 1.2_protection_test_isolates_home
