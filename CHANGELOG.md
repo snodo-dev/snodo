@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Treat a test renamed within its file with an unchanged parsed body as retained in coverage accountability. (Fixes #1297)
 - Add the Now page redesign mockup as a design reference. (Fixes #1222)
 - Match the local Now In flight tree to the cloud view, including persistent expansion state. (Fixes #1209)
 - Tie the Now route response contract to the fields consumed by the static view. (Fixes #1207)

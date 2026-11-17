@@ -23,6 +23,24 @@ def test_missing_test_case_is_operator_finding(tmp_path):
     assert any("test_removed" in f.justification and "test_contract.py" in f.justification and f.severity == "warn" for f in findings)
 
 
+def test_renamed_test_with_identical_body_is_retained(tmp_path):
+    repo, path, base = _repo(tmp_path, "def test_before():\n    # explanatory comment\n    assert 1 == 1\n")
+    path.write_text("def test_after():\n    assert (1==1)\n")
+    repo.index.add([str(path)])
+    repo.index.commit("rename test")
+    findings = coverage_findings(base_ref=base.hexsha, head_ref="HEAD", task_spec="Rename test", working_directory=str(tmp_path))
+    assert not any("test_before" in f.justification for f in findings)
+
+
+def test_renamed_and_edited_test_is_finding(tmp_path):
+    repo, path, base = _repo(tmp_path, "def test_before():\n    assert 1 == 1\n")
+    path.write_text("def test_after():\n    assert 1 == 2\n")
+    repo.index.add([str(path)])
+    repo.index.commit("rename and edit test")
+    findings = coverage_findings(base_ref=base.hexsha, head_ref="HEAD", task_spec="Rename test", working_directory=str(tmp_path))
+    assert any("test_before" in f.justification and f.severity == "warn" for f in findings)
+
+
 def test_requested_removal_is_expected(tmp_path):
     repo, path, base = _repo(tmp_path, "def test_removed():\n    pass\n")
     path.write_text("def test_new_contract():\n    pass\n")

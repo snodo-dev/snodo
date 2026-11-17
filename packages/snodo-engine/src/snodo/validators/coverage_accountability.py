@@ -24,16 +24,22 @@ def _git_text(repo, ref: str, path: str) -> str:
         return ""
 
 
-def _cases(text: str) -> set[str]:
+def _cases(text: str) -> dict[str, set[str]]:
     try:
         tree = ast.parse(text)
     except SyntaxError:
-        return set()
-    return {
-        node.name for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name.startswith("test")
-    }
+        return {}
+    cases: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name.startswith("test")
+        ):
+            body = ast.dump(
+                ast.Module(body=node.body, type_ignores=[]), include_attributes=False
+            )
+            cases.setdefault(node.name, set()).add(body)
+    return cases
 
 
 def _explanation_lines(text: str) -> int:
@@ -92,7 +98,13 @@ def coverage_findings(*, base_ref: str, head_ref: str, task_spec: str, working_d
             after = (Path(root) / new_name).read_text() if new_name else ""
         except OSError:
             after = ""
-        removed = _cases(before) - _cases(after)
+        old_cases = _cases(before)
+        new_cases = _cases(after)
+        retained_bodies = {body for bodies in new_cases.values() for body in bodies}
+        removed = {
+            case for case, bodies in old_cases.items()
+            if case not in new_cases and not bodies.intersection(retained_bodies)
+        }
         for case in sorted(removed):
             if re.search(rf"(?is).{{0,120}}{re.escape(case)}.{{0,120}}", task_spec):
                 continue
