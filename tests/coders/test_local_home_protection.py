@@ -46,6 +46,9 @@ def git_project_with_local_home(tmp_path, monkeypatch):
     (local_home / "config.yml").write_text("providers:\n  anthropic:\n    api_key: 'test'\n")
     (local_home / "tokens.db").write_text("binary token data")
 
+    real_home = tmp_path / "home"
+    real_home.mkdir()
+    monkeypatch.setenv("HOME", str(real_home))
     monkeypatch.setenv("SNODO_HOME", str(local_home))
     return repo_dir, local_home
 

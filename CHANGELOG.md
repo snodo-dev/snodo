@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Isolate home-directory protection tests from gate-host snodo state. (Fixes #1298)
 - Treat a test renamed within its file with an unchanged parsed body as retained in coverage accountability. (Fixes #1297)
 - Add the Now page redesign mockup as a design reference. (Fixes #1222)
 - Match the local Now In flight tree to the cloud view, including persistent expansion state. (Fixes #1209)

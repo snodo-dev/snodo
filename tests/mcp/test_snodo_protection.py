@@ -26,6 +26,16 @@ from snodo.tools.git import GitMCP
 from snodo.tools.workspace import PathValidationError, WorkspaceMCP
 
 
+@pytest.fixture(autouse=True)
+def isolated_snodo_home(tmp_path, monkeypatch):
+    """Keep protection tests independent of the gate host's user state."""
+    home = tmp_path / "home"
+    snodo_home = home / ".snodo"
+    snodo_home.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("SNODO_HOME", str(snodo_home))
+
+
 @pytest.fixture
 def workspace_with_snodo():
     """Create a temporary project root with a .snodo/ directory."""
