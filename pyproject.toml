@@ -61,11 +61,11 @@ Issues = "https://github.com/snodo-dev/snodo/issues"
 
 [project.optional-dependencies]
 dev = [
-    "pytest==9.1.1",
+    "pytest==9.2.0",
     "pytest-cov==7.1.0",
     "pytest-timeout==2.4.0",
-    "hypothesis==6.170.5",
-    "ruff==0.17.1",
+    "hypothesis==6.170.15",
+    "ruff==0.17.4",
     "radon>=6.0.0",
     "import-linter==2.15",
 ]
@@ -116,17 +116,17 @@ filterwarnings = [
 dev = [
     "snodo-validator-tool-jev==0.28.3",
     "snodo-provider-gitlab==0.28.3",
-    "datasets==5.1.0",  # 5.0.0 and earlier: PYSEC-2026-3716, path traversal in folder-based builders
+    "datasets==5.2.0",  # 5.0.0 and earlier: PYSEC-2026-3716, path traversal in folder-based builders
     "genbadge[coverage]==1.1.3",
-    "grimp==3.17",
+    "grimp==3.19",
     "httpx2>=2.4.0",
-    "hypothesis==6.170.5",
+    "hypothesis==6.170.15",
     "import-linter==2.15",
-    "pytest==9.1.1",
+    "pytest==9.2.0",
     "pytest-cov==7.1.0",
     "pytest-timeout==2.4.0",
     "pytest-xdist==3.8.0",
-    "ruff==0.17.1",
+    "ruff==0.17.4",
     # The test-time leak guard (tests/conftest.py) enumerates the pytest
     # process's child processes to prove none outlives its test. psutil is the
     # portable way to read the process tree (status, name, cmdline).
