@@ -1,16 +1,20 @@
 {
   "tasks": {
     "1.1_renamed_test_is_not_lost": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "fc95ffd55c3b597c"
     },
     "1.2_protection_test_isolates_home": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "31f36fc5f0595971"
     }
+  },
+  "integration": {
+    "branch": "plan/gate-noise-cleanups/integration",
+    "base_sha": "e8562b01c468b93c85e798d5258725eb718043e6"
   }
 }
