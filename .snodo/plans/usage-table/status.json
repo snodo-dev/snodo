@@ -31,7 +31,7 @@
       "spec_hash": "9c3ee84d73a9d817"
     },
     "3.1_usage_table_docs": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "f713b2e27ba4696f"
@@ -39,6 +39,6 @@
   },
   "integration": {
     "branch": "plan/usage-table/integration",
-    "base_sha": "b9e7e37ea9d02646fb0b3e8db94255cda0c794f1"
+    "base_sha": "5dc08508caf1967f1d48f3df7d674fff8a3ce01e"
   }
 }
