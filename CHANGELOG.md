@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Document where job usage tables appear, their per-call records and roles, and when they are omitted. (Fixes #1296)
 - Print per-role usage from the plan job after its progress summary. (Fixes #1295)
 - Fall back to task-matched job usage records in end-of-run task summaries, including recovery rounds. (Fixes #1294)
 - End text output from `snodo logs <job_id>` with per-role usage, including failed attempts. (Fixes #1293)

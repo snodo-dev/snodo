@@ -97,6 +97,13 @@ The final plan map is the per-task answer; the job status and logs explain the
 execution evidence. Keep both. A successful parent job alone is not proof that
 every task completed or that every change merged.
 
+At the end of the plan run, Snodo prints a usage table from the plan job's
+per-call records, including failed attempts, when records exist. It groups
+rows by role (`coder`, each validator id, and `classifier`); with no records, no
+table is printed. `snodo logs <job_id>` also appends the job usage table after
+its text output. See [Following a run](following-a-run.md#end-of-run-usage-summary)
+for an example.
+
 Plan tasks use a plan-owned integration branch. Passing tasks merge into it
 before their wave is complete, so dependent waves see earlier changes. After
 every wave succeeds in an unfiltered run, the runner delivers that branch using
