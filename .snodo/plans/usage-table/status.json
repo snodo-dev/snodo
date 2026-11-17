@@ -19,13 +19,13 @@
       "spec_hash": "494bdb8e60b17797"
     },
     "2.1_task_run_summary_from_job_usage": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "c930c16d74f0696f"
     },
     "2.2_plan_run_prints_usage_table": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "9c3ee84d73a9d817"
@@ -39,6 +39,6 @@
   },
   "integration": {
     "branch": "plan/usage-table/integration",
-    "base_sha": "43c34bd6ec58aaf4df502e6cf29358b937bcecbc"
+    "base_sha": "b9e7e37ea9d02646fb0b3e8db94255cda0c794f1"
   }
 }
