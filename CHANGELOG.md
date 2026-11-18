@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Document intake's code-to-decision-record proposal direction and its operator acceptance gate. (Fixes #1303)
 - Validate generated ADR proposals against repository evidence. (Fixes #1302)
 - Isolate home-directory protection tests from gate-host snodo state. (Fixes #1298)
 - Treat a test renamed within its file with an unchanged parsed body as retained in coverage accountability. (Fixes #1297)

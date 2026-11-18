@@ -66,3 +66,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [060](060-intent-record.md) | Operator intent is a first-class record | 2026-10-31 | Fixes #1042; intent audit record + plan reference |
 | [061](061-chatgpt-subscription-auth.md) | ChatGPT subscription authentication through an explicit provider mode | 2026-11-01 | Fixes #1055; ChatGPT OAuth provider |
 | [063](063-validator-fallback-on-operational-failure.md) | Validator fallback only on operational failure | 2026-11-16 | Validator model fallback policy (Fixes #1290) |
+| [064](064-intake-proposes-decision-records-from-code.md) | Intake proposes decision records from code | 2026-11-18 | `snodo intake --generate-adr` (Fixes #1303) |
