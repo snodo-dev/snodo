@@ -194,7 +194,7 @@ default; `--yes`, `--no-input`, and non-interactive init keep that default.
 | `snodo readiness` | `--mode`/`-m`, `--protocol`, `--json` (deprecated alias for `ready`) |
 | `snodo recon` | `<query> [paths...]`, `--agents`/`-n` |
 | `snodo survey` | `--json`, `--agent` |
-| `snodo intake` | `--validator`, `--json`, `--accept-all`, `--reject-all`, `--no-input` |
+| `snodo intake` | `--validator`, `--json`, `--accept-all`, `--reject-all`, `--no-input`, `--generate-adr` |
 | `snodo authorize` | `[task_id]`, `--yes`/`-y`, `--reject-all` |
 
 `--module` names a declared protocol module for a task; it selects that

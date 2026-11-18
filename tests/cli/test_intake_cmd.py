@@ -357,3 +357,64 @@ class TestIntakeErrors:
         assert rc == 4
         payload = json.loads(capsys.readouterr().out)
         assert payload["ok"] is False
+
+
+def test_generate_adr_reviews_and_writes_only_accepted(tmp_path, monkeypatch, capsys):
+    from snodo.survey.adr_proposals import ADRProposal, EvidenceReference
+    _make_repo(tmp_path, {"README.md": "# Decisions\n"})
+    for name in ("a.py", "b.py", "c.py"):
+        (tmp_path / name).write_text("pattern")
+    monkeypatch.chdir(tmp_path)
+    proposal = ADRProposal("Use a shared client", "Context", "Use shared client", "Benefits",
+                           tuple(EvidenceReference(f"{name}.py") for name in "abc"))
+    monkeypatch.setattr("snodo.survey.adr_analysis.analyze_adr_proposals",
+                        lambda root: ([proposal], [], None))
+    rc = intake_cmd.intake_command(_args(generate_adr=True), ask=lambda prompt: "y")
+    record = tmp_path / "docs/decisions/001-use-a-shared-client.md"
+    assert rc == 0
+    assert "Proposed" in record.read_text()
+    assert "decision: Use shared client" in capsys.readouterr().out
+
+
+def test_generate_adr_json_and_reject_do_not_write(tmp_path, monkeypatch, capsys):
+    from snodo.survey.adr_proposals import ADRProposal, EvidenceReference
+    _make_repo(tmp_path, {"README.md": "# Decisions\n"})
+    (tmp_path / "a.py").write_text("a")
+    monkeypatch.chdir(tmp_path)
+    proposal = ADRProposal("A decision", "Context", "Decision", "Consequences",
+                           (EvidenceReference("a.py"),))
+    monkeypatch.setattr("snodo.survey.adr_analysis.analyze_adr_proposals",
+                        lambda root: ([proposal], [], None))
+    assert intake_cmd.intake_command(_args(generate_adr=True, json=True)) == 0
+    assert json.loads(capsys.readouterr().out)["written"] is False
+    assert not list((tmp_path / "docs/decisions").glob("[0-9]*.md"))
+    assert intake_cmd.intake_command(_args(generate_adr=True, reject_all=True)) == 0
+    assert not list((tmp_path / "docs/decisions").glob("[0-9]*.md"))
+
+
+def test_generate_adr_without_decision_folder_explains_setup(tmp_path, monkeypatch, capsys):
+    from git import Repo
+    Repo.init(str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    rc = intake_cmd.intake_command(_args(generate_adr=True))
+    output = capsys.readouterr().out
+    assert rc == 0
+    assert "docs/decisions" in output and "README" in output and "Nygard" in output
+
+
+def test_generate_adr_accept_all_and_no_input_and_analysis_error(tmp_path, monkeypatch, capsys):
+    from snodo.survey.adr_proposals import ADRProposal, EvidenceReference
+    _make_repo(tmp_path, {"README.md": "# Decisions\n"})
+    monkeypatch.chdir(tmp_path)
+    proposal = ADRProposal("Shared client", "Context", "Use it", "Benefits",
+                           (EvidenceReference("x.py"),))
+    monkeypatch.setattr("snodo.survey.adr_analysis.analyze_adr_proposals",
+                        lambda root: ([proposal], [], None))
+    assert intake_cmd.intake_command(_args(generate_adr=True, accept_all=True, no_input=True)) == 0
+    assert len(list((tmp_path / "docs/decisions").glob("[0-9]*.md"))) == 1
+    (tmp_path / "docs/decisions/001-shared-client.md").unlink()
+    monkeypatch.setattr("snodo.survey.adr_analysis.analyze_adr_proposals",
+                        lambda root: ([], [], "model unavailable"))
+    assert intake_cmd.intake_command(_args(generate_adr=True)) == 4
+    assert "model unavailable" in capsys.readouterr().err
+    assert not list((tmp_path / "docs/decisions").glob("[0-9]*.md"))

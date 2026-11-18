@@ -70,6 +70,9 @@ def register(app: typer.Typer) -> None:
         no_input: bool = typer.Option(
             False, "--no-input", help="Never prompt; requires --accept-all or --reject-all",
         ),
+        generate_adr: bool = typer.Option(
+            False, "--generate-adr", help="Propose decision records from repository patterns",
+        ),
     ):
         """Propose validator criteria from decision records; accept one at a time."""
         return intake_command(
@@ -79,6 +82,7 @@ def register(app: typer.Typer) -> None:
                 accept_all=accept_all,
                 reject_all=reject_all,
                 no_input=no_input,
+                generate_adr=generate_adr,
             )
         )
 
@@ -259,10 +263,14 @@ def intake_command(args, ask: Optional[Callable[[str], str]] = None) -> int:
     reject_all = getattr(args, "reject_all", False)
     no_input = getattr(args, "no_input", False)
     requested_validator = getattr(args, "validator", None)
+    generate_adr = getattr(args, "generate_adr", False)
 
     project_root = _git_root(json_out)
     if project_root is None:
         return EXIT_INTERNAL_ERROR
+
+    if generate_adr:
+        return _generate_adrs(project_root, json_out, accept_all, reject_all, no_input, ask)
 
     protocol_path = project_root / ".snodo" / "protocol.yml"
     if not protocol_path.exists():
@@ -345,3 +353,88 @@ def intake_command(args, ask: Optional[Callable[[str], str]] = None) -> int:
         return EXIT_PASS
 
     return _write_protocol(protocol_path, accepted, requested_validator)
+
+
+def _generate_adrs(project_root, json_out, accept_all, reject_all, no_input, ask):
+    """Generate grounded decision-record proposals and write only accepted ones."""
+    from snodo.cli.json_output import EXIT_INTERNAL_ERROR, EXIT_PASS, emit_json, schema_name
+    from snodo.survey.analyzer import _detect_decision_paths
+
+    decision_paths = _detect_decision_paths(project_root)
+    if not decision_paths:
+        message = (
+            "No decision records folder was found. Start one by creating "
+            "docs/decisions, adding a README with a table of records, and writing "
+            "a first record in the Nygard format; the existing snodo folder is "
+            "an example."
+        )
+        if json_out:
+            return emit_json({"schema": schema_name("intake"), "ok": True,
+                              "project_root": str(project_root), "proposals": [],
+                              "written": False, "message": message}, EXIT_PASS)
+        print(message)
+        return EXIT_PASS
+
+    from snodo.survey.adr_analysis import analyze_adr_proposals
+    from snodo.survey.adr_record_writer import write_adr_record
+
+    proposals, _dropped, error = analyze_adr_proposals(project_root)
+    if error:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("intake", error, EXIT_INTERNAL_ERROR)
+        print(f"Error: {error}", file=sys.stderr)
+        return EXIT_INTERNAL_ERROR
+    if json_out:
+        return emit_json({"schema": schema_name("intake"), "ok": True,
+                          "project_root": str(project_root),
+                          "proposals": [_adr_proposal_dict(p) for p in proposals],
+                          "written": False}, EXIT_PASS)
+    print(f"Intake: {len(proposals)} ADR proposal(s)")
+    if not proposals:
+        print("No proposals; nothing written.")
+        return EXIT_PASS
+    if accept_all and reject_all:
+        print("Error: --accept-all and --reject-all are mutually exclusive.", file=sys.stderr)
+        return EXIT_INTERNAL_ERROR
+    try:
+        if reject_all:
+            accepted = []
+        elif accept_all:
+            accepted = list(proposals)
+        elif ask is not None:
+            accepted = _review_adr(proposals, ask)
+        elif not no_input and sys.stdin.isatty():
+            accepted = _review_adr(proposals, input)
+        else:
+            print("Error: refusing to guess — re-run with --accept-all or --reject-all.", file=sys.stderr)
+            return EXIT_INTERNAL_ERROR
+    except (EOFError, KeyboardInterrupt):
+        print("\nAborted: nothing was written.", file=sys.stderr)
+        return EXIT_INTERNAL_ERROR
+    if not accepted:
+        print("Nothing accepted; nothing written.")
+        return EXIT_PASS
+    decisions_dir = project_root / decision_paths[0]
+    for proposal in accepted:
+        path = write_adr_record(proposal, decisions_dir)
+        print(f"Wrote {path}")
+    return EXIT_PASS
+
+
+def _adr_proposal_dict(proposal):
+    return {"title": proposal.title, "context": proposal.context,
+            "decision": proposal.decision, "consequences": proposal.consequences,
+            "evidence": [{"path": ref.path, "line_range": ref.line_range}
+                         for ref in proposal.evidence]}
+
+
+def _review_adr(proposals, ask):
+    accepted = []
+    for index, proposal in enumerate(proposals, 1):
+        print(f"\n[{index}/{len(proposals)}] {proposal.title}")
+        print(f"    decision: {proposal.decision}")
+        print("    evidence: " + ", ".join(ref.path for ref in proposal.evidence))
+        if ask("Accept? [y/N] ").strip().lower() in ("y", "yes"):
+            accepted.append(proposal)
+    return accepted
