@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Write accepted ADR proposals as numbered decision records. (Fixes #1305)
 - Analyze repository patterns with the first recon model and validate ADR proposals. (Fixes #1304)
 - Document intake's code-to-decision-record proposal direction and its operator acceptance gate. (Fixes #1303)
 - Validate generated ADR proposals against repository evidence. (Fixes #1302)
