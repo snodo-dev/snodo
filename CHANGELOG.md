@@ -11,7 +11,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Generate decision records from repository patterns through `snodo intake --generate-adr`. (Fixes #1306)
 - Write accepted ADR proposals as numbered decision records. (Fixes #1305)
 - Analyze repository patterns with the first recon model and validate ADR proposals. (Fixes #1304)
-- Document intake's code-to-decision-record proposal direction and its operator acceptance gate. (Fixes #1303)
+- Document intake's code-to-decision-record proposal direction and its operator acceptance gate. (Fixes #1307)
 - Validate generated ADR proposals against repository evidence. (Fixes #1302)
 - Isolate home-directory protection tests from gate-host snodo state. (Fixes #1298)
 - Treat a test renamed within its file with an unchanged parsed body as retained in coverage accountability. (Fixes #1297)
