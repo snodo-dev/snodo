@@ -1,0 +1,31 @@
+intent: 'Add `snodo intake --generate-adr`: a model reads the repository''s code,
+  finds clear patterns that no decision record states yet, and proposes ADRs the operator
+  accepts or rejects one at a time. Accepted ones are written to the decision records
+  folder with Status "Proposed"; when the repository has no decision records folder,
+  intake says so and shows how to start one. The model is the one recon uses first
+  (llm.recon.models). The MCP intake tool stays read-only. A new ADR amends ADR 044
+  to record that intake now works in both directions. No new state, status, severity
+  or halt type in snodo itself.'
+name: intake-generate-adr
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_adr_intake_both_directions
+  - 1.2_adr_proposal_model_and_checks
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_adr_analysis_model_call
+  - 2.2_adr_record_writer
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_intake_generate_adr_flag
+- depends_on:
+  - 3
+  id: 4
+  tasks:
+  - 4.1_generate_adr_docs

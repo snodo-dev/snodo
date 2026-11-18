@@ -1,0 +1,40 @@
+{
+  "tasks": {
+    "1.1_adr_intake_both_directions": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "6628d94926c49f06"
+    },
+    "1.2_adr_proposal_model_and_checks": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5843121a19c25919"
+    },
+    "2.1_adr_analysis_model_call": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3f59bf8981928b7c"
+    },
+    "2.2_adr_record_writer": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5048f528b6f23daa"
+    },
+    "3.1_intake_generate_adr_flag": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b4e4b347c9b81762"
+    },
+    "4.1_generate_adr_docs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0bb226e3252d99e5"
+    }
+  }
+}
