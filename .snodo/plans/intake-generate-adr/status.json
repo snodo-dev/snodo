@@ -7,7 +7,7 @@
       "spec_hash": "6628d94926c49f06"
     },
     "1.2_adr_proposal_model_and_checks": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "455769c0aa7a1372"
@@ -39,6 +39,6 @@
   },
   "integration": {
     "branch": "plan/intake-generate-adr/integration",
-    "base_sha": "f53520dff54b2319b3c527acc17a07e47b09694e"
+    "base_sha": "821eb82b3631e3299c2ea1b55e879eecc9ff67c1"
   }
 }
