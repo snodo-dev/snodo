@@ -38,6 +38,18 @@ read-only and returns proposals with `written: false`; the human must make and
 apply the protocol change. Intake reads rules from ADR **Decision** sections,
 not background or consequences. See [ADR 044](decisions/044-intake-proposes-criteria.md).
 
+### Propose decision records from code
+
+Run `snodo intake --generate-adr` to ask the first model in the recon model
+list to read the code and propose decision records for patterns it finds in at
+least three places with no counterexample. Each proposal lists its evidence
+files and is accepted or rejected individually. Accepted proposals are written
+as decision records with Status **Proposed** for the operator to review; they
+are not automatically accepted decisions. If the repository has no
+decision-records folder, intake explains how to start one and creates nothing.
+The MCP `intake` tool remains read-only and does not generate records. See
+[ADR 064](decisions/064-intake-proposes-decision-records-from-code.md).
+
 ### 2. Run small first plans and learn from calibration
 
 Start with a small, representative task or a short authored plan. Plans are
