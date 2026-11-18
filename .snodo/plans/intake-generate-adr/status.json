@@ -7,10 +7,10 @@
       "spec_hash": "6628d94926c49f06"
     },
     "1.2_adr_proposal_model_and_checks": {
-      "status": "blocked",
+      "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "5843121a19c25919"
+      "spec_hash": "455769c0aa7a1372"
     },
     "2.1_adr_analysis_model_call": {
       "status": "pending",
@@ -39,6 +39,6 @@
   },
   "integration": {
     "branch": "plan/intake-generate-adr/integration",
-    "base_sha": "3e3440fa062309c2991ec7b7c04f51b909ac821d"
+    "base_sha": "f53520dff54b2319b3c527acc17a07e47b09694e"
   }
 }
