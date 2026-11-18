@@ -1,7 +1,7 @@
 {
   "tasks": {
     "1.1_adr_intake_both_directions": {
-      "status": "blocked",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "6628d94926c49f06"
@@ -13,13 +13,13 @@
       "spec_hash": "455769c0aa7a1372"
     },
     "2.1_adr_analysis_model_call": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "3f59bf8981928b7c"
     },
     "2.2_adr_record_writer": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "5048f528b6f23daa"
@@ -39,6 +39,6 @@
   },
   "integration": {
     "branch": "plan/intake-generate-adr/integration",
-    "base_sha": "821eb82b3631e3299c2ea1b55e879eecc9ff67c1"
+    "base_sha": "081b3973a505695769e269ee7c38bc786323b228"
   }
 }
