@@ -31,7 +31,7 @@
       "spec_hash": "b4e4b347c9b81762"
     },
     "4.1_generate_adr_docs": {
-      "status": "pending",
+      "status": "errored",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "0bb226e3252d99e5"
@@ -39,6 +39,6 @@
   },
   "integration": {
     "branch": "plan/intake-generate-adr/integration",
-    "base_sha": "391d14a55813beb18002021bb6c51bd05f10b45e"
+    "base_sha": "8c43ed3035dd95f65432d7a2aa9e06e0a2fe9284"
   }
 }
