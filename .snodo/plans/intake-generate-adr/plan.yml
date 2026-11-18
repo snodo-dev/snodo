@@ -11,12 +11,12 @@ waves:
 - depends_on: []
   id: 1
   tasks:
-  - 1.1_adr_intake_both_directions
   - 1.2_adr_proposal_model_and_checks
 - depends_on:
   - 1
   id: 2
   tasks:
+  - 1.1_adr_intake_both_directions
   - 2.1_adr_analysis_model_call
   - 2.2_adr_record_writer
 - depends_on:
