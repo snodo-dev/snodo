@@ -1,13 +1,13 @@
 {
   "tasks": {
     "1.1_adr_intake_both_directions": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "6628d94926c49f06"
     },
     "1.2_adr_proposal_model_and_checks": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "5843121a19c25919"
@@ -36,5 +36,9 @@
       "depth": 0,
       "spec_hash": "0bb226e3252d99e5"
     }
+  },
+  "integration": {
+    "branch": "plan/intake-generate-adr/integration",
+    "base_sha": "66cb516ee4451c7184eff189e1b80e8c7f3db6f0"
   }
 }
