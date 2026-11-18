@@ -39,6 +39,6 @@
   },
   "integration": {
     "branch": "plan/intake-generate-adr/integration",
-    "base_sha": "4974cbfd3200b98f4014eafbfc9794e3311f353c"
+    "base_sha": "bc48dd14a4dbb0f56b8981aa0f3c2391c5ef4f61"
   }
 }
