@@ -19,7 +19,7 @@
       "spec_hash": "852887692f527762"
     },
     "1.5_release_notes_page": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "d096dc79abe3d011"
@@ -27,6 +27,6 @@
   },
   "integration": {
     "branch": "plan/docs-coverage-0-29/integration",
-    "base_sha": "ca38fc6d8dc42065e001599aa9d515bd946aa2dd"
+    "base_sha": "5335bad2adeaa3c8def6ff6b64ee930977ff601a"
   }
 }
