@@ -4,7 +4,7 @@
       "status": "errored",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "693f61fc55afeb7f"
+      "spec_hash": "d096dc79abe3d011"
     },
     "1.2_dashboard_gates_plans_docs": {
       "status": "completed",
@@ -13,7 +13,7 @@
       "spec_hash": "54f5c3aade10b161"
     },
     "1.3_verdict_reuse_docs": {
-      "status": "errored",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "32c5a82e3990c497"
@@ -27,6 +27,6 @@
   },
   "integration": {
     "branch": "plan/docs-coverage-0-29/integration",
-    "base_sha": "f2d42491149069427b8b49d39d850cc075e1017e"
+    "base_sha": "90d5ff162daae86eb044eb6a6933564c82ff1efb"
   }
 }
