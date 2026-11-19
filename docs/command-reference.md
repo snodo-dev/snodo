@@ -197,6 +197,12 @@ default; `--yes`, `--no-input`, and non-interactive init keep that default.
 | `snodo intake` | `--validator`, `--json`, `--accept-all`, `--reject-all`, `--no-input`, `--generate-adr` |
 | `snodo authorize` | `[task_id]`, `--yes`/`-y`, `--reject-all` |
 
+`snodo intake --generate-adr` asks the first configured recon model to propose
+decision records for code patterns found in at least three places without a
+counterexample. Review and accept or reject each proposal; accepted records are
+written with **Proposed** status, not treated as approved decisions. See
+[Propose decision records from code](evolving-the-protocol.md#propose-decision-records-from-code).
+
 `--module` names a declared protocol module for a task; it selects that
 module's test command and bounds writable paths. Plans with no tasks across all
 waves are refused. `snodo plan create` makes an authoring scaffold, not a

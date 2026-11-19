@@ -67,7 +67,12 @@ Versioned with a `schema` field and validation-outcome exit codes (ADR 022).
 MCP work starters return job IDs immediately. Watch the job in a browser using
 the returned link (typically through the configured tunnel), or use
 `snodo logs <job_id> --watch`; query status and logs when you need specific
-details. Notifications are detached, opt-in, and best-effort.
+details. Notifications are detached, opt-in, and best-effort. For a project-wide
+view, run [`snodo dashboard --web`](web-dashboard.md). Task and plan runs print
+a per-role [usage table](following-a-run.md#end-of-run-usage-summary) at the end,
+and [`snodo logs`](following-a-run.md#end-of-run-usage-summary) shows it too; see
+also the [plan-run usage notes](following-a-plan-run.md). To establish a project
+and propose decision records or protocol criteria, see [intake](evolving-the-protocol.md#intake-establish-a-trustworthy-first-loop).
 
 ## The language
 
