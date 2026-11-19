@@ -1,0 +1,16 @@
+intent: 'Close the user-facing documentation gaps for the 0.29 features: a What''s
+  new page that ties the release together, fuller Gates and Plans coverage in the
+  web dashboard page, a user-facing explanation of validator verdict reuse and the
+  verdict-only retry, and the command reference and landing page mentions for intake
+  --generate-adr, the dashboard and the usage tables. Four independent documentation
+  tickets in one wave. No code changes and no new state, status, severity or halt
+  type.'
+name: docs-coverage-0-29
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_whats_new_page
+  - 1.2_dashboard_gates_plans_docs
+  - 1.3_verdict_reuse_docs
+  - 1.4_command_reference_and_index
