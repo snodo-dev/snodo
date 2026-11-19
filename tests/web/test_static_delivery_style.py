@@ -83,3 +83,19 @@ def test_delivery_flow_values_can_fit_narrow_panels() -> None:
     values = re.search(r"\.delivery-flow-values, \.delivery-flow-na\s*\{([^}]*)\}", stylesheet)
     assert values is not None
     assert "overflow-wrap: anywhere" in values.group(1)
+
+
+def test_delivery_daily_chart_uses_fractional_columns_without_horizontal_scroll() -> None:
+    stylesheet = STYLESHEET.read_text(encoding="utf-8")
+    chart = re.search(r"\.delivery-chart\s*\{([^}]*)\}", stylesheet)
+    assert chart is not None
+    declarations = dict(re.findall(r"([\w-]+)\s*:\s*([^;]+);", chart.group(1)))
+    assert declarations["grid-template-columns"] == "repeat(var(--delivery-day-count, 1), minmax(0, 1fr))"
+    assert declarations["overflow-x"] == "hidden"
+
+
+def test_delivery_card_bar_segment_text_overrides_figure_span_font_size() -> None:
+    stylesheet = STYLESHEET.read_text(encoding="utf-8")
+    match = re.search(r"\.delivery-figure \.delivery-segment\s*\{([^}]*)\}", stylesheet)
+    assert match is not None
+    assert "font-size: 0" in match.group(1)

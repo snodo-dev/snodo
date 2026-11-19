@@ -278,3 +278,12 @@ def test_delivery_efficiency_is_null_safe_and_type_tokens_exist_in_themes() -> N
     assert html.count("--flow-defect:") >= 3
     assert html.count("--flow-debt:") >= 3
     assert html.count("--flow-risk:") >= 3
+
+
+def test_delivery_chart_fits_all_days_and_hides_zero_counts_near_bars() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'chart.style.setProperty("--delivery-day-count", String(Math.max(1, byDay.length)))' in source
+    assert 'count > 0 ? String(day.landed) : ""' in source
+    assert 'countLabel.style.bottom = `calc(${barHeight}% + 0.15rem)`' in source
+    assert 'chart.setAttribute("aria-label", "Tasks landed per day")' in source
+    assert 'bar.title = `${day.date}: ${day.landed}`' in source

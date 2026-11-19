@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Fit the Delivery daily chart to all supported windows, show non-zero counts by their bars, and keep Flow bar labels hidden. (Fixes #1313)
 - Add a 0.29 release guide linking dashboard, model, usage, intake, outcomes, and demo features to their documentation. (Fixes #1312)
 - Explain intake ADR generation in the command reference and link dashboard, usage tables, and intake from the landing page. (Fixes #1309)
 

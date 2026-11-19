@@ -156,12 +156,17 @@
     chart.setAttribute("aria-label", "Tasks landed per day");
     const byDay = Array.isArray(data.by_day) ? data.by_day : [];
     const maximum = Math.max(1, ...byDay.map((day) => Number(day.landed) || 0));
+    chart.style.setProperty("--delivery-day-count", String(Math.max(1, byDay.length)));
     for (const day of byDay) {
       const column = element("div", undefined, "delivery-day");
-      column.append(element("span", day.landed === null || day.landed === undefined ? "n/a" : String(day.landed), "delivery-day-count"));
+      const count = Number(day.landed) || 0;
+      const countLabel = element("span", count > 0 ? String(day.landed) : "", "delivery-day-count");
       const track = element("div", undefined, "delivery-track");
       const bar = element("div", undefined, "delivery-bar");
-      bar.style.height = `${Math.max(2, (Number(day.landed) || 0) / maximum * 100)}%`;
+      const barHeight = count / maximum * 100;
+      bar.style.height = `${Math.max(count > 0 ? 2 : 0, barHeight)}%`;
+      countLabel.style.bottom = `calc(${barHeight}% + 0.15rem)`;
+      track.append(countLabel);
       bar.setAttribute("aria-label", `${day.date}: ${day.landed}`);
       bar.title = `${day.date}: ${day.landed}`;
       track.append(bar);
