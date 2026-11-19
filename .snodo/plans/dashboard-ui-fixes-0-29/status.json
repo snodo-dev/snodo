@@ -13,7 +13,7 @@
       "spec_hash": "72822502177cb56c"
     },
     "1.4_protocol_delivery_tile": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "5d30a29ef2e9f095"
@@ -21,6 +21,6 @@
   },
   "integration": {
     "branch": "plan/dashboard-ui-fixes-0-29/integration",
-    "base_sha": "3c6cbfdb39594bbd8fb5240de0fd79b6304fa50c"
+    "base_sha": "9e425c82e69519bb56152343e8480c9b25a05615"
   }
 }
