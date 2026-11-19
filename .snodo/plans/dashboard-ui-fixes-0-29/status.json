@@ -1,22 +1,26 @@
 {
   "tasks": {
     "1.1_delivery_chart_layout": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "bdbc56be2f04336b"
     },
     "1.2_gates_count_all_send_backs": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "72822502177cb56c"
     },
     "1.3_protocol_effective_delivery": {
-      "status": "pending",
+      "status": "errored",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "5d30a29ef2e9f095"
     }
+  },
+  "integration": {
+    "branch": "plan/dashboard-ui-fixes-0-29/integration",
+    "base_sha": "534ee1c537d16f98ee68e83620b307d563440243"
   }
 }
