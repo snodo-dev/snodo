@@ -106,7 +106,8 @@ The dashboard has five views:
   newest gate records with task, project, stopping validator, outcome, and
   relative time. **Landed after a retry** means the task's recorded plan status
   is completed; **Not landed yet** means it is not recorded as completed. When
-  gate attempts do not contain a timestamp or stopping validator, those values
+  blocked halts in task state or archived attempts identify send-backs, whether
+  or not a fix task record exists. When attempts do not contain a timestamp or stopping validator, those values
   are unavailable (the validator displays as **unknown**); records without a
   usable attempt timestamp cannot be included. With no records in the window,
   the page says so.

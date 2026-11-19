@@ -29,3 +29,6 @@ def test_gates_view_handles_failed_fetch_and_empty_records() -> None:
     assert "catch (_)" in source
     assert "The gates dashboard could not be reached." in source
     assert "No gate send-backs in this window." in source
+    assert "No validator send-backs in this window." in source
+    assert "No project send-backs in this window." in source
+    assert "sent back no tasks" in source

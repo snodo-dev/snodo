@@ -1,11 +1,9 @@
-"""Read-only gate retry records for web dashboards.
+"""Read-only gate send-back records for web dashboards.
 
-The existence of a ``<task>_fix_<n>`` task record identifies a send-back.
-Attempt timestamps and stopping validator results come from the original
-``.snodo/tasks/<task>/state.json`` and its archived ``attempts/*.json``;
-validator IDs are taken from ``halt.validator_results``. The plan and current
-task status come from ``DashboardDataProvider.get_tasks()``, which reads
-``.snodo/plans/<plan>/status.json``. Missing recorded values remain ``None``.
+A send-back is a blocked halt recorded in task state or an archived attempt.
+Its timestamp and stopping validator come from that record; plan and current
+task status come from ``DashboardDataProvider.get_tasks()``. Missing values
+remain unavailable.
 """
 
 from __future__ import annotations
@@ -13,12 +11,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-import re
 from typing import Any
 
 from snodo.dashboard.providers import DashboardDataProvider
-
-_FIX_TASK = re.compile(r"^(?P<task>.+)_fix_(?P<number>\d+)$")
+from snodo.web.flow import blocked_attempts
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -42,14 +38,6 @@ def _timestamp(value: Any) -> datetime | None:
         except ValueError:
             return None
     return None
-
-
-def _attempts(task_dir: Path) -> list[dict[str, Any]]:
-    records = [_read_json(task_dir / "state.json")]
-    attempts_dir = task_dir / "attempts"
-    if attempts_dir.is_dir():
-        records.extend(_read_json(path) for path in sorted(attempts_dir.glob("*.json")))
-    return records
 
 
 def _stopping_validator(state: dict[str, Any]) -> str | None:
@@ -87,21 +75,14 @@ def gate_records(project_path: str | Path, window_days: int, now: datetime | Non
         return []
     grouped: dict[tuple[str | None, str], list[tuple[datetime, str | None]]] = {}
     try:
-        fix_dirs = sorted(path for path in tasks_dir.iterdir() if path.is_dir() and _FIX_TASK.match(path.name))
+        task_dirs = sorted(path for path in tasks_dir.iterdir() if path.is_dir())
     except OSError:
         return []
-    for fix_dir in fix_dirs:
-        match = _FIX_TASK.match(fix_dir.name)
-        assert match is not None
-        task_id = match.group("task")
-        original_dir = tasks_dir / task_id
-        if not original_dir.is_dir():
+    for task_dir in task_dirs:
+        task_id = task_dir.name
+        if "_fix_" in task_id:
             continue
-        for state in _attempts(original_dir):
-            halt = state.get("halt")
-            if not isinstance(halt, dict) or halt.get("status") != "blocked":
-                continue
-            # Archived attempt files capture the completed blocked state.
+        for state in blocked_attempts(task_dir):
             stamp = _timestamp(state.get("completed_at"))
             if stamp is None or stamp.timestamp() < cutoff or stamp > current:
                 continue

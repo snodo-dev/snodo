@@ -26,7 +26,9 @@
     const days = Number(data.window_days) || selectedDays;
     const sentBack = Number(data.sent_back) || 0;
     const landed = Number(data.landed_after_retry) || 0;
-    fragment.append(element("p", `The gates sent back ${sentBack} tasks in the last ${days} days. ${landed} landed after being rewritten.`, "gates-summary"));
+    fragment.append(element("p", sentBack === 0
+      ? `The gates sent back no tasks in the last ${days} days.`
+      : `The gates sent back ${sentBack} ${sentBack === 1 ? "task" : "tasks"} in the last ${days} days. ${landed} landed after being rewritten.`, "gates-summary"));
 
     const controls = element("div", undefined, "gates-windows");
     for (const option of [7, 21, 30]) {
@@ -46,6 +48,9 @@
     const validatorPanel = element("section", undefined, "gates-panel");
     validatorPanel.append(element("h2", "What the validators caught"));
     const maxValidator = Math.max(1, ...validators.map((row) => Number(row.count) || 0));
+    if (validators.length === 0) {
+      validatorPanel.append(element("p", "No validator send-backs in this window.", "gates-empty"));
+    }
     for (const row of validators) {
       const line = element("div", undefined, "gates-bar-row");
       line.append(element("span", row.validator || "unknown"));
@@ -62,6 +67,9 @@
     const projects = Array.isArray(data.by_project) ? data.by_project : [];
     const projectPanel = element("section", undefined, "gates-panel");
     projectPanel.append(element("h2", "Per project"));
+    if (projects.length === 0) {
+      projectPanel.append(element("p", "No project send-backs in this window.", "gates-empty"));
+    }
     for (const project of projects) {
       const count = Number(project.sent_back) || 0;
       const retried = Number(project.landed_after_retry) || 0;

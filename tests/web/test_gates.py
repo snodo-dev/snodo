@@ -42,8 +42,10 @@ def test_retry_still_blocked_is_not_landed(tmp_path):
     assert records[0]["outcome"] == "not_landed"
 
 
-def test_task_without_fix_record_is_omitted(tmp_path):
-    assert gate_records(_project(tmp_path, retry=False), 7, NOW) == []
+def test_task_without_fix_record_is_counted(tmp_path):
+    records = gate_records(_project(tmp_path, retry=False), 7, NOW)
+    assert records[0]["validator"] == "lint"
+    assert records[0]["outcome"] == "landed_after_retry"
 
 
 def test_old_send_back_is_outside_window(tmp_path):

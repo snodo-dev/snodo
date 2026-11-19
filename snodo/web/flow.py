@@ -56,14 +56,19 @@ def _task_records(root: Path) -> dict[str, dict[str, Any]]:
     return result
 
 
-def _was_sent_back(task_dir: Path) -> bool:
+def blocked_attempts(task_dir: Path) -> list[dict[str, Any]]:
+    """Return state/archived-attempt records with a blocked halt."""
     records = [_read(task_dir / "state.json")]
-    attempts = task_dir / "attempts"
     try:
-        records.extend(_read(path) for path in attempts.glob("*.json"))
+        records.extend(_read(path) for path in (task_dir / "attempts").glob("*.json"))
     except OSError:
         pass
-    return any(isinstance(item.get("halt"), dict) and item["halt"].get("status") == "blocked" for item in records)
+    return [item for item in records
+            if isinstance(item.get("halt"), dict) and item["halt"].get("status") == "blocked"]
+
+
+def _was_sent_back(task_dir: Path) -> bool:
+    return bool(blocked_attempts(task_dir))
 
 
 def _send_back_moment(root: Path, task_id: str) -> tuple[bool, datetime | None]:
