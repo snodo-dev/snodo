@@ -8,6 +8,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+
+- Explain validator verdict reuse and missing-verdict judge retries in the outcomes guide. (Fixes #1310)
 - Explain the shipped Gates and Plans dashboard views, their status indicators, and unavailable record values. (Fixes #1308)
 - Generate decision records from repository patterns through `snodo intake --generate-adr`. (Fixes #1306)
 - Write accepted ADR proposals as numbered decision records. (Fixes #1305)

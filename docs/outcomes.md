@@ -217,6 +217,24 @@ continues from the previous attempt's worktree so its changes remain available.
 Pass `fresh_start: true` when a clean start is intended. `append_spec` adds
 guidance; `revised_spec` is for an actual specification correction.
 
+### Reused validator verdicts and judges that return no verdict
+
+A retry can reuse a cached validator verdict instead of calling that validator
+again when the task spec and the repository tree it judged are unchanged. This
+applies to any verdict severity (pass, warn, or blocker); retry evidence is not
+part of the cache key. If a validator is called fresh, it still receives the
+retry evidence. A judge that reads the spec is judged again when the spec
+changes, even if the tree is unchanged, and its verdict is reusable when both
+the spec and tree remain unchanged. See [ADR 021](decisions/021-recovery-builds-from-original-task.md)
+for the retry verdict-reuse decision.
+
+A judge that reaches a verdict-only turn but returns no usable verdict gets one
+extra verdict-only attempt. If that attempt also returns no verdict, the task
+fails closed as a validator error, not as a pass or an adjudication request. The
+reported diagnostics include the provider finish reason, completion-token
+count, and whether response text was returned; inspect them with the validator
+error and job logs when deciding whether to repair the provider or retry.
+
 ### A `completed` job with a non-zero `exit_code`
 
 **Means:** This is an inconsistent success signal. The job wrapper in the
