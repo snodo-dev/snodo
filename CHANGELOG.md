@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Explain the shipped Gates and Plans dashboard views, their status indicators, and unavailable record values. (Fixes #1308)
 - Generate decision records from repository patterns through `snodo intake --generate-adr`. (Fixes #1306)
 - Write accepted ADR proposals as numbered decision records. (Fixes #1305)
 - Analyze repository patterns with the first recon model and validate ADR proposals. (Fixes #1304)

@@ -96,8 +96,32 @@ The dashboard has five views:
   excluded; a task that lands on its first try counts as fully efficient. This
   is a rework measure, not the Flow Framework's active-time-over-total-time
   measure.
-- **Gates** shows what validators sent back and whether the work landed.
-- **Plans** shows each plan, its progress, and whether it reached `main`.
+- **Gates** aggregates validator send-backs and retry outcomes across projects for a
+  selectable 7-, 21-, or 30-day window (21 days by default). Its summary reports
+  tasks sent back and those that landed after a retry. **What the validators
+  caught** bars compare each validator's send-back count with the highest count
+  in the list; a missing validator ID is shown as **unknown**. **Per project**
+  bars show the share of sent-back tasks that landed after retry, with the
+  landed / sent-back counts alongside. The **The record** table lists up to 100
+  newest gate records with task, project, stopping validator, outcome, and
+  relative time. **Landed after a retry** means the task's recorded plan status
+  is completed; **Not landed yet** means it is not recorded as completed. When
+  gate attempts do not contain a timestamp or stopping validator, those values
+  are unavailable (the validator displays as **unknown**); records without a
+  usable attempt timestamp cannot be included. With no records in the window,
+  the page says so.
+- **Plans** lists plans across projects in a table with plan name, project, task
+  completion count, progress bar, delivery status, and last-updated date. The
+  plan name's hover title shows its intent when recorded. When there is more
+  than one project, the **Project** filter switches between all projects and an
+  individual project. The progress bar tracks completed tasks out of the plan's
+  recorded task total, also shown as a fraction. Delivery pills read **running**
+  when any task is in progress, **in main** when the plan's integration branch
+  is in `main`, **not in main** when it is not, or **no branch on record** when
+  no delivery status is available. Task counts use the plan's recorded statuses;
+  a missing status file modification time appears as **n/a** in Updated. If the
+  plan has no recorded task statuses, the task fraction is 0 / 0 and its bar is
+  empty.
 
 The dashboard header identifies the project by name and Git remote. When the
 project id is itself the remote, that identity is shown only once. The read-only
