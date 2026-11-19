@@ -25,14 +25,14 @@ const root=new Element("main"), head=new Element("header"); head.className="head
 const validators=[
  {id:"a",phase:"pre_execute"},{id:"b",phase:"post_execute"},{id:"c",phase:"pre_execute"}
 ];
-const state={container:root,data:{protocol:{initial_mode:"producer",disagreement_policy:"unanimous"},modes:[{id:"producer",validators:["a","b","c","missing"]}],execution:{delivery:"local_merge"}},validators};
+const state={container:root,data:{protocol:{initial_mode:"producer",disagreement_policy:"unanimous",effective_delivery:"local_merge"},modes:[{id:"producer",validators:["a","b","c","missing"]}],execution:{delivery:"local_merge"}},validators};
 api.renderers[1](state);
 function text(n){return n.children.map(c=>c.textContent || text(c)).join("|");}
 let first=root.querySelector(".tiles");
 const before=text(first);
 state.validators=validators.slice(1); api.renderers[1](state);
 const after=text(root.querySelector(".tiles"));
-state.data.protocol.disagreement_policy="majority"; state.data.execution.delivery="change_request"; api.renderers[1](state);
+state.data.protocol.disagreement_policy="majority"; state.data.protocol.effective_delivery="change_request"; api.renderers[1](state);
 const words=text(root.querySelector(".tiles"));
 console.log(JSON.stringify({before,after,words,classes:root.querySelector(".tiles").children.map(x=>[x.className,...x.children.map(y=>y.className)]),small:root.querySelector(".tiles").children.slice(-2).map(x=>[x.children[1].style.fontSize,x.children[1].style.paddingTop])}));
 """

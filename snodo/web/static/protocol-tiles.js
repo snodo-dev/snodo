@@ -41,7 +41,7 @@
     const validatorsById = new Map((state.validators || []).map((validator) => [validator.id, validator]));
     const active = declaredIds.map((id) => validatorsById.get(id)).filter(Boolean);
     const policy = protocol.disagreement_policy;
-    const delivery = (data.execution || {}).delivery;
+    const delivery = protocol.effective_delivery;
     const deliveryCopy = {
       local_merge: ["auto-merge", "on a clean pass", true],
       push_branch: ["push branch", "work stays on a branch", false],

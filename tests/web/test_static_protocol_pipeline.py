@@ -39,7 +39,7 @@ global.window={snodoProtocol:{registerRenderer(fn){(this.renderers ||= []).push(
 eval(process.argv[1]);
 const api=window.snodoProtocol;
 const validators=[{id:"a",phase:"pre_execute"},{id:"edited",phase:"pre_execute"},{id:"moved",phase:"pre_execute"},{id:"gate",phase:"post_execute"}];
-const state={container:root,validators,data:{protocol:{initial_mode:"producer"},modes:[{id:"producer",validators:["a","edited","moved","gate","missing"],tools:["edit","dispatch","plan"]}],execution:{delivery:"local_merge",max_retries:3,max_recovery_depth:2,max_total_fix_attempts:8}}};
+const state={container:root,validators,data:{protocol:{initial_mode:"producer",effective_delivery:"local_merge"},modes:[{id:"producer",validators:["a","edited","moved","gate","missing"],tools:["edit","dispatch","plan"]}],execution:{delivery:"local_merge",max_retries:3,max_recovery_depth:2,max_total_fix_attempts:8}}};
 rows.edited=new Element("div"); rows.edited.scrollIntoView=Element.prototype.scrollIntoView;
 api.renderers[1](state);
 let section=root.querySelector(".pipeline-section");

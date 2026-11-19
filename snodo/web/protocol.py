@@ -49,7 +49,8 @@ def protocol_view(project: Any) -> dict[str, Any]:
         "etag": hashlib.sha256(content).hexdigest(),
         "protocol": {"id": protocol.protocol_id, "name": protocol.name,
                      "version": protocol.version, "initial_mode": protocol.initial_mode,
-                     "disagreement_policy": protocol.disagreement_policy.value},
+                     "effective_delivery": protocol.delivery_for(protocol.initial_mode),
+                      "disagreement_policy": protocol.disagreement_policy.value},
         "modes": modes, "validators": validators,
         "execution": {
             "max_retries": execution.max_retries, "branch_ttl_days": execution.branch_ttl_days,

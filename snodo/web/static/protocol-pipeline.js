@@ -22,11 +22,12 @@
     const card = el("div", undefined, "card");
     const flow = el("div", undefined, "flow");
     const execution = state.data.execution || {};
+    const delivery = protocol.effective_delivery || "";
     const stages = [
       ["pre_execute", "Spec checks", "before any code is written", "run", "pre_execute"],
       ["coder", "Implement", "model comes from config", "", "coder"],
       ["post_execute", "Gate", "checks the work", "abs", "post_execute"],
-      ["merge", "Deliver", execution.delivery || "", "pass", "deliver"],
+      ["merge", "Deliver", delivery, "pass", "deliver"],
     ];
     for (const [pill, heading, detail, variant, kind] of stages) {
       const stage = el("div", undefined, kind === "coder" ? "stage coder" : "stage");

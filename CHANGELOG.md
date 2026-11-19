@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Show effective Protocol delivery from mode and legacy auto-merge settings. Fixes #1315
+
 - Count blocked validator send-backs in Gates without requiring fix records and explain empty panels. Fixes #1314
 - Fit the Delivery daily chart to all supported windows, show non-zero counts by their bars, and keep Flow bar labels hidden. (Fixes #1313)
 - Add a 0.29 release guide linking dashboard, model, usage, intake, outcomes, and demo features to their documentation. (Fixes #1312)

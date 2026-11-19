@@ -46,7 +46,7 @@ def test_protocol_api_returns_dashboard_shape_and_rules(tmp_path):
     assert data["etag"] == hashlib.sha256(content.encode()).hexdigest()
     assert data["protocol"] == {
         "id": "snodo-public", "name": "snodo-public (solo, dogfood)",
-        "version": "1.0.0", "initial_mode": "producer", "disagreement_policy": "majority",
+        "version": "1.0.0", "initial_mode": "producer", "effective_delivery": "local_merge", "disagreement_policy": "majority",
     }
     assert [mode["id"] for mode in data["modes"]] == ["producer", "reviewer"]
     assert data["modes"][0] == {
@@ -92,3 +92,20 @@ def test_protocol_api_errors_and_methods(tmp_path):
     path.write_text("not: a valid protocol\n", encoding="utf-8")
     assert client.get("/api/protocol", params=params).json() == {"error": "Protocol file is invalid."}
     assert client.get("/api/protocol", params={"project": "unknown"}).status_code == 404
+
+
+def test_protocol_api_resolves_mode_delivery_and_legacy_auto_merge(tmp_path):
+    protocol = yaml.safe_load(_valid_protocol())
+    protocol["execution"].pop("delivery", None)
+    protocol["modes"][0]["delivery"] = "push_branch"
+    client, path = _client_for_protocol(tmp_path, yaml.safe_dump(protocol, sort_keys=False))
+    data = client.get("/api/protocol", params={"project": "demo"}).json()
+    assert data["protocol"]["effective_delivery"] == "push_branch"
+    assert data["execution"]["delivery"] is None
+
+    protocol["modes"][0].pop("delivery")
+    protocol["execution"]["auto_merge"] = False
+    path.write_text(yaml.safe_dump(protocol, sort_keys=False), encoding="utf-8")
+    data = client.get("/api/protocol", params={"project": "demo"}).json()
+    assert data["protocol"]["effective_delivery"] == "leave_unmerged"
+    assert data["execution"]["auto_merge"] is False
