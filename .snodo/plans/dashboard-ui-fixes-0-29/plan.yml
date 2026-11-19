@@ -1,0 +1,13 @@
+intent: 'Fix three defects seen on the web dashboard before the 0.29 release: the
+  Delivery page daily chart and clipped bar text, the Gates view undercounting send-backs,
+  and the Protocol view Delivery tile showing leave unmerged for a protocol that merges
+  locally. Three independent tickets in one wave, each touching different files. No
+  new state, status, severity or halt type.'
+name: dashboard-ui-fixes-0-29
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_delivery_chart_layout
+  - 1.2_gates_count_all_send_backs
+  - 1.3_protocol_effective_delivery

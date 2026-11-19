@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "1.1_delivery_chart_layout": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "bdbc56be2f04336b"
+    },
+    "1.2_gates_count_all_send_backs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "72822502177cb56c"
+    },
+    "1.3_protocol_effective_delivery": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5d30a29ef2e9f095"
+    }
+  }
+}
