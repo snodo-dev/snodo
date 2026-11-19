@@ -10,4 +10,4 @@ waves:
   tasks:
   - 1.1_delivery_chart_layout
   - 1.2_gates_count_all_send_backs
-  - 1.3_protocol_effective_delivery
+  - 1.4_protocol_delivery_tile
