@@ -48,6 +48,14 @@ def test_task_without_fix_record_is_counted(tmp_path):
     assert records[0]["outcome"] == "landed_after_retry"
 
 
+def test_task_without_fix_record_is_omitted(tmp_path):
+    """Regression coverage: send-backs are not dependent on fix records."""
+    records = gate_records(_project(tmp_path, retry=False), 7, NOW)
+    assert len(records) == 1
+    assert records[0]["validator"] == "lint"
+    assert records[0]["outcome"] == "landed_after_retry"
+
+
 def test_old_send_back_is_outside_window(tmp_path):
     old = NOW.timestamp() - 8 * 86400
     assert gate_records(_project(tmp_path, timestamp=old), 7, NOW) == []
