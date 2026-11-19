@@ -1,11 +1,5 @@
 {
   "tasks": {
-    "1.1_whats_new_page": {
-      "status": "errored",
-      "parent_task_ref": null,
-      "depth": 0,
-      "spec_hash": "d096dc79abe3d011"
-    },
     "1.2_dashboard_gates_plans_docs": {
       "status": "completed",
       "parent_task_ref": null,
@@ -23,10 +17,16 @@
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "852887692f527762"
+    },
+    "1.5_release_notes_page": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d096dc79abe3d011"
     }
   },
   "integration": {
     "branch": "plan/docs-coverage-0-29/integration",
-    "base_sha": "90d5ff162daae86eb044eb6a6933564c82ff1efb"
+    "base_sha": "ca38fc6d8dc42065e001599aa9d515bd946aa2dd"
   }
 }

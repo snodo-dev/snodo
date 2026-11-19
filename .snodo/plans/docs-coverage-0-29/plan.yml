@@ -10,7 +10,7 @@ waves:
 - depends_on: []
   id: 1
   tasks:
-  - 1.1_whats_new_page
+  - 1.5_release_notes_page
   - 1.2_dashboard_gates_plans_docs
   - 1.3_verdict_reuse_docs
   - 1.4_command_reference_and_index
