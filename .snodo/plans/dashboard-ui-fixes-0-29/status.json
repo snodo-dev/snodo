@@ -12,8 +12,8 @@
       "depth": 0,
       "spec_hash": "72822502177cb56c"
     },
-    "1.3_protocol_effective_delivery": {
-      "status": "errored",
+    "1.4_protocol_delivery_tile": {
+      "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "5d30a29ef2e9f095"
@@ -21,6 +21,6 @@
   },
   "integration": {
     "branch": "plan/dashboard-ui-fixes-0-29/integration",
-    "base_sha": "534ee1c537d16f98ee68e83620b307d563440243"
+    "base_sha": "3c6cbfdb39594bbd8fb5240de0fd79b6304fa50c"
   }
 }
