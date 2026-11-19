@@ -8,6 +8,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+- Add a 0.29 release guide linking dashboard, model, usage, intake, outcomes, and demo features to their documentation. (Fixes #1312)
 - Explain intake ADR generation in the command reference and link dashboard, usage tables, and intake from the landing page. (Fixes #1309)
 
 - Explain validator verdict reuse and missing-verdict judge retries in the outcomes guide. (Fixes #1310)
