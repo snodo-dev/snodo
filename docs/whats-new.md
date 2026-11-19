@@ -12,7 +12,7 @@ Configure ordered validator fallback models with `llm.validator.fallback`; opera
 
 ### Usage and logs
 
-Task and plan runs end with a per-role usage table, and `snodo logs <job_id>` appends the same table after text output. `snodo logs --json` provides versioned machine-readable log records, including usage totals grouped by role. See the [run usage summary](following-a-run.md#end-of-run-usage-summary) and [machine interface](machine-interface.md#snodo-logs-id---json).
+Task and plan runs end with a per-role usage table, and `snodo logs <job_id>` appends the same table after text output. `snodo logs --json` provides versioned machine-readable log records, including usage totals grouped by role. See the [run usage summary](following-a-run.md#end-of-run-usage-summary) and [machine interface](machine-interface.md#snodo-logs-id-json).
 
 ### Intake
 
