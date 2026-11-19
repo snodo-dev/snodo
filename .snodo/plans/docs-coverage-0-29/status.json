@@ -1,28 +1,32 @@
 {
   "tasks": {
     "1.1_whats_new_page": {
-      "status": "pending",
+      "status": "errored",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "693f61fc55afeb7f"
     },
     "1.2_dashboard_gates_plans_docs": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "54f5c3aade10b161"
     },
     "1.3_verdict_reuse_docs": {
-      "status": "pending",
+      "status": "errored",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "32c5a82e3990c497"
     },
     "1.4_command_reference_and_index": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "852887692f527762"
     }
+  },
+  "integration": {
+    "branch": "plan/docs-coverage-0-29/integration",
+    "base_sha": "f2d42491149069427b8b49d39d850cc075e1017e"
   }
 }
