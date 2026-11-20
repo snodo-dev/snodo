@@ -7,13 +7,13 @@
       "spec_hash": "b54cae24da0bcc8b"
     },
     "2.1_now_recons_counter": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "967ba39e7b24745d"
     },
     "2.2_now_recons_activity": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "251c513d96b2f1c5"
@@ -27,6 +27,6 @@
   },
   "integration": {
     "branch": "plan/now-shows-recons-0-29/integration",
-    "base_sha": "30b0cf89f275041d2f5b57f31847cedb86999396"
+    "base_sha": "009bba47583e8be2f0b4ab10e5dbf05c143df162"
   }
 }
