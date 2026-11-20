@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from snodo.dashboard.providers import DashboardDataProvider
+from snodo.web.recon_runs import project_recon_runs
 
 WINDOW_SECONDS = 24 * 60 * 60
 
@@ -44,7 +45,22 @@ def project_now_tree(project_path: str | Path, now: datetime | float) -> dict[st
         plans = provider.get_plans()
         tasks = provider.get_tasks("")
         jobs = provider.get_jobs("")
-        plan_dirs = {path.name: path for path in (root / ".snodo" / "plans").iterdir() if path.is_dir()}
+        plans_dir = root / ".snodo" / "plans"
+        plan_dirs = {path.name: path for path in plans_dir.iterdir() if path.is_dir()} if plans_dir.exists() else {}
+
+        # Preflight the records because the recon reader intentionally skips
+        # individual unreadable files. In the tree, unreadable recon storage
+        # must leave the established plan/task/job result untouched.
+        recon_records: list[dict[str, Any]] = []
+        recon_dir = root / ".snodo" / "recons"
+        try:
+            if recon_dir.exists():
+                for run_dir in recon_dir.iterdir():
+                    if run_dir.is_dir() and (run_dir / "state.json").exists():
+                        (run_dir / "state.json").read_bytes()
+                recon_records = project_recon_runs(root, now)
+        except OSError:
+            recon_records = []
 
         jobs_by_ref: dict[str, list[dict[str, Any]]] = {}
         job_signal: dict[str, float] = {}
@@ -130,8 +146,18 @@ def project_now_tree(project_path: str | Path, now: datetime | float) -> dict[st
                             "elapsed_seconds": max(0, int(now_ts - start)) if start is not None else None})
 
         recent_plans.sort(key=lambda row: row["last_activity"], reverse=True)
+        for recon in recon_records:
+            created = _timestamp(recon.get("created_at"))
+            completed = _timestamp(recon.get("completed_at"))
+            if created is not None and created >= cutoff:
+                project_signals.append(created)
+            if completed is not None and completed >= cutoff:
+                project_signals.append(completed)
+
         project_last = max(project_signals, default=None)
-        working = any(t.get("status") == "in_progress" for t in tasks) or any(j.get("status") == "running" for j in jobs)
+        working = (any(t.get("status") == "in_progress" for t in tasks)
+                   or any(j.get("status") == "running" for j in jobs)
+                   or any(recon.get("state") == "running" for recon in recon_records))
         liveness = "working" if working else "reporting_not_progressing" if project_last is not None else "no_recent_signal"
         return {"liveness": liveness, "last_activity": project_last, "plans": recent_plans, "outside_plan": outside}
     except Exception:

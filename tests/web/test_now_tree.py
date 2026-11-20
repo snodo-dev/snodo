@@ -88,3 +88,31 @@ def test_plans_are_ordered_by_most_recent_activity(tmp_path: Path) -> None:
     _plan(root, "newer", {"b": "completed"}, [["b"]], NOW - 300)
     result = project_now_tree(root, NOW)
     assert [plan["name"] for plan in result["plans"]] == ["newer", "older"]
+
+
+def _recon(root: Path, name: str, state: dict[str, object]) -> None:
+    _json(root / ".snodo" / "recons" / name / "state.json", state)
+
+
+def test_live_recon_is_project_working_signal(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "project"
+    _recon(root, "run", {"status": "running", "created_at": NOW - 120, "pid": 123})
+    monkeypatch.setattr("snodo.web.recon_runs.os.kill", lambda pid, signal: None)
+
+    result = project_now_tree(root, NOW)
+
+    assert result["liveness"] == "working"
+    assert result["last_activity"] == NOW - 120
+    assert result["plans"] == []
+    assert result["outside_plan"] == []
+
+
+def test_stale_recon_is_recent_signal_but_not_working(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    _recon(root, "stale", {"status": "running", "created_at": NOW - 2 * 3600, "pid": 987654321})
+
+    result = project_now_tree(root, NOW)
+
+    assert result["liveness"] == "reporting_not_progressing"
+    assert result["last_activity"] == NOW - 2 * 3600
+    assert result["plans"] == []
