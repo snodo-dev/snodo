@@ -19,7 +19,7 @@
       "spec_hash": "251c513d96b2f1c5"
     },
     "3.1_now_recons_docs": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "b4fd805dd5330133"
@@ -27,6 +27,6 @@
   },
   "integration": {
     "branch": "plan/now-shows-recons-0-29/integration",
-    "base_sha": "009bba47583e8be2f0b4ab10e5dbf05c143df162"
+    "base_sha": "e0eca11b91d8e2c03386b9fdd4d3fd3c9de29254"
   }
 }
