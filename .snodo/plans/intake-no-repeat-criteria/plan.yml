@@ -1,0 +1,12 @@
+intent: 'Make snodo intake stop offering and re-announcing criteria the protocol already
+  holds. Reported behaviour: running intake with accept-all again re-adds criteria
+  it wrote earlier. Intake never looks at the protocol when it proposes, the duplicate
+  check on append only covers the one validator being written to, and the confirmation
+  counts accepted criteria rather than criteria actually added. One small ticket with
+  tests; no new state, status, severity or halt type.'
+name: intake-no-repeat-criteria
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_intake_skips_known_criteria

@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_intake_skips_known_criteria": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "44c54d2723232b43"
+    }
+  }
+}
