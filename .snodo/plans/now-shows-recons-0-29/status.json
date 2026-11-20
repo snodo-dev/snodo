@@ -1,0 +1,28 @@
+{
+  "tasks": {
+    "1.1_recon_runs_reader": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b54cae24da0bcc8b"
+    },
+    "2.1_now_recons_counter": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "967ba39e7b24745d"
+    },
+    "2.2_now_recons_activity": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "251c513d96b2f1c5"
+    },
+    "3.1_now_recons_docs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "b4fd805dd5330133"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+intent: Make the local Now page show recons. Today the Recons counter is hardcoded
+  to unavailable and the activity tree ignores recon runs, although each recon writes
+  a state record under .snodo/recons. Wave 1 adds a small reader that classifies recon
+  runs (running only if the process is alive or inside its deadline, since old records
+  are left stuck on running); wave 2 uses it for the Recons counter and for the liveness
+  of the activity tree in two independent tickets; wave 3 documents it. Read only;
+  no new state, status, severity or halt type.
+name: now-shows-recons-0-29
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_recon_runs_reader
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_now_recons_counter
+  - 2.2_now_recons_activity
+- depends_on:
+  - 2
+  id: 3
+  tasks:
+  - 3.1_now_recons_docs
