@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Show live, recent, and completed recon counts on the local Now page. Fixes #1317
+
 - Read recon run records with process liveness and deadline-aware stale status in the local dashboard. Fixes #1316
 
 - Show effective Protocol delivery from mode and legacy auto-merge settings. Fixes #1315

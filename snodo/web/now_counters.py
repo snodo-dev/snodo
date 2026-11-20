@@ -2,8 +2,8 @@
 
 Plan/task movement uses job ``state.json`` started/completed/created timestamps
 and, as a fallback for plans without jobs, plan/status file modification times.
-Commits use local git commit timestamps across all refs. No recon-run records
-are persisted/read by the local dashboard, so recons is explicitly unavailable.
+Commits use local git commit timestamps across all refs. Recon counters use the
+persisted recon-run records and their effective dashboard states.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from snodo.tools.git import open_repo
+from snodo.web.recon_runs import project_recon_runs
 
 UNAVAILABLE = {"available": False, "reason": "unavailable"}
 
@@ -98,12 +99,13 @@ def project_now_counters(project_path: str | Path, now: datetime | float) -> dic
         except Exception:
             commits = UNAVAILABLE.copy()
         moved = bool(recent_plans or recent_tasks or (isinstance(commits, int) and commits))
+        recons = _recon_counters(root, cutoff, now)
         return {
             "active": moved,
             "plans_queues": {"plans": len(recent_plans), "queues": len({queue_map.get(name) for name in recent_plans if queue_map.get(name)})},
             "waves": sum(len(_plan_waves(plan)) for plan in plan_dirs if plan.name in recent_plans),
             "tasks": {"total": len(recent_tasks), "by_status": dict(task_statuses)},
-            "recons": UNAVAILABLE.copy(),
+            "recons": recons,
             "commits": commits,
         }
     except (OSError, PermissionError):
@@ -132,3 +134,31 @@ def _plan_waves(plan: Path) -> list[Any]:
         return waves if isinstance(waves, list) else []
     except (OSError, ValueError, TypeError):
         return []
+
+
+def _recon_counters(root: Path, cutoff: float, now: datetime | float) -> dict[str, int] | dict[str, str | bool]:
+    """Count recon runs in the window, preserving unavailable for unreadable records."""
+    directory = root / ".snodo" / "recons"
+    try:
+        if directory.exists():
+            # The recon reader skips I/O failures; preflight so those remain unavailable.
+            for run in directory.iterdir():
+                if run.is_dir() and (run / "state.json").exists():
+                    (run / "state.json").read_bytes()
+    except OSError:
+        return UNAVAILABLE.copy()
+
+    records = project_recon_runs(root, now)
+    running = sum(record["state"] == "running" for record in records)
+    completed = sum(
+        record["state"] == "completed"
+        and (stamp := _timestamp(record.get("completed_at"))) is not None
+        and stamp >= cutoff
+        for record in records
+    )
+    count = sum(
+        record["state"] == "running"
+        or ((stamp := _timestamp(record.get("created_at"))) is not None and stamp >= cutoff)
+        for record in records
+    )
+    return {"count": count, "running": running, "completed": completed}

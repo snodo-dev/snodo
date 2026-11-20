@@ -87,7 +87,7 @@ def test_counts_recent_plan_tasks_waves_outside_tasks_and_commits_read_only(tmp_
     assert result["waves"] == 2
     assert result["tasks"] == {"total": 3, "by_status": {"completed": 1, "blocked": 1, "running": 1}}
     assert result["commits"] == 1
-    assert result["recons"] == UNAVAILABLE
+    assert result["recons"] == {"count": 0, "running": 0, "completed": 0}
     assert _snapshot(project) == before
 
 
@@ -116,3 +116,20 @@ def test_unreadable_project_returns_unavailable(tmp_path: Path, monkeypatch) -> 
     result = project_now_counters(project, NOW)
 
     assert all(value == UNAVAILABLE for value in result.values())
+
+
+def test_recon_counters_use_started_and_completed_window_and_effective_state(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    _repo(project)
+    recons = project / ".snodo" / "recons"
+    for name, state in {
+        "running": {"status": "running", "created_at": NOW - 60},
+        "recent-done": {"status": "complete", "created_at": NOW - 7200, "completed_at": NOW - 30},
+        "old-done": {"status": "complete", "created_at": NOW - 3 * 86400, "completed_at": NOW - 2 * 86400},
+        "stale": {"status": "running", "created_at": NOW - 7200},
+    }.items():
+        _write_json(recons / name / "state.json", state)
+
+    result = project_now_counters(project, NOW)
+
+    assert result["recons"] == {"count": 3, "running": 1, "completed": 1}

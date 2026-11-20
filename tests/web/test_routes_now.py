@@ -66,7 +66,7 @@ def test_route_returns_contract_aggregates_and_orders_projects(tmp_path: Path) -
     assert result["counters"] == {
         "projects_active": 2, "plans": 1, "queues": 0, "waves": 1,
         "tasks": {"count": 2, "by_status": {"in_progress": 1, "running": 1}},
-        "recons": None, "commits": 2,
+        "recons": {"count": 0, "running": 0, "completed": 0}, "commits": 2,
     }
     assert [p["name"] for p in result["projects"]] == ["active", "quiet"]
     project = result["projects"][0]
@@ -169,3 +169,18 @@ def test_slow_now_collection_does_not_block_spec_route(monkeypatch, tmp_path: Pa
         assert spec_response.json()["markdown"] == "spec"
         release.set()
         assert now_response.result(timeout=5).json() == {"unchanged": True}
+
+
+def test_route_aggregates_recon_counts_across_projects(tmp_path: Path) -> None:
+    projects = []
+    for name in ("one", "two"):
+        path = tmp_path / name
+        repo(path)
+        write_json(path / ".snodo" / "recons" / "live" / "state.json", {
+            "status": "running", "created_at": 970,
+        })
+        projects.append(SimpleNamespace(name=name, path=path))
+
+    result = build_now(projects, 1000)
+
+    assert result["counters"]["recons"] == {"count": 2, "running": 2, "completed": 0}

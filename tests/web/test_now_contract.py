@@ -77,7 +77,7 @@ def test_route_shape_and_counters_match_real_tree(tmp_path: Path) -> None:
     counters = result["counters"]
     assert set(counters) == {"projects_active", "plans", "queues", "waves", "tasks", "recons", "commits"}
     assert set(counters["tasks"]) == {"count", "by_status"}
-    assert counters["recons"] is None  # Recons are deliberately unavailable in the local route contract.
+    assert counters["recons"] == {"count": 0, "running": 0, "completed": 0}
     project = result["projects"][0]
     assert set(project) == {"name", "liveness", "last_activity_at", "plans", "outside_plan"}
     assert len(project["plans"]) == 2
