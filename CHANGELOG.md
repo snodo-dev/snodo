@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Explain the Now Recons card counts, stale-run handling, and how a live recon affects project liveness. Fixes #1319
+
 - Count live and recent recon activity in project liveness on the local Now page. Fixes #1318
 
 - Show live, recent, and completed recon counts on the local Now page. Fixes #1317

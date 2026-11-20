@@ -23,7 +23,10 @@ The dashboard has five views:
 - **Now** covers activity in the last 24 hours. Its page head shows how old the
   data is and provides a **Refetch** control. Six counter cards summarize
   **Active projects**, **Plans / Queues**, **Waves**, **Tasks** (with a per-status
-  breakdown), **Recons**, and **Commits** over that window.
+  breakdown), **Recons**, and **Commits** over that window. The **Recons** card
+  shows running and completed recons over the 24-hour window; a run counts as
+  running only while its process is alive, so a stale record left by a killed run
+  is not counted as running. A running recon keeps its project from reading as idle.
 
   An attention strip appears only when a task is **failed**, **blocked**, or
   **errored**. Its **Show task** button opens that task in the detail panel.
