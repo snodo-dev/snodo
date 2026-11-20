@@ -226,6 +226,38 @@ class TestAcceptanceGate:
         assert "Every D1 query carries an org filter." in text
         assert "org_id is derived server-side" not in text
 
+    def test_repeat_intake_skips_existing_criteria_and_does_not_rewrite(self, tmp_path, monkeypatch, capsys):
+        protocol_path = _make_repo(tmp_path, {"001-rule.md": RULE_RECORD})
+        monkeypatch.chdir(tmp_path)
+        assert intake_cmd.intake_command(_args(accept_all=True)) == 0
+        before = protocol_path.read_bytes()
+
+        rc = intake_cmd.intake_command(_args(accept_all=True))
+
+        output = capsys.readouterr().out
+        assert rc == 0
+        assert "Skipped 1 criterion(s) already in the protocol" in output
+        assert "Nothing written" in output
+        assert protocol_path.read_bytes() == before
+
+    def test_criterion_in_other_validator_is_not_offered(self, tmp_path, monkeypatch, capsys):
+        import yaml
+        protocol_path = _make_repo(tmp_path, {"001-rule.md": RULE_RECORD})
+        data = yaml.safe_load(protocol_path.read_text())
+        quality = next(v for v in data["validators"] if v["validator_id"] == "quality")
+        quality["criteria"].append("The org_id is derived server-side from the API key lookup, never accepted from the request.")
+        protocol_path.write_text(yaml.safe_dump(data, sort_keys=False))
+        before = protocol_path.read_bytes()
+        monkeypatch.chdir(tmp_path)
+
+        rc = intake_cmd.intake_command(_args(accept_all=True, validator="adr"))
+
+        assert rc == 0
+        output = capsys.readouterr().out
+        assert "Skipped 1 criterion(s) already in the protocol" in output
+        assert "Wrote 0" not in output
+        assert protocol_path.read_bytes() == before
+
     def test_accept_all_appends_to_the_default_validator(self, tmp_path, monkeypatch):
         protocol_path = _make_repo(tmp_path, {"001-rule.md": RULE_RECORD})
         monkeypatch.chdir(tmp_path)

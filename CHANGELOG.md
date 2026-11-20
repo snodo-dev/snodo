@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Skip intake criteria already present in any protocol validator and report only criteria actually added. Fixes #1320
+
 - Explain the Now Recons card counts, stale-run handling, and how a live recon affects project liveness. Fixes #1319
 
 - Count live and recent recon activity in project liveness on the local Now page. Fixes #1318

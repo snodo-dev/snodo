@@ -342,6 +342,15 @@ Consider moving ingest onto a queue before the next release.
 
 
 class TestWhatAcceptanceWrites:
+    def test_propose_criteria_can_exclude_exact_existing_text(self, tmp_path):
+        _write_records(tmp_path, {"001-rule.md": RULE_RECORD})
+
+        proposals = propose_criteria(
+            tmp_path, existing_criteria=["The org_id is derived server-side from the API key lookup, never accepted from the request."]
+        )
+
+        assert [p.criterion for p in proposals] == ["Every D1 query carries an org filter."]
+
     def test_append_criteria_is_pure_and_appends_to_the_named_validator(self):
         protocol = {
             "validators": [

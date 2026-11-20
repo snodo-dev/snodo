@@ -245,7 +245,8 @@ path is entered only by the interactive command or an explicit `--accept-all`.
 | `ok` | bool | `true` on success |
 | `project_root` | string | absolute project root |
 | `protocol_id` | string | the protocol the criteria would be added to |
-| `proposals` | array | `[{criterion, record_path, record_title, record_section}]` — each rule and the record it came from |
+| `proposals` | array | `[{criterion, record_path, record_title, record_section}]` — each new rule and the record it came from |
+| `skipped_existing` | integer | number of proposed rules omitted because exact criterion text is already in any validator |
 | `written` | bool | always `false` |
 
 `record_path` is a repository-relative citation resolved against the

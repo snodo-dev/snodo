@@ -160,8 +160,14 @@ def _write_protocol(
         if not isinstance(raw, dict):
             raise ValueError("protocol root is not a mapping")
         validator_id = select_validator(raw, requested_validator)
+        target = next(v for v in raw.get("validators", []) if v.get("validator_id") == validator_id)
+        existing_target = target.get("criteria", [])
+        additions = [p for p in accepted if p.criterion not in existing_target]
+        if not additions:
+            print("Nothing was added; all accepted criteria are already in the selected validator.")
+            return 0
         updated = append_criteria(
-            raw, validator_id, [proposal.criterion for proposal in accepted]
+            raw, validator_id, [proposal.criterion for proposal in additions]
         )
         protocol = Protocol(**updated)
         result = verify_protocol(protocol)
@@ -178,14 +184,14 @@ def _write_protocol(
         return EXIT_INTERNAL_ERROR
 
     protocol_path.write_text(
-        _append_criteria_text(original, validator_id, [p.criterion for p in accepted], raw)
+        _append_criteria_text(original, validator_id, [p.criterion for p in additions], raw)
     )
     print()
     print(
-        f"Wrote {len(accepted)} criterion(s) to validator "
+        f"Wrote {len(additions)} criterion(s) to validator "
         f"'{validator_id}' in {protocol_path}"
     )
-    for proposal in accepted:
+    for proposal in additions:
         print(f"  • {proposal.criterion}")
         print(f"      from: {proposal.record_path}")
     return 0
@@ -291,7 +297,15 @@ def intake_command(args, ask: Optional[Callable[[str], str]] = None) -> int:
         print(f"Error: {message}", file=sys.stderr)
         return EXIT_INTERNAL_ERROR
 
-    proposals = propose_criteria(project_root)
+    existing_criteria = [
+        criterion
+        for validator_entry in protocol.validators
+        for criterion in validator_entry.criteria
+    ]
+    all_proposals = propose_criteria(project_root)
+    existing = set(existing_criteria)
+    proposals = [p for p in all_proposals if p.criterion not in existing]
+    skipped_existing = len(all_proposals) - len(proposals)
 
     if json_out:
         return emit_json(
@@ -301,16 +315,20 @@ def intake_command(args, ask: Optional[Callable[[str], str]] = None) -> int:
                 "project_root": str(project_root),
                 "protocol_id": protocol.protocol_id,
                 "proposals": [proposal.to_dict() for proposal in proposals],
+                "skipped_existing": skipped_existing,
                 "written": False,
             },
             EXIT_PASS,
         )
 
     print(f"Intake: decision records under {project_root}")
+    if skipped_existing:
+        print(f"  Skipped {skipped_existing} criterion(s) already in the protocol.")
     if not proposals:
         print(
-            "  No proposable criteria: no record states a rule in a Decision "
-            "section. Nothing written."
+            ("  No new criteria to propose. Nothing written." if skipped_existing else
+             "  No proposable criteria: no record states a rule in a Decision "
+             "section. Nothing written.")
         )
         return EXIT_PASS
     print(

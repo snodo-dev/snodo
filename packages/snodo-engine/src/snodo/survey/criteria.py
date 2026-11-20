@@ -393,6 +393,7 @@ def _proposals_from_text(
 def propose_criteria(
     project_root: Path,
     decision_paths: Optional[Sequence[str]] = None,
+    existing_criteria: Optional[Sequence[str]] = None,
 ) -> List[CriterionProposal]:
     """Propose criteria from every decision record under *project_root*.
 
@@ -433,6 +434,9 @@ def propose_criteria(
         if record_rel in superseded:
             continue
         proposals.extend(_proposals_from_text(text, resolved))
+    if existing_criteria is not None:
+        existing = set(existing_criteria)
+        proposals = [p for p in proposals if p.criterion not in existing]
     return proposals
 
 
