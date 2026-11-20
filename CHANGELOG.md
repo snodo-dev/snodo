@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Read recon run records with process liveness and deadline-aware stale status in the local dashboard. Fixes #1316
+
 - Show effective Protocol delivery from mode and legacy auto-merge settings. Fixes #1315
 
 - Count blocked validator send-backs in Gates without requiring fix records and explain empty panels. Fixes #1314
