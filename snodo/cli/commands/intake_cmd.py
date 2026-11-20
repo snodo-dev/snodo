@@ -162,7 +162,12 @@ def _write_protocol(
         validator_id = select_validator(raw, requested_validator)
         target = next(v for v in raw.get("validators", []) if v.get("validator_id") == validator_id)
         existing_target = target.get("criteria", [])
-        additions = [p for p in accepted if p.criterion not in existing_target]
+        additions = []
+        seen = set(existing_target)
+        for proposal in accepted:
+            if proposal.criterion not in seen:
+                additions.append(proposal)
+                seen.add(proposal.criterion)
         if not additions:
             print("Nothing was added; all accepted criteria are already in the selected validator.")
             return 0

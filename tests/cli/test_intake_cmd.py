@@ -240,6 +240,31 @@ class TestAcceptanceGate:
         assert "Nothing written" in output
         assert protocol_path.read_bytes() == before
 
+    def test_written_count_matches_unique_criteria_added(self, tmp_path, monkeypatch, capsys):
+        import yaml
+
+        protocol_path = _make_repo(
+            tmp_path, {"001-rule.md": RULE_RECORD, "002-scope.md": SECOND_RULE_RECORD}
+        )
+        data = yaml.safe_load(protocol_path.read_text())
+        quality = next(v for v in data["validators"] if v["validator_id"] == "quality")
+        quality["criteria"].append(
+            "The org_id is derived server-side from the API key lookup, never accepted from the request."
+        )
+        protocol_path.write_text(yaml.safe_dump(data, sort_keys=False))
+        monkeypatch.chdir(tmp_path)
+
+        rc = intake_cmd.intake_command(_args(accept_all=True, validator="adr"))
+
+        output = capsys.readouterr().out
+        assert rc == 0
+        assert "Skipped 1 criterion(s) already in the protocol" in output
+        assert "Wrote 1 criterion(s)" in output
+        updated = yaml.safe_load(protocol_path.read_text())
+        adr = next(v for v in updated["validators"] if v["validator_id"] == "adr")
+        assert adr["criteria"].count("Every D1 query carries an org filter.") == 1
+        assert not any("org_id is derived server-side" in c for c in adr["criteria"])
+
     def test_criterion_in_other_validator_is_not_offered(self, tmp_path, monkeypatch, capsys):
         import yaml
         protocol_path = _make_repo(tmp_path, {"001-rule.md": RULE_RECORD})
