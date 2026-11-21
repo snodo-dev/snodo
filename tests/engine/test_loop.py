@@ -1038,7 +1038,10 @@ def test_executor_passes_context_to_taskspec(sample_protocol, sample_task, temp_
     # MockAdapter stores last_spec
     assert coder.last_spec is not None
     assert coder.last_spec.memory_summary == "previous context"
-    assert coder.last_spec.project_context == {"language": "python"}
+    assert coder.last_spec.project_context == {
+        "language": "python",
+        "task_id": sample_task.id,
+    }
 
 
 def test_end_to_end_messages_include_summary_field(sample_protocol, sample_task, temp_workspace):

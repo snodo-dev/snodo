@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Assert executor task specifications retain caller project context and include the executing task ID. Fixes #1322
+
 - Skip intake criteria already present in any protocol validator and report only criteria actually added. Fixes #1320
 
 - Explain the Now Recons card counts, stale-run handling, and how a live recon affects project liveness. Fixes #1319
