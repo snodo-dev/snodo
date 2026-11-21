@@ -1,0 +1,28 @@
+{
+  "tasks": {
+    "1.1_adr_index_062": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "aaa28f449d092dc5"
+    },
+    "1.2_executor_context_test": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "baf849a25f06fdc9"
+    },
+    "1.3_protocol_shell_renderer_test": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fec242915f493296"
+    },
+    "1.4_shell_style_hash_test": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "8fa188710372ec39"
+    }
+  }
+}

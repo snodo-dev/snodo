@@ -1,0 +1,17 @@
+intent: 'Fix the four failures the full gate found on main before the 0.29 release.
+  Each is a stale test or a missing index row, not a product defect: the ADR index
+  lacks a row for ADR 062; the executor context test predates task_id being added
+  to the project context; the protocol shell test requires a placeholder renderer
+  call that the savebar script does not make; the shell style test forbids every hash
+  character although the Protocol view reset uses id selectors. Four independent tickets
+  in one wave, each touching different files. No new state, status, severity or halt
+  type.'
+name: release-gate-fixes-0-29
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_adr_index_062
+  - 1.2_executor_context_test
+  - 1.3_protocol_shell_renderer_test
+  - 1.4_shell_style_hash_test
