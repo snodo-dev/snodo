@@ -104,6 +104,8 @@ def test_static_shell_has_first_render_loading_skeleton() -> None:
 
 
 def test_static_shell_skeleton_has_reduced_motion_and_token_styles() -> None:
+    import re
+
     html = SHELL.read_text(encoding="utf-8")
     css = html.split("<style>", maxsplit=1)[1].split("</style>", maxsplit=1)[0]
     token_end = css.index("    * { box-sizing:border-box; }")
@@ -116,7 +118,9 @@ def test_static_shell_skeleton_has_reduced_motion_and_token_styles() -> None:
     assert "@media (prefers-reduced-motion: reduce)" in component_css
     assert "animation:none" in component_css
     assert "color-mix(" in component_css
-    assert "#" not in component_css
+    hex_colour = r"#[0-9a-fA-F]{3,8}\b"
+    assert re.search(hex_colour, "#12aB34")  # A six-digit hex colour must be rejected.
+    assert not re.search(hex_colour, component_css)
     assert "rgba(" not in component_css
 
 

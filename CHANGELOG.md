@@ -12,6 +12,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Index ADR 062 for the dashboard protocol editor. Fixes #1321
 - Assert executor task specifications retain caller project context and include the executing task ID. Fixes #1322
 - Check that Protocol section scripts register renderers while preserving their shell order. Fixes #1323
+- Check the dashboard shell for hex color literals without rejecting ID selectors. Fixes #1325
 
 - Skip intake criteria already present in any protocol validator and report only criteria actually added. Fixes #1320
 
