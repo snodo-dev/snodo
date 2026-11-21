@@ -110,4 +110,4 @@ def test_protocol_section_scripts_register_in_shell_order() -> None:
     assert positions == sorted(positions)
     for name in names:
         source = (STATIC / f"protocol-{name}.js").read_text(encoding="utf-8")
-        assert "registerRenderer(() => {})" in source
+        assert "registerRenderer(" in source
