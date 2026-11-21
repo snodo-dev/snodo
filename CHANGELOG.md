@@ -9,7 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- Check the dashboard shell for hex color literals without rejecting ID selectors. Fixes #1324
+- Check the dashboard shell for hex color literals without rejecting ID selectors. Fixes #1325
 
 - Skip intake criteria already present in any protocol validator and report only criteria actually added. Fixes #1320
 
