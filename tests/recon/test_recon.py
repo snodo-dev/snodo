@@ -1300,7 +1300,7 @@ class TestTerminalAnswer:
         assert completion.call_count == 3
         assert "partial answer is still useful" in completion.call_args.kwargs["messages"][-1]["content"]
 
-    def test_retry_empty_uses_earlier_narration(self, project_with_snodo):
+    def test_retry_empty_fails_honestly_without_truncated_narration(self, project_with_snodo):
         from snodo.recon import call_agent
 
         responses = [
@@ -1309,8 +1309,30 @@ class TestTerminalAnswer:
         ]
         with patch("litellm.completion", side_effect=responses):
             result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
-        assert "I'll systematically trace the code." in result.result
-        assert result.error is None
+        assert result.result == ""
+        assert result.error == "Final answer unavailable; run ended with empty_final:no_answer."
+        assert result.trace["ended"] == "empty_final:no_answer"
+
+    def test_empty_length_turn_retries_and_recovers_earlier_narration(self, project_with_snodo):
+        from types import SimpleNamespace
+        from snodo.recon import call_agent
+
+        cut_off = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="", tool_calls=None), finish_reason="length",
+        )])
+        empty_retry = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="", tool_calls=None), finish_reason="stop",
+        )])
+        with patch("litellm.completion", side_effect=[
+            _reading_response("Earlier useful narration.", "a.py"), cut_off, empty_retry,
+        ]) as completion:
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=2)
+
+        assert completion.call_count == 3
+        assert result.result.startswith("Earlier useful narration.")
+        assert "finish_reason=length" in result.result
+        assert result.error == "Output was truncated (finish_reason=length)."
+        assert result.trace["ended"] == "truncated:length"
 
     def test_final_submit_answer_tool_call_is_returned(self, project_with_snodo):
         from types import SimpleNamespace
@@ -1343,6 +1365,24 @@ class TestTerminalAnswer:
         assert "truncated" in result.result
         assert "finish_reason=length" in result.error
         assert result.trace["ended"] == "truncated:length"
+
+    def test_truncated_submit_answer_recovers_partial_json_text(self, project_with_snodo):
+        from types import SimpleNamespace
+        from snodo.recon import call_agent
+
+        submit = SimpleNamespace(id="answer", function=SimpleNamespace(
+            name="submit_answer", arguments='{"answer": "Recovered leading text',
+        ))
+        cut_off = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="", tool_calls=[submit]), finish_reason="length",
+        )])
+        with patch("litellm.completion", side_effect=[_reading_response("Read context.", "a.py"), cut_off]):
+            result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
+
+        assert result.result.startswith("Recovered leading text")
+        assert "finish_reason=length" in result.result
+        assert result.trace["ended"] == "truncated:length"
+        assert "finish_reason=length" in result.error
 
     def test_final_content_without_tool_call_is_accepted(self, project_with_snodo):
         from snodo.recon import call_agent

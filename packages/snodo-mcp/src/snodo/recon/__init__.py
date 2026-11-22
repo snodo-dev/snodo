@@ -673,10 +673,11 @@ def call_agent(
                 truncated = True
                 if not str(trace["ended"]).startswith("truncated:"):
                     trace["ended"] = "truncated:tool_calls"
-            retry_answer = "\n\n".join(
-                prose for item in earlier_prose
-                if (prose := _without_tool_output_echo(item))
-            )
+            if truncated:
+                retry_answer = "\n\n".join(
+                    prose for item in earlier_prose
+                    if (prose := _without_tool_output_echo(item))
+                )
         return retry_answer, retry_finish
 
     turns_used = 0
