@@ -1313,7 +1313,7 @@ class TestTerminalAnswer:
         assert result.error == "Final answer unavailable; run ended with empty_final:no_answer."
         assert result.trace["ended"] == "empty_final:no_answer"
 
-    def test_empty_length_turn_retries_and_recovers_earlier_narration(self, project_with_snodo):
+    def test_retry_empty_uses_earlier_narration(self, project_with_snodo):
         from types import SimpleNamespace
         from snodo.recon import call_agent
 
