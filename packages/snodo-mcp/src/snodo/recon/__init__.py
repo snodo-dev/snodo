@@ -623,7 +623,22 @@ def call_agent(
                     value = json.loads(tc.function.arguments)
                     answer = value.get("answer", "") if isinstance(value, dict) else ""
                 except (json.JSONDecodeError, TypeError, AttributeError):
-                    pass
+                    # A length-limited tool call can contain a useful prefix
+                    # of the answer string despite incomplete JSON arguments.
+                    import re
+                    raw = str(tc.function.arguments or "")
+                    match = re.search(r'"answer"\s*:\s*"', raw)
+                    if match:
+                        fragment = raw[match.end():]
+                        try:
+                            answer, _ = json.JSONDecoder().raw_decode('"' + fragment)
+                        except json.JSONDecodeError:
+                            for end in range(len(fragment), 0, -1):
+                                try:
+                                    answer = json.loads('"' + fragment[:end] + '"')
+                                    break
+                                except json.JSONDecodeError:
+                                    continue
                 if answer:
                     if trace["ended"] != "stalled":
                         trace["ended"] = "submitted_answer"
@@ -652,10 +667,12 @@ def call_agent(
         retry = _complete(with_read_tools=False, force_answer=True)
         _record_response(retry)
         retry_answer, retry_finish = _forced_answer(retry)
-        if not retry_answer.strip() and getattr(retry.choices[0].message, "tool_calls", None):
-            nonlocal truncated
-            truncated = True
-            trace["ended"] = "truncated:tool_calls"
+        if not retry_answer.strip():
+            if getattr(retry.choices[0].message, "tool_calls", None):
+                nonlocal truncated
+                truncated = True
+                if not str(trace["ended"]).startswith("truncated:"):
+                    trace["ended"] = "truncated:tool_calls"
             retry_answer = "\n\n".join(
                 prose for item in earlier_prose
                 if (prose := _without_tool_output_echo(item))
@@ -723,7 +740,9 @@ def call_agent(
         if getattr(msg, "tool_calls", None) and text.strip():
             earlier_prose.append(text.strip())
 
-        if (not hasattr(msg, "tool_calls") or not msg.tool_calls) and not is_final_turn:
+        if (not hasattr(msg, "tool_calls") or not msg.tool_calls) and not is_final_turn and not (
+            finish_reason in {"length", "max_tokens"} and not text.strip()
+        ):
             if raw_turn == 0 and not text:
                 _logger.warning(
                     "Recon agent disengaged on turn 0 — model=%s, "
@@ -741,9 +760,12 @@ def call_agent(
                 trace["ended"] = "prose" if not truncated else f"truncated:{finish_reason}"
             break
 
-        if is_final_turn:
+        if is_final_turn or (
+            finish_reason in {"length", "max_tokens"} and not text.strip()
+            and not getattr(msg, "tool_calls", None)
+        ):
             final_answer, finish_reason = _retry_forced_answer(response)
-            if not final_answer.strip() and trace["ended"] != "truncated:tool_calls":
+            if not final_answer.strip() and not str(trace["ended"]).startswith("truncated:"):
                 trace["ended"] = f"empty_final:{finish_reason or 'no_answer'}"
             break
 
@@ -842,6 +864,8 @@ def call_agent(
         trace["turns_used"] = raw_turn + 1
 
     if truncated and final_answer.strip():
+        if str(trace.get("ended", "")).startswith("truncated:"):
+            finish_reason = str(trace["ended"]).split(":", 1)[1]
         truncation_note = f"Output was truncated (finish_reason={finish_reason})."
         final_answer = (final_answer.rstrip() + "\n\n" + truncation_note).strip()
         if trace["ended"] != "stalled":
@@ -852,9 +876,8 @@ def call_agent(
     if not final_answer.strip():
         _notify_recon_observer(observer, model, agent_label, "failure", {"error": trace.get("ended", "empty result")})
         _logger.warning(
-            "Recon agent returned empty result on model=%s — "
-            "possible model disengagement or auth issue",
-            model,
+            "Recon agent returned empty result on model=%s — ending=%s, output_tokens=%s",
+            model, trace.get("ended", "unknown"), output_tokens,
         )
         return ReconResult(
             agent=agent_label, model=model,

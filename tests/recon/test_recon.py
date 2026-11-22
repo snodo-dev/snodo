@@ -1300,7 +1300,7 @@ class TestTerminalAnswer:
         assert completion.call_count == 3
         assert "partial answer is still useful" in completion.call_args.kwargs["messages"][-1]["content"]
 
-    def test_retry_empty_fails_honestly_without_narration(self, project_with_snodo):
+    def test_retry_empty_uses_earlier_narration(self, project_with_snodo):
         from snodo.recon import call_agent
 
         responses = [
@@ -1309,9 +1309,8 @@ class TestTerminalAnswer:
         ]
         with patch("litellm.completion", side_effect=responses):
             result = call_agent(project_with_snodo, "test/model", "query", ["./"], "agent", max_turns=1)
-        assert result.result == ""
-        assert "empty_final" in result.error
-        assert "systematically trace" not in result.result
+        assert "I'll systematically trace the code." in result.result
+        assert result.error is None
 
     def test_final_submit_answer_tool_call_is_returned(self, project_with_snodo):
         from types import SimpleNamespace

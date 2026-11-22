@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Recover partial recon answers after length-truncated turns, preserve their true ending reason, and report accurate empty-result diagnostics. Fixes #1326
+
 - Index ADR 062 for the dashboard protocol editor. Fixes #1321
 - Assert executor task specifications retain caller project context and include the executing task ID. Fixes #1322
 - Check that Protocol section scripts register renderers while preserving their shell order. Fixes #1323

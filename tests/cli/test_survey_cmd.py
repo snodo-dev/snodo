@@ -705,7 +705,7 @@ class TestWaitingIndicator:
         def empty_judge(dossier):
             logging.getLogger("snodo.recon").warning(
                 "Recon agent returned empty result on model=deepseek/deepseek-flash "
-                "— possible model disengagement or auth issue"
+                "— ending=empty_final:stop, output_tokens=0"
             )
             return {"reason": "Agent returned empty result"}
 
