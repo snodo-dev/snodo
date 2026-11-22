@@ -1,0 +1,28 @@
+{
+  "tasks": {
+    "1.1_recon_length_recovery": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "a024a1ac23d75ead"
+    },
+    "1.2_recon_endings_docs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "d7902a041fc7c17e"
+    },
+    "2.1_recon_length_tests": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "fef64c72af6acce3"
+    },
+    "2.2_recon_warning_cause_test": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "0a0efa3bdea2e3e8"
+    }
+  }
+}

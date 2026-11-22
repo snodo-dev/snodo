@@ -1,0 +1,19 @@
+intent: A recon agent whose model ends a turn on finish_reason length with no visible
+  text currently fails the whole lane, loses the true ending reason, loses partial
+  submit_answer text and earlier narration, and logs a warning that blames disengagement
+  or auth. Make that case recover where it honestly can, keep the true reason visible,
+  and cover it with tests. Reasoning-only output is deliberately not treated as an
+  answer. No new state, status, severity or halt type.
+name: recon-truncation-recovery
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_recon_length_recovery
+  - 1.2_recon_endings_docs
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_recon_length_tests
+  - 2.2_recon_warning_cause_test
