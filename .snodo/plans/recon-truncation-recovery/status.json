@@ -7,7 +7,7 @@
       "spec_hash": "a024a1ac23d75ead"
     },
     "2.1_recon_length_tests": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "d3b4f6a4e7ae14df"
@@ -33,6 +33,6 @@
   },
   "integration": {
     "branch": "plan/recon-truncation-recovery/integration",
-    "base_sha": "5ff435005afdca77040a73feca299087291546c7"
+    "base_sha": "c6181d55898378bb8c405527cff5b9ae63aa0786"
   }
 }
