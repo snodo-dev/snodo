@@ -10,10 +10,11 @@ waves:
   id: 1
   tasks:
   - 1.1_recon_length_recovery
-  - 1.2_recon_endings_docs
+  - 1.2_tunnel_test_version_import
 - depends_on:
   - 1
   id: 2
   tasks:
   - 2.1_recon_length_tests
   - 2.2_recon_warning_cause_test
+  - 2.3_recon_endings_docs

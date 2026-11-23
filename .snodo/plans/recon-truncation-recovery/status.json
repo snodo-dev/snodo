@@ -1,16 +1,10 @@
 {
   "tasks": {
     "1.1_recon_length_recovery": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "a024a1ac23d75ead"
-    },
-    "1.2_recon_endings_docs": {
-      "status": "pending",
-      "parent_task_ref": null,
-      "depth": 0,
-      "spec_hash": "d7902a041fc7c17e"
     },
     "2.1_recon_length_tests": {
       "status": "pending",
@@ -23,6 +17,22 @@
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "0a0efa3bdea2e3e8"
+    },
+    "1.2_tunnel_test_version_import": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "97de8c2aa5d45d23"
+    },
+    "2.3_recon_endings_docs": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c9b24128be90306a"
     }
+  },
+  "integration": {
+    "branch": "plan/recon-truncation-recovery/integration",
+    "base_sha": "fabc22bfca87afe0e710a3e2950606ae7b62e9c7"
   }
 }
