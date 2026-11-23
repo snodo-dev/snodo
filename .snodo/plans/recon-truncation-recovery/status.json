@@ -19,7 +19,7 @@
       "spec_hash": "0a0efa3bdea2e3e8"
     },
     "1.2_tunnel_test_version_import": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "97de8c2aa5d45d23"
@@ -33,6 +33,6 @@
   },
   "integration": {
     "branch": "plan/recon-truncation-recovery/integration",
-    "base_sha": "fabc22bfca87afe0e710a3e2950606ae7b62e9c7"
+    "base_sha": "7326edc69ac8f3c306b048c70086f36cdab31387"
   }
 }
