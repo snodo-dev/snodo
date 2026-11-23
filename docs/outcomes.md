@@ -22,8 +22,8 @@ output is not treated as an answer.
 
 For length truncation, consider increasing `llm.recon.max_tokens` (subject to
 the model's own output limit), or ask a bounded question that does not need
-exact counting. See the [recon agent CLI spec](specs/recon-agents-cli.md) for
-the result behavior.
+exact counting. See the recon agent CLI spec
+(`docs/specs/recon-agents-cli.md`) for the result behavior.
 
 ## The five canonical halts (ADR 015)
 
