@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Isolate tunnel test Popen mocks so first-run tests are independent of lazy version imports. Fixes #1328
+
 - Recover partial recon answers after length-truncated turns, preserve their true ending reason, and report accurate empty-result diagnostics. Fixes #1326
 
 - Index ADR 062 for the dashboard protocol editor. Fixes #1321

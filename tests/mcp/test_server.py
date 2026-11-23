@@ -1616,6 +1616,11 @@ class TestTunnelRunErrors:
         mock_sub.poll.return_value = None
         mock_sub.stderr.readline.return_value = "Registered tunnel connection\n"
 
+        # Keep the Popen mock local to serve_cmd; version.py may need real
+        # subprocess.run when imported for the first time.
+        mocked_subprocess = SimpleNamespace(**vars(subprocess))
+        mocked_subprocess.Popen = MagicMock(return_value=mock_sub)
+
         with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
             with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
                 with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
@@ -1623,10 +1628,10 @@ class TestTunnelRunErrors:
                         with patch("snodo.cli.commands.serve_cmd._save_tunnel_config"):
                             with patch("httpx.get", return_value=MagicMock(status_code=200)):
                                 # The explicit port is free: the port check is
-                                # real (read-only) but Popen is mocked globally
-                                # here, so let the probe answer directly.
+                                # real (read-only); the private subprocess copy
+                                # keeps other subprocess users unaffected.
                                 with patch("snodo.cli.commands.serve_cmd._port_holder_pid", return_value=None):
-                                    with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
+                                    with patch("snodo.cli.commands.serve_cmd.subprocess", mocked_subprocess):
                                         with patch("snodo.cli.commands.serve_cmd.signal.signal"):
                                             # Injected clock: the 2s uvicorn bind
                                             # wait and the 0.1s poll both advance
@@ -1668,6 +1673,11 @@ class TestTunnelRunErrors:
         mock_sub.poll.return_value = None
         mock_sub.stderr.readline.return_value = "Registered tunnel connection\n"
 
+        # Keep the Popen mock local to serve_cmd; version.py may need real
+        # subprocess.run when imported for the first time.
+        mocked_subprocess = SimpleNamespace(**vars(subprocess))
+        mocked_subprocess.Popen = MagicMock(return_value=mock_sub)
+
         with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
             with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
                 with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=stored):
@@ -1677,7 +1687,7 @@ class TestTunnelRunErrors:
                             # the historical default its ingress was built with;
                             # the port probe answers free directly.
                             with patch("snodo.cli.commands.serve_cmd._port_holder_pid", return_value=None):
-                                with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
+                                with patch("snodo.cli.commands.serve_cmd.subprocess", mocked_subprocess):
                                     with patch("snodo.cli.commands.serve_cmd.signal.signal"):
                                         # Injected clock: the 2s uvicorn bind wait
                                         # advances instantly instead of sleeping.
