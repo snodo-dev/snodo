@@ -111,6 +111,23 @@ recon's own status values.
 `snodo logs <recon id> --watch` renders the event log live, then prints the
 agents' answers as it does today.
 
+## Reading an agent's ending
+
+An agent that finishes with an answer reports it as answered. A length cut-off
+is reported as truncated: any usable partial answer is kept and marked as
+truncated; if no usable text was produced, the result says that the final answer
+is unavailable and gives the truncation reason. In that no-text case, the model
+spent its output limit before producing an answer—it does not by itself mean
+the model disengaged or that authentication failed. A stalled ending means
+repeated reads stopped making progress. A tool-call ending means the agent
+kept requesting tools instead of providing an answer. Reasoning-only output is
+not an answer.
+
+For a length cut-off, raise `llm.recon.max_tokens` if the model and provider
+allow it. You can also ask a bounded question that does not require exact
+counting. See [Outcomes and recovery](../outcomes.md#recon-agent-endings) for
+operator guidance.
+
 ## Tests
 - resolve(None, [m1,m2,m3], 2)        -> [m1,m2]            (config default applies)
 - resolve(3,    [m1,m2,m3], 2)        -> [m1,m2,m3]         (caller overrides default)

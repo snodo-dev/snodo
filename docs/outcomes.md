@@ -8,6 +8,23 @@ below. A `dispatch_task` or `retry_job` acceptance is not a successful result:
 follow it with [`watch_job`](following-a-run.md), and inspect `get_job_status`
 or `get_job_logs` for a specific follow-up or diagnosis.
 
+## Recon agent endings
+
+Recon results explain how each agent ended. An answered result contains its
+answer. A truncated result means an output limit cut the response short; when
+usable partial text was recovered, it is retained and identified as truncated.
+If a length cut-off leaves no usable text, the final answer is unavailable
+because the model spent its output limit before producing an answer. That is
+not, by itself, evidence of disengagement or an authentication problem. A
+stalled result means repeated reads made no progress, while a tool-call result
+means the agent kept requesting tools instead of answering. Reasoning-only
+output is not treated as an answer.
+
+For length truncation, consider increasing `llm.recon.max_tokens` (subject to
+the model's own output limit), or ask a bounded question that does not need
+exact counting. See the [recon agent CLI spec](specs/recon-agents-cli.md) for
+the result behavior.
+
 ## The five canonical halts (ADR 015)
 
 These are the engine's canonical halt names. `pass` is a successful validation

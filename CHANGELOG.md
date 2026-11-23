@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Explain recon agent ending reasons, length-limit recovery, and practical operator next steps. Fixes #1330
+
 - Test recon empty-result diagnostics against length-truncated model replies and genuine authentication failures. Fixes #1329
 
 - Isolate tunnel test Popen mocks so first-run tests are independent of lazy version imports. Fixes #1328
