@@ -10,10 +10,10 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "fef64c72af6acce3"
+      "spec_hash": "d3b4f6a4e7ae14df"
     },
     "2.2_recon_warning_cause_test": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "0a0efa3bdea2e3e8"
@@ -25,7 +25,7 @@
       "spec_hash": "97de8c2aa5d45d23"
     },
     "2.3_recon_endings_docs": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "c9b24128be90306a"
@@ -33,6 +33,6 @@
   },
   "integration": {
     "branch": "plan/recon-truncation-recovery/integration",
-    "base_sha": "7326edc69ac8f3c306b048c70086f36cdab31387"
+    "base_sha": "cc4aec14faef4b6903514bf44f834e63abcae4fc"
   }
 }
