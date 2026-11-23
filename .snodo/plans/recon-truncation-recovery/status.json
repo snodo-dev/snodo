@@ -33,6 +33,6 @@
   },
   "integration": {
     "branch": "plan/recon-truncation-recovery/integration",
-    "base_sha": "cc4aec14faef4b6903514bf44f834e63abcae4fc"
+    "base_sha": "5ff435005afdca77040a73feca299087291546c7"
   }
 }
