@@ -7,10 +7,10 @@
       "spec_hash": "a024a1ac23d75ead"
     },
     "2.1_recon_length_tests": {
-      "status": "blocked",
+      "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "fef64c72af6acce3"
+      "spec_hash": "d3b4f6a4e7ae14df"
     },
     "2.2_recon_warning_cause_test": {
       "status": "completed",
