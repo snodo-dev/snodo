@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Test recon empty-result diagnostics against length-truncated model replies and genuine authentication failures. Fixes #1329
+
 - Isolate tunnel test Popen mocks so first-run tests are independent of lazy version imports. Fixes #1328
 
 - Recover partial recon answers after length-truncated turns, preserve their true ending reason, and report accurate empty-result diagnostics. Fixes #1326
