@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Pin recon length-truncation recovery behavior with real-loop regression tests. Fixes #1331
+
 - Explain recon agent ending reasons, length-limit recovery, and practical operator next steps. Fixes #1330
 
 - Test recon empty-result diagnostics against length-truncated model replies and genuine authentication failures. Fixes #1329
