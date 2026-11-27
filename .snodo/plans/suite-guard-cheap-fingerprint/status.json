@@ -7,7 +7,7 @@
       "spec_hash": "e125602bec492646"
     },
     "2.1_guard_detection_tests": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "5cc703a91eaaf752"
@@ -15,6 +15,6 @@
   },
   "integration": {
     "branch": "plan/suite-guard-cheap-fingerprint/integration",
-    "base_sha": "6b8c248d29983a5308345c26b2dcf1281d4e7d74"
+    "base_sha": "e94a3740cea257540b20bdbf81bfb701a846d780"
   }
 }
