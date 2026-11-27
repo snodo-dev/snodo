@@ -1,0 +1,17 @@
+intent: The release gate stops failing on a 60 second timeout that lands in the teardown
+  of a test, because the per-test guard that protects the suite repository's own .snodo
+  directory stops reading and hashing every file in that directory twice around every
+  test. Detection of any write to that directory stays exactly as strict, and the
+  cost of the guard no longer grows with every plan that is committed. No new state,
+  status, severity or halt type.
+name: suite-guard-cheap-fingerprint
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_guard_fingerprint_without_reading
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_guard_detection_tests

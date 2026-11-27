@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "1.1_guard_fingerprint_without_reading": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "e125602bec492646"
+    },
+    "2.1_guard_detection_tests": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "5cc703a91eaaf752"
+    }
+  }
+}
