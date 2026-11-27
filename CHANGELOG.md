@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Use size and modification-time metadata for suite `.snodo/` and plans guard fingerprints instead of reading file contents. Fixes #1333
+
 - Pin recon length-truncation recovery behavior with real-loop regression tests. Fixes #1331
 
 - Explain recon agent ending reasons, length-limit recovery, and practical operator next steps. Fixes #1330

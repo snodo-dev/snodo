@@ -6,7 +6,6 @@ TEST_SECRET: 32+ byte HMAC key to avoid JWT InsecureKeyLengthWarning
 (RFC 7518 Section 3.2 recommends ≥32 bytes for SHA256).
 """
 
-import hashlib
 import os
 import shutil
 import subprocess
@@ -163,9 +162,9 @@ def _guard_suite_repo_unchanged():
 def _snodo_dir_state(repo_root) -> dict:
     """Return a fingerprint of the suite repo's .snodo/ directory, if any.
 
-    Maps each relative path to a content hash, so both new files and content
-    changes to existing files (e.g. an audit log that gained lines) are
-    detected. Absent directory -> None (no suite .snodo/ to protect).
+    Maps each relative path to its size and modification time, so created,
+    changed, and deleted files are detected without reading file contents.
+    Absent directory -> None (no suite .snodo/ to protect).
     """
     snodo_dir = repo_root / ".snodo"
     if not snodo_dir.is_dir():
@@ -174,10 +173,10 @@ def _snodo_dir_state(repo_root) -> dict:
     for p in sorted(snodo_dir.rglob("*")):
         if p.is_file():
             try:
-                data = p.read_bytes()
+                stat = p.stat()
+                state[str(p.relative_to(snodo_dir))] = (stat.st_size, stat.st_mtime_ns)
             except OSError:
-                data = b"<unreadable>"
-            state[str(p.relative_to(snodo_dir))] = hashlib.sha256(data).hexdigest()
+                state[str(p.relative_to(snodo_dir))] = "<unreadable>"
     return state
 
 
@@ -227,7 +226,8 @@ def _plans_dir_state(repo_root: Path) -> dict | None:
             state[relative + "/"] = "directory"
         elif path.is_file():
             try:
-                state[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+                stat = path.stat()
+                state[relative] = (stat.st_size, stat.st_mtime_ns)
             except OSError:
                 state[relative] = "<unreadable>"
     return state
