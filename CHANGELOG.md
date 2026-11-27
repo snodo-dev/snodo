@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Pin suite `.snodo/` guard coverage for created, modified, rewritten, and deleted files, including path attribution and metadata-only fingerprinting. Fixes #1334
+
 - Use size and modification-time metadata for suite `.snodo/` and plans guard fingerprints instead of reading file contents. Fixes #1333
 
 - Pin recon length-truncation recovery behavior with real-loop regression tests. Fixes #1331
