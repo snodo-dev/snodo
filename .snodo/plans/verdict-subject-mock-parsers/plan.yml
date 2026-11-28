@@ -1,0 +1,11 @@
+intent: Mock judges recover the task identifier from the verdict-subject instruction
+  as it is worded now, so mocked validator runs, the CLI tests and the e2e journeys
+  pass again and the release gate is green. The wording and its parsers can no longer
+  drift apart unnoticed. The strict match of ADR 059 is untouched. No new state, status,
+  severity or halt type.
+name: verdict-subject-mock-parsers
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_mock_judges_read_new_subject_wording

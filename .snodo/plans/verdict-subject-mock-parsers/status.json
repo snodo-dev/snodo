@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_mock_judges_read_new_subject_wording": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "665b301333f5b9c8"
+    }
+  }
+}
