@@ -6,7 +6,8 @@ from importlib.resources import files
 import pytest
 
 
-pytestmark = pytest.mark.e2e
+# These journeys launch many cold CLI processes; allow headroom over the gate's 60s limit under parallel load.
+pytestmark = [pytest.mark.e2e, pytest.mark.timeout(180)]
 
 
 def _plan(snodo_cli, name: str, task_id: str, spec: str) -> None:

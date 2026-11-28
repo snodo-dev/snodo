@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Give multi-process queue journey e2e tests a dedicated timeout budget and pin it with a regular regression test. Fixes #1339
+
 - Explain the per-task test requirement for e2e changes and link to test-tiering guidance. Fixes #1338
 
 - Select tests governed by changed nested conftest files. Fixes #1337
