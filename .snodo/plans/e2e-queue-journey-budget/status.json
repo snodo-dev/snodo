@@ -1,16 +1,20 @@
 {
   "tasks": {
     "1.1_queue_journey_timeout_budget": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "76b599302dc1cc10"
     },
     "1.2_e2e_cli_call_timing": {
-      "status": "pending",
+      "status": "blocked",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "1d3ea4988938b1cb"
     }
+  },
+  "integration": {
+    "branch": "plan/e2e-queue-journey-budget/integration",
+    "base_sha": "facf685e570fa742e72f402dcd0f7246bce10b4a"
   }
 }

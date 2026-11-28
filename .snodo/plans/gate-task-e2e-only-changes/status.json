@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "1.1_gate_task_no_tests_collected": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ba01d6f2af791c8a"
+    },
+    "1.2_selector_conftest_selects_tests": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "7d82e41fbf2c6513"
+    }
+  }
+}

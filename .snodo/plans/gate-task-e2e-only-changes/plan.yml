@@ -1,0 +1,12 @@
+intent: A ticket whose change only touches end-to-end tests or a conftest can pass
+  the per-task gate, instead of failing it with pytest's "no tests ran" exit code,
+  and a changed conftest selects the tests it affects. The release gate stays the
+  place that decides and keeps running the e2e tests. No new state, status, severity
+  or halt type.
+name: gate-task-e2e-only-changes
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_gate_task_no_tests_collected
+  - 1.2_selector_conftest_selects_tests
