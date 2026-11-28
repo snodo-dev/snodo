@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1.1_unquoted_subject_instruction": {
+      "status": "pending",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "44caeadde02d4e79"
+    }
+  }
+}
