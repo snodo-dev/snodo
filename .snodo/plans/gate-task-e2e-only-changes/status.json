@@ -1,7 +1,7 @@
 {
   "tasks": {
     "1.1_gate_task_no_tests_collected": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "3bd898c2418b9c6d"
@@ -15,6 +15,6 @@
   },
   "integration": {
     "branch": "plan/gate-task-e2e-only-changes/integration",
-    "base_sha": "b8c2b65332dc81e6ff8d4858b6209dee41d76f4d"
+    "base_sha": "7f80c47e65957aef060e25bbf8026ae8a6543568"
   }
 }
