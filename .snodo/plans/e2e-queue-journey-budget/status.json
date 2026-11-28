@@ -7,7 +7,7 @@
       "spec_hash": "ba84bfa525df055f"
     },
     "1.2_e2e_cli_call_timing": {
-      "status": "errored",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "286e9d209c576df9"
@@ -15,6 +15,6 @@
   },
   "integration": {
     "branch": "plan/e2e-queue-journey-budget/integration",
-    "base_sha": "c84603fb2f0cbeb9311f67df3db4a60202cef602"
+    "base_sha": "079089f9f79f79c0c5f9034a7265f518bb042acb"
   }
 }
