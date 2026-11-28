@@ -4,13 +4,17 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "ba01d6f2af791c8a"
+      "spec_hash": "b764c41a6443df83"
     },
     "1.2_selector_conftest_selects_tests": {
-      "status": "pending",
+      "status": "completed",
       "parent_task_ref": null,
       "depth": 0,
       "spec_hash": "7d82e41fbf2c6513"
     }
+  },
+  "integration": {
+    "branch": "plan/gate-task-e2e-only-changes/integration",
+    "base_sha": "767771312f3716236ea0b6532e1505834d92683d"
   }
 }
