@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Explain the per-task test requirement for e2e changes and link to test-tiering guidance. Fixes #1338
+
 - Select tests governed by changed nested conftest files. Fixes #1337
 
 - Pin suite `.snodo/` guard coverage for created, modified, rewritten, and deleted files, including path attribution and metadata-only fingerprinting. Fixes #1334

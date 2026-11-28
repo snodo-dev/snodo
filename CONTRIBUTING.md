@@ -78,7 +78,11 @@ but selects tests touched by the diff against the merge base using
 or workspace-package `pyproject.toml`, Python files under `scripts/`, or the
 protocol select the whole suite, since their impact cannot be confined safely.
 Documentation-only changes run no tests unless the documentation is a runtime
-input with mapped consumers, such as the MCP guide.
+input with mapped consumers, such as the MCP guide. E2E tests run in the CI/release
+gate, not `make gate-task`; if you change e2e tests or their conftest, include an
+ordinary non-e2e test that `make gate-task` selects and executes. An e2e-only
+diff has no tests for this gate to run, and the gate must not report a pass when
+nothing ran. See the [test-tiering notes](docs/specs/w6-01_test-tiering.md).
 
 ### Full fast suite — `make gate`
 
