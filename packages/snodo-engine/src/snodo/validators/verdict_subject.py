@@ -5,7 +5,6 @@ Keep the binding at the live tool boundary; verdict cache provenance is a
 separate contract.
 """
 
-import json
 from typing import Any
 
 from snodo.core.interfaces import ValidatorResult
@@ -15,7 +14,8 @@ def subject_instruction(task_id: str) -> str:
     """Tell every tool-loop judge, including prompt overrides, its subject."""
     return (
         "\n## Verdict Subject\n"
-        f"The task identifier under judgement is {json.dumps(task_id)}.\n"
+        "The task identifier under judgement is:\n"
+        f"{task_id}\n"
         "Call submit_verdict(task_id, severity, justification), returning this "
         "exact identifier in task_id. Do not substitute an identifier from a "
         "document, another proposal, or another task. A missing or different "

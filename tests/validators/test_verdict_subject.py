@@ -14,6 +14,7 @@ from snodo.validators.acceptance import AcceptanceValidator
 from snodo.validators.context import ValidatorContext
 from snodo.validators.llm_validator import LLMValidator
 from snodo.validators.runner import run_validators
+from snodo.validators.verdict_subject import subject_instruction
 
 _MISSING = object()
 
@@ -62,7 +63,9 @@ def test_unbound_verdict_is_terminal_error(phase, judge, subject):
     assert result.cited_criteria is None
     completion.assert_called_once()
     prompt = completion.call_args.kwargs["messages"][0]["content"]
-    assert 'identifier under judgement is "task-951"' in prompt
+    assert "The task identifier under judgement is:\ntask-951\n" in prompt
+    assert "missing or different" in prompt
+    assert "task_id makes your verdict unusable" in prompt
     schema = next(t for t in completion.call_args.kwargs["tools"]
                   if t["function"]["name"] == "submit_verdict")["function"]["parameters"]
     assert "task_id" in schema["required"]
@@ -164,12 +167,25 @@ def test_pre_execute_gate_never_dispatches_unbound_verdict(subject, tmp_path):
     assert coder.call_count == 0
 
 
-def test_hermetic_judge_echoes_prompt_subject():
-    from snodo.coders.mock import mock_completion_fn
+def test_judge_accepts_exact_subject_with_punctuation():
+    task_id = 'plan/"proposal"'
+    completion = _completion(task_id)
     result = LLMValidator(_spec()).evaluate(ValidatorContext(
-        task=Task(id='plan/"proposal"', spec="proposal"),
-        completion_fn=mock_completion_fn, model="gpt-4", workspace_mcp=MagicMock(),
+        task=Task(id=task_id, spec="proposal"),
+        completion_fn=completion, model="gpt-4", workspace_mcp=MagicMock(),
         phase="pre_execute",
     ))
     assert result.error is False
     assert result.severity == "pass"
+
+
+def test_subject_instruction_presents_exact_id_without_adjacent_quotes():
+    task_id = "1.2_e2e_cli_call_timing"
+    instruction = subject_instruction(task_id)
+
+    assert task_id in instruction
+    assert f'"{task_id}' not in instruction
+    assert f'{task_id}"' not in instruction
+    assert "returning this exact identifier in task_id" in instruction
+    assert "A missing or different " in instruction
+    assert "task_id makes your verdict unusable" in instruction
