@@ -127,7 +127,15 @@ def select(repo: Path, base: str) -> list[str]:
                     if pattern.search(source):
                         selected.add(path.relative_to(repo).as_posix())
             break
-        if name.startswith("tests/") and name.endswith(".py"):
+        if name.startswith("tests/") and Path(name).name == "conftest.py":
+            directory = (repo / name).parent
+            for path in sorted(directory.rglob("*.py")):
+                if (
+                    path.is_file()
+                    and (path.name.startswith("test_") or path.name.endswith("_test.py"))
+                ):
+                    selected.add(path.relative_to(repo).as_posix())
+        elif name.startswith("tests/") and name.endswith(".py"):
             if (repo / name).is_file():
                 selected.add(name)
         elif name.endswith(".py"):

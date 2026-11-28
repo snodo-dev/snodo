@@ -47,6 +47,42 @@ def _change(repo: Path, name: str, contents: str) -> None:
     path.write_text(contents, encoding="utf-8")
 
 
+def test_nested_conftest_selects_tests_in_its_tree(tmp_path):
+    repo, base = _repo(
+        tmp_path,
+        {
+            "tests/e2e/conftest.py": "# before\n",
+            "tests/e2e/test_flow.py": "assert True\n",
+            "tests/e2e/nested/test_nested.py": "assert True\n",
+            "tests/unit/test_other.py": "assert True\n",
+        },
+    )
+    _change(repo, "tests/e2e/conftest.py", "# after\n")
+    _commit(repo, "change nested conftest")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "tests/e2e/nested/test_nested.py",
+        "tests/e2e/test_flow.py",
+    ]
+
+
+def test_top_level_conftest_selects_entire_suite(tmp_path):
+    repo, base = _repo(
+        tmp_path,
+        {
+            "tests/conftest.py": "# before\n",
+            "tests/e2e/test_flow.py": "assert True\n",
+            "tests/unit/test_other.py": "assert True\n",
+        },
+    )
+    _change(repo, "tests/conftest.py", "# after\n")
+    _commit(repo, "change top-level conftest")
+    result = _run(repo, base)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "tests/\n"
+
+
 def test_changed_test_file_is_selected(tmp_path):
     repo, base = _repo(tmp_path, {"tests/cli/test_old.py": "x = 1\n"})
     _change(repo, "tests/cli/test_old.py", "x = 2\n")
