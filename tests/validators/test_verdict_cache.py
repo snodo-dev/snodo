@@ -115,12 +115,14 @@ class _ToolCompletion:
 
     def __call__(self, **kwargs):
         self.calls += 1
-        marker = "The task identifier under judgement is "
+        from snodo.validators.verdict_subject import subject_id_from_instruction
+
         prompt = next(
             message["content"] for message in kwargs["messages"]
-            if isinstance(message.get("content"), str) and marker in message["content"]
+            if isinstance(message.get("content"), str)
+            and subject_id_from_instruction(message["content"]) is not None
         )
-        task_id, _ = json.JSONDecoder().raw_decode(prompt.rsplit(marker, 1)[1])
+        task_id = subject_id_from_instruction(prompt)
         resp = MagicMock()
         msg = MagicMock()
         msg.content = ""

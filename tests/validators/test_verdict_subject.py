@@ -14,7 +14,7 @@ from snodo.validators.acceptance import AcceptanceValidator
 from snodo.validators.context import ValidatorContext
 from snodo.validators.llm_validator import LLMValidator
 from snodo.validators.runner import run_validators
-from snodo.validators.verdict_subject import subject_instruction
+from snodo.validators.verdict_subject import subject_id_from_instruction, subject_instruction
 
 _MISSING = object()
 
@@ -195,14 +195,7 @@ def test_hermetic_judge_echoes_prompt_subject():
     from snodo.coders.mock import mock_completion_fn
 
     task_id = 'plan/"proposal"'
-    def completion_fn(*args, **kwargs):
-        # The hermetic mock still consumes its legacy marker; expose the same
-        # subject in that format while passing through the judge's real prompt.
-        messages = kwargs["messages"]
-        messages[0]["content"] += (
-            "\nThe task identifier under judgement is " + json.dumps(task_id)
-        )
-        return mock_completion_fn(*args, **kwargs)
+    completion_fn = mock_completion_fn
 
     result = LLMValidator(_spec()).evaluate(ValidatorContext(
         task=Task(id=task_id, spec="proposal"),
@@ -211,3 +204,14 @@ def test_hermetic_judge_echoes_prompt_subject():
     ))
     assert result.error is False
     assert result.severity == "pass"
+
+
+@pytest.mark.parametrize("task_id", [
+    "task-951",
+    "plan/with punctuation?!",
+    'quoted "subject"\\path; [draft] #1',
+])
+def test_subject_instruction_round_trips_exact_identifier(task_id):
+    instruction = subject_instruction(task_id)
+
+    assert subject_id_from_instruction(instruction) == task_id

@@ -95,14 +95,17 @@ def mock_completion_fn(*args: Any, **kwargs: Any) -> MockModelResponse:
     if "submit_verdict" in tool_names:
         # Echo the subject from the same prompt a real judge sees, rather
         # than inventing a fixed identifier or borrowing another task's ID.
-        # JSON decoding preserves punctuation and escaping in task identifiers.
-        marker = "The task identifier under judgement is "
+        # The shared reader preserves punctuation and escaping verbatim.
+        from snodo.validators.verdict_subject import subject_id_from_instruction
+
         task_id = ""
         for message in messages:
             content = message.get("content", "") if isinstance(message, dict) else ""
-            if isinstance(content, str) and marker in content:
-                task_id, _ = json.JSONDecoder().raw_decode(content.rsplit(marker, 1)[1])
-                break
+            if isinstance(content, str):
+                subject = subject_id_from_instruction(content)
+                if subject is not None:
+                    task_id = subject
+                    break
         tc = MagicMock()
         tc.id = "mock_val_call_1"
         tc.function.name = "submit_verdict"

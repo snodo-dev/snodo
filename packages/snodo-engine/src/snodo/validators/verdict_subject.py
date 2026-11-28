@@ -23,6 +23,19 @@ def subject_instruction(task_id: str) -> str:
     )
 
 
+def subject_id_from_instruction(instruction: str) -> str | None:
+    """Read the exact task ID from the verdict-subject instruction."""
+    marker = "The task identifier under judgement is:\n"
+    start = instruction.rfind(marker)
+    if start < 0:
+        return None
+    value_start = start + len(marker)
+    end = instruction.find("\n", value_start)
+    if end < 0:
+        return None
+    return instruction[value_start:end]
+
+
 def reject_wrong_subject(
     arguments: Any, expected_task_id: str, validator_id: str,
 ) -> ValidatorResult | None:

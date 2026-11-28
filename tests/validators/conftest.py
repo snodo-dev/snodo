@@ -25,13 +25,15 @@ def bind_legacy_scripted_judge_subject(request, monkeypatch):
     @wraps(original)
     def scripted_completion(self, *args, **kwargs):
         response = original(self, *args, **kwargs)
-        marker = "The task identifier under judgement is "
+        from snodo.validators.verdict_subject import subject_id_from_instruction
+
         subject = None
         for message in kwargs.get("messages", []):
             content = message.get("content")
-            if isinstance(content, str) and marker in content:
-                subject, _ = json.JSONDecoder().raw_decode(content.split(marker, 1)[1])
-                break
+            if isinstance(content, str):
+                subject = subject_id_from_instruction(content)
+                if subject is not None:
+                    break
         if subject is None:
             return response
         for call in response.choices[0].message.tool_calls or []:
