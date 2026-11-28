@@ -4,11 +4,11 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "8e99cf9bd38cf9ed"
+      "spec_hash": "957914a8b7f7e03d"
     }
   },
   "integration": {
     "branch": "plan/verdict-subject-mock-parsers/integration",
-    "base_sha": "5374e3f409cb8bdfc07ef833f5c9477a1b9fbf8c"
+    "base_sha": "ebc764ffddb08e3cf85c9e20274c40d7bf689ab2"
   }
 }
