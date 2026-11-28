@@ -1,0 +1,10 @@
+intent: LLM validators return the task identifier exactly as given, so a run no longer
+  halts because a judge copied quotation marks around the id into its verdict. The
+  exact-match rule of ADR 059 stays as strict as it is. No new state, status, severity
+  or halt type.
+name: verdict-subject-unquoted-id
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_unquoted_subject_instruction

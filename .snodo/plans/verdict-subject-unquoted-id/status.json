@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1.1_unquoted_subject_instruction": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "44caeadde02d4e79"
+    }
+  },
+  "integration": {
+    "branch": "plan/verdict-subject-unquoted-id/integration",
+    "base_sha": "86cb3ed1a44ff5f6db2166e2884c46de3ada4e59"
+  }
+}
