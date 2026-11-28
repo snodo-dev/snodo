@@ -1,0 +1,12 @@
+intent: The release gate stops failing on a 60 second pytest timeout in the end-to-end
+  queue journey, and the next time an end-to-end test runs long the failure names
+  which CLI invocation was slow and for how long, so a timeout can be diagnosed from
+  one gate log instead of another full release run. No new state, status, severity
+  or halt type.
+name: e2e-queue-journey-budget
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_queue_journey_timeout_budget
+  - 1.2_e2e_cli_call_timing
