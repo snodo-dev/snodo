@@ -8,6 +8,7 @@ Provides isolated test environments for subprocess-based CLI testing.
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import List
 
@@ -39,12 +40,51 @@ def pytest_collection_modifyitems(config, items):
         )
 
 
+def _redact_cli_args(args: List[str]) -> str:
+    """Format argv without exposing credential-shaped arguments."""
+    secret_flags = ("token", "secret", "password", "api-key", "apikey", "authorization", "bearer")
+    redacted = []
+    redact_next = False
+    for arg in args:
+        value = str(arg)
+        if redact_next:
+            redacted.append("<redacted>")
+            redact_next = False
+        elif any(flag in value.lower() for flag in secret_flags):
+            if "=" in value:
+                redacted.append(value.split("=", 1)[0] + "=<redacted>")
+            else:
+                redacted.append(value)
+                redact_next = True
+        else:
+            redacted.append(value)
+    return repr(redacted)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Attach CLI timing diagnostics to failed test reports."""
+    outcome = yield
+    report = outcome.get_result()
+    if not report.failed or call.when != "call":
+        return
+    calls = getattr(item, "_snodo_cli_calls", ())
+    if not calls:
+        return
+    lines = ["snodo_cli call timings:"]
+    for entry in calls:
+        elapsed = time.monotonic() - entry["start"] if entry["running"] else entry["elapsed"]
+        state = "in flight" if entry["running"] else "completed"
+        lines.append(f"  {entry['args']}: {state}, {elapsed:.2f}s")
+    report.sections.append(("snodo_cli timings", "\n".join(lines)))
+
+
 def _snodo_cmd() -> List[str]:
     return [sys.executable, "-m", "snodo"]
 
 
 @pytest.fixture
-def snodo_cli(tmp_path):
+def snodo_cli(tmp_path, request):
     """Fixture returning a callable that runs snodo as a subprocess.
 
     Each invocation gets:
@@ -75,6 +115,8 @@ def snodo_cli(tmp_path):
         cwd=str(project_root), env=clean_env, check=False,
     )
 
+    request.node._snodo_cli_calls = []
+
     def _run(cmd_args: List[str], **kwargs) -> subprocess.CompletedProcess:
         env = subprocess_env_without_job_context()
         env["SNODO_HOME"] = str(snodo_home)
@@ -87,14 +129,24 @@ def snodo_cli(tmp_path):
         # the project's audit log to the test harness's temp file instead.
         env.pop("SNODO_AUDIT_LOG", None)
         _run.last_env = env.copy()
-        return subprocess.run(
-            _snodo_cmd() + cmd_args,
-            cwd=str(project_root),
-            env=env,
-            capture_output=True,
-            text=True,
-            **kwargs,
-        )
+        started = time.monotonic()
+        entry = {"args": _redact_cli_args(cmd_args), "start": started, "running": True}
+        request.node._snodo_cli_calls.append(entry)
+        try:
+            result = subprocess.run(
+                _snodo_cmd() + cmd_args,
+                cwd=str(project_root),
+                env=env,
+                capture_output=True,
+                text=True,
+                **kwargs,
+            )
+        except BaseException:
+            entry["elapsed"] = time.monotonic() - started
+            raise
+        entry["elapsed"] = time.monotonic() - started
+        entry["running"] = False
+        return result
     _run.home = project_root
     _run.snodo_home = snodo_home
     return _run

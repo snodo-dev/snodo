@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Report redacted per-call snodo CLI timings in e2e failure output and cover the diagnostics with a regular test. Fixes #1342
+
 - Give multi-process queue journey e2e tests a dedicated timeout budget and pin it with a regular regression test. Fixes #1339
 - Present the validator task identifier without adjacent quotation marks while retaining exact subject binding. Fixes #1341
 
