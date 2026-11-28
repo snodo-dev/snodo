@@ -4,7 +4,7 @@
       "status": "pending",
       "parent_task_ref": null,
       "depth": 0,
-      "spec_hash": "b764c41a6443df83"
+      "spec_hash": "3bd898c2418b9c6d"
     },
     "1.2_selector_conftest_selects_tests": {
       "status": "completed",
@@ -15,6 +15,6 @@
   },
   "integration": {
     "branch": "plan/gate-task-e2e-only-changes/integration",
-    "base_sha": "767771312f3716236ea0b6532e1505834d92683d"
+    "base_sha": "b8c2b65332dc81e6ff8d4858b6209dee41d76f4d"
   }
 }
