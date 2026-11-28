@@ -189,3 +189,25 @@ def test_subject_instruction_presents_exact_id_without_adjacent_quotes():
     assert "returning this exact identifier in task_id" in instruction
     assert "A missing or different " in instruction
     assert "task_id makes your verdict unusable" in instruction
+
+
+def test_hermetic_judge_echoes_prompt_subject():
+    from snodo.coders.mock import mock_completion_fn
+
+    task_id = 'plan/"proposal"'
+    def completion_fn(*args, **kwargs):
+        # The hermetic mock still consumes its legacy marker; expose the same
+        # subject in that format while passing through the judge's real prompt.
+        messages = kwargs["messages"]
+        messages[0]["content"] += (
+            "\nThe task identifier under judgement is " + json.dumps(task_id)
+        )
+        return mock_completion_fn(*args, **kwargs)
+
+    result = LLMValidator(_spec()).evaluate(ValidatorContext(
+        task=Task(id=task_id, spec="proposal"),
+        completion_fn=completion_fn, model="gpt-4", workspace_mcp=MagicMock(),
+        phase="pre_execute",
+    ))
+    assert result.error is False
+    assert result.severity == "pass"
